@@ -193,20 +193,28 @@ describe('schema changes default to online DDL', () => {
 })
 
 describe('migration listing', () => {
-  it('selects columns explicitly rather than relying on SHOW layout', () => {
-    // The SHOW form's column order varies across Vitess versions, and a
-    // positional parser against it silently mislabels fields after upgrade.
+  it('uses SHOW VITESS_MIGRATIONS, the only interface vtgate routes', () => {
+    // An earlier version selected from `_vt.schema_migrations` directly. That
+    // is a per-tablet sidecar database vtgate does not route to, so the
+    // statement never ran.
     const script = buildMigrationsScript(DB).join('\n')
-    expect(script).toContain('_vt.schema_migrations')
-    expect(script).toContain('migration_uuid')
-    expect(script).not.toContain('SHOW VITESS_MIGRATIONS')
+    expect(script).toContain('SHOW VITESS_MIGRATIONS')
+    expect(script).not.toContain('_vt.')
   })
 
-  it('filters by keyspace when given one', () => {
-    expect(buildMigrationsScript(DB, 'commerce').join('\n')).toContain(`keyspace = 'commerce'`)
+  it('keeps the column header so fields are mapped by name', () => {
+    // The layout concern that motivated the SELECT is real, so it is handled
+    // rather than avoided: name-based mapping survives upstream adding or
+    // reordering a column, which a positional parse would not.
+    expect(buildMigrationsScript(DB).join('\n')).not.toContain('--skip-column-names')
+  })
+
+  it('scopes to a keyspace by selecting it first', () => {
+    expect(buildMigrationsScript(DB, 'commerce').join('\n')).toContain('USE commerce;')
   })
 
   const output = [
+    'migration_uuid\tkeyspace\tshard\tmysql_table\tmigration_status\tstrategy\tadded_timestamp\tcompleted_timestamp\tprogress',
     'a1b2c3d4_1234_5678_9abc_def012345678\tcommerce\t-80\tusers\trunning\tvitess\t2026-08-04 01:00:00\t\t42%',
     'b1b2c3d4_1234_5678_9abc_def012345678\tcommerce\t80-\torders\tfailed\tvitess\t2026-08-04 00:00:00\t2026-08-04 00:05:00\t100%',
     'c1b2c3d4_1234_5678_9abc_def012345678\tcommerce\t-80\tcarts\tcomplete\tvitess\t2026-08-03 23:00:00\t2026-08-03 23:10:00\t100%',
@@ -214,7 +222,7 @@ describe('migration listing', () => {
 
   const migrations = parseMigrations(output)
 
-  it('parses every column in order', () => {
+  it('parses every column by name', () => {
     expect(migrations).toHaveLength(3)
     expect(migrations[0]).toEqual({
       uuid: 'a1b2c3d4_1234_5678_9abc_def012345678',
@@ -234,8 +242,25 @@ describe('migration listing', () => {
     expect(runningMigrations(migrations).map(m => m.table)).toEqual(['users'])
   })
 
-  it('ignores client noise that is not a migration row', () => {
+  it('ignores output that is not migration rows at all', () => {
+    // No migration_uuid column means an error, a banner, or an empty result.
+    // Returning nothing beats emitting rows of undefined.
     expect(parseMigrations('Warning: something\n\n')).toEqual([])
+    expect(parseMigrations('ERROR 1105 (HY000): unknown command')).toEqual([])
+  })
+
+  it('survives a column being added or reordered upstream', () => {
+    // The whole reason for name-based mapping: a positional parse would
+    // relabel every field after the insertion point.
+    const reordered = [
+      'shard\tmigration_status\tmigration_uuid\tkeyspace\tmysql_table\tnew_column\tprogress',
+      '-80\trunning\ta1b2c3d4_1234_5678_9abc_def012345678\tcommerce\tusers\tsomething\t42%',
+    ].join('\n')
+    const [row] = parseMigrations(reordered)
+    expect(row?.uuid).toBe('a1b2c3d4_1234_5678_9abc_def012345678')
+    expect(row?.status).toBe('running')
+    expect(row?.table).toBe('users')
+    expect(row?.shard).toBe('-80')
   })
 
   it('tolerates empty output', () => {

@@ -215,8 +215,16 @@ describe('vitess list script targets vtgate, not a local socket', () => {
     expect(script).not.toContain('-ppw')
   })
 
-  it('emits keyspaces in the DB= shape parseDbList already understands', () => {
-    expect(buildListScript('vitess', db).join('\n')).toContain(`CONCAT('DB=', keyspace_name)`)
+  it('uses SHOW KEYSPACES, because the information_schema view does not exist', () => {
+    // vtgate answers a fixed set of SHOW commands and does not synthesize an
+    // information_schema view for its own topology. An earlier version
+    // selected from `information_schema.vitess_keyspaces`, which is not a
+    // table in any Vitess version.
+    const script = buildListScript('vitess', db).join('\n')
+    expect(script).toContain('SHOW KEYSPACES')
+    expect(script).not.toContain('information_schema')
+    // SHOW cannot CONCAT a prefix, so the DB= marker is added on the way out.
+    expect(script).toContain(`sed 's/^/DB=/'`)
     expect(parseDbList('DB=commerce\nDB=lookup\n').databases).toEqual(['commerce', 'lookup'])
   })
 })
@@ -225,8 +233,8 @@ describe('parseVitessTopology', () => {
   // Real-ish vtgate output: prefixed keyspaces, `keyspace/shard` rows from
   // SHOW VITESS_SHARDS, and tab-separated rows from SHOW VITESS_TABLETS.
   const output = [
-    'KEYSPACE=commerce',
-    'KEYSPACE=lookup',
+    'commerce',
+    'lookup',
     'commerce/-80',
     'commerce/80-',
     'zone1\tcommerce\t-80\tPRIMARY\tSERVING\tzone1-0000000100\thost-a',
@@ -262,7 +270,7 @@ describe('parseVitessTopology', () => {
   })
 
   it('ignores blank lines', () => {
-    expect(parseVitessTopology('\n\nKEYSPACE=k\n\n').keyspaces).toEqual(['k'])
+    expect(parseVitessTopology('\n\nk\n\n').keyspaces).toEqual(['k'])
   })
 })
 

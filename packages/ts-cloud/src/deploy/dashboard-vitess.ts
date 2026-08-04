@@ -199,44 +199,74 @@ export interface VitessMigration {
 /**
  * Read online-DDL migration state from vtgate.
  *
- * Selected explicitly rather than `SHOW VITESS_MIGRATIONS` so the column
- * order is ours: the `SHOW` form's layout varies across Vitess versions, and
- * a positional parser against it silently mislabels fields after an upgrade.
+ * `SHOW VITESS_MIGRATIONS` is the only interface for this. An earlier version
+ * selected from `_vt.schema_migrations` directly, reasoning that an explicit
+ * column list is safer than SHOW's version-dependent layout. The reasoning was
+ * fine and the query was not: `_vt` is a per-tablet sidecar database that
+ * vtgate does not route to, so the statement never ran.
+ *
+ * The layout concern is real, so it is handled rather than avoided: the column
+ * header is kept (no `--skip-column-names`) and mapped by name in
+ * {@link parseMigrations}. That is strictly better than the positional parse
+ * the SELECT would have produced, because it survives upstream adding or
+ * reordering a column.
  */
 export function buildMigrationsScript(database: DatabaseConfig | undefined, keyspace?: string): string[] {
-  const where = keyspace ? ` WHERE keyspace = '${keyspace.replace(/'/g, "''")}'` : ''
-  return externalMysqlExec(
-    [
-      `SELECT CONCAT_WS('\\t', migration_uuid, keyspace, shard, mysql_table, migration_status, strategy, added_timestamp, completed_timestamp, progress) `
-      + `FROM _vt.schema_migrations${where} ORDER BY added_timestamp DESC LIMIT 100;`,
-    ],
-    database,
-    VTGATE_DEFAULT_PORT,
-  )
+  const statements = keyspace
+    // SHOW VITESS_MIGRATIONS reports on the current keyspace, so scoping it
+    // means selecting one first.
+    ? [`USE ${keyspace.replace(/[^A-Z0-9_]/gi, '')};`, 'SHOW VITESS_MIGRATIONS;']
+    : ['SHOW VITESS_MIGRATIONS;']
+  const script = externalMysqlExec(statements, database, VTGATE_DEFAULT_PORT)
+  // Keep the header row for name-based mapping.
+  script[0] = script[0].replace(' --skip-column-names', '')
+  return script
 }
 
 export function parseMigrations(output: string): VitessMigration[] {
+  const lines = output.split('\n').map(l => l.trimEnd()).filter(l => l.trim().length > 0)
+  if (lines.length === 0) return []
+
+  // First row is the header. Mapping by name means an upstream column
+  // addition or reordering changes nothing here; a positional parse would
+  // silently relabel every field after the insertion point.
+  const header = (lines[0] as string).split('\t').map(c => c.trim())
+  const col = (name: string): number => header.indexOf(name)
+  const columns = {
+    uuid: col('migration_uuid'),
+    keyspace: col('keyspace'),
+    shard: col('shard'),
+    table: col('mysql_table'),
+    status: col('migration_status'),
+    strategy: col('strategy'),
+    added: col('added_timestamp'),
+    completed: col('completed_timestamp'),
+    progress: col('progress'),
+  }
+
+  // No uuid column means this is not migration output at all (an error, a
+  // banner, an empty result). Returning nothing beats rows of undefined.
+  if (columns.uuid === -1) return []
+
   const rows: VitessMigration[] = []
-  for (const rawLine of output.split('\n')) {
-    const line = rawLine.trim()
-    if (!line) continue
-    const c = line.split('\t')
-    // Nine columns, in the order the SELECT above lists them. A short row is
-    // noise from the client (a warning, a banner) rather than a migration.
-    if (c.length < 9) continue
+  for (const line of lines.slice(1)) {
+    const cells = line.split('\t')
+    const at = (i: number): string => (i >= 0 ? (cells[i] ?? '').trim() : '')
+    const uuid = at(columns.uuid)
+    if (!uuid) continue
     rows.push({
-      uuid: c[0] ?? '',
-      keyspace: c[1] ?? '',
-      shard: c[2] ?? '',
-      table: c[3] ?? '',
-      status: c[4] ?? '',
-      strategy: c[5] ?? '',
-      added: c[6] ?? '',
-      completed: c[7] ?? '',
-      progress: c[8] ?? '',
+      uuid,
+      keyspace: at(columns.keyspace),
+      shard: at(columns.shard),
+      table: at(columns.table),
+      status: at(columns.status),
+      strategy: at(columns.strategy),
+      added: at(columns.added),
+      completed: at(columns.completed),
+      progress: at(columns.progress),
     })
   }
-  return rows.filter(r => r.uuid)
+  return rows
 }
 
 /** Migrations needing attention: failed, or running long enough to notice. */

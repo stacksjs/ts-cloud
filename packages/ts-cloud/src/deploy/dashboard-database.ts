@@ -134,11 +134,17 @@ export const VTGATE_DEFAULT_PORT = 15306
  * nothing here to enumerate or create.
  */
 export function buildVitessListScript(database?: DatabaseConfig): string[] {
-  return externalMysqlExec(
-    [`SELECT CONCAT('DB=', keyspace_name) FROM information_schema.vitess_keyspaces;`],
-    database,
-    VTGATE_DEFAULT_PORT,
-  )
+  // `SHOW KEYSPACES`, not a SELECT: there is no
+  // `information_schema.vitess_keyspaces` table. vtgate answers a fixed set
+  // of SHOW commands (see `ShowCommandType` in the Vitess parser) and does
+  // not synthesize an information_schema view for its own topology.
+  //
+  // SHOW cannot CONCAT a prefix, so the `DB=` marker parseDbList expects is
+  // added by sed on the way out. The pipe attaches to the mysql invocation,
+  // whose stdin is the heredoc below.
+  const script = externalMysqlExec(['SHOW KEYSPACES;'], database, VTGATE_DEFAULT_PORT)
+  script[0] = `${script[0]} | sed 's/^/DB=/'`
+  return script
 }
 
 /**
@@ -151,7 +157,10 @@ export function buildVitessListScript(database?: DatabaseConfig): string[] {
 export function buildVitessTopologyScript(database?: DatabaseConfig): string[] {
   return externalMysqlExec(
     [
-      `SELECT CONCAT('KEYSPACE=', keyspace_name) FROM information_schema.vitess_keyspaces;`,
+      // All three are SHOW commands because vtgate exposes topology only
+      // that way. Keyspaces come out as bare names, so they are told apart
+      // from the other two by shape in parseVitessTopology.
+      `SHOW KEYSPACES;`,
       `SHOW VITESS_SHARDS;`,
       `SHOW VITESS_TABLETS;`,
     ],
@@ -198,13 +207,15 @@ export function parseVitessTopology(output: string): VitessTopology {
     const line = rawLine.trim()
     if (!line) continue
 
-    if (line.startsWith('KEYSPACE=')) {
-      keyspaces.push(line.slice(9))
-      continue
-    }
-
     const cols = line.split('\t').map(c => c.trim()).filter(Boolean)
-    // Tablet rows carry many columns; shard rows are a single keyspace/shard.
+
+    // Told apart by shape, not by position. The three SHOW commands run in
+    // one round trip and a cluster can legitimately return zero rows for any
+    // of them, so depending on output order would misparse the moment a
+    // keyspace has no shards yet.
+    //   tablets  many tab-separated columns
+    //   shards   a single `keyspace/shard` token
+    //   keyspaces a single bare name
     if (cols.length >= 6) {
       const [cell, keyspace, shard, type, state, alias, hostname] = cols
       tablets.push({
@@ -219,9 +230,15 @@ export function parseVitessTopology(output: string): VitessTopology {
       continue
     }
 
-    if (cols.length === 1 && cols[0]?.includes('/')) {
-      const [keyspace, shard] = (cols[0] as string).split('/')
-      if (keyspace && shard) shards.push({ keyspace, shard })
+    if (cols.length === 1) {
+      const only = cols[0] as string
+      if (only.includes('/')) {
+        const [keyspace, shard] = only.split('/')
+        if (keyspace && shard) shards.push({ keyspace, shard })
+      }
+      else {
+        keyspaces.push(only)
+      }
     }
   }
 
