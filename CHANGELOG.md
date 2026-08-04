@@ -1,3 +1,40 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.93...v0.7.94)
+
+## 🚀 Features
+
+- **deploy**: preserve shared state across releases ([1e4b4f4](https://github.com/stacksjs/ts-cloud/commit/1e4b4f4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **vitess**: provision Vitess on-box via services.vitess ([055cda3](https://github.com/stacksjs/ts-cloud/commit/055cda3)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **vitess**: add control-plane provisioning and online DDL management ([c88ac34](https://github.com/stacksjs/ts-cloud/commit/c88ac34)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: surface and manage vitess properly ([2a1ab3c](https://github.com/stacksjs/ts-cloud/commit/2a1ab3c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **db**: support vitess as an always-external engine ([31f4e9a](https://github.com/stacksjs/ts-cloud/commit/31f4e9a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- export reloadRpxGateway and renewRpxCertificates ([8fe8f39](https://github.com/stacksjs/ts-cloud/commit/8fe8f39)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: plan a workload migration between two servers ([dd8f9ec](https://github.com/stacksjs/ts-cloud/commit/dd8f9ec)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: plan a role swap for a server type that cannot be bought again ([65fa8b5](https://github.com/stacksjs/ts-cloud/commit/65fa8b5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **vitess**: make provisioning actually work, verified on a real box ([4be1269](https://github.com/stacksjs/ts-cloud/commit/4be1269)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ci**: recognise flags that have a short alias ([a3306c1](https://github.com/stacksjs/ts-cloud/commit/a3306c1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **vitess**: encode the combo topology as the proto vtcombo expects ([5f547c0](https://github.com/stacksjs/ts-cloud/commit/5f547c0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **vitess**: query things that actually exist in vtgate ([d6534e2](https://github.com/stacksjs/ts-cloud/commit/d6534e2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **vitess**: use the flag names Vitess actually accepts ([651fd7c](https://github.com/stacksjs/ts-cloud/commit/651fd7c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **vitess**: resolve the vtctldclient release asset instead of guessing it ([7f61a0d](https://github.com/stacksjs/ts-cloud/commit/7f61a0d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: move attached volumes with the workload ([1b5c7ee](https://github.com/stacksjs/ts-cloud/commit/1b5c7ee)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: park a name on a temporary while two servers swap them ([de49e31](https://github.com/stacksjs/ts-cloud/commit/de49e31)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: derive placement from location now that datacenter is gone ([4ee9419](https://github.com/stacksjs/ts-cloud/commit/4ee9419)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🤖 Continuous Integration
+
+- catch Vitess upstream drift on a schedule ([a237be6](https://github.com/stacksjs/ts-cloud/commit/a237be6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.94 ([39be2f4](https://github.com/stacksjs/ts-cloud/commit/39be2f4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.92...v0.7.93)
 
 ## ⚡ Performance Improvements
