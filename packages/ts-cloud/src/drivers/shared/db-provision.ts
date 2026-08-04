@@ -15,11 +15,34 @@ import type { PantrySpec } from './package-manager'
 import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
 
 /**
+ * Engines that only ever exist as an external cluster.
+ *
+ * Neither has a pantry package, so the box can never host one: SingleStore
+ * is a managed service (Helios), and Vitess is a sharded cluster of vtgate,
+ * vttablet, and a topology service that no single-box provisioner installs.
+ *
+ * This matters because {@link isLocalDatabase} decides "on-box or not" from
+ * the HOST, and host is optional. Declaring `engine: 'singlestore'` without
+ * a host therefore read as local and fell through to the MySQL branch of
+ * {@link buildDatabaseSetupScript}, which shells out to
+ * `mysql --socket=/var/lib/pantry/mysql/mysqld.sock` — a socket that cannot
+ * exist, because nothing installed MySQL. The provision step failed with a
+ * missing-socket error that named MySQL, an engine the user never asked for.
+ */
+const ALWAYS_EXTERNAL_ENGINES = new Set(['singlestore', 'vitess'])
+
+/**
  * True when the database is co-located with the box (the managed-services
  * engine): no host configured, or an explicit loopback host. Anything else is
  * an external/managed database reached over TCP.
+ *
+ * An always-external engine is never local regardless of host — pointing one
+ * at 127.0.0.1 means a tunnel or a local proxy, not an engine this box
+ * installed and can administer over a unix socket.
  */
 export function isLocalDatabase(database: DatabaseConfig | undefined): boolean {
+  if (database?.engine && ALWAYS_EXTERNAL_ENGINES.has(database.engine))
+    return false
   return !database?.host || database.host === '127.0.0.1' || database.host === 'localhost'
 }
 
@@ -249,13 +272,25 @@ export function buildDatabaseSetupScript(
  */
 export function buildManagedDbEnv(database: DatabaseConfig | undefined): Record<string, string> {
   if (!database?.name) return {}
-  // SingleStore speaks the MySQL wire protocol on 3306, but keep DB_CONNECTION
-  // as 'singlestore' so the app's query builder selects the SingleStore driver
-  // (distributed DDL, isMysqlLike DML). Postgres → 'pgsql'; everything else →
-  // 'mysql'.
+  // SingleStore and Vitess both speak the MySQL wire protocol, but each keeps
+  // its own DB_CONNECTION so the app selects the right driver: they share
+  // MySQL's DML and diverge in DDL (SingleStore has distributed tables and no
+  // foreign keys; Vitess additionally has no AUTO_INCREMENT and needs a
+  // VSchema). Collapsing either to 'mysql' would emit DDL the engine rejects.
+  // Postgres → 'pgsql'; everything else → 'mysql'.
   const isSingleStore = database.engine === 'singlestore'
-  const connection = database.engine === 'postgres' ? 'pgsql' : isSingleStore ? 'singlestore' : 'mysql'
-  const port = database.port ?? (database.engine === 'postgres' ? 5432 : 3306)
+  const isVitess = database.engine === 'vitess'
+  const connection = database.engine === 'postgres'
+    ? 'pgsql'
+    : isSingleStore
+      ? 'singlestore'
+      : isVitess
+        ? 'vitess'
+        : 'mysql'
+  // Vitess is reached through vtgate on 15306. Defaulting it to 3306 would
+  // connect to a vttablet's underlying mysqld instead — a working connection
+  // that silently bypasses sharding, which is worse than a failed one.
+  const port = database.port ?? (database.engine === 'postgres' ? 5432 : isVitess ? 15306 : 3306)
   const env: Record<string, string> = {
     DB_CONNECTION: connection,
     DB_HOST: database.host || '127.0.0.1',
@@ -264,8 +299,9 @@ export function buildManagedDbEnv(database: DatabaseConfig | undefined): Record<
   }
   if (database.username) env.DB_USERNAME = database.username
   if (database.password) env.DB_PASSWORD = database.password
-  // Managed SingleStore (Helios) requires TLS; default it on unless explicitly
-  // disabled via `database.ssl === false`.
-  if (isSingleStore && database.ssl !== false) env.DB_SSL = 'true'
+  // Managed SingleStore (Helios) requires TLS, and a managed Vitess endpoint
+  // is likewise reached across a network boundary; default TLS on for both
+  // unless explicitly disabled via `database.ssl === false`.
+  if ((isSingleStore || isVitess) && database.ssl !== false) env.DB_SSL = 'true'
   return env
 }

@@ -1434,10 +1434,12 @@ export interface BucketConfig {
 
 export interface DatabaseConfig {
   type?: 'rds' | 'dynamodb'
-  // 'singlestore' is always an external managed cluster (SingleStore Helios) —
-  // there is no self-hosted pantry package, so ts-cloud only wires DB_* env for
-  // it (see buildManagedDbEnv), never installs/sets it up on-box.
-  engine?: 'postgres' | 'mysql' | 'mariadb' | 'singlestore'
+  // 'singlestore' and 'vitess' are always external clusters — neither has a
+  // self-hosted pantry package, so ts-cloud only wires DB_* env for them (see
+  // buildManagedDbEnv) and never installs or sets one up on-box. Both speak
+  // the MySQL wire protocol; Vitess is reached through vtgate on 15306, and
+  // its `name` is a keyspace rather than a database.
+  engine?: 'postgres' | 'mysql' | 'mariadb' | 'singlestore' | 'vitess'
   instanceType?: string
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1455,7 +1457,7 @@ export interface DatabaseConfig {
   password?: string
   /** Hostname for a managed/external database (default `127.0.0.1` on-box). */
   host?: string
-  /** Port (defaults: mysql/mariadb/singlestore 3306, postgres 5432). */
+  /** Port (defaults: mysql/mariadb/singlestore 3306, vitess 15306, postgres 5432). */
   port?: number
   /**
    * Require TLS to the database. Defaults on for managed SingleStore (Helios),
