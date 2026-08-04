@@ -56,7 +56,7 @@ jobs:
         # Only on the scheduled run: a pull request already shows the failure
         # in its own checks, and filing an issue there would be noise.
         if: failure() && github.event_name == 'schedule'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs')
