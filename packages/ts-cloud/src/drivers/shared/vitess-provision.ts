@@ -57,6 +57,16 @@ export const ETCD_CLIENT_PORT = 2379
 /** Root directory for Vitess state on the box. */
 export const VITESS_ROOT = '/var/lib/vitess'
 
+/**
+ * Tablet UID for the single-box tablet.
+ *
+ * Shared by mysqlctld and vttablet on purpose: they must agree, because
+ * Vitess derives the tablet's working directory (and therefore its mysqld
+ * socket) from `$VTDATAROOT/vt_<uid>`. Two different values silently give
+ * the tablet a mysqld it cannot find.
+ */
+export const VITESS_TABLET_UID = 100
+
 /** Re-exported so callers of the provisioner need only one import. */
 export type { VitessKeyspaceConfig, VitessServiceConfig }
 
@@ -89,6 +99,106 @@ export function vitessPackages(config: VitessServiceConfig): PantrySpec[] {
   return packages as PantrySpec[]
 }
 
+/**
+ * The unprivileged account every Vitess daemon runs as.
+ *
+ * Not a hardening nicety: Vitess refuses to start as root outright
+ * ("running this as root makes no sense" from servenv.Init), so a unit with
+ * no `User=` crash-loops immediately on every daemon.
+ */
+export const VITESS_USER = 'vitess'
+
+/**
+ * PATH for the units.
+ *
+ * systemd gives a service a minimal PATH that does not include pantry's bin
+ * directory. `mysqlctld` shells out to find `mysqld` and panics with
+ * "VT_MYSQL_ROOT is not set and no mysqld could be found in your PATH"
+ * without this, and `vttablet` needs the same to manage its mysqld.
+ */
+const UNIT_PATH = `${PANTRY_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`
+
+/** Directory holding the generated launcher scripts. */
+export const VITESS_LIB = '/usr/local/lib/vitess'
+
+/**
+ * Wrap a command so `VT_MYSQL_ROOT` is resolved when the unit starts.
+ *
+ * mysqlctld and vttablet locate mysqld under
+ * `$VT_MYSQL_ROOT/{sbin,bin,libexec,scripts}`. Pantry exposes binaries from a
+ * `.bin` symlink directory, so deriving the root from PATH lands on
+ * `/opt/pantry/pantry` and the lookup fails with "mysqld not found in any
+ * of ...". The real root is the versioned package directory
+ * (`.../mysql.com/v9.6.0`), which changes on every mysql upgrade, so it is
+ * resolved from the symlink at start rather than baked into the unit and
+ * left to rot.
+ */
+/**
+ * The body of a daemon launcher script.
+ *
+ * Every daemon runs through a script on disk rather than an inline
+ * `ExecStart=/bin/sh -c '...'`. That is not stylistic: systemd parses
+ * ExecStart itself, and it splits on `;`, expands `$VAR` before the shell
+ * ever sees it, and strips quotes. An inline command was silently truncated
+ * at its first semicolon, so the daemon launched with none of its flags and
+ * printed usage instead of starting. A script file has none of those
+ * hazards and can also be run by hand when debugging a box.
+ *
+ * Two things have to be resolved at start rather than baked in, because
+ * pantry's paths are version-pinned and change on upgrade:
+ *   - pantry's own environment, chiefly `LD_LIBRARY_PATH`; its binaries are
+ *     dynamically linked inside its package tree and fail to load without it
+ *   - `VT_MYSQL_ROOT` and `VTROOT`, which locate mysqld and
+ *     `config/init_db.sql` respectively
+ */
+/**
+ * Scripts to write, keyed by daemon name. Collected as units are built so
+ * the provisioner can emit them before anything starts.
+ */
+const launchers = new Map<string, string>()
+
+function launcherPath(name: string): string {
+  return `${VITESS_LIB}/${name}.sh`
+}
+
+/** Record a launcher and return the ExecStart that runs it. */
+function launcherFor(name: string, command: string[]): string {
+  launchers.set(name, launcherScript(command))
+  return `/bin/sh ${launcherPath(name)}`
+}
+
+/** The launcher scripts recorded so far, for inspection and testing. */
+export function buildLaunchers(): Map<string, string> {
+  return new Map(launchers)
+}
+
+/** The launcher scripts recorded so far, as shell that writes them. */
+function buildLauncherScripts(): string[] {
+  const out: string[] = [`mkdir -p ${VITESS_LIB}`]
+  for (const [name, body] of launchers) {
+    out.push(
+      `cat > ${launcherPath(name)} <<'TS_CLOUD_VITESS_LAUNCHER_EOF'`,
+      body,
+      'TS_CLOUD_VITESS_LAUNCHER_EOF',
+      `chmod 0755 ${launcherPath(name)}`,
+    )
+  }
+  return out
+}
+
+function launcherScript(command: string[]): string {
+  return [
+    '#!/bin/sh',
+    'set -e',
+    `cd ${PANTRY_PROJECT_DIR}`,
+    'eval "$(pantry env 2>/dev/null)" || true',
+    `VT_MYSQL_ROOT="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqld 2>/dev/null)")")"`,
+    `VTROOT="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqlctld 2>/dev/null)")")"`,
+    'export VT_MYSQL_ROOT VTROOT',
+    `exec ${command.join(' ')}`,
+  ].join('\n')
+}
+
 interface UnitOptions {
   description: string
   execStart: string
@@ -112,6 +222,14 @@ function systemdUnit(opts: UnitOptions): string {
     '',
     '[Service]',
     'Type=simple',
+    `User=${VITESS_USER}`,
+    `Group=${VITESS_USER}`,
+    `Environment="PATH=${UNIT_PATH}"`,
+    // Vitess derives every per-tablet working directory from VTDATAROOT,
+    // which defaults to `/vt`. The daemons run unprivileged and cannot
+    // create a directory at the filesystem root, so mysqlctld dies with
+    // "mkdir /vt: permission denied" without this.
+    `Environment="VTDATAROOT=${VITESS_ROOT}"`,
     ...Object.entries(opts.environment ?? {}).map(([k, v]) => `Environment="${k}=${v}"`),
     ...(opts.execStartPre ?? []).map(c => `ExecStartPre=${c}`),
     `ExecStart=${opts.execStart}`,
@@ -162,7 +280,7 @@ export function buildVtcomboUnit(config: VitessServiceConfig): string {
 
   return systemdUnit({
     description: 'Vitess (vtcombo, single-process development stack)',
-    execStart: [
+    execStart: launcherFor('vtcombo', [
       `${PANTRY_BIN}/vtcombo`,
       `--cell ${cell}`,
       `--proto-topo ${sh(topology)}`,
@@ -176,7 +294,7 @@ export function buildVtcomboUnit(config: VitessServiceConfig): string {
       '--start-mysql',
       `--port ${VTGATE_GRPC_PORT}`,
       `--grpc-port ${VTCTLD_GRPC_PORT}`,
-    ].join(' '),
+    ]),
   })
 }
 
@@ -184,13 +302,13 @@ export function buildVtcomboUnit(config: VitessServiceConfig): string {
 export function buildEtcdUnit(): string {
   return systemdUnit({
     description: 'etcd (Vitess topology store)',
-    execStart: [
+    execStart: launcherFor('etcd', [
       `${PANTRY_BIN}/etcd`,
       `--data-dir ${VITESS_ROOT}/etcd`,
       `--listen-client-urls http://127.0.0.1:${ETCD_CLIENT_PORT}`,
       `--advertise-client-urls http://127.0.0.1:${ETCD_CLIENT_PORT}`,
-    ].join(' '),
-    execStartPre: [`/bin/mkdir -p ${VITESS_ROOT}/etcd`],
+    ]),
+    execStartPre: [`+/bin/mkdir -p ${VITESS_ROOT}/etcd`, `+/bin/chown ${VITESS_USER}:${VITESS_USER} ${VITESS_ROOT}/etcd`],
   })
 }
 
@@ -210,14 +328,14 @@ export function buildVtctldUnit(config: VitessServiceConfig): string {
     description: 'Vitess vtctld (control plane)',
     after: requiresEtcd ? ['vitess-etcd.service'] : [],
     requires: requiresEtcd ? ['vitess-etcd.service'] : [],
-    execStart: [
+    execStart: launcherFor('vtctld', [
       `${PANTRY_BIN}/vtctld`,
       ...topoFlags(config),
       `--cell ${config.cell ?? 'zone1'}`,
       `--service-map grpc-vtctl,grpc-vtctld`,
       `--grpc-port ${VTCTLD_GRPC_PORT}`,
       `--port ${VTCTLD_GRPC_PORT + 1}`,
-    ].join(' '),
+    ]),
   })
 }
 
@@ -230,10 +348,10 @@ export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string,
     // mysqld means it has nothing to serve.
     after: ['vitess-vtctld.service', 'vitess-mysqlctld.service'],
     requires: ['vitess-mysqlctld.service'],
-    execStart: [
+    execStart: launcherFor('vttablet', [
       `${PANTRY_BIN}/vttablet`,
       ...topoFlags(config),
-      `--tablet-path ${cell}-0000000100`,
+      `--tablet-path ${cell}-${String(VITESS_TABLET_UID).padStart(10, '0')}`,
       `--init-keyspace ${keyspace}`,
       `--init-shard ${shard}`,
       // Starts as a replica and is promoted by reparenting. Coming up as a
@@ -244,7 +362,7 @@ export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string,
       `--grpc-port ${VTTABLET_GRPC_PORT + 1}`,
       `--db-port ${config.mysqlPort ?? 3306}`,
       `--mycnf-mysql-port ${config.mysqlPort ?? 3306}`,
-    ].join(' '),
+    ]),
   })
 }
 
@@ -252,14 +370,50 @@ export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string,
 export function buildMysqlctldUnit(config: VitessServiceConfig): string {
   return systemdUnit({
     description: 'Vitess mysqlctld (managed mysqld)',
-    execStart: [
+    execStart: launcherFor('mysqlctld', [
       `${PANTRY_BIN}/mysqlctld`,
-      `--tablet-dir ${VITESS_ROOT}/vt_0000000100`,
+      // NOT --tablet-dir: that value is resolved relative to VTDATAROOT, so
+      // an absolute path produces `/var/lib/vitess/var/lib/vitess/...` and
+      // mysqld's socket never appears where the tablet looks for it. The uid
+      // lets Vitess derive the directory itself, which is what upstream's
+      // own example does.
+      `--tablet-uid ${VITESS_TABLET_UID}`,
       `--mysql-port ${config.mysqlPort ?? 3306}`,
+      // Creates the vt_dba/vt_app/vt_repl accounts vttablet needs. Without
+      // it the tablet times out on "waiting for the dba user to have the
+      // required permissions" and the shard never gets a primary.
+      '--init-db-sql-file "$VTROOT/config/init_db.sql"',
       '--wait-time 2m',
-    ].join(' '),
-    execStartPre: [`/bin/mkdir -p ${VITESS_ROOT}`],
+    ]),
+    execStartPre: [`+/bin/mkdir -p ${VITESS_ROOT}`, `+/bin/chown ${VITESS_USER}:${VITESS_USER} ${VITESS_ROOT}`],
   })
+}
+
+/** Where the generated vtgate credentials live. */
+export const VITESS_AUTH_FILE = '/etc/vitess/auth.json'
+
+/**
+ * vtgate's static credentials file.
+ *
+ * vtgate defaults to `--mysql-auth-server-impl static` and exits with "no
+ * AuthServer name static registered" when no credentials are supplied, so
+ * this is required, not optional. The alternative Vitess offers is
+ * `none`, which would leave an unauthenticated MySQL endpoint - acceptable
+ * only for the loopback-bound combo stack, never for a cluster.
+ */
+export function buildVitessAuthFileScript(config: VitessServiceConfig): string[] {
+  const user = config.username ?? 'vitess'
+  const password = config.password ?? ''
+  const auth = JSON.stringify({ [user]: [{ MysqlNativePassword: '', Password: password, UserData: user }] })
+  return [
+    'mkdir -p /etc/vitess',
+    `cat > ${VITESS_AUTH_FILE} <<'TS_CLOUD_VITESS_AUTH_EOF'`,
+    auth,
+    'TS_CLOUD_VITESS_AUTH_EOF',
+    // Contains a password: readable by the daemon, nobody else.
+    `chown ${VITESS_USER}:${VITESS_USER} ${VITESS_AUTH_FILE}`,
+    `chmod 0600 ${VITESS_AUTH_FILE}`,
+  ]
 }
 
 /** vtgate: the query router applications connect to. */
@@ -268,7 +422,7 @@ export function buildVtgateUnit(config: VitessServiceConfig): string {
   return systemdUnit({
     description: 'Vitess vtgate (query router)',
     after: ['vitess-vtctld.service'],
-    execStart: [
+    execStart: launcherFor('vtgate', [
       `${PANTRY_BIN}/vtgate`,
       ...topoFlags(config),
       `--cell ${cell}`,
@@ -280,10 +434,15 @@ export function buildVtgateUnit(config: VitessServiceConfig): string {
       // this leaves the port open and every RPC unimplemented.
       `--service-map ${sh('grpc-vtgateservice')}`,
       `--mysql-server-port ${config.vtgatePort ?? VTGATE_MYSQL_PORT}`,
-      '--mysql-server-bind-address 0.0.0.0',
+      // Loopback by default: on the single-box model the application shares
+      // this host, so exposing the database to the network buys nothing and
+      // widens the blast radius. `bindAddress` opts into wider exposure.
+      `--mysql-server-bind-address ${config.bindAddress ?? '127.0.0.1'}`,
+      '--mysql-auth-server-impl static',
+      `--mysql-auth-server-static-file ${VITESS_AUTH_FILE}`,
       `--port ${VTGATE_GRPC_PORT}`,
       `--grpc-port ${VTGATE_GRPC_PORT + 1}`,
-    ].join(' '),
+    ]),
   })
 }
 
@@ -311,10 +470,37 @@ export function buildVitessBootstrapScript(config: VitessServiceConfig): string[
   for (const keyspace of config.keyspaces ?? []) {
     const sharded = keyspace.sharded ? ' --sharded' : ''
     out.push(
-      `if ! ${client} GetKeyspaces 2>/dev/null | grep -qx ${sh(keyspace.name)}; then`,
+      // `GetKeyspaces` prints JSON, so a line-match against it never fired
+      // and CreateKeyspace ran on every re-provision, failing with "node
+      // already exists". `GetKeyspace <name>` exits non-zero when absent,
+      // which is an existence check rather than a parse.
+      `if ! ${client} GetKeyspace ${sh(keyspace.name)} >/dev/null 2>&1; then`,
       `  ${client} CreateKeyspace${sharded} ${sh(keyspace.name)}`,
       'fi',
     )
+
+    // Elect a primary for every shard.
+    //
+    // A tablet starts as a replica (see buildVttabletUnit), so a freshly
+    // created shard has none. Vitess routes writes to the primary, and a
+    // shard without one answers reads and silently fails writes - which does
+    // not look like a broken cluster, just a broken application. The
+    // provision is not finished until each shard can take a write.
+    //
+    // Guarded on the current state so a re-provision does not reparent a
+    // healthy shard, which would be a needless failover.
+    const alias = `${cell}-${String(VITESS_TABLET_UID).padStart(10, '0')}`
+    for (const shard of keyspace.sharded ? ['-80', '80-'] : ['0']) {
+      const target = `${keyspace.name}/${shard}`
+      out.push(
+        // The tablet has to be registered and responding before it can be
+        // promoted; vttablet registers a few seconds after systemd starts it.
+        `for i in $(seq 1 30); do ${client} GetTablet ${sh(alias)} >/dev/null 2>&1 && break; sleep 2; done`,
+        `if ! ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"primary_alias"'; then`,
+        `  ${client} PlannedReparentShard ${sh(target)} --new-primary ${sh(alias)} || ${client} InitShardPrimary --force ${sh(target)} ${sh(alias)}`,
+        'fi',
+      )
+    }
   }
 
   return out
@@ -331,7 +517,7 @@ export function buildVitessHealthCheck(config: VitessServiceConfig): string[] {
   const port = config.vtgatePort ?? VTGATE_MYSQL_PORT
   return [
     `for i in $(seq 1 60); do`,
-    `  if ${PANTRY_BIN}/mysql -h 127.0.0.1 -P ${port} -u root --connect-timeout=2 -e 'SHOW KEYSPACES' >/dev/null 2>&1; then`,
+    `  if (cd ${PANTRY_PROJECT_DIR} && eval "$(pantry env 2>/dev/null)"; MYSQL_PWD=${sh(config.password ?? '')} ${PANTRY_BIN}/mysql -h 127.0.0.1 -P ${port} -u ${sh(config.username ?? 'vitess')} --connect-timeout=2 -e 'SHOW KEYSPACES') >/dev/null 2>&1; then`,
     `    echo "vtgate is serving on ${port}"; exit 0`,
     '  fi',
     '  sleep 2',
@@ -353,17 +539,33 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
   const config = settings(value)
   const combo = config.mode === 'combo'
 
-  const out: string[] = [...buildPantryInstallScript(vitessPackages(config))]
+  // Launchers accumulate as units are built, and the registry is module
+  // scoped, so a previous call in the same process would otherwise leak its
+  // scripts into this one - a cluster provision emitting a vtcombo launcher,
+  // for instance. Each provision starts from empty.
+  launchers.clear()
+
+  const out: string[] = [
+    ...buildPantryInstallScript(vitessPackages(config)),
+    // Created before any unit is written: the daemons refuse to run as root,
+    // and they need to own their state directory to start at all.
+    `id -u ${VITESS_USER} >/dev/null 2>&1 || useradd --system --home-dir ${VITESS_ROOT} --shell /usr/sbin/nologin ${VITESS_USER}`,
+    `mkdir -p ${VITESS_ROOT}`,
+    `chown -R ${VITESS_USER}:${VITESS_USER} ${VITESS_ROOT}`,
+  ]
 
   if (combo) {
     out.push(
       ...writeUnit('vitess-vtcombo', buildVtcomboUnit(config)),
+      ...buildLauncherScripts(),
       'systemctl daemon-reload',
       'systemctl enable --now vitess-vtcombo.service',
       ...buildVitessHealthCheck(config),
     )
     return out
   }
+
+  out.push(...buildVitessAuthFileScript(config))
 
   const units: Array<[string, string]> = []
   if (!config.etcdEndpoint) units.push(['vitess-etcd', buildEtcdUnit()])
@@ -381,6 +583,10 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
   }
 
   for (const [name, body] of units) out.push(...writeUnit(name, body))
+
+  // Written after the units, because building the units is what registers
+  // the launchers, and before daemon-reload so nothing can start without one.
+  out.push(...buildLauncherScripts())
 
   out.push('systemctl daemon-reload')
   // Started in dependency order. systemd would resolve this from the unit

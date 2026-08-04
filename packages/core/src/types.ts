@@ -2912,6 +2912,24 @@ export interface VitessServiceConfig {
   /** Override vtgate's MySQL port. Applications connect here. */
   vtgatePort?: number
   /**
+   * Username applications authenticate to vtgate with. Defaults to `vitess`.
+   *
+   * vtgate requires an auth server; there is no unauthenticated cluster mode
+   * worth offering, since its port would otherwise be an open database.
+   */
+  username?: string
+  /** Password for {@link username}. */
+  password?: string
+  /**
+   * Address vtgate binds its MySQL port to. Defaults to `127.0.0.1`.
+   *
+   * The single-box model puts the application on this same host, so the
+   * default keeps the database off the network entirely. Set `0.0.0.0` only
+   * when something off-box genuinely needs to connect, and pair it with a
+   * firewall rule.
+   */
+  bindAddress?: string
+  /**
    * External topology store, e.g. `http://etcd-a.internal:2379`. When set,
    * etcd is not installed on the box and the daemons point here instead.
    */

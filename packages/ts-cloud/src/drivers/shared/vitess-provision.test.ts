@@ -2,6 +2,7 @@ import type { VitessServiceConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
 import { buildServicesProvisionScript } from './db-provision'
 import {
+  buildLaunchers,
   buildEtcdUnit,
   buildMysqlctldUnit,
   buildVitessBootstrapScript,
@@ -16,6 +17,20 @@ import {
   VTGATE_MYSQL_PORT,
   vitessPackages,
 } from './vitess-provision'
+
+/**
+ * The launcher body a unit's ExecStart points at.
+ *
+ * Building a unit registers its launcher, so this reads what will actually
+ * be written to disk and run - which is where the flags live.
+ */
+function launcherBody(unit: string, name: string): string {
+  expect(unit).toContain(`ExecStart=/bin/sh /usr/local/lib/vitess/${name}.sh`)
+  const scripts = buildLaunchers()
+  const body = scripts.get(name)
+  expect(body).toBeDefined()
+  return body as string
+}
 
 const CLUSTER: VitessServiceConfig = {
   cell: 'zone1',
@@ -59,7 +74,10 @@ describe('packages', () => {
 })
 
 describe('combo mode (development)', () => {
-  const unit = buildVtcomboUnit({ keyspaces: [{ name: 'app' }] })
+  // Flags live in the launcher script, not the unit: systemd parses
+  // ExecStart itself and splits on `;`, expands `$VAR`, and strips quotes,
+  // which silently truncated an inline command mid-flags on a real box.
+  const unit = launcherBody(buildVtcomboUnit({ keyspaces: [{ name: 'app' }] }), 'vtcombo')
 
   it('runs the whole stack in one process', () => {
     expect(unit).toContain('/vtcombo')
@@ -83,7 +101,7 @@ describe('combo mode (development)', () => {
   })
 
   it('declares a sharded keyspace with both shards', () => {
-    const sharded = buildVtcomboUnit({ keyspaces: [{ name: 'commerce', sharded: true }] })
+    const sharded = launcherBody(buildVtcomboUnit({ keyspaces: [{ name: 'commerce', sharded: true }] }), 'vtcombo')
     expect(sharded).toContain('keyspaces:{name:"commerce" shards:{name:"-80"} shards:{name:"80-"}}')
   })
 
@@ -111,7 +129,8 @@ describe('cluster ordering', () => {
   it('vtctld does not require a local etcd when the store is external', () => {
     const unit = buildVtctldUnit({ ...CLUSTER, etcdEndpoint: 'http://etcd.internal:2379' })
     expect(unit).not.toContain('vitess-etcd.service')
-    expect(unit).toContain('--topo-global-server-address http://etcd.internal:2379')
+    const body = launcherBody(unit, 'vtctld')
+    expect(body).toContain('--topo-global-server-address http://etcd.internal:2379')
   })
 
   it('vttablet waits for both control plane and its mysqld', () => {
@@ -155,11 +174,11 @@ describe('cluster topology', () => {
 
   it('starts tablets as replicas, never as primaries', () => {
     // Coming up as primary would let two primaries exist across a restart.
-    expect(buildVttabletUnit(CLUSTER, 'commerce', '-80')).toContain('--init-tablet-type replica')
+    expect(launcherBody(buildVttabletUnit(CLUSTER, 'commerce', '-80'), 'vttablet')).toContain('--init-tablet-type replica')
   })
 
   it('points every daemon at the same topology root', () => {
-    for (const unit of [buildVtctldUnit(CLUSTER), buildVtgateUnit(CLUSTER)]) {
+    for (const unit of [launcherBody(buildVtctldUnit(CLUSTER), 'vtctld'), launcherBody(buildVtgateUnit(CLUSTER), 'vtgate')]) {
       expect(unit).toContain('--topo-implementation etcd2')
       expect(unit).toContain(`--topo-global-server-address http://127.0.0.1:${ETCD_CLIENT_PORT}`)
       expect(unit).toContain('--topo-global-root /vitess/global')
@@ -172,17 +191,16 @@ describe('cluster topology', () => {
   })
 
   it('gives etcd a persistent data directory', () => {
-    const unit = buildEtcdUnit()
+    const unit = launcherBody(buildEtcdUnit(), 'etcd')
     expect(unit).toContain('--data-dir /var/lib/vitess/etcd')
-    expect(unit).toContain('ExecStartPre=/bin/mkdir -p /var/lib/vitess/etcd')
+    expect(buildEtcdUnit()).toContain('ExecStartPre=+/bin/mkdir -p /var/lib/vitess/etcd')
   })
 
   it('separates the tablet mysqld port from vtgate', () => {
     // Applications must reach vtgate; the tablet's mysqld is not a client
     // endpoint and writing to it bypasses Vitess.
-    const mysqlctld = buildMysqlctldUnit({ mysqlPort: 3306 })
-    expect(mysqlctld).toContain('--mysql-port 3306')
-    expect(buildVtgateUnit(CLUSTER)).toContain(`--mysql-server-port ${VTGATE_MYSQL_PORT}`)
+    expect(launcherBody(buildMysqlctldUnit({ mysqlPort: 3306 }), 'mysqlctld')).toContain('--mysql-port 3306')
+    expect(launcherBody(buildVtgateUnit(CLUSTER), 'vtgate')).toContain(`--mysql-server-port ${VTGATE_MYSQL_PORT}`)
   })
 })
 
@@ -204,13 +222,39 @@ describe('bootstrap is idempotent', () => {
   })
 
   it('guards each keyspace on a read', () => {
-    expect(script).toContain('GetKeyspaces')
     expect(script).toContain("CreateKeyspace --sharded 'commerce'")
     expect(script).toContain("CreateKeyspace 'lookup'")
+    // GetKeyspaces prints JSON, so a line match never fired and every
+    // re-provision failed with "node already exists". GetKeyspace exits
+    // non-zero when absent, which is an existence check rather than a parse.
+    expect(script).toContain('GetKeyspace ')
+    expect(script).not.toContain('GetKeyspaces')
   })
 
   it('targets vtctld, not vtgate', () => {
     expect(script).toContain(`--server 127.0.0.1:${VTCTLD_GRPC_PORT}`)
+  })
+})
+
+describe('primary election', () => {
+  const script = buildVitessBootstrapScript(CLUSTER).join('\n')
+
+  it('elects a primary for every shard', () => {
+    // Verified on a live cluster: a tablet starts as a replica, so a fresh
+    // shard reports REPLICA/NOT_SERVING and silently fails writes until it
+    // is reparented. The provision is not done until each shard can write.
+    expect(script).toContain("PlannedReparentShard 'commerce/-80'")
+    expect(script).toContain("PlannedReparentShard 'commerce/80-'")
+    expect(script).toContain("PlannedReparentShard 'lookup/0'")
+  })
+
+  it('waits for the tablet to register before promoting it', () => {
+    expect(script).toContain('GetTablet ')
+  })
+
+  it('does not reparent a shard that already has a primary', () => {
+    // A needless failover on every re-provision would be worse than useless.
+    expect(script).toContain('primary_alias')
   })
 })
 
