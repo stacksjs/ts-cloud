@@ -145,17 +145,27 @@ function writeUnit(name: string, body: string): string[] {
 export function buildVtcomboUnit(config: VitessServiceConfig): string {
   const cell = config.cell ?? 'zone1'
   const port = config.vtgatePort ?? VTGATE_MYSQL_PORT
+  // `--proto-topo` takes a `vttest.VTTestTopology` in protobuf COMPACT TEXT
+  // format, not a `keyspace/shard` string. The proto is
+  // `repeated Keyspace keyspaces` where each `Keyspace` has a name and
+  // `repeated Shard shards`, each with a name. An unsharded keyspace has the
+  // single shard `0`; a sharded one is split at the midpoint of the keyrange.
   const keyspaces = (config.keyspaces?.length ? config.keyspaces : [{ name: 'app' }])
-    // `name/shard` pairs; an unsharded keyspace has the single shard `0`.
-    .map(k => (k.sharded ? `${k.name}/-80:${k.name}/80-` : `${k.name}/0`))
-    .join(',')
+    .map((k) => {
+      const shards = (k.sharded ? ['-80', '80-'] : ['0'])
+        .map(s => `shards:{name:"${s}"}`)
+        .join(' ')
+      return `keyspaces:{name:"${k.name}" ${shards}}`
+    })
+    .join(' ')
+  const topology = `${keyspaces} cells:"${cell}"`
 
   return systemdUnit({
     description: 'Vitess (vtcombo, single-process development stack)',
     execStart: [
       `${PANTRY_BIN}/vtcombo`,
       `--cell ${cell}`,
-      `--proto-topo ${sh(keyspaces)}`,
+      `--proto-topo ${sh(topology)}`,
       `--mysql-server-port ${port}`,
       '--mysql-server-bind-address 127.0.0.1',
       // No auth in combo mode, and bound to loopback above so that is

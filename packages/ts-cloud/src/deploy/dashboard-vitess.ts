@@ -107,7 +107,18 @@ export function buildVtctldClientInstallScript(version: string = DEFAULT_VTCTLDC
     // wanted. `--occurrence=1` makes tar exit at the first match, which
     // closes the pipe and stops the download early instead of pulling the
     // whole archive to disk.
-    `  curl -fsSL "$url" | tar -xz -C "$tmp" --strip-components=2 --wildcards --occurrence=1 '*/bin/vtctldclient'`,
+    //
+    // That early exit kills curl with SIGPIPE, and these scripts run under
+    // `set -o pipefail`, so the pipeline reports failure on the successful
+    // path. The exit status is therefore not the signal to trust: it is
+    // discarded, and the check below asks the only question that matters,
+    // which is whether the binary is actually there. This also covers a tar
+    // too old for `--occurrence`.
+    `  curl -fsSL "$url" | tar -xz -C "$tmp" --strip-components=2 --wildcards --occurrence=1 '*/bin/vtctldclient' || true`,
+    '  if [ ! -s "$tmp/vtctldclient" ]; then',
+    '    echo "vtctldclient: could not extract the binary from $url" >&2',
+    '    rm -rf "$tmp"; exit 1',
+    '  fi',
     `  install -m 0755 "$tmp/vtctldclient" ${VTCTLDCLIENT_BIN}`,
     '  rm -rf "$tmp"',
     `  echo "installed vtctldclient ${version}"`,

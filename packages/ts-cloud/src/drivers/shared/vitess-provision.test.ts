@@ -75,13 +75,20 @@ describe('combo mode (development)', () => {
     expect(unit).toContain('--mysql-server-bind-address 127.0.0.1')
   })
 
-  it('declares an unsharded keyspace as shard 0', () => {
-    expect(unit).toContain("--proto-topo 'app/0'")
+  it('encodes the topology as a vttest proto, not a keyspace/shard string', () => {
+    // `--proto-topo` takes a `vttest.VTTestTopology` in protobuf compact text
+    // format. An earlier version passed `app/0`, which vtcombo cannot parse.
+    expect(unit).toContain('--proto-topo \'keyspaces:{name:"app" shards:{name:"0"}}')
+    expect(unit).toContain('cells:"zone1"')
   })
 
   it('declares a sharded keyspace with both shards', () => {
     const sharded = buildVtcomboUnit({ keyspaces: [{ name: 'commerce', sharded: true }] })
-    expect(sharded).toContain("'commerce/-80:commerce/80-'")
+    expect(sharded).toContain('keyspaces:{name:"commerce" shards:{name:"-80"} shards:{name:"80-"}}')
+  })
+
+  it('starts its own mysqld, because vtcombo embeds no storage', () => {
+    expect(unit).toContain('--start-mysql')
   })
 
   it('needs no bootstrap, because the topology is in-process', () => {
