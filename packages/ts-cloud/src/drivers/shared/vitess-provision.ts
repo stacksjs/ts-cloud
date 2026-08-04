@@ -81,9 +81,11 @@ export function vitessPackages(config: VitessServiceConfig): PantrySpec[] {
   // somebody else runs the store. Only a self-contained cluster needs etcd.
   if (config.mode !== 'combo' && !config.etcdEndpoint)
     packages.push('etcd.io')
-  // The tablet manages a real mysqld, which Vitess does not ship.
-  if (config.mode !== 'combo')
-    packages.push('mysql.com')
+  // Both modes need a real mysqld, which Vitess does not ship: a cluster's
+  // vttablet manages one, and vtcombo starts its own via `--start-mysql`.
+  // Omitting it from combo also broke the health gate, which invokes the
+  // `mysql` client from this package.
+  packages.push('mysql.com')
   return packages as PantrySpec[]
 }
 
@@ -153,14 +155,17 @@ export function buildVtcomboUnit(config: VitessServiceConfig): string {
     execStart: [
       `${PANTRY_BIN}/vtcombo`,
       `--cell ${cell}`,
-      `--proto_topo ${sh(keyspaces)}`,
-      `--mysql_server_port ${port}`,
-      '--mysql_server_bind_address 127.0.0.1',
+      `--proto-topo ${sh(keyspaces)}`,
+      `--mysql-server-port ${port}`,
+      '--mysql-server-bind-address 127.0.0.1',
       // No auth in combo mode, and bound to loopback above so that is
       // contained. A combo stack must never be exposed.
-      '--mysql_auth_server_impl none',
+      '--mysql-auth-server-impl none',
+      // vtcombo does not embed storage: without this there is no mysqld
+      // behind the tablet it runs, and every query fails.
+      '--start-mysql',
       `--port ${VTGATE_GRPC_PORT}`,
-      `--grpc_port ${VTCTLD_GRPC_PORT}`,
+      `--grpc-port ${VTCTLD_GRPC_PORT}`,
     ].join(' '),
   })
 }
@@ -182,9 +187,9 @@ export function buildEtcdUnit(): string {
 function topoFlags(config: VitessServiceConfig): string[] {
   const endpoint = config.etcdEndpoint ?? `http://127.0.0.1:${ETCD_CLIENT_PORT}`
   return [
-    '--topo_implementation etcd2',
-    `--topo_global_server_address ${endpoint}`,
-    '--topo_global_root /vitess/global',
+    '--topo-implementation etcd2',
+    `--topo-global-server-address ${endpoint}`,
+    '--topo-global-root /vitess/global',
   ]
 }
 
@@ -199,8 +204,8 @@ export function buildVtctldUnit(config: VitessServiceConfig): string {
       `${PANTRY_BIN}/vtctld`,
       ...topoFlags(config),
       `--cell ${config.cell ?? 'zone1'}`,
-      `--service_map grpc-vtctl,grpc-vtctld`,
-      `--grpc_port ${VTCTLD_GRPC_PORT}`,
+      `--service-map grpc-vtctl,grpc-vtctld`,
+      `--grpc-port ${VTCTLD_GRPC_PORT}`,
       `--port ${VTCTLD_GRPC_PORT + 1}`,
     ].join(' '),
   })
@@ -219,16 +224,16 @@ export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string,
       `${PANTRY_BIN}/vttablet`,
       ...topoFlags(config),
       `--tablet-path ${cell}-0000000100`,
-      `--init_keyspace ${keyspace}`,
-      `--init_shard ${shard}`,
+      `--init-keyspace ${keyspace}`,
+      `--init-shard ${shard}`,
       // Starts as a replica and is promoted by reparenting. Coming up as a
       // primary would let two primaries exist during a restart.
-      '--init_tablet_type replica',
+      '--init-tablet-type replica',
+      `--service-map ${sh('grpc-queryservice,grpc-tabletmanager,grpc-updatestream')}`,
       `--port ${VTTABLET_GRPC_PORT}`,
-      `--grpc_port ${VTTABLET_GRPC_PORT + 1}`,
-      `--db_port ${config.mysqlPort ?? 3306}`,
-      `--mycnf_mysql_port ${config.mysqlPort ?? 3306}`,
-      `--vtctld_addr 127.0.0.1:${VTCTLD_GRPC_PORT}`,
+      `--grpc-port ${VTTABLET_GRPC_PORT + 1}`,
+      `--db-port ${config.mysqlPort ?? 3306}`,
+      `--mycnf-mysql-port ${config.mysqlPort ?? 3306}`,
     ].join(' '),
   })
 }
@@ -239,9 +244,9 @@ export function buildMysqlctldUnit(config: VitessServiceConfig): string {
     description: 'Vitess mysqlctld (managed mysqld)',
     execStart: [
       `${PANTRY_BIN}/mysqlctld`,
-      `--tablet_dir ${VITESS_ROOT}/vt_0000000100`,
-      `--mysql_port ${config.mysqlPort ?? 3306}`,
-      '--wait_time 2m',
+      `--tablet-dir ${VITESS_ROOT}/vt_0000000100`,
+      `--mysql-port ${config.mysqlPort ?? 3306}`,
+      '--wait-time 2m',
     ].join(' '),
     execStartPre: [`/bin/mkdir -p ${VITESS_ROOT}`],
   })
@@ -257,14 +262,17 @@ export function buildVtgateUnit(config: VitessServiceConfig): string {
       `${PANTRY_BIN}/vtgate`,
       ...topoFlags(config),
       `--cell ${cell}`,
-      `--cells_to_watch ${cell}`,
+      `--cells-to-watch ${cell}`,
       // PRIMARY first so writes work; the replica types let read routing use
       // them once the app opts in.
-      '--tablet_types_to_wait PRIMARY,REPLICA',
-      `--mysql_server_port ${config.vtgatePort ?? VTGATE_MYSQL_PORT}`,
-      '--mysql_server_bind_address 0.0.0.0',
+      '--tablet-types-to-wait PRIMARY,REPLICA',
+      // A daemon only serves the gRPC APIs its service map names; omitting
+      // this leaves the port open and every RPC unimplemented.
+      `--service-map ${sh('grpc-vtgateservice')}`,
+      `--mysql-server-port ${config.vtgatePort ?? VTGATE_MYSQL_PORT}`,
+      '--mysql-server-bind-address 0.0.0.0',
       `--port ${VTGATE_GRPC_PORT}`,
-      `--grpc_port ${VTGATE_GRPC_PORT + 1}`,
+      `--grpc-port ${VTGATE_GRPC_PORT + 1}`,
     ].join(' '),
   })
 }

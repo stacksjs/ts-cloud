@@ -48,7 +48,9 @@ describe('packages', () => {
   })
 
   it('installs only vitess for combo, which carries its own topology and mysqld', () => {
-    expect(vitessPackages({ mode: 'combo' })).toEqual(['vitess.io'])
+    // vtcombo has no embedded storage: `--start-mysql` launches a real
+    // mysqld, and the health gate's client comes from the same package.
+    expect(vitessPackages({ mode: 'combo' })).toEqual(['vitess.io', 'mysql.com'])
   })
 
   it('honors a pinned version', () => {
@@ -69,12 +71,12 @@ describe('combo mode (development)', () => {
     // The two go together: no auth is acceptable precisely because nothing
     // off-box can reach it. Changing one without the other exposes an
     // unauthenticated database.
-    expect(unit).toContain('--mysql_auth_server_impl none')
-    expect(unit).toContain('--mysql_server_bind_address 127.0.0.1')
+    expect(unit).toContain('--mysql-auth-server-impl none')
+    expect(unit).toContain('--mysql-server-bind-address 127.0.0.1')
   })
 
   it('declares an unsharded keyspace as shard 0', () => {
-    expect(unit).toContain("--proto_topo 'app/0'")
+    expect(unit).toContain("--proto-topo 'app/0'")
   })
 
   it('declares a sharded keyspace with both shards', () => {
@@ -102,7 +104,7 @@ describe('cluster ordering', () => {
   it('vtctld does not require a local etcd when the store is external', () => {
     const unit = buildVtctldUnit({ ...CLUSTER, etcdEndpoint: 'http://etcd.internal:2379' })
     expect(unit).not.toContain('vitess-etcd.service')
-    expect(unit).toContain('--topo_global_server_address http://etcd.internal:2379')
+    expect(unit).toContain('--topo-global-server-address http://etcd.internal:2379')
   })
 
   it('vttablet waits for both control plane and its mysqld', () => {
@@ -146,14 +148,14 @@ describe('cluster topology', () => {
 
   it('starts tablets as replicas, never as primaries', () => {
     // Coming up as primary would let two primaries exist across a restart.
-    expect(buildVttabletUnit(CLUSTER, 'commerce', '-80')).toContain('--init_tablet_type replica')
+    expect(buildVttabletUnit(CLUSTER, 'commerce', '-80')).toContain('--init-tablet-type replica')
   })
 
   it('points every daemon at the same topology root', () => {
     for (const unit of [buildVtctldUnit(CLUSTER), buildVtgateUnit(CLUSTER)]) {
-      expect(unit).toContain('--topo_implementation etcd2')
-      expect(unit).toContain(`--topo_global_server_address http://127.0.0.1:${ETCD_CLIENT_PORT}`)
-      expect(unit).toContain('--topo_global_root /vitess/global')
+      expect(unit).toContain('--topo-implementation etcd2')
+      expect(unit).toContain(`--topo-global-server-address http://127.0.0.1:${ETCD_CLIENT_PORT}`)
+      expect(unit).toContain('--topo-global-root /vitess/global')
     }
   })
 
@@ -172,8 +174,8 @@ describe('cluster topology', () => {
     // Applications must reach vtgate; the tablet's mysqld is not a client
     // endpoint and writing to it bypasses Vitess.
     const mysqlctld = buildMysqlctldUnit({ mysqlPort: 3306 })
-    expect(mysqlctld).toContain('--mysql_port 3306')
-    expect(buildVtgateUnit(CLUSTER)).toContain(`--mysql_server_port ${VTGATE_MYSQL_PORT}`)
+    expect(mysqlctld).toContain('--mysql-port 3306')
+    expect(buildVtgateUnit(CLUSTER)).toContain(`--mysql-server-port ${VTGATE_MYSQL_PORT}`)
   })
 })
 

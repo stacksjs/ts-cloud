@@ -27,6 +27,14 @@
  */
 
 import process from 'node:process'
+import {
+  buildEtcdUnit,
+  buildMysqlctldUnit,
+  buildVtcomboUnit,
+  buildVtctldUnit,
+  buildVtgateUnit,
+  buildVttabletUnit,
+} from '../packages/ts-cloud/src/drivers/shared/vitess-provision'
 
 const REPO = 'vitessio/vitess'
 const API = `https://api.github.com/repos/${REPO}`
@@ -120,6 +128,56 @@ async function main(): Promise<void> {
     return latest && latest !== PINNED_VERSION
       ? `latest upstream is ${latest}; pinned client is ${PINNED_VERSION}`
       : `pinned at the latest (${PINNED_VERSION})`
+  })
+
+  await check('every flag the provisioner emits still exists upstream', async () => {
+    // The reason this check exists at all. Vitess renamed its flags from
+    // snake_case to kebab-case and then removed the old forms, which turned
+    // every generated systemd unit into one that refuses to start. Nothing in
+    // the unit tests could see it: the units were internally consistent and
+    // matched their assertions exactly. Only upstream knows the truth.
+    //
+    // Validated against the newest stable release, because `vitess.io` with
+    // no pinned version installs exactly that.
+    const releases = await fetch(`${API}/releases?per_page=20`, { headers: headers() })
+    if (!releases.ok) throw new Error(`releases returned ${releases.status}`)
+    const stable = (await releases.json() as Array<{ tag_name: string, prerelease: boolean }>)
+      .filter(r => !r.prerelease && /^v\d+\.\d+\.\d+$/.test(r.tag_name))
+    const tag = stable[0]?.tag_name
+    if (!tag) throw new Error('could not determine the newest stable release')
+
+    const cfg = { cell: 'zone1', keyspaces: [{ name: 'commerce', sharded: true }] }
+    const units: Record<string, string> = {
+      vtgate: buildVtgateUnit(cfg),
+      vtctld: buildVtctldUnit(cfg),
+      vttablet: buildVttabletUnit(cfg, 'commerce', '-80'),
+      mysqlctld: buildMysqlctldUnit(cfg),
+      vtcombo: buildVtcomboUnit(cfg),
+      etcd: buildEtcdUnit(),
+    }
+
+    const problems: string[] = []
+    let checked = 0
+    for (const [daemon, unit] of Object.entries(units)) {
+      // etcd is not a Vitess binary and has no flag dump here.
+      if (daemon === 'etcd') continue
+      const res = await fetch(`https://raw.githubusercontent.com/${REPO}/${tag}/go/flags/endtoend/${daemon}.txt`)
+      if (!res.ok) {
+        problems.push(`${daemon}: no flag reference at ${tag} (HTTP ${res.status})`)
+        continue
+      }
+      const doc = await res.text()
+      const exec = unit.split('\n').find(l => l.startsWith('ExecStart=')) ?? ''
+      for (const match of exec.matchAll(/--([a-zA-Z0-9_-]+)/g)) {
+        const flag = match[1]
+        checked++
+        if (!new RegExp(`^\\s+--${flag}[ =]`, 'm').test(doc))
+          problems.push(`${daemon}: --${flag} does not exist in ${tag}`)
+      }
+    }
+
+    if (problems.length > 0) throw new Error(`${problems.length} invalid flag(s):\n      ${problems.join('\n      ')}`)
+    return `${checked} flags valid against ${tag}`
   })
 
   console.log('Vitess upstream checks\n')

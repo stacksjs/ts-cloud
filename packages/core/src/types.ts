@@ -2896,7 +2896,14 @@ export interface VitessServiceConfig {
    * infrastructure should not quietly give you a non-durable one.
    */
   mode?: 'combo' | 'cluster'
-  /** Pantry version spec for `vitess.io`. Omit for the registry's latest. */
+  /**
+   * Pantry version spec for `vitess.io`. Omit for the registry's latest.
+   *
+   * **Requires Vitess 20 or newer.** Vitess renamed every daemon flag from
+   * `snake_case` to `kebab-case` in v20 and removed the old spellings in a
+   * later release; the generated systemd units use the current names, so
+   * pinning an older version produces daemons that refuse to start.
+   */
   version?: string
   /** Cell (failure domain) name. Vitess requires at least one. */
   cell?: string
