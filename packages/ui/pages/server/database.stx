@@ -41,6 +41,67 @@ async function loadVitess() {
     }
   } catch (e) { vitessError.set((e && e.message) || String(e)) }
 }
+
+// Online-DDL migrations. Read through vtgate, so this works even on a
+// cluster with no vtctld address configured.
+const migrations = state([])
+const failedMigs = state([])
+const runningMigs = state([])
+async function loadMigrations() {
+  if (!isVitess()) return
+  try {
+    const res = await fetch('/api/databases/vitess/migrations')
+    const d = await res.json()
+    if (d.ok) { migrations.set(d.migrations || []); failedMigs.set(d.failed || []); runningMigs.set(d.running || []) }
+  } catch {}
+}
+async function migrationAction(uuid, action) {
+  if (busy()) return
+  busy.set(true)
+  show(action + ' ' + uuid + '...')
+  try {
+    const b = await requestJson('/api/databases/vitess/migrations/action', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid, action }) })
+    show((b.ok ? 'OK ' + action : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+    if (b.ok) loadMigrations()
+  } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
+  finally { busy.set(false) }
+}
+
+// Topology operations. These need vtctld, so each reports clearly when no
+// control-plane address is configured rather than looking like a glitch.
+const ksName = state('')
+const ksSharded = state(true)
+const vschemaKeyspace = state('')
+const vschemaJson = state('')
+const ddlSql = state('')
+async function post(path, payload, label) {
+  if (busy()) return
+  busy.set(true)
+  show(label + '...')
+  try {
+    const b = await requestJson(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+    show((b.ok ? 'OK ' + label : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+    return b.ok
+  } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)); return false }
+  finally { busy.set(false) }
+}
+async function createKeyspace() {
+  if (await post('/api/databases/vitess/keyspaces', { name: ksName(), sharded: ksSharded() }, 'create keyspace ' + ksName())) {
+    ksName.set(''); load(); loadVitess()
+  }
+}
+async function applyVSchema() {
+  if (await post('/api/databases/vitess/vschema', { keyspace: vschemaKeyspace(), vschema: vschemaJson() }, 'apply VSchema to ' + vschemaKeyspace()))
+    loadVitess()
+}
+async function applySchema() {
+  if (await post('/api/databases/vitess/schema', { sql: ddlSql() }, 'apply schema change')) {
+    ddlSql.set(''); loadMigrations()
+  }
+}
+async function installClient() {
+  await post('/api/databases/vitess/install-client', {}, 'install vtctldclient')
+}
 const databases = state([])
 const users = state([])
 const dbError = state('')
@@ -103,7 +164,7 @@ async function backupDb(name) {
   } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
   finally { busy.set(false) }
 }
-onMount(async () => { await load(); loadBackups(); loadVitess() })
+onMount(async () => { await load(); loadBackups(); loadVitess(); loadMigrations() })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -226,6 +287,94 @@ onMount(async () => { await load(); loadBackups(); loadVitess() })
         </template>
         <div class="compact empty" @show="tablets().length === 0 && vitessError() === ''"><strong>No tablets reported</strong><span>vtgate returned no tablets for this cluster.</span></div>
         <div class="compact empty" @show="vitessError() !== ''"><strong>Could not read the Vitess topology</strong><span>{{ vitessError() }}</span></div>
+      </div>
+    </div>
+
+    <div class="section" @show="isVitess()">
+      <h2>Schema migrations</h2>
+
+      <div class="panel" @show="failedMigs().length > 0">
+        <div class="compact empty"><strong>{{ failedMigs().length }} migration(s) failed</strong><span>A failed online DDL leaves the table unchanged. Retry once the cause is fixed, or cancel to discard it.</span></div>
+        <template :for="m in failedMigs()">
+          <div class="kv">
+            <span class="mono">{{ m.keyspace }}/{{ m.shard }} {{ m.table }}</span>
+            <span>
+              <button class="btn ghost sm" type="button" :disabled="busy()" @click="migrationAction(m.uuid, 'retry')">Retry</button>
+              <button class="btn ghost sm" type="button" :disabled="busy()" @click="migrationAction(m.uuid, 'cleanup')">Clean up</button>
+            </span>
+          </div>
+        </template>
+      </div>
+
+      <div class="panel" @show="runningMigs().length > 0">
+        <div class="compact empty"><strong>{{ runningMigs().length }} migration(s) in flight</strong></div>
+        <template :for="m in runningMigs()">
+          <div class="kv">
+            <span class="mono">{{ m.keyspace }}/{{ m.shard }} {{ m.table }} {{ m.progress }}</span>
+            <span>
+              <button class="btn ghost sm" type="button" :disabled="busy()" @click="migrationAction(m.uuid, 'complete')">Complete</button>
+              <button class="btn ghost sm" type="button" :disabled="busy()" @click="migrationAction(m.uuid, 'cancel')">Cancel</button>
+            </span>
+          </div>
+        </template>
+      </div>
+
+      <div class="panel">
+        <template :for="m in migrations()">
+          <div class="kv"><span class="mono">{{ m.table }} <b style="color:var(--txt3)">{{ m.keyspace }}/{{ m.shard }}</b></span> <b class="mono" style="font-size:11px;color:var(--txt3)">{{ m.status }} {{ m.progress }} {{ m.added }}</b></div>
+        </template>
+        <div class="compact empty" @show="migrations().length === 0"><strong>No schema migrations</strong><span>Changes applied below appear here with live progress.</span></div>
+      </div>
+
+      <h2>Apply a schema change</h2>
+      <div class="panel">
+        <form class="form-grid" @submit.prevent="applySchema()">
+          <div class="field-block wide"><label for="ddl-sql">DDL</label><input id="ddl-sql" placeholder="ALTER TABLE users ADD COLUMN nickname VARCHAR(64)" autocomplete="off" :value="ddlSql()" @input="ddlSql.set($event.target.value)"></div>
+          <div class="form-actions"><button class="btn" type="submit" :disabled="busy()">Apply online</button></div>
+        </form>
+        <p class="note">Runs as Vitess online DDL: applied shard by shard without locking the keyspace, revertible, and tracked above. A direct (locking) change is a config choice, not a button, because on a sharded keyspace it is an outage rather than a migration.</p>
+      </div>
+    </div>
+
+    <div class="section" @show="isVitess()">
+      <h2>Topology</h2>
+      <div class="cols">
+        <div>
+          <h3>Create keyspace</h3>
+          <div class="panel">
+            <form class="form-grid" @submit.prevent="createKeyspace()">
+              <div class="field-block wide"><label for="ks-name">Name</label><input id="ks-name" placeholder="commerce" autocomplete="off" :value="ksName()" @input="ksName.set($event.target.value)"></div>
+              <div class="field-block"><label for="ks-sharded">Sharded</label>
+                <select id="ks-sharded" :value="ksSharded() ? 'yes' : 'no'" @change="ksSharded.set($event.target.value === 'yes')">
+                  <option value="yes">sharded</option>
+                  <option value="no">unsharded</option>
+                </select>
+              </div>
+              <div class="form-actions"><button class="btn" type="submit" :disabled="busy()">Create keyspace</button></div>
+            </form>
+            <p class="note">A sharded keyspace is not routable until its VSchema names a vindex per table. Apply one next.</p>
+          </div>
+        </div>
+        <div>
+          <h3>Apply VSchema</h3>
+          <div class="panel">
+            <form class="form-grid" @submit.prevent="applyVSchema()">
+              <div class="field-block"><label for="vs-ks">Keyspace</label>
+                <select id="vs-ks" :value="vschemaKeyspace()" @change="vschemaKeyspace.set($event.target.value)">
+                  <option value="">(select)</option>
+                  <template :for="k in keyspaces()"><option :value="k">{{ k }}</option></template>
+                </select>
+              </div>
+              <div class="field-block wide"><label for="vs-json">VSchema JSON</label><input id="vs-json" placeholder='paste database/vschema.json' autocomplete="off" :value="vschemaJson()" @input="vschemaJson.set($event.target.value)"></div>
+              <div class="form-actions"><button class="btn" type="submit" :disabled="busy()">Apply VSchema</button></div>
+            </form>
+            <p class="note">Generate it with <span class="mono">buddy generate:vschema</span>, which derives the sharding topology from your model relationships.</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="kv"><span>Control plane</span> <button class="btn ghost sm" type="button" :disabled="busy()" @click="installClient()">Install vtctldclient</button></div>
+        <p class="note">Creating a keyspace and applying a VSchema are vtctld operations, so they need <span class="mono">vitess.vtctldAddr</span> configured and the client installed. Everything else on this page works through vtgate alone.</p>
       </div>
     </div>
 

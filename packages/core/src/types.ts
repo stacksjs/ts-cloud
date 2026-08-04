@@ -1471,6 +1471,55 @@ export interface DatabaseConfig {
    * engine.
    */
   users?: DatabaseUserConfig[]
+
+  /** Control-plane settings, only meaningful when `engine` is `vitess`. */
+  vitess?: VitessControlPlaneConfig
+}
+
+/**
+ * How to reach a Vitess cluster's control plane.
+ *
+ * The application talks to vtgate over the MySQL protocol, which is enough
+ * for queries and for most observability (`SHOW VITESS_SHARDS`,
+ * `SHOW VITESS_MIGRATIONS`). It is NOT enough to create a keyspace or apply
+ * a VSchema: those are vtctld gRPC operations, so managing them needs the
+ * separate address below plus the `vtctldclient` binary on the box.
+ *
+ * Leaving this unset keeps everything read-only. The dashboard still shows
+ * topology and migrations through vtgate; it just cannot change anything,
+ * which is the right default for a cluster ts-cloud did not build.
+ */
+export interface VitessControlPlaneConfig {
+  /**
+   * vtctld's gRPC address, e.g. `vtctld.internal:15999`.
+   *
+   * Distinct from the vtgate address in {@link DatabaseConfig.host}: vtgate
+   * routes queries, vtctld administers the cluster. Pointing this at vtgate
+   * fails with a protocol error rather than doing anything useful.
+   */
+  vtctldAddr?: string
+  /**
+   * Default cell (failure domain) for operations that need one, e.g.
+   * `zone1`. Vitess clusters always have at least one.
+   */
+  cell?: string
+  /**
+   * `vtctldclient` release to install, e.g. `21.0.0`.
+   *
+   * Pinned rather than tracking latest: vtctldclient talks gRPC to vtctld
+   * and Vitess only supports a bounded version skew between them, so an
+   * unpinned client can start failing the day the cluster is upgraded.
+   */
+  clientVersion?: string
+  /**
+   * DDL strategy for schema changes applied through the dashboard.
+   *
+   * `vitess` (the default) runs Vitess's own online DDL, which applies
+   * shard by shard without locking the keyspace and is revertible.
+   * `direct` runs the DDL synchronously and WILL lock; it exists for
+   * unsharded keyspaces where that is acceptable and faster.
+   */
+  ddlStrategy?: 'vitess' | 'direct'
 }
 
 /**

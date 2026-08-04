@@ -57,6 +57,7 @@ import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashb
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, describeVitess, isValidDbIdentifier, listDatabaseBackups, listDatabases, shardsMissingPrimary, unhealthyTablets } from './dashboard-database'
+import { actOnMigration, applySchemaChange, applyVSchema, createKeyspace, installVtctldClient, listMigrations } from './dashboard-vitess'
 import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
 import { localLoginRequiresSso, resolveOidcDashboardIdentity, synchronizeDashboardIdentities } from './dashboard-identities'
 import { renderLoginPage, renderPasswordRecoveryPage } from './dashboard-login-page'
@@ -7867,6 +7868,49 @@ export async function startLocalDashboardServer(
               missingPrimary: shardsMissingPrimary(topology),
             })
           }
+
+          // Vitess online-DDL migrations. Read through vtgate, so this works
+          // even when no vtctld address is configured.
+          if (url.pathname === '/api/databases/vitess/migrations' && req.method === 'GET') {
+            const keyspace = url.searchParams.get('keyspace') ?? undefined
+            return json(await listMigrations(config as CloudConfig, environment, keyspace))
+          }
+
+          // Act on one migration: retry a failure, cancel a runaway, complete
+          // a postponed cutover, or clean up artifacts.
+          if (url.pathname === '/api/databases/vitess/migrations/action' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const uuid = String(body.uuid ?? '').trim()
+            const action = String(body.action ?? '')
+            if (!['retry', 'cancel', 'cleanup', 'complete'].includes(action))
+              return json({ ok: false, error: 'Unknown migration action.' }, 422)
+            return json(await actOnMigration(config as CloudConfig, environment, uuid, action as any))
+          }
+
+          // Topology operations below need vtctld; each reports clearly when
+          // no control-plane address is configured.
+          if (url.pathname === '/api/databases/vitess/keyspaces' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const name = String(body.name ?? '').trim()
+            const sharded = body.sharded === true
+            return json(await createKeyspace(config as CloudConfig, environment, name, { sharded }))
+          }
+
+          if (url.pathname === '/api/databases/vitess/vschema' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const keyspace = String(body.keyspace ?? '').trim()
+            const vschema = typeof body.vschema === 'string' ? body.vschema : JSON.stringify(body.vschema ?? null)
+            return json(await applyVSchema(config as CloudConfig, environment, keyspace, vschema))
+          }
+
+          if (url.pathname === '/api/databases/vitess/schema' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const sql = String(body.sql ?? '')
+            return json(await applySchemaChange(config as CloudConfig, environment, sql))
+          }
+
+          if (url.pathname === '/api/databases/vitess/install-client' && req.method === 'POST')
+            return json(await installVtctldClient(config as CloudConfig, environment))
 
           if (url.pathname === '/api/databases/backups' && req.method === 'GET')
             return json(await listDatabaseBackups(config as CloudConfig, environment))

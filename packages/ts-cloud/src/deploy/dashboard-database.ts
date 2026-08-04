@@ -106,7 +106,7 @@ export function buildListScript(engine: DbEngine, database?: DatabaseConfig): st
  * because a command-line password is visible to any `ps` on the box; this
  * mirrors how `pgAdminCommand` handles `PGPASSWORD`.
  */
-function externalMysqlExec(sql: string[], database: DatabaseConfig | undefined, port: number): string[] {
+export function externalMysqlExec(sql: string[], database: DatabaseConfig | undefined, port: number): string[] {
   const host = database?.host ?? '127.0.0.1'
   const user = database?.username ?? 'root'
   const pass = database?.password ?? ''
@@ -121,7 +121,7 @@ function externalMysqlExec(sql: string[], database: DatabaseConfig | undefined, 
 }
 
 /** vtgate's MySQL-protocol port. Not 3306, which would reach a tablet's mysqld. */
-const VTGATE_DEFAULT_PORT = 15306
+export const VTGATE_DEFAULT_PORT = 15306
 
 /**
  * List a Vitess cluster's keyspaces in the same `DB=` shape the on-box
@@ -303,14 +303,14 @@ export function parseDbList(output: string): { databases: string[]; users: strin
   }
 }
 
-interface DbRunResult {
+export interface DbRunResult {
   ok: boolean
   stdout?: string
   stderr?: string
   error?: string
 }
 
-async function runDb(
+export async function runDb(
   config: CloudConfig,
   environment: EnvironmentType,
   commands: string[],

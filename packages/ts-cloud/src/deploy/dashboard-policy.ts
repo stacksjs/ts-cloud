@@ -300,6 +300,16 @@ const POLICIES: Record<string, RoutePolicy> = {
   // Read-only topology view, so it sits with the other reads rather than
   // requiring data:admin.
   'GET /api/databases/vitess': { capability: 'data:read' },
+  'GET /api/databases/vitess/migrations': { capability: 'data:read' },
+  // Everything below changes the cluster. Creating a keyspace and applying a
+  // VSchema reshape routing for every query; a schema change rewrites tables
+  // shard by shard; a migration action can cancel an in-flight rewrite. All
+  // are data:admin, the same bar as creating a database.
+  'POST /api/databases/vitess/migrations/action': { capability: 'data:admin' },
+  'POST /api/databases/vitess/keyspaces': { capability: 'data:admin' },
+  'POST /api/databases/vitess/vschema': { capability: 'data:admin' },
+  'POST /api/databases/vitess/schema': { capability: 'data:admin' },
+  'POST /api/databases/vitess/install-client': { capability: 'data:admin' },
   'GET /api/databases/backups': { capability: 'backups:read' },
   'POST /api/databases/backup': { capability: 'backups:create' },
   'POST /api/databases/users': { capability: 'data:admin' },
