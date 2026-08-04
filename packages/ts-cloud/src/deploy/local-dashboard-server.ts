@@ -56,7 +56,7 @@ import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-a
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
-import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
+import { backupDatabase, createDatabase, createDatabaseUser, describeVitess, isValidDbIdentifier, listDatabaseBackups, listDatabases, shardsMissingPrimary, unhealthyTablets } from './dashboard-database'
 import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
 import { localLoginRequiresSso, resolveOidcDashboardIdentity, synchronizeDashboardIdentities } from './dashboard-identities'
 import { renderLoginPage, renderPasswordRecoveryPage } from './dashboard-login-page'
@@ -7854,6 +7854,18 @@ export async function startLocalDashboardServer(
                 422,
               )
             return json({ ...(await createDatabase(config as CloudConfig, environment, name)), name })
+          }
+
+          // Vitess topology: keyspaces, shards, and tablet health. Read-only
+          // on purpose - resharding is a vtctld operation with real blast
+          // radius and does not belong behind a dashboard button.
+          if (url.pathname === '/api/databases/vitess' && req.method === 'GET') {
+            const topology = await describeVitess(config as CloudConfig, environment)
+            return json({
+              ...topology,
+              unhealthy: unhealthyTablets(topology.tablets),
+              missingPrimary: shardsMissingPrimary(topology),
+            })
           }
 
           if (url.pathname === '/api/databases/backups' && req.method === 'GET')

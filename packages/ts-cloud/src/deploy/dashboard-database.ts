@@ -9,7 +9,29 @@ import { resolveAppDatabase } from '@ts-cloud/core'
 import { createCloudDriver } from '../drivers'
 import { pgAdminCommand } from '../drivers/shared/db-provision'
 
-export type DbEngine = 'mysql' | 'mariadb' | 'postgres'
+export type DbEngine = 'mysql' | 'mariadb' | 'postgres' | 'singlestore' | 'vitess'
+
+/**
+ * Engines that only ever exist as an external cluster.
+ *
+ * Neither has a pantry package, so the box never hosts one and there is no
+ * local socket to administer it through. That matters here because every
+ * operation in this module assumes an on-box engine: before these were
+ * recognized, `normalizeEngine` fell through to `mysql` for both, so a
+ * SingleStore or Vitess deployment reported "mysql" in the dashboard and
+ * every button shelled into `/var/lib/pantry/mysql/mysqld.sock` — a socket
+ * that cannot exist, failing with an error naming an engine the user never
+ * configured.
+ *
+ * Mirrors `ALWAYS_EXTERNAL_ENGINES` in `../drivers/shared/db-provision`,
+ * which keeps the same engines out of the provisioning path.
+ */
+const EXTERNAL_ENGINES: ReadonlySet<DbEngine> = new Set<DbEngine>(['singlestore', 'vitess'])
+
+/** Whether this engine is an external cluster with no on-box socket. */
+export function isExternalEngine(engine: DbEngine): boolean {
+  return EXTERNAL_ENGINES.has(engine)
+}
 
 const SOCKETS: Record<'mysql' | 'mariadb', string> = {
   mysql: '/var/lib/pantry/mysql/mysqld.sock',
@@ -24,6 +46,12 @@ export function isValidDbIdentifier(value: string): boolean {
 function normalizeEngine(engine: string | undefined): DbEngine {
   if (engine === 'postgres' || engine === 'pgsql') return 'postgres'
   if (engine === 'mariadb') return 'mariadb'
+  // Recognized explicitly rather than falling through to mysql. Both speak
+  // the MySQL wire protocol, which is exactly why the old default looked
+  // harmless: the dashboard would report "mysql" and then administer a
+  // local engine that does not exist.
+  if (engine === 'singlestore') return 'singlestore'
+  if (engine === 'vitess') return 'vitess'
   return 'mysql'
 }
 
@@ -52,6 +80,8 @@ function pgExec(sql: string[], database?: DatabaseConfig): string[] {
 }
 
 export function buildListScript(engine: DbEngine, database?: DatabaseConfig): string[] {
+  // Vitess has no on-box engine; its keyspaces come from vtgate over TCP.
+  if (engine === 'vitess') return buildVitessListScript(database)
   if (engine === 'postgres') {
     return pgExec(
       [
@@ -65,6 +95,141 @@ export function buildListScript(engine: DbEngine, database?: DatabaseConfig): st
     "SELECT CONCAT('DB=', schema_name) FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys');",
     "SELECT DISTINCT CONCAT('USER=', User) FROM mysql.user WHERE User NOT IN ('root', 'mysql.sys', 'mysql.session', 'mysql.infoschema', 'debian-sys-maint');",
   ])
+}
+
+/**
+ * Run SQL against an external MySQL-wire cluster over TCP.
+ *
+ * Executed from the app box, which by definition can already reach the
+ * cluster (the application connects to it), so this needs no extra network
+ * path. The password goes through `MYSQL_PWD` rather than `-p<pass>`
+ * because a command-line password is visible to any `ps` on the box; this
+ * mirrors how `pgAdminCommand` handles `PGPASSWORD`.
+ */
+function externalMysqlExec(sql: string[], database: DatabaseConfig | undefined, port: number): string[] {
+  const host = database?.host ?? '127.0.0.1'
+  const user = database?.username ?? 'root'
+  const pass = database?.password ?? ''
+  const tls = database?.ssl === false ? '' : ' --ssl-mode=PREFERRED'
+  const shq = (v: string): string => `'${String(v).replace(/'/g, `'\\''`)}'`
+  const env = pass ? `MYSQL_PWD=${shq(pass)} ` : ''
+  return [
+    `${env}mysql -h ${shq(host)} -P ${database?.port ?? port} -u ${shq(user)}${tls} --batch --skip-column-names <<'TS_CLOUD_SQL_EOF'`,
+    ...sql,
+    'TS_CLOUD_SQL_EOF',
+  ]
+}
+
+/** vtgate's MySQL-protocol port. Not 3306, which would reach a tablet's mysqld. */
+const VTGATE_DEFAULT_PORT = 15306
+
+/**
+ * List a Vitess cluster's keyspaces in the same `DB=` shape the on-box
+ * engines emit, so {@link parseDbList} handles it unchanged.
+ *
+ * A keyspace is Vitess's unit of sharding and occupies the same slot a
+ * database does elsewhere, which makes it the honest thing to show in the
+ * dashboard's "Databases" list. Users are deliberately not listed: vtgate
+ * authentication is configured on the cluster, not through SQL, so there is
+ * nothing here to enumerate or create.
+ */
+export function buildVitessListScript(database?: DatabaseConfig): string[] {
+  return externalMysqlExec(
+    [`SELECT CONCAT('DB=', keyspace_name) FROM information_schema.vitess_keyspaces;`],
+    database,
+    VTGATE_DEFAULT_PORT,
+  )
+}
+
+/**
+ * Introspect a Vitess cluster: keyspaces, shards, and tablet health.
+ *
+ * These are vtgate's own `SHOW` commands, served over the MySQL protocol,
+ * so they need nothing beyond the connection the app already uses. Each row
+ * is prefixed so one round trip can carry all three lists.
+ */
+export function buildVitessTopologyScript(database?: DatabaseConfig): string[] {
+  return externalMysqlExec(
+    [
+      `SELECT CONCAT('KEYSPACE=', keyspace_name) FROM information_schema.vitess_keyspaces;`,
+      `SHOW VITESS_SHARDS;`,
+      `SHOW VITESS_TABLETS;`,
+    ],
+    database,
+    VTGATE_DEFAULT_PORT,
+  )
+}
+
+export interface VitessShard {
+  keyspace: string
+  shard: string
+}
+
+export interface VitessTablet {
+  cell: string
+  keyspace: string
+  shard: string
+  type: string
+  state: string
+  alias: string
+  hostname: string
+}
+
+export interface VitessTopology {
+  keyspaces: string[]
+  shards: VitessShard[]
+  tablets: VitessTablet[]
+}
+
+/**
+ * Parse the combined topology output.
+ *
+ * `SHOW VITESS_SHARDS` emits `keyspace/shard` rows and `SHOW VITESS_TABLETS`
+ * emits tab-separated columns, so the two are told apart by shape rather
+ * than by position — the command output order is not something to depend on
+ * when a cluster can legitimately return zero rows for either.
+ */
+export function parseVitessTopology(output: string): VitessTopology {
+  const keyspaces: string[] = []
+  const shards: VitessShard[] = []
+  const tablets: VitessTablet[] = []
+
+  for (const rawLine of output.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) continue
+
+    if (line.startsWith('KEYSPACE=')) {
+      keyspaces.push(line.slice(9))
+      continue
+    }
+
+    const cols = line.split('\t').map(c => c.trim()).filter(Boolean)
+    // Tablet rows carry many columns; shard rows are a single keyspace/shard.
+    if (cols.length >= 6) {
+      const [cell, keyspace, shard, type, state, alias, hostname] = cols
+      tablets.push({
+        cell: cell ?? '',
+        keyspace: keyspace ?? '',
+        shard: shard ?? '',
+        type: type ?? '',
+        state: state ?? '',
+        alias: alias ?? '',
+        hostname: hostname ?? '',
+      })
+      continue
+    }
+
+    if (cols.length === 1 && cols[0]?.includes('/')) {
+      const [keyspace, shard] = (cols[0] as string).split('/')
+      if (keyspace && shard) shards.push({ keyspace, shard })
+    }
+  }
+
+  return {
+    keyspaces: [...new Set(keyspaces)].filter(Boolean).sort(),
+    shards,
+    tablets,
+  }
 }
 
 export function buildCreateDatabaseScript(engine: DbEngine, name: string, database?: DatabaseConfig): string[] {
@@ -174,11 +339,39 @@ async function runDb(
   }
 }
 
+/**
+ * The refusal returned for an operation that has no meaning on an external
+ * cluster.
+ *
+ * Named rather than inlined so every entry point refuses identically, and
+ * phrased to say where the operation DOES belong: the previous behavior was
+ * a raw "can't connect to local MySQL server through socket
+ * /var/lib/pantry/mysql/mysqld.sock" naming an engine the user never chose,
+ * which sends people looking for a broken MySQL install that was never
+ * supposed to be there.
+ */
+function externalEngineRefusal(engine: DbEngine, action: string): DbRunResult {
+  const where = engine === 'vitess'
+    ? 'Create a keyspace with `vtctldclient CreateKeyspace`, and manage vtgate credentials on the cluster.'
+    : 'Use the provider console or the cluster\'s own admin connection.'
+  return {
+    ok: false,
+    error: `${action} is not available for ${engine}: it is an external cluster, so this box has no engine to administer. ${where}`,
+  }
+}
+
 export async function listDatabases(
   config: CloudConfig,
   environment: EnvironmentType,
 ): Promise<DbRunResult & { engine: DbEngine; databases: string[]; users: string[] }> {
   const engine = resolveDbEngine(config)
+  // Vitess is external but still introspectable: vtgate serves its keyspace
+  // list over the same connection the app uses. Other external engines have
+  // no such generic path, so they refuse rather than shell into a socket
+  // that cannot exist.
+  if (isExternalEngine(engine) && engine !== 'vitess')
+    return { ...externalEngineRefusal(engine, 'Listing databases'), engine, databases: [], users: [] }
+
   const r = await runDb(config, environment, buildListScript(engine, resolveAppDatabase(config)), 'ts-cloud db:list')
   const parsed = r.ok && r.stdout ? parseDbList(r.stdout) : { databases: [], users: [] }
   return { ...r, engine, ...parsed }
@@ -190,6 +383,7 @@ export async function createDatabase(
   name: string,
 ): Promise<DbRunResult> {
   const engine = resolveDbEngine(config)
+  if (isExternalEngine(engine)) return externalEngineRefusal(engine, 'Creating a database')
   return runDb(
     config,
     environment,
@@ -204,6 +398,7 @@ export async function createDatabaseUser(
   input: CreateUserInput,
 ): Promise<DbRunResult> {
   const engine = resolveDbEngine(config)
+  if (isExternalEngine(engine)) return externalEngineRefusal(engine, 'Creating a database user')
   return runDb(
     config,
     environment,
@@ -273,6 +468,11 @@ export async function backupDatabase(
   if (!isValidDbIdentifier(name))
     return { ok: false, error: 'Database name must be a valid identifier.', database: name }
   const engine = resolveDbEngine(config)
+  // A sharded keyspace has no single mysqldump-able server, and a managed
+  // cluster's backups belong to the provider. Offering a dump here would
+  // produce either an error or, worse, a partial file that looks complete.
+  if (isExternalEngine(engine))
+    return { ...externalEngineRefusal(engine, 'Backing up'), database: name }
   const r = await runDb(
     config,
     environment,
@@ -290,4 +490,60 @@ export async function listDatabaseBackups(
   const r = await runDb(config, environment, buildListBackupsScript(), 'ts-cloud db:backups')
   const backups = r.ok && r.stdout ? parseBackups(r.stdout) : []
   return { ...r, backups }
+}
+
+/**
+ * Read a Vitess cluster's topology for the dashboard.
+ *
+ * Read-only by design. Creating keyspaces, resharding, and moving tables are
+ * vtctld operations with real blast radius, and exposing them behind a
+ * dashboard button would invite someone to reshard production by accident.
+ * The panel shows what exists and where it is unhealthy; changing the
+ * topology stays with `vtctldclient`.
+ */
+export async function describeVitess(
+  config: CloudConfig,
+  environment: EnvironmentType,
+): Promise<DbRunResult & VitessTopology & { engine: DbEngine }> {
+  const engine = resolveDbEngine(config)
+  const empty: VitessTopology = { keyspaces: [], shards: [], tablets: [] }
+
+  if (engine !== 'vitess')
+    return { ok: false, error: 'The configured database engine is not Vitess.', engine, ...empty }
+
+  const r = await runDb(
+    config,
+    environment,
+    buildVitessTopologyScript(resolveAppDatabase(config)),
+    'ts-cloud vitess:topology',
+  )
+  const parsed = r.ok && r.stdout ? parseVitessTopology(r.stdout) : empty
+  return { ...r, engine, ...parsed }
+}
+
+/**
+ * Tablets that are not serving.
+ *
+ * Surfaced separately because it is the one thing in the topology worth
+ * acting on: a keyspace whose primary is missing is a write outage, and a
+ * flat list of a hundred healthy tablets buries that.
+ */
+export function unhealthyTablets(tablets: VitessTablet[]): VitessTablet[] {
+  return tablets.filter(t => t.state.toUpperCase() !== 'SERVING')
+}
+
+/**
+ * Shards with no PRIMARY tablet.
+ *
+ * Vitess routes writes to a shard's primary; without one the shard accepts
+ * reads and silently fails writes, which is the failure most worth naming
+ * explicitly in a dashboard.
+ */
+export function shardsMissingPrimary(topology: VitessTopology): VitessShard[] {
+  const withPrimary = new Set(
+    topology.tablets
+      .filter(t => t.type.toUpperCase() === 'PRIMARY' && t.state.toUpperCase() === 'SERVING')
+      .map(t => `${t.keyspace}/${t.shard}`),
+  )
+  return topology.shards.filter(s => !withPrimary.has(`${s.keyspace}/${s.shard}`))
 }

@@ -5,7 +5,12 @@ import {
   buildCreateDatabaseScript,
   buildCreateUserScript,
   buildListScript,
+  buildVitessListScript,
+  isExternalEngine,
   isValidDbIdentifier,
+  parseVitessTopology,
+  shardsMissingPrimary,
+  unhealthyTablets,
   parseBackups,
   parseDbList,
   resolveDbEngine,
@@ -138,5 +143,157 @@ describe('buildListScript + parseDbList', () => {
       { file: '/var/backups/ts-cloud/databases/acme-20260702-101500.sql.gz', database: 'acme' },
       { file: '/var/backups/ts-cloud/databases/blog-20260701-090000.sql.gz', database: 'blog' },
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// External engines (SingleStore, Vitess)
+//
+// Both speak the MySQL wire protocol, and that is precisely why the previous
+// behavior looked harmless: `normalizeEngine` fell through to `mysql`, so the
+// dashboard reported "mysql" for a Vitess deployment and every operation
+// shelled into `/var/lib/pantry/mysql/mysqld.sock` - a socket that cannot
+// exist, because nothing ever installed MySQL on that box. The user saw a
+// missing-socket error naming an engine they never configured.
+// ---------------------------------------------------------------------------
+
+describe('external engines are reported honestly', () => {
+  const cfgFor = (engine: string): CloudConfig =>
+    ({ project: { name: 'a', slug: 'a' }, infrastructure: { appDatabase: { engine, name: 'app' } } }) as any
+
+  it('does not silently report vitess as mysql', () => {
+    expect(resolveDbEngine(cfgFor('vitess'))).toBe('vitess')
+  })
+
+  it('does not silently report singlestore as mysql', () => {
+    expect(resolveDbEngine(cfgFor('singlestore'))).toBe('singlestore')
+  })
+
+  it('classifies which engines have no on-box socket', () => {
+    expect(isExternalEngine('vitess')).toBe(true)
+    expect(isExternalEngine('singlestore')).toBe(true)
+    expect(isExternalEngine('mysql')).toBe(false)
+    expect(isExternalEngine('mariadb')).toBe(false)
+    expect(isExternalEngine('postgres')).toBe(false)
+  })
+
+  it('still resolves the on-box engines unchanged', () => {
+    expect(resolveDbEngine(cfgFor('mysql'))).toBe('mysql')
+    expect(resolveDbEngine(cfgFor('mariadb'))).toBe('mariadb')
+    expect(resolveDbEngine(cfgFor('postgres'))).toBe('postgres')
+    expect(resolveDbEngine(cfgFor('pgsql'))).toBe('postgres')
+  })
+})
+
+describe('vitess list script targets vtgate, not a local socket', () => {
+  const db = { engine: 'vitess', name: 'commerce', host: 'vtgate.internal', port: 15306, username: 'app', password: 'pw' } as any
+
+  it('never references the pantry socket', () => {
+    const script = buildListScript('vitess', db).join('\n')
+    expect(script).not.toContain('--socket=')
+    expect(script).not.toContain('/var/lib/pantry')
+  })
+
+  it('connects to the configured vtgate host and port', () => {
+    const script = buildListScript('vitess', db).join('\n')
+    expect(script).toContain('vtgate.internal')
+    expect(script).toContain('15306')
+  })
+
+  it('defaults to vtgate 15306 rather than mysql 3306', () => {
+    // 3306 would reach a tablet's underlying mysqld and bypass sharding -
+    // a working connection that silently does the wrong thing.
+    const script = buildVitessListScript({ engine: 'vitess', name: 'k', host: 'h' } as any).join('\n')
+    expect(script).toContain('15306')
+    expect(script).not.toContain('3306')
+  })
+
+  it('passes the password by env, not on the command line', () => {
+    // A `-p<pass>` argument is visible to any `ps` on the box.
+    const script = buildListScript('vitess', db).join('\n')
+    expect(script).toContain('MYSQL_PWD=')
+    expect(script).not.toContain('-ppw')
+  })
+
+  it('emits keyspaces in the DB= shape parseDbList already understands', () => {
+    expect(buildListScript('vitess', db).join('\n')).toContain(`CONCAT('DB=', keyspace_name)`)
+    expect(parseDbList('DB=commerce\nDB=lookup\n').databases).toEqual(['commerce', 'lookup'])
+  })
+})
+
+describe('parseVitessTopology', () => {
+  // Real-ish vtgate output: prefixed keyspaces, `keyspace/shard` rows from
+  // SHOW VITESS_SHARDS, and tab-separated rows from SHOW VITESS_TABLETS.
+  const output = [
+    'KEYSPACE=commerce',
+    'KEYSPACE=lookup',
+    'commerce/-80',
+    'commerce/80-',
+    'zone1\tcommerce\t-80\tPRIMARY\tSERVING\tzone1-0000000100\thost-a',
+    'zone1\tcommerce\t-80\tREPLICA\tSERVING\tzone1-0000000101\thost-b',
+    'zone1\tcommerce\t80-\tREPLICA\tNOT_SERVING\tzone1-0000000102\thost-c',
+  ].join('\n')
+
+  const topology = parseVitessTopology(output)
+
+  it('separates keyspaces, shards, and tablets', () => {
+    expect(topology.keyspaces).toEqual(['commerce', 'lookup'])
+    expect(topology.shards).toEqual([
+      { keyspace: 'commerce', shard: '-80' },
+      { keyspace: 'commerce', shard: '80-' },
+    ])
+    expect(topology.tablets).toHaveLength(3)
+  })
+
+  it('reads tablet columns in order', () => {
+    expect(topology.tablets[0]).toEqual({
+      cell: 'zone1',
+      keyspace: 'commerce',
+      shard: '-80',
+      type: 'PRIMARY',
+      state: 'SERVING',
+      alias: 'zone1-0000000100',
+      hostname: 'host-a',
+    })
+  })
+
+  it('tolerates empty output', () => {
+    expect(parseVitessTopology('')).toEqual({ keyspaces: [], shards: [], tablets: [] })
+  })
+
+  it('ignores blank lines', () => {
+    expect(parseVitessTopology('\n\nKEYSPACE=k\n\n').keyspaces).toEqual(['k'])
+  })
+})
+
+describe('vitess health helpers', () => {
+  const topology = parseVitessTopology([
+    'commerce/-80',
+    'commerce/80-',
+    'zone1\tcommerce\t-80\tPRIMARY\tSERVING\tzone1-0000000100\thost-a',
+    'zone1\tcommerce\t80-\tREPLICA\tSERVING\tzone1-0000000102\thost-c',
+    'zone1\tcommerce\t80-\tPRIMARY\tNOT_SERVING\tzone1-0000000103\thost-d',
+  ].join('\n'))
+
+  it('flags tablets that are not serving', () => {
+    const bad = unhealthyTablets(topology.tablets)
+    expect(bad).toHaveLength(1)
+    expect(bad[0]?.alias).toBe('zone1-0000000103')
+  })
+
+  it('flags a shard whose primary is not serving', () => {
+    // The failure most worth naming: the shard still answers reads and
+    // silently fails writes, so it does not look like an outage.
+    const missing = shardsMissingPrimary(topology)
+    expect(missing).toEqual([{ keyspace: 'commerce', shard: '80-' }])
+  })
+
+  it('reports nothing when every shard has a serving primary', () => {
+    const healthy = parseVitessTopology([
+      'commerce/-80',
+      'zone1\tcommerce\t-80\tPRIMARY\tSERVING\tzone1-0000000100\thost-a',
+    ].join('\n'))
+    expect(shardsMissingPrimary(healthy)).toEqual([])
+    expect(unhealthyTablets(healthy.tablets)).toEqual([])
   })
 })

@@ -8,6 +8,39 @@ import { requestJson } from '../../functions/requestJson.ts'
 
 // Reactive database management - create databases/users, live lists.
 const engine = state('mysql')
+
+// Engines that only exist as an external cluster. There is no on-box engine
+// to administer, so the create/backup forms below are hidden rather than
+// left to fail: they would shell into a pantry socket that cannot exist.
+const EXTERNAL_ENGINES = ['singlestore', 'vitess']
+const isExternal = derived(() => EXTERNAL_ENGINES.includes(engine()))
+const isVitess = derived(() => engine() === 'vitess')
+
+// Vitess topology, read from vtgate. Read-only: resharding is a vtctld
+// operation with real blast radius and does not belong behind a button.
+const keyspaces = state([])
+const shards = state([])
+const tablets = state([])
+const unhealthy = state([])
+const missingPrimary = state([])
+const vitessError = state('')
+async function loadVitess() {
+  if (!isVitess()) return
+  try {
+    const res = await fetch('/api/databases/vitess')
+    const d = await res.json()
+    if (d.ok) {
+      keyspaces.set(d.keyspaces || [])
+      shards.set(d.shards || [])
+      tablets.set(d.tablets || [])
+      unhealthy.set(d.unhealthy || [])
+      missingPrimary.set(d.missingPrimary || [])
+      vitessError.set('')
+    } else {
+      vitessError.set(d.error || 'Could not reach vtgate.')
+    }
+  } catch (e) { vitessError.set((e && e.message) || String(e)) }
+}
 const databases = state([])
 const users = state([])
 const dbError = state('')
@@ -70,7 +103,7 @@ async function backupDb(name) {
   } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
   finally { busy.set(false) }
 }
-onMount(() => { load(); loadBackups() })
+onMount(async () => { await load(); loadBackups(); loadVitess() })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -80,10 +113,24 @@ onMount(() => { load(); loadBackups() })
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Databases</div>
     <header class="page">
-      <div><h1>Databases &amp; users</h1><p>Create databases and app users on the managed engine (<span class="mono">{{ engine() }}</span>).</p></div>
+      <div>
+        <h1>Databases &amp; users</h1>
+        <p @show="!isExternal()">Create databases and app users on the managed engine (<span class="mono">{{ engine() }}</span>).</p>
+        <p @show="isExternal()"><span class="mono">{{ engine() }}</span> is an external cluster. This box does not host the engine, so databases and users are managed on the cluster itself.</p>
+      </div>
     </header>
 
-    <div class="cols section">
+    <div class="section" @show="isVitess()">
+      <div class="panel">
+        <div class="kv"><span>Engine</span> <b class="mono">Vitess</b></div>
+        <div class="kv"><span>Endpoint</span> <b class="mono">vtgate</b></div>
+        <div class="kv"><span>Keyspaces</span> <b class="mono">{{ keyspaces().length }}</b></div>
+        <div class="kv"><span>Shards</span> <b class="mono">{{ shards().length }}</b></div>
+        <div class="kv"><span>Tablets</span> <b class="mono">{{ tablets().length }}</b></div>
+      </div>
+    </div>
+
+    <div class="cols section" @show="!isExternal()">
       <div>
         <h2>Create database</h2>
         <div class="panel">
@@ -121,16 +168,18 @@ onMount(() => { load(); loadBackups() })
 
     <div class="cols section">
       <div>
-        <h2>Databases</h2>
+        <h2 @show="!isVitess()">Databases</h2>
+        <h2 @show="isVitess()">Keyspaces</h2>
         <div class="panel">
           <template :for="n in databases()">
-            <div class="kv"><span class="mono">{{ n }}</span> <button class="btn ghost sm" type="button" :disabled="busy()" @click="backupDb(n)" :aria-label="'Back up ' + n">Back up</button></div>
+            <div class="kv"><span class="mono">{{ n }}</span> <button class="btn ghost sm" type="button" @show="!isExternal()" :disabled="busy()" @click="backupDb(n)" :aria-label="'Back up ' + n">Back up</button></div>
           </template>
           <span class="item" @show="databases().length === 0 && dbError() !== ''">{{ dbError() }}</span>
-          <span class="item" @show="databases().length === 0 && dbError() === ''">no databases</span>
+          <span class="item" @show="databases().length === 0 && dbError() === '' && !isVitess()">no databases</span>
+          <span class="item" @show="databases().length === 0 && dbError() === '' && isVitess()">no keyspaces</span>
         </div>
       </div>
-      <div>
+      <div @show="!isExternal()">
         <h2>Users</h2>
         <div class="panel">
           <div class="svc">
@@ -140,8 +189,57 @@ onMount(() => { load(); loadBackups() })
           </div>
         </div>
       </div>
+      <div @show="isVitess()">
+        <h2>Shards</h2>
+        <div class="panel">
+          <template :for="s in shards()">
+            <div class="kv"><span class="mono">{{ s.keyspace }}/{{ s.shard }}</span></div>
+          </template>
+          <span class="item" @show="shards().length === 0">no shards reported</span>
+        </div>
+      </div>
     </div>
-    <div class="section">
+
+    <div class="section" @show="isVitess()">
+      <h2>Tablets</h2>
+
+      <div class="panel" @show="missingPrimary().length > 0">
+        <div class="compact empty">
+          <strong>{{ missingPrimary().length }} shard(s) have no serving PRIMARY</strong>
+          <span>Vitess routes writes to a shard's primary. Without one the shard still answers reads and silently fails writes. Check tablet health, then reparent with <span class="mono">vtctldclient PlannedReparentShard</span>.</span>
+        </div>
+        <template :for="s in missingPrimary()">
+          <div class="kv"><span class="mono">{{ s.keyspace }}/{{ s.shard }}</span> <b class="mono">no primary</b></div>
+        </template>
+      </div>
+
+      <div class="panel" @show="unhealthy().length > 0">
+        <div class="compact empty"><strong>{{ unhealthy().length }} tablet(s) not serving</strong></div>
+        <template :for="t in unhealthy()">
+          <div class="kv"><span class="mono">{{ t.keyspace }}/{{ t.shard }} {{ t.alias }}</span> <b class="mono">{{ t.type }} {{ t.state }}</b></div>
+        </template>
+      </div>
+
+      <div class="panel">
+        <template :for="t in tablets()">
+          <div class="kv"><span class="mono">{{ t.keyspace }}/{{ t.shard }} {{ t.alias }}</span> <b class="mono" style="font-size:11px;color:var(--txt3)">{{ t.type }} {{ t.state }} {{ t.hostname }}</b></div>
+        </template>
+        <div class="compact empty" @show="tablets().length === 0 && vitessError() === ''"><strong>No tablets reported</strong><span>vtgate returned no tablets for this cluster.</span></div>
+        <div class="compact empty" @show="vitessError() !== ''"><strong>Could not read the Vitess topology</strong><span>{{ vitessError() }}</span></div>
+      </div>
+    </div>
+
+    <div class="section" @show="isVitess()">
+      <h2>Setup</h2>
+      <div class="panel">
+        <div class="kv"><span>1. Point the app at vtgate</span> <b class="mono">DB_CONNECTION=vitess, DB_PORT=15306</b></div>
+        <div class="kv"><span>2. Generate the VSchema</span> <b class="mono">buddy generate:vschema</b></div>
+        <div class="kv"><span>3. Apply it</span> <b class="mono">vtctldclient ApplyVSchema --vschema-file database/vschema.json &lt;keyspace&gt;</b></div>
+        <div class="kv"><span>4. Apply schema changes</span> <b class="mono">vtctldclient ApplySchema --sql-file &lt;file&gt; &lt;keyspace&gt;</b></div>
+        <p class="note">Port 15306 is vtgate's. Connecting on 3306 reaches one tablet's MySQL and bypasses sharding, which looks like a working connection. A sharded keyspace also rejects foreign keys and AUTO_INCREMENT, so models need <span class="mono">useUuid</span>.</p>
+      </div>
+    </div>
+    <div class="section" @show="!isExternal()">
       <h2>Backups</h2>
       <div class="panel">
         <template :for="b in backups()">
@@ -151,7 +249,8 @@ onMount(() => { load(); loadBackups() })
       </div>
     </div>
 
-    <p class="note">Lists are read live from the engine via the app server. Create operations run as root over the pantry socket; apps connect with the credentials you set here. Per-database dumps are written to <span class="mono">/var/backups/ts-cloud/databases</span>.</p>
+    <p class="note" @show="!isExternal()">Lists are read live from the engine via the app server. Create operations run as root over the pantry socket; apps connect with the credentials you set here. Per-database dumps are written to <span class="mono">/var/backups/ts-cloud/databases</span>.</p>
+    <p class="note" @show="isExternal()">Read live from the cluster through the app server. Creating databases or users, and taking backups, are cluster-side operations and are not offered here - this box hosts no engine to administer.</p>
   </div>
 </body>
 </html>

@@ -297,6 +297,9 @@ const POLICIES: Record<string, RoutePolicy> = {
 
   'GET /api/databases': { capability: 'data:read' },
   'POST /api/databases': { capability: 'data:admin' },
+  // Read-only topology view, so it sits with the other reads rather than
+  // requiring data:admin.
+  'GET /api/databases/vitess': { capability: 'data:read' },
   'GET /api/databases/backups': { capability: 'backups:read' },
   'POST /api/databases/backup': { capability: 'backups:create' },
   'POST /api/databases/users': { capability: 'data:admin' },
