@@ -10,8 +10,9 @@
  * release (no window where the code is half-replaced). Old releases are kept for
  * instant rollback. See {@link import('./releases')}.
  */
+import type { SharedPathEntry } from '@ts-cloud/core'
 import { formatEnvFile } from './env-file'
-import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
+import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
 
 /**
  * Translate a `start` command (e.g. "bun run server.ts") into an absolute
@@ -51,8 +52,11 @@ export interface BuildSiteDeployScriptOptions {
    * survive a deploy. `.env` is always shared; anything the app WRITES and must
    * keep (a state directory, a database file) has to be listed here or the next
    * release silently starts from empty.
+   *
+   * A `SharedPathSpec` entry points somewhere other than this site's own
+   * `shared/` — how several sites of one project share one file.
    */
-  sharedPaths?: readonly string[]
+  sharedPaths?: readonly SharedPathEntry[]
   /**
    * True zero-downtime cutover for ported sites: the new release runs as its
    * own systemd instance (`<slug>-<site>@<releaseId>`) that binds the same
@@ -117,7 +121,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   const serviceName = `${unitBase}.service`
   const tarball = releaseTarballTmpPath(slug, siteName, releaseId)
   // `.env` is always shared; a site adds anything else it writes and must keep.
-  const sharedPaths = [...new Set(['.env', ...(options.sharedPaths ?? [])])]
+  const sharedPaths = dedupeSharedPaths(['.env', ...(options.sharedPaths ?? [])])
 
   const envFile = formatEnvFile(envEntries)
 

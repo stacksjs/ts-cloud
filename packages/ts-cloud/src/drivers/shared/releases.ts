@@ -12,6 +12,7 @@
  *   $CREATE_RELEASE   → {@link buildEnsureReleaseLayout} + git clone + {@link buildLinkSharedPaths}
  *   $ACTIVATE_RELEASE → {@link buildActivateRelease} (+ {@link buildPruneReleases})
  */
+import type { SharedPathEntry } from '@ts-cloud/core'
 
 /** Paths that are always shared across releases (Forge shares `.env` implicitly). */
 export const DEFAULT_SHARED_PATHS: readonly string[] = ['storage', '.env']
@@ -35,6 +36,16 @@ export function deployHistoryPath(base: string): string {
 /** Per-deploy output log path for a release. */
 export function deployLogPath(base: string, releaseId: string): string {
   return `${deployMetaDir(base)}/deploys/${releaseId}.log`
+}
+
+/**
+ * Manifest of the shared paths the last deploy declared, written on every deploy
+ * so a rollback can relink them into an older release without knowing the site's
+ * config. Lives beside the deploy history (outside `releases/`, so pruning a
+ * release never takes it).
+ */
+export function sharedPathsManifestPath(base: string): string {
+  return `${deployMetaDir(base)}/shared-paths`
 }
 
 export interface ReleasePaths {
@@ -79,35 +90,141 @@ function isFileSharedPath(p: string): boolean {
   return /\.[a-z0-9]+$/i.test(name)
 }
 
+/** The release-relative path an entry links, whichever form it takes. */
+export function sharedPathOf(entry: SharedPathEntry): string {
+  return typeof entry === 'string' ? entry : entry.path
+}
+
+/**
+ * One entry per release-relative path, last declaration winning — so a site
+ * that spells out `{ path: '.env', target: … }` overrides the implicit `.env`
+ * rather than fighting it. A plain `new Set` cannot do this: two specs for the
+ * same path are distinct objects.
+ */
+export function dedupeSharedPaths(entries: readonly SharedPathEntry[]): SharedPathEntry[] {
+  const byPath = new Map<string, SharedPathEntry>()
+  for (const entry of entries) byPath.set(sharedPathOf(entry), entry)
+  return [...byPath.values()]
+}
+
+/** A shared path with its target and seeding rights resolved. */
+interface ResolvedSharedPath {
+  /** Release-relative path receiving the symlink. */
+  path: string
+  /** Absolute location the symlink points at. */
+  target: string
+  /** May this site create/seed the target? */
+  seed: boolean
+}
+
+/**
+ * Resolve a shared-path entry against a site's layout. A plain string is the
+ * site-scoped form — `<base>/shared/<path>`, owned by this site alone. A spec
+ * may point somewhere else entirely, which is how several sites of one project
+ * share one file (see `SharedPathSpec`).
+ */
+function resolveSharedPath(paths: ReleasePaths, entry: SharedPathEntry): ResolvedSharedPath {
+  if (typeof entry === 'string') return { path: entry, target: `${paths.shared}/${entry}`, seed: true }
+  return {
+    path: entry.path,
+    target: entry.target ?? `${paths.shared}/${entry.path}`,
+    seed: entry.seed !== false,
+  }
+}
+
+/**
+ * Shell function that seeds `shared/<p>` from the currently-live release the
+ * FIRST time a path becomes shared, so turning existing on-box state into
+ * shared state does not throw that state away.
+ *
+ * Without it, the deploy that starts sharing a path creates an empty
+ * placeholder, links it in, and the live copy dies with its release — for a
+ * SQLite database that is every production row, silently, on one deploy. The
+ * copy runs only when `shared/<p>` does not exist yet and the live release
+ * holds a REAL file/dir there (a symlink means an earlier deploy already shared
+ * it), so it is a one-time adoption, not a per-deploy overwrite.
+ *
+ * SQLite's `-wal`/`-shm` sidecars are copied alongside a shared file when they
+ * exist: a main database file adopted without its write-ahead log loses every
+ * transaction committed since the last checkpoint.
+ */
+function buildAdoptSharedPathFn(paths: ReleasePaths): string[] {
+  return [
+    'ts_cloud_adopt_shared() {',
+    '  TS_CLOUD_SP="$1"',
+    '  TS_CLOUD_DST="$2"',
+    `  TS_CLOUD_SRC="${paths.current}/$TS_CLOUD_SP"`,
+    // Already shared — nothing to adopt, and never overwrite live shared state.
+    '  if [ -e "$TS_CLOUD_DST" ]; then return 0; fi',
+    // A symlink is a previous deploy's link into shared/; a missing path has
+    // nothing to save.
+    '  if [ -L "$TS_CLOUD_SRC" ] || [ ! -e "$TS_CLOUD_SRC" ]; then return 0; fi',
+    '  mkdir -p "$(dirname "$TS_CLOUD_DST")"',
+    '  cp -a "$TS_CLOUD_SRC" "$TS_CLOUD_DST"',
+    '  for TS_CLOUD_SIDECAR in -wal -shm; do',
+    '    if [ -f "$TS_CLOUD_SRC$TS_CLOUD_SIDECAR" ]; then cp -a "$TS_CLOUD_SRC$TS_CLOUD_SIDECAR" "$TS_CLOUD_DST$TS_CLOUD_SIDECAR"; fi',
+    '  done',
+    '  echo "[ts-cloud] adopted $TS_CLOUD_SP from the live release into shared/ — it now survives deploys"',
+    '  return 0',
+    '}',
+  ]
+}
+
 /**
  * Ensure the releases/ and shared/ skeleton exist, including the Laravel
  * `storage` tree and an empty shared `.env` so symlinks never dangle.
+ *
+ * Also adopts any pre-existing live copy of a newly-shared path (see
+ * {@link buildAdoptSharedPathFn}) and records the shared-path list in
+ * {@link sharedPathsManifestPath}, so {@link buildRollbackScript} can relink an
+ * older release at the same shared state.
  */
 export function buildEnsureReleaseLayout(
   paths: ReleasePaths,
-  sharedPaths: readonly string[] = DEFAULT_SHARED_PATHS,
+  sharedPaths: readonly SharedPathEntry[] = DEFAULT_SHARED_PATHS,
 ): string[] {
-  const lines = [`mkdir -p ${paths.releases} ${paths.shared}`]
+  const lines = [`mkdir -p ${paths.releases} ${paths.shared}`, ...buildAdoptSharedPathFn(paths)]
+  const resolved = sharedPaths.map(entry => resolveSharedPath(paths, entry))
 
-  for (const p of sharedPaths) {
+  for (const { path: p, target, seed } of resolved) {
+    // A site that does not own the target neither seeds nor placeholds it: the
+    // owner's deploy creates it. Creating an empty file here would make the
+    // owner's adoption a no-op and lose whatever it was holding.
+    if (!seed) continue
+
+    // Adopt BEFORE placeholding: `touch`/`mkdir -p` would create the empty
+    // destination and make the adoption a no-op.
+    lines.push(`ts_cloud_adopt_shared '${p}' '${target}'`)
     if (isFileSharedPath(p)) {
       // Files (e.g. .env, database.sqlite) — create an empty placeholder so the
       // release symlink resolves; real contents are written by the deploy step.
-      lines.push(`mkdir -p "$(dirname ${paths.shared}/${p})"`, `touch ${paths.shared}/${p}`)
+      lines.push(`mkdir -p "$(dirname ${target})"`, `touch ${target}`)
     } else if (p === 'storage') {
       // Laravel's storage skeleton, created once in shared/.
       lines.push(
-        `mkdir -p ${paths.shared}/storage/app/public`,
-        `mkdir -p ${paths.shared}/storage/framework/cache/data`,
-        `mkdir -p ${paths.shared}/storage/framework/sessions`,
-        `mkdir -p ${paths.shared}/storage/framework/testing`,
-        `mkdir -p ${paths.shared}/storage/framework/views`,
-        `mkdir -p ${paths.shared}/storage/logs`,
+        `mkdir -p ${target}/app/public`,
+        `mkdir -p ${target}/framework/cache/data`,
+        `mkdir -p ${target}/framework/sessions`,
+        `mkdir -p ${target}/framework/testing`,
+        `mkdir -p ${target}/framework/views`,
+        `mkdir -p ${target}/logs`,
       )
     } else {
-      lines.push(`mkdir -p ${paths.shared}/${p}`)
+      lines.push(`mkdir -p ${target}`)
     }
   }
+
+  // Record what is shared so a rollback can relink an older release (one that
+  // may predate the path being shared, and so still holds a real file there).
+  // `<path>\t<target>`, so a rollback relinks at the same target even when it
+  // lives outside this site.
+  const manifest = sharedPathsManifestPath(paths.base)
+  lines.push(
+    `mkdir -p ${deployMetaDir(paths.base)}`,
+    `cat > ${manifest} <<'TS_CLOUD_SHARED_PATHS_EOF'`,
+    ...resolved.map(entry => `${entry.path}\t${entry.target}`),
+    'TS_CLOUD_SHARED_PATHS_EOF',
+  )
 
   return lines
 }
@@ -228,15 +345,57 @@ export function buildPromoteStagedRelease(paths: ReleasePaths): string[] {
  */
 export function buildLinkSharedPaths(
   paths: ReleasePaths,
-  sharedPaths: readonly string[] = DEFAULT_SHARED_PATHS,
+  sharedPaths: readonly SharedPathEntry[] = DEFAULT_SHARED_PATHS,
 ): string[] {
   const lines: string[] = []
-  for (const p of sharedPaths) {
-    const target = `${paths.shared}/${p}`
+  for (const entry of sharedPaths) {
+    const { path: p, target, seed } = resolveSharedPath(paths, entry)
     const link = `${paths.release}/${p}`
-    lines.push(`rm -rf ${link}`, `mkdir -p "$(dirname ${link})"`, `ln -sfn ${target} ${link}`)
+    const relink = [`rm -rf ${link}`, `mkdir -p "$(dirname ${link})"`, `ln -sfn ${target} ${link}`]
+
+    // A site that owns the target always links: the layout step just created it.
+    if (seed) {
+      lines.push(...relink)
+      continue
+    }
+
+    // A site that does NOT own the target links only once the target exists.
+    // Linking at a target the owner has not created yet leaves a dangling
+    // symlink, and an app that opens it CREATES the file — an empty database
+    // sitting exactly where the owner was going to seed the real one, which
+    // then finds the target present and skips. Until the owner has deployed,
+    // this site keeps whatever the release shipped.
+    lines.push(`if [ -e ${target} ]; then`, ...relink.map(l => `  ${l}`), 'fi')
   }
   return lines
+}
+
+/**
+ * The same links as {@link buildLinkSharedPaths}, but for a release that is
+ * already on disk and a shared-path list read from the box's manifest rather
+ * than from config. `releaseExpr` is a shell expression for the release dir.
+ *
+ * Used by rollback: a release cut before a path became shared still holds its
+ * own real copy there, so activating it would quietly swap the live state (the
+ * database) for that release's stale snapshot. A no-op on a box with no
+ * manifest — one that has never deployed a shared path.
+ */
+export function buildRelinkSharedPaths(paths: ReleasePaths, releaseExpr: string): string[] {
+  const manifest = sharedPathsManifestPath(paths.base)
+  return [
+    `if [ -f ${manifest} ]; then`,
+    // `<path>\t<target>`. A manifest written before targets existed has no tab,
+    // in which case the target is this site's own shared/<path>.
+    '  while IFS="\t" read -r TS_CLOUD_SP TS_CLOUD_TGT; do',
+    '    [ -n "$TS_CLOUD_SP" ] || continue',
+    `    [ -n "$TS_CLOUD_TGT" ] || TS_CLOUD_TGT="${paths.shared}/$TS_CLOUD_SP"`,
+    '    [ -e "$TS_CLOUD_TGT" ] || continue',
+    `    rm -rf ${releaseExpr}/"$TS_CLOUD_SP"`,
+    `    mkdir -p "$(dirname ${releaseExpr}/"$TS_CLOUD_SP")"`,
+    `    ln -sfn "$TS_CLOUD_TGT" ${releaseExpr}/"$TS_CLOUD_SP"`,
+    `  done < ${manifest}`,
+    'fi',
+  ]
 }
 
 /**
@@ -254,6 +413,12 @@ export function buildActivateRelease(paths: ReleasePaths): string[] {
  * -T`), and a no-op-safe guard fails loudly if the target is missing rather than
  * leaving `current` dangling.
  *
+ * Before the flip, every shared path recorded on the box is relinked into the
+ * target release ({@link buildRelinkSharedPaths}) so a rollback moves the CODE
+ * back without moving the DATA back — a release cut before a path became shared
+ * still carries its own copy, and going live with it would silently swap the
+ * database for a stale snapshot.
+ *
  * With `unitBase` set (e.g. `myapp-api`), the script also swaps the running
  * systemd release instance for sites deployed zero-downtime style (templated
  * `<unitBase>@<releaseId>` units pinned to their release dirs): it starts the
@@ -266,6 +431,10 @@ export function buildRollbackScript(paths: ReleasePaths, options: { to?: string;
   const flip = options.to
     ? [
         `[ -d ${paths.releases}/${options.to} ] || { echo "rollback target ${paths.releases}/${options.to} not found" >&2; exit 1; }`,
+        // Point the target release at the CURRENT shared state before it goes
+        // live: a release cut before a path was shared still holds its own real
+        // copy, and activating that would swap live data for a stale snapshot.
+        ...buildRelinkSharedPaths(paths, `${paths.releases}/${options.to}`),
         `ln -sfn ${paths.releases}/${options.to} ${paths.current}.tmp`,
         `mv -Tf ${paths.current}.tmp ${paths.current}`,
       ]
@@ -275,6 +444,7 @@ export function buildRollbackScript(paths: ReleasePaths, options: { to?: string;
         `TS_CLOUD_PREV=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do ` +
           '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
         '[ -n "$TS_CLOUD_PREV" ] || { echo "no previous release to roll back to" >&2; exit 1; }',
+        ...buildRelinkSharedPaths(paths, '"$TS_CLOUD_PREV"'),
         `ln -sfn "$TS_CLOUD_PREV" ${paths.current}.tmp`,
         `mv -Tf ${paths.current}.tmp ${paths.current}`,
         'echo "rolled back to $TS_CLOUD_PREV"',

@@ -887,6 +887,37 @@ export interface SiteRedirectConfig {
   preservePath?: boolean
 }
 
+/**
+ * A shared path pointed at an explicit location instead of the site's own
+ * `shared/` directory.
+ *
+ * Every site installs under its own base (`/var/www/<slug>-<site>`), so two
+ * sites of one project that both list `database/app.sqlite` get two separate
+ * databases — each surviving its own deploys, and drifting apart forever.
+ * Naming one absolute `target` makes them the same file.
+ */
+export interface SharedPathSpec {
+  /** Release-relative path that receives the symlink, e.g. `database/app.sqlite`. */
+  path: string
+  /**
+   * Absolute path the symlink points at. Defaults to `<base>/shared/<path>`,
+   * which is what a plain string entry means.
+   */
+  target?: string
+  /**
+   * May this site CREATE the target — placehold it, and seed it from this
+   * site's own live release? Default `true`.
+   *
+   * Set `false` on every site but one when several share a target. Otherwise
+   * whichever site happens to deploy first creates the file, and the site that
+   * actually holds the data finds the target already there and never seeds it.
+   */
+  seed?: boolean
+}
+
+/** A shared path: a release-relative path, or {@link SharedPathSpec}. */
+export type SharedPathEntry = string | SharedPathSpec
+
 export interface SiteConfig {
   /**
    * Directory to deploy.
@@ -1086,10 +1117,16 @@ export interface SiteConfig {
    * A release is a fresh directory, so anything the app WRITES and must keep
    * has to be listed here or the next deploy silently starts it from empty.
    *
+   * An entry may instead be a {@link SharedPathSpec} naming an absolute
+   * `target`, which is how SEVERAL sites of one project point at ONE file —
+   * an app and its API sharing a single SQLite database, say. Each site
+   * installs under its own base, so a plain string can only ever give each of
+   * them a database of its own.
+   *
    * Honored by both PHP/Laravel sites and server-app sites (`start`).
    * @default ['storage', '.env'] for PHP sites; `['.env']` for server-app sites
    */
-  sharedPaths?: string[]
+  sharedPaths?: SharedPathEntry[]
 
   /**
    * Number of past releases to retain on the box for rollback.
