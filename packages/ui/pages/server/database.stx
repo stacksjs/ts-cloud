@@ -16,6 +16,38 @@ const EXTERNAL_ENGINES = ['singlestore', 'vitess']
 const isExternal = derived(() => EXTERNAL_ENGINES.includes(engine()))
 const isVitess = derived(() => engine() === 'vitess')
 
+// Reconcile the declared Vitess service on this server. The password is
+// write-only and never returned by the API or embedded in dashboard data.
+const provisionKeyspace = state('')
+const provisionUsername = state('')
+const provisionPassword = state('')
+const provisionSharded = state(false)
+const provisionConfirm = state('')
+async function provisionVitess() {
+  if (busy()) return
+  busy.set(true)
+  show('Provisioning the Vitess cluster through Pantry...')
+  try {
+    const b = await requestJson('/api/databases/vitess/provision', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        keyspace: provisionKeyspace(),
+        username: provisionUsername(),
+        password: provisionPassword(),
+        sharded: provisionSharded(),
+        confirm: provisionConfirm(),
+      }),
+    })
+    provisionPassword.set('')
+    show((b.ok ? 'OK Vitess is serving through vtgate' : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+    if (b.ok) { await load(); await loadVitess(); }
+  } catch (e) {
+    provisionPassword.set('')
+    show('FAILED\n\n' + ((e && e.message) || e))
+  } finally { busy.set(false) }
+}
+
 // Vitess topology, read from vtgate. Read-only: resharding is a vtctld
 // operation with real blast radius and does not belong behind a button.
 const keyspaces = state([])
@@ -188,6 +220,21 @@ onMount(async () => { await load(); loadBackups(); loadVitess(); loadMigrations(
         <div class="kv"><span>Keyspaces</span> <b class="mono">{{ keyspaces().length }}</b></div>
         <div class="kv"><span>Shards</span> <b class="mono">{{ shards().length }}</b></div>
         <div class="kv"><span>Tablets</span> <b class="mono">{{ tablets().length }}</b></div>
+      </div>
+    </div>
+
+    <div class="section" @show="isVitess()">
+      <h2>Provision or reconcile Vitess</h2>
+      <div class="panel">
+        <form class="form-grid" @submit.prevent="provisionVitess()">
+          <div class="field-block"><label for="vitess-keyspace">Keyspace</label><input id="vitess-keyspace" placeholder="app_production" autocomplete="off" :value="provisionKeyspace()" @input="provisionKeyspace.set($event.target.value)"></div>
+          <div class="field-block"><label for="vitess-user">Application user</label><input id="vitess-user" placeholder="app" autocomplete="off" :value="provisionUsername()" @input="provisionUsername.set($event.target.value)"></div>
+          <div class="field-block"><label for="vitess-password">Write-only password</label><input id="vitess-password" type="password" minlength="16" autocomplete="new-password" :value="provisionPassword()" @input="provisionPassword.set($event.target.value)"></div>
+          <div class="field-block"><label for="vitess-topology">Topology</label><select id="vitess-topology" :value="provisionSharded() ? 'sharded' : 'unsharded'" @change="provisionSharded.set($event.target.value === 'sharded')"><option value="unsharded">Unsharded (recommended)</option><option value="sharded">Two shards</option></select></div>
+          <div class="field-block wide"><label for="vitess-confirm">Type the keyspace to confirm</label><input id="vitess-confirm" autocomplete="off" :value="provisionConfirm()" @input="provisionConfirm.set($event.target.value)"></div>
+          <div class="form-actions"><button class="btn" type="submit" :disabled="busy()">Provision with Pantry</button></div>
+        </form>
+        <p class="note">Uses the same typed cluster provisioner as <span class="mono">ts-cloud provision</span>: a loopback-only vtgate on 15306, authenticated application access, systemd services, topology bootstrap, and a serving-primary health gate. Running it again reconciles the same declaration.</p>
       </div>
     </div>
 

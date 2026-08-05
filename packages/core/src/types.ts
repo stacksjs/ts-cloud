@@ -1471,11 +1471,10 @@ export interface BucketConfig {
 
 export interface DatabaseConfig {
   type?: 'rds' | 'dynamodb'
-  // 'singlestore' and 'vitess' are always external clusters — neither has a
-  // self-hosted pantry package, so ts-cloud only wires DB_* env for them (see
-  // buildManagedDbEnv) and never installs or sets one up on-box. Both speak
-  // the MySQL wire protocol; Vitess is reached through vtgate on 15306, and
-  // its `name` is a keyspace rather than a database.
+  // SingleStore is external. Vitess may be external or an on-box cluster
+  // provisioned through `compute.managedServices.vitess`; applications always
+  // reach it through vtgate on port 15306. Its `name` is a keyspace rather
+  // than a MySQL database.
   engine?: 'postgres' | 'mysql' | 'mariadb' | 'singlestore' | 'vitess'
   instanceType?: string
 

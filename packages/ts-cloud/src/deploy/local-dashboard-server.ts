@@ -58,6 +58,7 @@ import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, describeVitess, isValidDbIdentifier, listDatabaseBackups, listDatabases, shardsMissingPrimary, unhealthyTablets } from './dashboard-database'
 import { actOnMigration, applySchemaChange, applyVSchema, createKeyspace, installVtctldClient, listMigrations } from './dashboard-vitess'
+import { provisionVitessFromDashboard } from './dashboard-vitess-provision'
 import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
 import { localLoginRequiresSso, resolveOidcDashboardIdentity, synchronizeDashboardIdentities } from './dashboard-identities'
 import { renderLoginPage, renderPasswordRecoveryPage } from './dashboard-login-page'
@@ -7878,6 +7879,23 @@ export async function startLocalDashboardServer(
               unhealthy: unhealthyTablets(topology.tablets),
               missingPrimary: shardsMissingPrimary(topology),
             })
+          }
+
+          if (url.pathname === '/api/databases/vitess/provision' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try {
+              return json(
+                await provisionVitessFromDashboard(config as CloudConfig, environment, {
+                  keyspace: String(body.keyspace ?? ''),
+                  username: String(body.username ?? ''),
+                  password: String(body.password ?? ''),
+                  sharded: body.sharded === true,
+                  confirm: String(body.confirm ?? ''),
+                }),
+              )
+            } catch (error) {
+              return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 422)
+            }
           }
 
           // Vitess online-DDL migrations. Read through vtgate, so this works
