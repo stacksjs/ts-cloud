@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.97...v0.7.98)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: secure remote provisioning ([5c6b6a4](https://github.com/stacksjs/ts-cloud/commit/5c6b6a4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.98 ([6274f70](https://github.com/stacksjs/ts-cloud/commit/6274f70)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.96...v0.7.97)
 
 ## 🚀 Features
