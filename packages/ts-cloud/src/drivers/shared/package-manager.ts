@@ -75,8 +75,8 @@ export interface PantryBootstrapOptions {
 }
 
 /**
- * Bootstrap the `pantry` CLI on a fresh server (idempotent — skips when already
- * present). Installs to {@link PANTRY_INSTALL_DIR} and selects system-scope
+ * Bootstrap or upgrade the `pantry` CLI on a server. Installs to
+ * {@link PANTRY_INSTALL_DIR} and selects system-scope
  * service management so `pantry enable/start` provisions boot-time systemd
  * units rather than the per-user units that can't run headlessly.
  */
@@ -99,15 +99,14 @@ export function buildPantryBootstrapScript(options: PantryBootstrapOptions = {})
     // aborted the ENTIRE bootstrap before bun/postgres/rpx were ever set up, so
     // the deploy failed with "bun runtime did not appear". Platform-detect and
     // fetch the matching release zip, mirroring the framework's ./bootstrap.
-    `command -v pantry >/dev/null 2>&1 || { ` +
-      `OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m); ` +
+    `OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m); ` +
       `case "$ARCH" in x86_64|amd64) ARCH=x64 ;; arm64|aarch64) ARCH=arm64 ;; esac; ` +
       `ZIP="pantry-\${OS}-\${ARCH}.zip"; ` +
       `if [ "\${PANTRY_VERSION:-latest}" = latest ]; then REL='latest/download'; else REL="download/v\${PANTRY_VERSION}"; fi; ` +
       `TMP=$(mktemp -d); ` +
-      `curl -fsSL -o "\${TMP}/\${ZIP}" "https://github.com/home-lang/pantry/releases/\${REL}/\${ZIP}"; ` +
+      `curl -fsSL -o "\${TMP}/\${ZIP}" "https://github.com/pantry-pm/pantry/releases/\${REL}/\${ZIP}"; ` +
       `unzip -o "\${TMP}/\${ZIP}" -d ${PANTRY_INSTALL_DIR}; ` +
-      `chmod +x ${PANTRY_INSTALL_DIR}/pantry; rm -rf "\${TMP}"; }`,
+      `chmod +x ${PANTRY_INSTALL_DIR}/pantry; rm -rf "\${TMP}"`,
     // The pantry CLI lives in PANTRY_INSTALL_DIR; put it on PATH for later steps.
     `export PATH="${PANTRY_INSTALL_DIR}:$PATH"`,
     `mkdir -p ${PANTRY_PROJECT_DIR}`,

@@ -17,10 +17,10 @@ describe('buildPantryBootstrapScript', () => {
     expect(script).toContain(`export PANTRY_INSTALL_DIR=${PANTRY_INSTALL_DIR}`)
     // The pantry.dev pipe installer is dead (404s) — the CLI comes from its
     // GitHub release zip, platform-detected on the box.
-    expect(script).toContain('https://github.com/home-lang/pantry/releases/')
+    expect(script).toContain('https://github.com/pantry-pm/pantry/releases/')
     expect(script).toContain('pantry-${OS}-${ARCH}.zip')
-    // Idempotent: skip when pantry already present.
-    expect(script).toContain('command -v pantry >/dev/null 2>&1 ||')
+    // Provisioning must upgrade old CLIs that do not know newer recipes.
+    expect(script).not.toContain('command -v pantry >/dev/null 2>&1 ||')
     // curl + unzip are the only apt prerequisites.
     expect(script).toContain('apt-get install -y curl ca-certificates')
     expect(script).toContain('apt-get install -y unzip')
