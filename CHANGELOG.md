@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.96...v0.7.97)
+
+## 🚀 Features
+
+- **vitess**: provision clusters from the dashboard ([d5b6de5](https://github.com/stacksjs/ts-cloud/commit/d5b6de5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **dashboard**: restrict Vitess provisioning to admins ([d6bc9e0](https://github.com/stacksjs/ts-cloud/commit/d6bc9e0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: keep database credentials out of releases ([f780422](https://github.com/stacksjs/ts-cloud/commit/f780422)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.97 ([1ab8ebd](https://github.com/stacksjs/ts-cloud/commit/1ab8ebd)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.95...v0.7.96)
 
 ## 🐛 Bug Fixes
