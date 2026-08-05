@@ -22,7 +22,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveDeploymentMode, resolveStatePath } from '@ts-cloud/core'
+import { resolveAppDatabase, resolveDeploymentMode, resolveStatePath } from '@ts-cloud/core'
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createApiV1Handler } from '../api'
 import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, beginOidcAuthorization, completeOidcAuthorization, resolveAuthEncryptionKey, sendAuthenticationEmail } from '../auth'
@@ -710,6 +710,10 @@ async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<stri
 }
 
 export function sanitizeCloudConfig(config: CloudConfig): Record<string, any> {
+  const managedServices = config.infrastructure?.compute?.managedServices
+    ? JSON.parse(JSON.stringify(config.infrastructure.compute.managedServices))
+    : undefined
+  if (managedServices?.vitess?.password) managedServices.vitess.password = ''
   return {
     project: {
       name: config.project?.name,
@@ -730,7 +734,7 @@ export function sanitizeCloudConfig(config: CloudConfig): Record<string, any> {
                 cdn: !!config.infrastructure.compute.proxy.cdn,
               }
             : undefined,
-          managedServices: config.infrastructure.compute.managedServices,
+          managedServices,
           sshKeys: describeSshKeys(computeSshKeys(config)).map((key) => ({
             name: key.name,
             type: key.type,
@@ -1041,6 +1045,13 @@ export async function startLocalDashboardServer(
   if (options.box) process.env.TS_CLOUD_DASHBOARD_BOX = '1'
   await loadLocalEnv(cwd)
   const config = options.config ?? (await loadCloudConfig())
+  const dashboardDatabasePassword = process.env.TS_CLOUD_DASHBOARD_DB_PASSWORD
+  const appDatabase = resolveAppDatabase(config as CloudConfig)
+  if (dashboardDatabasePassword && appDatabase && !appDatabase.password)
+    appDatabase.password = dashboardDatabasePassword
+  const managedVitess = (config as CloudConfig).infrastructure?.compute?.managedServices?.vitess
+  if (dashboardDatabasePassword && managedVitess && typeof managedVitess === 'object' && !managedVitess.password)
+    managedVitess.password = dashboardDatabasePassword
   const controlPlane = initializeDashboardControlPlane(cwd, config as CloudConfig)
   if (controlPlane.reconciliation.failed > 0) {
     console.warn(

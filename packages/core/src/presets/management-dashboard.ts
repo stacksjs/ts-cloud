@@ -301,6 +301,7 @@ export function resolveManagementDashboardSites(
     if (!domain) return []
 
     const port = opts.port ?? deriveManagementDashboardPort(domain)
+    const database = config.infrastructure?.appDatabase ?? config.infrastructure?.compute?.database
     const site: SiteConfig = {
       // The release ships the project's cloud config + a package.json; the
       // CLI (and the UI it serves) come from npm via `bun install` below, so
@@ -317,6 +318,7 @@ export function resolveManagementDashboardSites(
         APP_ENV: 'production',
         NODE_ENV: 'production',
         TS_CLOUD_DASHBOARD_TELEMETRY: '1',
+        ...(database?.password ? { TS_CLOUD_DASHBOARD_DB_PASSWORD: database.password } : {}),
       },
       // The zero-downtime cutover overlaps two instances on one port via
       // SO_REUSEPORT. The dashboard's server does not bind that way, so the new

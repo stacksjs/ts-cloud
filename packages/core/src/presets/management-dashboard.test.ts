@@ -125,6 +125,25 @@ describe('resolveManagementDashboardSite', () => {
     expect(tenant).toBeNull()
   })
 
+  it('passes the app database password through the service environment only', () => {
+    const r = resolveManagementDashboardSite(
+      cfg({
+        sites: { main: { root: 'dist', domain: 'acme.com' } as any },
+        infrastructure: {
+          appDatabase: {
+            engine: 'vitess',
+            name: 'acme',
+            username: 'acme',
+            password: 'write-only-db-secret',
+          },
+        },
+      }),
+      'production',
+      { uiRoot: '.ts-cloud/dashboard-release', build: false },
+    )
+    expect(r?.site.env?.TS_CLOUD_DASHBOARD_DB_PASSWORD).toBe('write-only-db-secret')
+  })
+
   /**
    * The systemd unit runs `/usr/local/bin/bun <args>`, so a bare `cloud` would
    * be resolved by bun as a FILE to execute and the service would never start.

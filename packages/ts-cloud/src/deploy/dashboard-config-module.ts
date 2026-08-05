@@ -68,6 +68,11 @@ export function redactForDashboard(config: CloudConfig): Record<string, any> {
     if (db?.password) db.password = ''
   }
 
+  if (safe.infrastructure?.appDatabase?.password) safe.infrastructure.appDatabase.password = ''
+  if (safe.infrastructure?.compute?.database?.password) safe.infrastructure.compute.database.password = ''
+  if (safe.infrastructure?.compute?.managedServices?.vitess?.password)
+    safe.infrastructure.compute.managedServices.vitess.password = ''
+
   return safe
 }
 
