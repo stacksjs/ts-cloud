@@ -196,10 +196,29 @@ function launcherScript(command: string[]): string {
     '#!/bin/sh',
     'set -e',
     `cd ${PANTRY_PROJECT_DIR}`,
-    'eval "$(pantry env 2>/dev/null)" || true',
+    // `pantry env` prints a human sentence to STDOUT when it cannot detect a
+    // project, and these units run as the `vitess` user, which has neither
+    // root's HOME nor its pantry state - so it printed "No project detected in
+    // current directory" and the eval tried to run a command called `No`.
+    // `2>/dev/null` did not hide it (the message is on stdout) and `|| true`
+    // swallowed the failure, so the environment was silently never set up.
+    //
+    // Take only lines that are actually assignments, so nothing else can ever
+    // be executed by this eval.
+    'PANTRY_ENV="$(pantry env 2>/dev/null | grep -E \'^(export [A-Za-z_]|[A-Za-z_][A-Za-z0-9_]*=)\' || true)"',
+    'if [ -n "$PANTRY_ENV" ]; then eval "$PANTRY_ENV"; fi',
     `VT_MYSQL_ROOT="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqld 2>/dev/null)")")"`,
     `VTROOT="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqlctld 2>/dev/null)")")"`,
     'export VT_MYSQL_ROOT VTROOT',
+    // Derived from the roots resolved above rather than from `pantry env`,
+    // which is exactly the thing that turned out not to be dependable here.
+    // mysqld links bundled libraries out of its own lib directory
+    // (libprotobuf-lite among them); without this it exits 127 with
+    // "error while loading shared libraries", and mysqlctld reports that as
+    // "could not auto-detect MySQL version" - a message that says nothing
+    // about the actual cause.
+    'LD_LIBRARY_PATH="$VT_MYSQL_ROOT/lib:$VTROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"',
+    'export LD_LIBRARY_PATH',
     `exec ${command.join(' ')}`,
   ].join('\n')
 }
@@ -498,11 +517,26 @@ export function buildVitessBootstrapScript(config: VitessServiceConfig): string[
     for (const shard of keyspace.sharded ? ['-80', '80-'] : ['0']) {
       const target = `${keyspace.name}/${shard}`
       out.push(
-        // The tablet has to be registered and responding before it can be
-        // promoted; vttablet registers a few seconds after systemd starts it.
-        `for i in $(seq 1 30); do ${client} GetTablet ${sh(alias)} >/dev/null 2>&1 && break; sleep 2; done`,
-        `if ! ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"primary_alias"'; then`,
-        `  ${client} PlannedReparentShard ${sh(target)} --new-primary ${sh(alias)} || ${client} InitShardPrimary --force ${sh(target)} ${sh(alias)}`,
+        // Waiting for the tablet RECORD is not enough, and that is what this
+        // used to do. vttablet registers within seconds of systemd starting
+        // it, but a promotion also needs its mysqld, and mysqlctld spends
+        // about two minutes initializing a fresh data directory on first boot.
+        // The single attempt that followed therefore ran far too early and
+        // failed with "node doesn't exist: .../shards/0/", leaving a shard
+        // with no primary and a cluster that answered SHOW KEYSPACES but no
+        // query: "no healthy tablet available for ... PRIMARY".
+        //
+        // Retry the promotion itself instead of trying to predict when its
+        // preconditions are met. It is idempotent, and succeeding is the only
+        // evidence that everything underneath it is actually up.
+        `for i in $(seq 1 90); do`,
+        `  if ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"primary_alias": *"[^"]'; then break; fi`,
+        `  ${client} PlannedReparentShard ${sh(target)} --new-primary ${sh(alias)} >/dev/null 2>&1 && break`,
+        `  ${client} InitShardPrimary --force ${sh(target)} ${sh(alias)} >/dev/null 2>&1 && break`,
+        '  sleep 2',
+        'done',
+        `if ! ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"primary_alias": *"[^"]'; then`,
+        `  echo "no primary could be elected for ${target}" >&2; exit 1`,
         'fi',
       )
     }
@@ -552,6 +586,29 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
 
   const out: string[] = [
     ...buildPantryInstallScript(vitessPackages(config)),
+    // Register mysqld's own library directory with the dynamic linker.
+    //
+    // Exporting LD_LIBRARY_PATH from the unit launcher is not enough. mysqlctld
+    // runs `mysqld --initialize-insecure` directly, which inherits it and
+    // works, but it STARTS the server through `mysqld_safe`, and mysqld does
+    // not receive it there. The result was a data directory that initialized
+    // perfectly and a server that then would not boot:
+    //
+    //   mysqld: error while loading shared libraries: libprotobuf-lite.so.24.4.0
+    //
+    // which mysqlctld reports as "could not auto-detect MySQL version" and then
+    // "deadline exceeded waiting for mysqld socket file to appear" - neither of
+    // which mentions a missing library. Registering the directory makes the
+    // library resolvable however mysqld is launched, including under an empty
+    // environment. Written at provision time because the path carries the
+    // package version and is only known once pantry has installed it.
+    `VT_MYSQL_LIB="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqld)")")/lib"`,
+    'if [ -d "$VT_MYSQL_LIB" ]; then',
+    '  printf \'%s\\n\' "$VT_MYSQL_LIB" > /etc/ld.so.conf.d/vitess-mysql.conf',
+    '  ldconfig',
+    'else',
+    '  echo "mysqld library directory not found under $VT_MYSQL_LIB" >&2; exit 1',
+    'fi',
     // Created before any unit is written: the daemons refuse to run as root,
     // and they need to own their state directory to start at all.
     `id -u ${VITESS_USER} >/dev/null 2>&1 || useradd --system --home-dir ${VITESS_ROOT} --shell /usr/sbin/nologin ${VITESS_USER}`,

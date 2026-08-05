@@ -251,8 +251,22 @@ describe('primary election', () => {
     expect(script).toContain("PlannedReparentShard 'lookup/0'")
   })
 
-  it('waits for the tablet to register before promoting it', () => {
-    expect(script).toContain('GetTablet ')
+  it('retries the promotion instead of guessing when it will be possible', () => {
+    // This used to wait for the tablet RECORD and then promote once. vttablet
+    // registers within seconds, but a promotion also needs its mysqld, and
+    // mysqlctld spends about two minutes initializing a fresh data directory,
+    // so that single attempt ran far too early: it failed with "node doesn't
+    // exist: .../shards/0/" and left a shard with no primary, on a cluster
+    // that answered SHOW KEYSPACES but no query at all.
+    expect(script).toContain('for i in $(seq 1 90); do')
+    expect(script).not.toContain('GetTablet ')
+  })
+
+  it('fails the provision when no primary can be elected', () => {
+    // Silently continuing produced the worst outcome available: provisioning
+    // reported success and the cluster could not serve a single query.
+    expect(script).toContain('no primary could be elected for commerce/-80')
+    expect(script).toContain('exit 1')
   })
 
   it('does not reparent a shard that already has a primary', () => {
@@ -295,5 +309,38 @@ describe('coexistence with other services', () => {
     // Regression guard: adding vitess must not perturb existing provisioning.
     const before = buildServicesProvisionScript({ redis: true, postgres: true })
     expect(before.some(l => l.includes('vitess'))).toBe(false)
+  })
+})
+
+describe('daemons find their libraries however they are launched', () => {
+  const script = buildVitessProvisionScript({ mode: 'cluster', keyspaces: [{ name: 'commerce' }] }).join('\n')
+
+  it('registers mysqld\'s library directory with the dynamic linker', () => {
+    // Exporting LD_LIBRARY_PATH from the launcher is not sufficient. mysqlctld
+    // runs `mysqld --initialize-insecure` directly, which inherits it, but it
+    // STARTS the server through mysqld_safe, where mysqld does not receive it.
+    // The result was a data directory that initialized perfectly and a server
+    // that then would not boot: "error while loading shared libraries:
+    // libprotobuf-lite.so.24.4.0".
+    expect(script).toContain('/etc/ld.so.conf.d/vitess-mysql.conf')
+    expect(script).toContain('ldconfig')
+  })
+
+  it('fails loudly when that directory is missing', () => {
+    expect(script).toContain('mysqld library directory not found')
+  })
+
+  it('never evaluates non-assignment output from `pantry env`', () => {
+    // These units run as the `vitess` user, which has neither root's HOME nor
+    // its pantry state, so `pantry env` printed "No project detected in
+    // current directory" to STDOUT and the eval tried to run a command called
+    // `No`. 2>/dev/null did not hide it and `|| true` swallowed the failure,
+    // so the environment was silently never set up.
+    expect(script).toContain('grep -E \'^(export [A-Za-z_]|[A-Za-z_][A-Za-z0-9_]*=)\'')
+    expect(script).not.toContain('eval "$(pantry env 2>/dev/null)" || true')
+  })
+
+  it('still exports a library path for the daemons themselves', () => {
+    expect(script).toContain('LD_LIBRARY_PATH="$VT_MYSQL_ROOT/lib:$VTROOT/lib')
   })
 })
