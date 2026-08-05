@@ -678,6 +678,50 @@ describe('HetznerDriver', () => {
     expect(targets.map((t) => t.id)).toEqual(['700'])
   })
 
+  it('ignores a state pin whose live server name belongs to another project', async () => {
+    const server = (id: number, name: string, project: string, ip: string) => ({
+      id,
+      name,
+      status: 'running',
+      public_net: { ipv4: { ip } },
+      labels: {
+        'ts-cloud/managed-by': 'ts-cloud',
+        'ts-cloud/project': project,
+        'ts-cloud/environment': 'production',
+        'ts-cloud/role': 'app',
+      },
+      server_type: { name: 'cx22' },
+      datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+    })
+    const client = mockHetznerClient({
+      listServers: mock(async () => [
+        server(501, 'statushq-production-app', 'uptime-status', '203.0.113.51'),
+        server(700, 'stacks-production-app', 'stacks', '203.0.113.70'),
+      ]),
+    })
+
+    await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
+    await writeFile(
+      driverStatePath(stackName),
+      JSON.stringify({
+        provider: 'hetzner',
+        stackName,
+        serverId: 501,
+        serverName: 'stacks-production-app',
+        publicIp: '203.0.113.70',
+      }),
+    )
+
+    const driver = new HetznerDriver({ client, apiToken: 'test-token' })
+    const targets = await driver.findComputeTargets({
+      slug: 'stacks',
+      environment: 'production',
+      role: 'app',
+    })
+
+    expect(targets.map(target => target.id)).toEqual(['700'])
+  })
+
   it('reuses existing state instead of creating duplicate servers', async () => {
     await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
     await writeFile(

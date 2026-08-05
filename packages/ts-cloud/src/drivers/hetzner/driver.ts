@@ -2,7 +2,7 @@ import type { CloudDriver, ComputeProxyConfig, ComputeStackOutputs, ComputeTarge
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import type { HetznerDriverState } from './state'
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -1072,6 +1072,11 @@ export class HetznerDriver implements CloudDriver {
         const pinned: HetznerServer[] = []
         for (const id of pinnedIds) {
           const server = servers.find((candidate) => candidate.id === id) ?? (await this.tryGetServer(id))
+          // Reject an internally inconsistent pin before it can send a
+          // database or deploy operation to another production project.
+          // Attach-mode pins remain valid because they store the owner's real
+          // server name alongside its id.
+          if (id === state?.serverId && state.serverName && server?.name !== state.serverName) continue
           if (server && server.status !== 'off') pinned.push(server)
         }
         if (pinned.length > 0) return pinned.map(toTarget)
@@ -1523,22 +1528,19 @@ export class HetznerDriver implements CloudDriver {
   }
 
   private sshExec(host: string, script: string): string {
-    const escaped = script.replace(/'/g, `'\\''`)
     // A release deploy extracts the full app tarball (often tens of thousands
     // of files), and `tar` happily emits a warning line per oddity. With the
-    // default 1MB maxBuffer, execSync kills the SSH child mid-deploy with
-    // ENOBUFS, so give the remote command plenty of headroom.
+    // default 1MB maxBuffer, the child process dies mid-deploy with
+    // ENOBUFS, so give the remote command plenty of headroom. Feed scripts over
+    // stdin so runtime environment and database credentials never appear in
+    // the local process table as SSH command-line arguments.
     try {
-      return execSync(
-        `ssh ${this.sshBaseArgs(host)
-          .map((a) => `"${a.replace(/"/g, '\\"')}"`)
-          .join(' ')} '${escaped}'`,
-        {
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-          maxBuffer: SSH_MAX_BUFFER,
-        },
-      )
+      return execFileSync('ssh', [...this.sshBaseArgs(host), 'bash -s'], {
+        encoding: 'utf8',
+        input: script,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: SSH_MAX_BUFFER,
+      })
     } catch (error) {
       // Node's child-process error message embeds the complete command. The
       // command includes the runtime environment here-document, so forwarding
