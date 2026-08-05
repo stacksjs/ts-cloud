@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.95...v0.7.96)
+
+## 🐛 Bug Fixes
+
+- **vitess**: make a provisioned cluster actually able to serve ([6b2b0ce](https://github.com/stacksjs/ts-cloud/commit/6b2b0ce)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.96 ([0542ac0](https://github.com/stacksjs/ts-cloud/commit/0542ac0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.94...v0.7.95)
 
 ## 🐛 Bug Fixes
