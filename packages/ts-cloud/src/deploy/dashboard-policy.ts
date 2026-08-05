@@ -306,6 +306,7 @@ const POLICIES: Record<string, RoutePolicy> = {
   // shard by shard; a migration action can cancel an in-flight rewrite. All
   // are data:admin, the same bar as creating a database.
   'POST /api/databases/vitess/migrations/action': { capability: 'data:admin' },
+  'POST /api/databases/vitess/provision': { capability: 'runtime:terminal', scope: 'organization' },
   'POST /api/databases/vitess/keyspaces': { capability: 'data:admin' },
   'POST /api/databases/vitess/vschema': { capability: 'data:admin' },
   'POST /api/databases/vitess/schema': { capability: 'data:admin' },
