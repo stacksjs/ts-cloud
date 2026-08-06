@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.102...v0.7.103)
+
+## 🐛 Bug Fixes
+
+- **vitess**: converge interrupted auth rotations ([789b40e](https://github.com/stacksjs/ts-cloud/commit/789b40e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.103 ([63513eb](https://github.com/stacksjs/ts-cloud/commit/63513eb)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.101...v0.7.102)
 
 ## 🐛 Bug Fixes
