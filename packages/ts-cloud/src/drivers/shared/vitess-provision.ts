@@ -428,7 +428,11 @@ export const VITESS_AUTH_FILE = '/etc/vitess/auth.json'
 export function buildVitessAuthFileScript(config: VitessServiceConfig): string[] {
   const user = config.username ?? 'vitess'
   const password = config.password ?? ''
-  const auth = JSON.stringify({ [user]: [{ MysqlNativePassword: '', Password: password, UserData: user }] })
+  // Supplying an empty MysqlNativePassword is not a harmless placeholder:
+  // vtgate prefers it during mysql_native_password negotiation and rejects
+  // the real non-empty Password. Omit it unless we have computed an actual
+  // MySQL native hash; Vitess safely derives authentication from Password.
+  const auth = JSON.stringify({ [user]: [{ Password: password, UserData: user }] })
   return [
     'mkdir -p /etc/vitess',
     `cat > ${VITESS_AUTH_FILE} <<'TS_CLOUD_VITESS_AUTH_EOF'`,

@@ -5,6 +5,7 @@ import {
   buildLaunchers,
   buildEtcdUnit,
   buildMysqlctldUnit,
+  buildVitessAuthFileScript,
   buildVitessBootstrapScript,
   buildVitessHealthCheck,
   buildVitessProvisionScript,
@@ -204,6 +205,16 @@ describe('cluster topology', () => {
     // endpoint and writing to it bypasses Vitess.
     expect(launcherBody(buildMysqlctldUnit({ mysqlPort: 3306 }), 'mysqlctld')).toContain('--mysql-port 3306')
     expect(launcherBody(buildVtgateUnit(CLUSTER), 'vtgate')).toContain(`--mysql-server-port ${VTGATE_MYSQL_PORT}`)
+  })
+})
+
+describe('cluster authentication', () => {
+  it('does not override the configured password with an empty native hash', () => {
+    // Vitess prefers MysqlNativePassword when the client negotiates that
+    // plugin. An empty placeholder therefore rejects every real password.
+    const script = buildVitessAuthFileScript({ username: 'app', password: 'production-secret' }).join('\n')
+    expect(script).toContain('"Password":"production-secret"')
+    expect(script).not.toContain('MysqlNativePassword')
   })
 })
 
