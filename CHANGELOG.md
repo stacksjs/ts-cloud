@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.103...v0.7.104)
+
+## 🚀 Features
+
+- **dns**: provision mail DNS on deploy ([5fe7a19](https://github.com/stacksjs/ts-cloud/commit/5fe7a19)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.104 ([1319183](https://github.com/stacksjs/ts-cloud/commit/1319183)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.102...v0.7.103)
 
 ## 🐛 Bug Fixes
