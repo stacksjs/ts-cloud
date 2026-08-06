@@ -297,16 +297,7 @@ export {
   createPorkbunValidator,
   createGoDaddyValidator,
   createRoute53Validator,
-  // Mail DNS provisioning: a deploy that stands up a mail-sending app and
-  // leaves MX/SPF/DKIM/DMARC to be typed by hand has not finished the job.
-  buildMailDnsRecords,
-  buildSpfValue,
-  buildDkimValue,
-  buildDmarcValue,
-  normalizeDkimKey,
-  syncMailDns,
 } from './dns'
-export type { MailDnsOptions, MailDnsSyncResult } from './dns'
 
 // Provider-neutral Git source connections, repository bindings, and webhooks
 export * from './source'

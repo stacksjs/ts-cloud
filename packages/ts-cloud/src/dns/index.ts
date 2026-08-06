@@ -5,15 +5,6 @@
 
 export * from './types'
 export { PorkbunProvider } from './porkbun'
-export {
-  buildDkimValue,
-  buildDmarcValue,
-  buildMailDnsRecords,
-  buildSpfValue,
-  normalizeDkimKey,
-  syncMailDns,
-} from './mail-records'
-export type { MailDnsOptions, MailDnsSyncResult } from './mail-records'
 export { GoDaddyProvider } from './godaddy'
 export { CloudflareProvider } from './cloudflare'
 export { Route53Provider } from './route53-adapter'

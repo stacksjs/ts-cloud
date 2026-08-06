@@ -467,16 +467,6 @@ export interface InfrastructureConfig {
   realtime?: RealtimeConfig
 
   dns?: DnsConfig
-  /**
-   * Mail DNS for domains this deployment sends mail from.
-   *
-   * A domain that sends mail needs MX, SPF, DKIM and DMARC, and getting any of
-   * them wrong is invisible: mail lands in spam or is dropped by the receiver
-   * with nothing surfaced to the sender. Declaring it here lets the deploy
-   * publish the records rather than leaving them to be typed by hand and
-   * forgotten.
-   */
-  mail?: MailConfig
   security?: SecurityConfig
   monitoring?: MonitoringConfig
   api?: ApiConfig
@@ -927,40 +917,6 @@ export interface SharedPathSpec {
 
 /** A shared path: a release-relative path, or {@link SharedPathSpec}. */
 export type SharedPathEntry = string | SharedPathSpec
-
-/**
- * Mail DNS provisioning for a deployment.
- *
- * Opt-in: absent means the deploy touches no mail records at all, which is the
- * right default for the many apps that send nothing.
- */
-export interface MailConfig {
-  /** Set false to keep the block for reference without publishing records. */
-  enabled?: boolean
-  /** Mail server hostname that receives for these domains. */
-  host: string
-  /**
-   * Domains to publish records for. Defaults to every site domain, since a
-   * deployment that sends mail almost always sends as the site it serves.
-   */
-  domains?: string[]
-  /** Public IPv4 authorised in SPF. Defaults to the app server's own IP. */
-  ip?: string
-  /** Extra SPF mechanisms, e.g. `include:amazonses.com`. */
-  spfIncludes?: string[]
-  /** DKIM selector. Convention is `default`. */
-  dkimSelector?: string
-  /**
-   * DKIM public key, per domain. Omitting a domain skips only its DKIM record:
-   * publishing an empty key is worse than publishing none, because a broken
-   * signature is a stronger negative signal than an unsigned message.
-   */
-  dkimPublicKeys?: Record<string, string>
-  /** DMARC policy. `none` (report only) unless stated otherwise. */
-  dmarcPolicy?: 'none' | 'quarantine' | 'reject'
-  /** Address for aggregate DMARC reports. */
-  dmarcReportTo?: string
-}
 
 export interface SiteConfig {
   /**
