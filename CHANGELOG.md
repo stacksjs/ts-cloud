@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.99...v0.7.100)
+
+## 🐛 Bug Fixes
+
+- **vitess**: publish serving topology after election ([06f8d88](https://github.com/stacksjs/ts-cloud/commit/06f8d88)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.100 ([79f5552](https://github.com/stacksjs/ts-cloud/commit/79f5552)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.98...v0.7.99)
 
 ## 🐛 Bug Fixes
