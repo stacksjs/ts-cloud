@@ -29,6 +29,17 @@ export {
 } from './serverless-app'
 export { buildAndPushServerlessImage, type BuildImageOptions, type BuiltImage } from './serverless-image'
 export { type DashboardData, resolveDashboardData } from './dashboard-data'
+// Object-storage egress. Exported because the interesting half of this contract
+// lives outside ts-cloud: applications implement the EgressReport shape (see
+// @ts-cloud/core) and this is what reads it, so both sides need to be able to
+// reference and test against the same code.
+export {
+  collectEgressMetrics,
+  type EgressCollectionResult,
+  egressReportMetrics,
+  type EgressMetric,
+  fetchEgressReport,
+} from './egress-collection'
 export {
   dashboardActions,
   resolveDashboardAction,
