@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.101...v0.7.102)
+
+## 🐛 Bug Fixes
+
+- **vitess**: reload rotated router credentials ([8d10425](https://github.com/stacksjs/ts-cloud/commit/8d10425)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.102 ([853d7e6](https://github.com/stacksjs/ts-cloud/commit/853d7e6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.100...v0.7.101)
 
 ## 🐛 Bug Fixes
