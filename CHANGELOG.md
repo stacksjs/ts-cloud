@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.106...v0.7.107)
+
+## 🚀 Features
+
+- **deploy**: export the egress collection surface ([f52b54f](https://github.com/stacksjs/ts-cloud/commit/f52b54f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.107 ([0c6a90f](https://github.com/stacksjs/ts-cloud/commit/0c6a90f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.105...v0.7.106)
 
 ## 🚀 Features
