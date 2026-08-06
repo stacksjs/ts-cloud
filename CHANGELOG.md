@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.105...v0.7.106)
+
+## 🚀 Features
+
+- **monitoring**: collect object-storage egress from the apps that serve it ([783f6b4](https://github.com/stacksjs/ts-cloud/commit/783f6b4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **monitoring**: account for bandwidth as rates, period totals, and an allowance ([3a5caef](https://github.com/stacksjs/ts-cloud/commit/3a5caef)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.106 ([7d805dc](https://github.com/stacksjs/ts-cloud/commit/7d805dc)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.104...v0.7.105)
 
 ## 🧹 Chores
