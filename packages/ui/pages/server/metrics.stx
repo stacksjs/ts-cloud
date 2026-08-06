@@ -97,6 +97,9 @@ function historyParams() {
       'host.disk.used_percent', 'host.swap.used_percent',
       'host.disk.inode_used_percent',
       'host.network.rx_rate', 'host.network.tx_rate',
+      'storage.egress.day', 'storage.egress.month',
+      'storage.egress.budget', 'storage.egress.budget_used_percent',
+      'storage.egress.projected_month',
     ].join(','),
     aggregation: 'avg',
     bucketMs: String(bucketMs),
@@ -177,9 +180,49 @@ function ratioPoints(primary, numerator, denominator, multiplier = 100) {
     .map(point => ({ ...point, value: Math.max(0, Math.min(100, Number(point.value) / Number(den.get(point.timestamp)) * multiplier)) }))
 }
 const RATE_METRICS = { 'network-in': 'host.network.rx_rate', 'network-out': 'host.network.tx_rate' }
+const BYTE_METRICS = { 'egress-daily': 'storage.egress.day' }
+function isByteMetric(name) { return Object.hasOwn(BYTE_METRICS, name) }
+function bytesLabel(value) {
+  const n = Number(value || 0)
+  if (n >= 1000 ** 4) return (n / 1000 ** 4).toFixed(2) + ' TB'
+  if (n >= 1000 ** 3) return (n / 1000 ** 3).toFixed(1) + ' GB'
+  if (n >= 1000 ** 2) return (n / 1000 ** 2).toFixed(1) + ' MB'
+  return Math.round(n / 1000) + ' KB'
+}
+function latestValue(name) {
+  const values = points(name)
+  return values.length ? Number(values.at(-1).value) : null
+}
+function egressBudget() { return latestValue('storage.egress.budget') }
+function egressMonth() { return latestValue('storage.egress.month') }
+function egressProjected() { return latestValue('storage.egress.projected_month') }
+function egressPercent() { return latestValue('storage.egress.budget_used_percent') }
+function hasEgress() { return points('storage.egress.day').length > 0 || egressMonth() != null }
+function egressTone() {
+  const pct = egressPercent()
+  if (pct == null) return 'ok'
+  return pct >= 90 ? 'bad' : pct >= 75 ? 'warn' : 'ok'
+}
+function egressSummary() {
+  const month = egressMonth()
+  if (month == null) return 'No egress reported yet.'
+  const budget = egressBudget()
+  const projected = egressProjected()
+  const projectedNote = projected == null ? '' : ` — on track for ${bytesLabel(projected)}`
+  if (!budget) return `${bytesLabel(month)} this month${projectedNote}`
+  return `${bytesLabel(month)} of ${bytesLabel(budget)} (${egressPercent() ?? 0}%)${projectedNote}`
+}
+// A projection above the allowance is the whole point of the panel: it is the
+// window in which the overrun is still avoidable.
+function egressWillExceed() {
+  const budget = egressBudget()
+  const projected = egressProjected()
+  return !!budget && projected != null && projected > budget
+}
 function isRateMetric(name) { return Object.hasOwn(RATE_METRICS, name) }
 function metricPoints(name) {
   if (isRateMetric(name)) return points(RATE_METRICS[name])
+  if (isByteMetric(name)) return points(BYTE_METRICS[name])
   if (name === 'cpu') return ratioPoints('host.cpu.used_percent', 'host.load', 'host.cpu.capacity')
   if (name === 'memory') return ratioPoints('host.memory.used_percent', 'host.memory.used', 'host.memory.total')
   if (name === 'disk') return points('host.disk.used_percent')
@@ -190,7 +233,7 @@ function metricPoints(name) {
 function linePath(metric) {
   const values = metricPoints(metric)
   if (!values.length) return ''
-  const max = metric === 'load' || isRateMetric(metric)
+  const max = metric === 'load' || isRateMetric(metric) || isByteMetric(metric)
     ? Math.max(1, ...values.map(point => Number(point.value)))
     : 100
   return values.map((point, index) => {
@@ -214,6 +257,7 @@ function peak(metric) {
 function display(value, suffix = '%') {
   if (value == null) return 'No data'
   if (suffix === 'rate') return liveRate(value)
+  if (suffix === 'bytes') return bytesLabel(value)
   return `${value.toFixed(value >= 10 ? 0 : 1)}${suffix}`
 }
 function samples(metric) { return metricPoints(metric).length }
@@ -347,10 +391,44 @@ function setRange(value) { historyRange.set(value); refresh() }
           </article>
         </template>
       </div>
+      <div class="egress-panel panel" :class="egressTone()" @show="hasEgress()">
+        <div class="egress-head">
+          <div>
+            <h3>Object storage egress</h3>
+            <p>Reported by the applications that serve the downloads — these bytes never cross this host's network interface.</p>
+          </div>
+          <strong>{{ egressSummary() }}</strong>
+        </div>
+        <div class="egress-track" @show="!!egressBudget()">
+          <i :style="'width:' + Math.min(100, egressPercent() ?? 0) + '%'"></i>
+        </div>
+        <p class="bad notice" role="status" @show="egressWillExceed()">
+          Projected to exceed the monthly allowance — {{ bytesLabel(egressProjected()) }} against {{ bytesLabel(egressBudget()) }}.
+        </p>
+        <svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img" aria-label="Daily object storage egress">
+          <line x1="0" x2="100" y1="23" y2="23" class="history-gridline"></line>
+          <path :d="areaPath('egress-daily')" class="history-area"></path>
+          <path :d="linePath('egress-daily')" class="history-line"></path>
+        </svg>
+        <div class="history-meta">
+          <span>{{ samples('egress-daily') }} days</span>
+          <span>peak {{ display(peak('egress-daily'), 'bytes') }}</span>
+        </div>
+      </div>
       <p class="note">Retention, source freshness, comparisons, logs, and exports are available in <a href="/operations/observability">Observability</a>.</p>
     </div>
   </div>
   <style>
+    .egress-panel { margin-top:18px; padding:18px; }
+    .egress-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+    .egress-head h3 { margin:0; font-size:14px; }
+    .egress-head p { margin:4px 0 0; color:var(--txt3); font-size:11px; max-width:52ch; }
+    .egress-head strong { color:var(--txt); font-size:13px; white-space:nowrap; }
+    .egress-track { height:7px; margin:14px 0 4px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.07); }
+    .egress-track > i { display:block; height:100%; border-radius:999px; background:var(--ok); }
+    .egress-panel.warn .egress-track > i { background:var(--warn); }
+    .egress-panel.bad .egress-track > i { background:var(--bad); }
+    .egress-panel svg { width:100%; height:88px; margin-top:10px; }
     .host-vitals { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .live-gauges { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .live-bars { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 24px; }

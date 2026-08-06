@@ -7,6 +7,7 @@ import { CloudWatchClient } from '../aws/cloudwatch'
 import { resolveRuntimeInventory, RuntimeOperationService } from '../runtime'
 import { loadTelemetryPolicy, pathTemplate, TelemetryStore } from '../telemetry'
 import { resolveDashboardData } from './dashboard-data'
+import { collectEgressMetrics } from './egress-collection'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { serverlessInfo } from './serverless-app'
 import { listTraces } from './serverless-operations'
@@ -511,6 +512,28 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
       source: mode === 'serverless' ? 'aws' : 'host',
       message: error instanceof Error ? error.message : String(error),
     })
+  }
+
+  // Object-storage egress, polled from the applications that authorize it.
+  // Outside the try above on purpose: this is supplementary, and a bad endpoint
+  // must not be able to take host metrics down with it.
+  {
+    const monitoring = (context.config.infrastructure?.compute as any)?.monitoring
+    const endpoints = typeof monitoring === 'object' ? monitoring?.egressEndpoints : undefined
+    const egress = await collectEgressMetrics(endpoints, { now: now.toISOString() })
+    errors.push(...egress.errors)
+    for (const metric of egress.metrics)
+      records.push({
+        ...scope,
+        id: id(metric.attributes.source, metric.name, metric.timestamp),
+        kind: 'metric',
+        source: `egress:${metric.attributes.source}`,
+        name: metric.name,
+        timestamp: metric.timestamp,
+        value: metric.value,
+        unit: metric.unit,
+        attributes: metric.attributes,
+      })
   }
 
   if (!context.lightweight)

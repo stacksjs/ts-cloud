@@ -2855,6 +2855,64 @@ export interface ComputeMonitoringConfig {
     /** Alert when month-to-date bandwidth is ≥ this share of the allowance. @default 80 */
     bandwidthPercent?: number
   }
+  /**
+   * Endpoints reporting object-storage egress.
+   *
+   * Host network counters cannot see this. When an application redirects
+   * downloads to object storage (or to a CDN in front of it), the bytes never
+   * cross the host's NIC — the box can look idle while the bucket serves
+   * terabytes, and the first sign of an overrun is the provider's invoice. The
+   * only component that knows is the application doing the redirecting, so this
+   * polls it and records what it reports.
+   *
+   * Each endpoint must return an {@link EgressReport}.
+   */
+  egressEndpoints?: EgressEndpointConfig[]
+}
+
+/** An application endpoint reporting its own object-storage egress. */
+export interface EgressEndpointConfig {
+  /** Short slug identifying this source in metrics (e.g. "registry"). */
+  name: string
+  /** Absolute URL returning an {@link EgressReport} as JSON. */
+  url: string
+  /**
+   * Name of an environment variable holding a bearer token for the request.
+   *
+   * The variable name, never the token itself — config is committed, tokens are
+   * not. Omit for a public endpoint.
+   */
+  tokenEnv?: string
+}
+
+/**
+ * What an {@link EgressEndpointConfig} URL is expected to return.
+ *
+ * Every field is optional and validated on arrival: a partial or malformed
+ * report degrades to fewer recorded series rather than failing the whole
+ * telemetry collection, because losing host metrics to a bad egress endpoint
+ * would be a bad trade.
+ *
+ * `days` is the valuable part. Reporting a per-day history rather than a single
+ * running counter means the collector can replay it — any day missed while the
+ * collector was down still lands, and re-collecting the same day is idempotent
+ * rather than double-counted.
+ */
+export interface EgressReport {
+  /** UTC day key (YYYY-MM-DD) the `today` figures describe. */
+  today?: string
+  todayBytes?: number
+  /** UTC month key (YYYY-MM) the month-to-date figures describe. */
+  month?: string
+  monthBytes?: number
+  /** Monthly allowance in bytes; 0 or absent when none is configured. */
+  budgetBytes?: number
+  /** Share of the allowance consumed, or null when there is no allowance. */
+  budgetUsedPercent?: number | null
+  /** Straight-line month-end projection in bytes. */
+  projectedMonthBytes?: number
+  /** Per-day totals, oldest first. */
+  days?: Array<{ date: string, bytes: number, downloads?: number }>
 }
 
 /** Host firewall (UFW) configuration. See {@link ComputeConfig.firewall}. */
