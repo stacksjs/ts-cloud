@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.100...v0.7.101)
+
+## 🐛 Bug Fixes
+
+- **vitess**: honor configured static password ([f0b5c13](https://github.com/stacksjs/ts-cloud/commit/f0b5c13)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.101 ([ed80c18](https://github.com/stacksjs/ts-cloud/commit/ed80c18)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.99...v0.7.100)
 
 ## 🐛 Bug Fixes
