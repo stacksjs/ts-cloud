@@ -2843,6 +2843,17 @@ export interface ComputeMonitoringConfig {
     memPercent?: number
     /** Alert when root-filesystem usage percentage is ≥ this. @default 90 */
     diskPercent?: number
+    /**
+     * Monthly bandwidth allowance in TB (decimal, as providers quote it).
+     *
+     * Set it and the collector accumulates month-to-date rx+tx and warns once
+     * {@link bandwidthPercent} of the allowance is used — before the provider's
+     * overage mail. Omit (or 0) to skip bandwidth alerting entirely; the
+     * accounting is still collected either way.
+     */
+    bandwidthTb?: number
+    /** Alert when month-to-date bandwidth is ≥ this share of the allowance. @default 80 */
+    bandwidthPercent?: number
   }
 }
 

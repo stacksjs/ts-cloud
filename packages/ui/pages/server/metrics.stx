@@ -25,6 +25,27 @@ const bytes = value => {
   if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB'
   return Math.round(n / 1024) + ' KB'
 }
+const rate = value => {
+  const n = Number(value || 0)
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(2) + ' GB/s'
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB/s'
+  if (n >= 1024) return Math.round(n / 1024) + ' KB/s'
+  return Math.round(n) + ' B/s'
+}
+const monthBytes = Number(m.networkRxBytesMonth || 0) + Number(m.networkTxBytesMonth || 0)
+// Providers quote allowances in decimal TB and bill overage the same way, so the
+// projection has to use the same unit the invoice will.
+const bandwidthBudget = Number(__d?.bandwidthBudgetBytes || 0)
+const bandwidthNote = (() => {
+  const now = new Date()
+  const dayOfMonth = now.getUTCDate()
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  const projected = dayOfMonth > 0 ? monthBytes / dayOfMonth * daysInMonth : monthBytes
+  const tb = value => (value / 1000 ** 4).toFixed(2) + ' TB'
+  if (!bandwidthBudget) return `On track for ${tb(projected)} by month end`
+  const pct = Math.round(monthBytes / bandwidthBudget * 100)
+  return `${pct}% of ${tb(bandwidthBudget)} — on track for ${tb(projected)}`
+})()
 const memUsedGb = gb(m.memUsedMb)
 const memTotalGb = gb(m.memTotalMb)
 const memAvailableGb = gb(m.memAvailableMb || Math.max(0, m.memTotalMb - m.memUsedMb))
@@ -75,6 +96,7 @@ function historyParams() {
       'host.memory.used_percent', 'host.memory.used', 'host.memory.total',
       'host.disk.used_percent', 'host.swap.used_percent',
       'host.disk.inode_used_percent',
+      'host.network.rx_rate', 'host.network.tx_rate',
     ].join(','),
     aggregation: 'avg',
     bucketMs: String(bucketMs),
@@ -117,6 +139,27 @@ function liveBytes(value) {
   if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB'
   return Math.round(n / 1024) + ' KB'
 }
+function liveRate(value) {
+  const n = Number(value || 0)
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(2) + ' GB/s'
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB/s'
+  if (n >= 1024) return Math.round(n / 1024) + ' KB/s'
+  return Math.round(n) + ' B/s'
+}
+function liveMonthBytes() {
+  return Number(liveMetric().networkRxBytesMonth || 0) + Number(liveMetric().networkTxBytesMonth || 0)
+}
+function liveBandwidthNote() {
+  const used = liveMonthBytes()
+  const budget = Number(currentData()?.bandwidthBudgetBytes || 0)
+  const now = new Date()
+  const dayOfMonth = now.getUTCDate()
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  const projected = dayOfMonth > 0 ? used / dayOfMonth * daysInMonth : used
+  const tb = value => (value / 1000 ** 4).toFixed(2) + ' TB'
+  if (!budget) return `On track for ${tb(projected)} by month end`
+  return `${Math.round(used / budget * 100)}% of ${tb(budget)} — on track for ${tb(projected)}`
+}
 const liveCards = derived(() => [
   { label: 'CPU utilization', pct: liveCpu(), detail: `${liveMetric().load} load across ${liveMetric().cpus} vCPU` },
   { label: 'Memory', pct: liveMemory(), detail: `${liveGb(liveMetric().memUsedMb)} / ${liveGb(liveMetric().memTotalMb)} GB` },
@@ -133,7 +176,10 @@ function ratioPoints(primary, numerator, denominator, multiplier = 100) {
     .filter(point => Number(den.get(point.timestamp)) > 0)
     .map(point => ({ ...point, value: Math.max(0, Math.min(100, Number(point.value) / Number(den.get(point.timestamp)) * multiplier)) }))
 }
+const RATE_METRICS = { 'network-in': 'host.network.rx_rate', 'network-out': 'host.network.tx_rate' }
+function isRateMetric(name) { return Object.hasOwn(RATE_METRICS, name) }
 function metricPoints(name) {
+  if (isRateMetric(name)) return points(RATE_METRICS[name])
   if (name === 'cpu') return ratioPoints('host.cpu.used_percent', 'host.load', 'host.cpu.capacity')
   if (name === 'memory') return ratioPoints('host.memory.used_percent', 'host.memory.used', 'host.memory.total')
   if (name === 'disk') return points('host.disk.used_percent')
@@ -144,7 +190,9 @@ function metricPoints(name) {
 function linePath(metric) {
   const values = metricPoints(metric)
   if (!values.length) return ''
-  const max = metric === 'load' ? Math.max(1, ...values.map(point => Number(point.value))) : 100
+  const max = metric === 'load' || isRateMetric(metric)
+    ? Math.max(1, ...values.map(point => Number(point.value)))
+    : 100
   return values.map((point, index) => {
     const x = values.length === 1 ? 50 : index / (values.length - 1) * 100
     const y = 42 - Math.max(0, Math.min(1, Number(point.value) / max)) * 38
@@ -163,7 +211,11 @@ function peak(metric) {
   const values = metricPoints(metric)
   return values.length ? Math.max(...values.map(point => Number(point.value))) : null
 }
-function display(value, suffix = '%') { return value == null ? 'No data' : `${value.toFixed(value >= 10 ? 0 : 1)}${suffix}` }
+function display(value, suffix = '%') {
+  if (value == null) return 'No data'
+  if (suffix === 'rate') return liveRate(value)
+  return `${value.toFixed(value >= 10 ? 0 : 1)}${suffix}`
+}
 function samples(metric) { return metricPoints(metric).length }
 const historyCards = [
   { key: 'cpu', label: 'CPU utilization', note: 'Actual busy time, with load-per-core fallback for older samples', tone: 'blue' },
@@ -172,6 +224,8 @@ const historyCards = [
   { key: 'swap', label: 'Swap usage', note: 'Swap pressure across the selected period', tone: 'violet' },
   { key: 'load', label: 'Load average', note: 'One-minute runnable and waiting task average', tone: 'cyan', suffix: '' },
   { key: 'inodes', label: 'Inode usage', note: 'Root filesystem inode capacity consumed', tone: 'rose' },
+  { key: 'network-out', label: 'Network out', note: 'Egress throughput — the metric providers meter and bill', tone: 'amber', suffix: 'rate' },
+  { key: 'network-in', label: 'Network in', note: 'Ingress throughput across all non-loopback interfaces', tone: 'blue', suffix: 'rate' },
 ]
 function setRange(value) { historyRange.set(value); refresh() }
 </script>
@@ -214,8 +268,9 @@ function setRange(value) { historyRange.set(value); refresh() }
         <div class="vital"><div class="vlabel">Memory available</div><div class="vval">{{ liveGb(liveMetric().memAvailableMb) }} <small>GB</small></div><div class="vnote">{{ liveGb(liveMetric().memCacheMb) }} GB cache</div></div>
         <div class="vital"><div class="vlabel">Disk inodes</div><div class="vval">{{ liveMetric().inodeUsedPct }}<small>% used</small></div><div class="vnote">Filesystem entry capacity</div></div>
         <div class="vital"><div class="vlabel">Processes</div><div class="vval">{{ liveMetric().processes }}</div><div class="vnote">Current process count</div></div>
-        <div class="vital"><div class="vlabel">Network received</div><div class="vval">{{ liveBytes(liveMetric().networkRxBytes) }}</div><div class="vnote">Since host boot</div></div>
-        <div class="vital"><div class="vlabel">Network sent</div><div class="vval">{{ liveBytes(liveMetric().networkTxBytes) }}</div><div class="vnote">Since host boot</div></div>
+        <div class="vital"><div class="vlabel">Network in</div><div class="vval">{{ liveRate(liveMetric().networkRxBytesPerSec) }}</div><div class="vnote">{{ liveBytes(liveMetric().networkRxBytesToday) }} today</div></div>
+        <div class="vital"><div class="vlabel">Network out</div><div class="vval">{{ liveRate(liveMetric().networkTxBytesPerSec) }}</div><div class="vnote">{{ liveBytes(liveMetric().networkTxBytesToday) }} today</div></div>
+        <div class="vital"><div class="vlabel">Bandwidth this month</div><div class="vval">{{ liveBytes(liveMonthBytes()) }}</div><div class="vnote">{{ liveBandwidthNote() }}</div></div>
         <div class="vital"><div class="vlabel">Disk free</div><div class="vval">{{ Math.max(0, Number(liveMetric().diskTotalGb) - Number(liveMetric().diskUsedGb)) }} <small>GB</small></div><div class="vnote">{{ liveMetric().diskTotalGb }} GB total</div></div>
         <div class="vital"><div class="vlabel">Swap</div><div class="vval">{{ liveSwap() }}<small>% used</small></div><div class="vnote">{{ liveGb(liveMetric().swapUsedMb) }} / {{ liveGb(liveMetric().swapTotalMb) }} GB</div></div>
       </div>
@@ -257,8 +312,9 @@ function setRange(value) { historyRange.set(value); refresh() }
         <div class="vital"><div class="vlabel">Memory available</div><div class="vval">{{ live ? memAvailableGb : 'Unavailable' }} @if (live)<small>GB</small>@endif</div><div class="vnote">{{ live ? `${gb(m.memCacheMb)} GB cache` : unavailableNote }}</div></div>
         <div class="vital"><div class="vlabel">Swap</div><div class="vval">{{ live ? swapPct : 'Unavailable' }}@if (live)<small>% used</small>@endif</div><div class="vnote">{{ live ? `${gb(m.swapUsedMb)} / ${gb(m.swapTotalMb)} GB` : unavailableNote }}</div></div>
         <div class="vital"><div class="vlabel">Disk inodes</div><div class="vval">{{ live ? m.inodeUsedPct : 'Unavailable' }}@if (live)<small>% used</small>@endif</div><div class="vnote">Filesystem entry capacity</div></div>
-        <div class="vital"><div class="vlabel">Network received</div><div class="vval">{{ live ? bytes(m.networkRxBytes) : 'Unavailable' }}</div><div class="vnote">Since host boot</div></div>
-        <div class="vital"><div class="vlabel">Network sent</div><div class="vval">{{ live ? bytes(m.networkTxBytes) : 'Unavailable' }}</div><div class="vnote">Since host boot</div></div>
+        <div class="vital"><div class="vlabel">Network in</div><div class="vval">{{ live ? rate(m.networkRxBytesPerSec) : 'Unavailable' }}</div><div class="vnote">{{ live ? `${bytes(m.networkRxBytesToday)} today` : unavailableNote }}</div></div>
+        <div class="vital"><div class="vlabel">Network out</div><div class="vval">{{ live ? rate(m.networkTxBytesPerSec) : 'Unavailable' }}</div><div class="vnote">{{ live ? `${bytes(m.networkTxBytesToday)} today` : unavailableNote }}</div></div>
+        <div class="vital"><div class="vlabel">Bandwidth this month</div><div class="vval">{{ live ? bytes(monthBytes) : 'Unavailable' }}</div><div class="vnote">{{ live ? bandwidthNote : unavailableNote }}</div></div>
         <div class="vital"><div class="vlabel">Processes</div><div class="vval">{{ live ? m.processes : 'Unavailable' }}</div><div class="vnote">Current process count</div></div>
         <div class="vital"><div class="vlabel">Disk free</div><div class="vval">{{ live ? diskFreeGb : 'Unavailable' }} @if (live)<small>GB</small>@endif</div><div class="vnote">{{ live ? `${m.diskTotalGb} GB total` : unavailableNote }}</div></div>
       </div>

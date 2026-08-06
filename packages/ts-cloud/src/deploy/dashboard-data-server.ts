@@ -243,6 +243,19 @@ export function metricsScript(
     'echo "INODEPCT=$(df -Pi / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
     'echo "NETRX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$3} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
     'echo "NETTX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$11} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
+    // Rates and period totals come from the metrics collector's bandwidth state,
+    // not from /proc: the counters there are since-boot only, so this probe can
+    // report throughput and month-to-date usage without keeping its own history.
+    // Absent (collector disabled or first minute) ⇒ zeros, same as any other
+    // unavailable reading.
+    '. /var/lib/ts-cloud/bandwidth-state 2>/dev/null || true',
+    'echo "NETRXRATE=${RX_RATE:-0}"',
+    'echo "NETTXRATE=${TX_RATE:-0}"',
+    'echo "NETRXTODAY=${DAY_RX:-0}"',
+    'echo "NETTXTODAY=${DAY_TX:-0}"',
+    'echo "NETRXMONTH=${MONTH_RX:-0}"',
+    'echo "NETTXMONTH=${MONTH_TX:-0}"',
+    'echo "NETMONTHKEY=${MONTH_KEY:-}"',
     'echo "PROCESSES=$(ps -e --no-headers 2>/dev/null | awk \'END{print NR+0}\')"',
     'echo "UPTIME=$(uptime -p 2>/dev/null | sed \'s/^up //\' || echo unknown)"',
     'echo "UPTIME_SECONDS=$(cut -d\' \' -f1 /proc/uptime 2>/dev/null || echo 0)"',
@@ -347,6 +360,20 @@ function configuredRegion(config: CloudConfig): string {
   if (configuredProvider(config) === 'hetzner') return resolveHetznerLocation(config)
 
   return config.project.region ?? 'us-east-1'
+}
+
+/**
+ * The configured monthly bandwidth allowance, in bytes, or 0 when unset.
+ *
+ * Providers quote allowances in decimal TB (Hetzner's "5.0 TB included") and
+ * bill overage per decimal TB, so this converts with 1000^4 rather than 1024^4 —
+ * using binary units here would understate usage against the allowance by ~10%,
+ * which is exactly the margin in which a surprise invoice lives.
+ */
+function configuredBandwidthBudgetBytes(config: CloudConfig): number {
+  const monitoring = (config.infrastructure?.compute as any)?.monitoring
+  const tb = Number(typeof monitoring === 'object' ? monitoring?.alerts?.bandwidthTb ?? 0 : 0)
+  return Number.isFinite(tb) && tb > 0 ? Math.round(tb * 1000 ** 4) : 0
 }
 
 function loadLocalState(config: CloudConfig, environment: EnvironmentType): LocalState | null {
@@ -928,10 +955,21 @@ export function resolveConfigOnlyServerDashboardData(
       inodeUsedPct: 0,
       networkRxBytes: 0,
       networkTxBytes: 0,
+      networkRxBytesPerSec: 0,
+      networkTxBytesPerSec: 0,
+      networkRxBytesToday: 0,
+      networkTxBytesToday: 0,
+      networkRxBytesMonth: 0,
+      networkTxBytesMonth: 0,
+      networkMonthKey: '',
       processes: 0,
       uptimeSeconds: 0,
     },
     metricsUnavailable: true,
+    // The configured monthly allowance, so the dashboard can express usage as a
+    // share of it rather than as a raw number nobody can judge. Zero ⇒ no
+    // allowance configured, and the UI falls back to a plain projection.
+    bandwidthBudgetBytes: configuredBandwidthBudgetBytes(config),
     services,
     servicesDetail: services.map((s) => ({ ...s, since: UNKNOWN, memMb: 0, auto: true })),
     backup: configuredBackup(config),
@@ -1042,6 +1080,13 @@ export async function resolveServerDashboardData(
       inodeUsedPct: num(parsed.INODEPCT),
       networkRxBytes: num(parsed.NETRX),
       networkTxBytes: num(parsed.NETTX),
+      networkRxBytesPerSec: num(parsed.NETRXRATE),
+      networkTxBytesPerSec: num(parsed.NETTXRATE),
+      networkRxBytesToday: num(parsed.NETRXTODAY),
+      networkTxBytesToday: num(parsed.NETTXTODAY),
+      networkRxBytesMonth: num(parsed.NETRXMONTH),
+      networkTxBytesMonth: num(parsed.NETTXMONTH),
+      networkMonthKey: parsed.NETMONTHKEY || '',
       processes: num(parsed.PROCESSES),
       uptimeSeconds: num(parsed.UPTIME_SECONDS),
     }

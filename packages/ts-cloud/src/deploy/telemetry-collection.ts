@@ -437,6 +437,15 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
           ['host.disk.inode_used_percent', Number(metrics.inodeUsedPct), 'percent'],
           ['host.network.rx', Number(metrics.networkRxBytes), 'bytes'],
           ['host.network.tx', Number(metrics.networkTxBytes), 'bytes'],
+          // The since-boot counters above are monotonic and reset on reboot, so
+          // averaging them over a window is meaningless. These are the series
+          // you can actually chart and compare against an allowance.
+          ['host.network.rx_rate', Number(metrics.networkRxBytesPerSec), 'bytes_per_second'],
+          ['host.network.tx_rate', Number(metrics.networkTxBytesPerSec), 'bytes_per_second'],
+          ['host.network.rx_today', Number(metrics.networkRxBytesToday), 'bytes'],
+          ['host.network.tx_today', Number(metrics.networkTxBytesToday), 'bytes'],
+          ['host.network.rx_month', Number(metrics.networkRxBytesMonth), 'bytes'],
+          ['host.network.tx_month', Number(metrics.networkTxBytesMonth), 'bytes'],
           ['host.processes', Number(metrics.processes), 'count'],
           ['host.uptime', Number(metrics.uptimeSeconds), 'seconds'],
         ]
