@@ -216,6 +216,14 @@ describe('cluster authentication', () => {
     expect(script).toContain('"Password":"production-secret"')
     expect(script).not.toContain('MysqlNativePassword')
   })
+
+  it('restarts an existing vtgate only when credentials change', () => {
+    // Static auth is loaded at process start. `enable --now` leaves a running
+    // process untouched, which made credential rotations fail the health gate.
+    const script = buildVitessProvisionScript({ ...CLUSTER, username: 'app', password: 'production-secret' }).join('\n')
+    expect(script).toContain('cmp -s "$VTESS_AUTH_TMP" /etc/vitess/auth.json || VTESS_VTGATE_AUTH_CHANGED=1')
+    expect(script).toContain('if [ "$VTESS_VTGATE_AUTH_CHANGED" = 1 ]; then systemctl restart vitess-vtgate.service; fi')
+  })
 })
 
 describe('bootstrap is idempotent', () => {

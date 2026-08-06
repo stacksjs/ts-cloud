@@ -435,12 +435,15 @@ export function buildVitessAuthFileScript(config: VitessServiceConfig): string[]
   const auth = JSON.stringify({ [user]: [{ Password: password, UserData: user }] })
   return [
     'mkdir -p /etc/vitess',
-    `cat > ${VITESS_AUTH_FILE} <<'TS_CLOUD_VITESS_AUTH_EOF'`,
+    'VTESS_AUTH_TMP="$(mktemp)"',
+    `cat > "$VTESS_AUTH_TMP" <<'TS_CLOUD_VITESS_AUTH_EOF'`,
     auth,
     'TS_CLOUD_VITESS_AUTH_EOF',
+    `VTESS_VTGATE_AUTH_CHANGED=0`,
+    `cmp -s "$VTESS_AUTH_TMP" ${VITESS_AUTH_FILE} || VTESS_VTGATE_AUTH_CHANGED=1`,
     // Contains a password: readable by the daemon, nobody else.
-    `chown ${VITESS_USER}:${VITESS_USER} ${VITESS_AUTH_FILE}`,
-    `chmod 0600 ${VITESS_AUTH_FILE}`,
+    `install -o ${VITESS_USER} -g ${VITESS_USER} -m 0600 "$VTESS_AUTH_TMP" ${VITESS_AUTH_FILE}`,
+    'rm -f "$VTESS_AUTH_TMP"',
   ]
 }
 
@@ -670,6 +673,14 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
   // debugging a failed provision needs.
   for (const [name] of units) out.push(`systemctl enable --now ${name}.service`)
 
-  out.push(...buildVitessBootstrapScript(config), ...buildVitessHealthCheck(config))
+  out.push(
+    // systemctl enable --now does not restart an already-running vtgate. A
+    // changed static-auth file is only read at process start, so rotate it
+    // before the health gate while avoiding needless router restarts when the
+    // desired credentials are unchanged.
+    'if [ "$VTESS_VTGATE_AUTH_CHANGED" = 1 ]; then systemctl restart vitess-vtgate.service; fi',
+    ...buildVitessBootstrapScript(config),
+    ...buildVitessHealthCheck(config),
+  )
   return out
 }
