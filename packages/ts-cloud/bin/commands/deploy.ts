@@ -20,7 +20,7 @@ import { runConfigHook } from '../../src/deploy/hooks'
 import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
 import { resolveSiteKind, shipsARelease, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
-import { createDnsProvider } from '../../src/dns'
+import { createDnsProvider, syncMailDns } from '../../src/dns'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
@@ -2319,6 +2319,64 @@ async function reconcileServerDns(
       }
     } catch (error) {
       cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the A record manually.`)
+    }
+  }
+
+  await reconcileMailDns(config, dnsProvider, domains, appPublicIp, configuredZone)
+}
+
+/**
+ * Publish MX, SPF, DKIM and DMARC for every domain this deployment sends mail
+ * from.
+ *
+ * Runs inside the same DNS pass as the A records because it needs the same
+ * provider, the same zone resolution and the same public IP, and because mail
+ * DNS that is provisioned separately is mail DNS that drifts.
+ *
+ * Every failure is a warning rather than a throw: a zone that rejects one
+ * record should not roll back an otherwise healthy release, and the operator
+ * needs to be told which record to add by hand.
+ */
+async function reconcileMailDns(
+  config: any,
+  dnsProvider: ReturnType<typeof createDnsProvider>,
+  siteDomains: Set<string>,
+  appPublicIp: string,
+  configuredZone: string | undefined,
+): Promise<void> {
+  const mail = config.infrastructure?.mail
+  if (!mail || mail.enabled === false || !mail.host) return
+
+  // Default to the site domains: a deployment that sends mail almost always
+  // sends as the site it serves.
+  const domains: string[] = mail.domains?.length ? mail.domains : [...siteDomains]
+  if (domains.length === 0) return
+
+  cli.step(`Reconciling mail DNS: ${domains.length} domain(s) → ${mail.host}...`)
+
+  for (const domain of domains) {
+    const zone =
+      configuredZone && domain.endsWith(configuredZone) ? configuredZone : domain.split('.').slice(-2).join('.')
+
+    const result = await syncMailDns(dnsProvider, {
+      domain: zone,
+      mailHost: mail.host,
+      ip: mail.ip || appPublicIp,
+      spfIncludes: mail.spfIncludes,
+      dkimSelector: mail.dkimSelector,
+      dkimPublicKey: mail.dkimPublicKeys?.[zone] ?? mail.dkimPublicKeys?.[domain],
+      dmarcPolicy: mail.dmarcPolicy,
+      dmarcReportTo: mail.dmarcReportTo,
+    })
+
+    for (const entry of result.applied) {
+      const label = `${entry.name === '@' ? zone : `${entry.name}.${zone}`} ${entry.type}`
+      if (entry.ok) cli.success(`  ✓ ${label}`)
+      else cli.warn(`  ⚠ ${label}: ${entry.message || 'failed'} — add this record manually.`)
+    }
+
+    if (!mail.dkimPublicKeys?.[zone] && !mail.dkimPublicKeys?.[domain]) {
+      cli.info(`  ℹ ${zone}: no DKIM key configured — mail will send unsigned. Add infrastructure.mail.dkimPublicKeys['${zone}'].`)
     }
   }
 }
