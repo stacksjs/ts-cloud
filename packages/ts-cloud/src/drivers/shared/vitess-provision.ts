@@ -530,16 +530,25 @@ export function buildVitessBootstrapScript(config: VitessServiceConfig): string[
         // preconditions are met. It is idempotent, and succeeding is the only
         // evidence that everything underneath it is actually up.
         `for i in $(seq 1 90); do`,
-        `  if ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"primary_alias": *"[^"]'; then break; fi`,
+        // Vitess 24 represents primary_alias as an object, not a string. The
+        // serving flag is also the stronger readiness contract: an alias can
+        // exist while the primary is still transitioning to SERVING.
+        `  if ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"is_primary_serving": *true'; then break; fi`,
         `  ${client} PlannedReparentShard ${sh(target)} --new-primary ${sh(alias)} >/dev/null 2>&1 && break`,
         `  ${client} InitShardPrimary --force ${sh(target)} ${sh(alias)} >/dev/null 2>&1 && break`,
         '  sleep 2',
         'done',
-        `if ! ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"primary_alias": *"[^"]'; then`,
+        `if ! ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"is_primary_serving": *true'; then`,
         `  echo "no primary could be elected for ${target}" >&2; exit 1`,
         'fi',
       )
     }
+
+    // Primary election updates the shard record, but does not create the
+    // cell-local SrvKeyspace consumed by vtgate. Rebuilding here makes a
+    // freshly provisioned keyspace routable and safely refreshes it when the
+    // same desired state is applied again.
+    out.push(`${client} RebuildKeyspaceGraph ${sh(keyspace.name)} >/dev/null`)
   }
 
   return out

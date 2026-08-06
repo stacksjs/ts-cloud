@@ -271,7 +271,15 @@ describe('primary election', () => {
 
   it('does not reparent a shard that already has a primary', () => {
     // A needless failover on every re-provision would be worse than useless.
-    expect(script).toContain('primary_alias')
+    expect(script).toContain('is_primary_serving')
+    expect(script).not.toContain('primary_alias')
+  })
+
+  it('publishes each keyspace to the serving graph', () => {
+    // Primary election does not create SrvKeyspace. Without this vtgate logs
+    // that the topology node is missing and cannot route the new keyspace.
+    expect(script).toContain("RebuildKeyspaceGraph 'commerce'")
+    expect(script).toContain("RebuildKeyspaceGraph 'lookup'")
   })
 })
 
