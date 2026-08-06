@@ -221,8 +221,12 @@ describe('cluster authentication', () => {
     // Static auth is loaded at process start. `enable --now` leaves a running
     // process untouched, which made credential rotations fail the health gate.
     const script = buildVitessProvisionScript({ ...CLUSTER, username: 'app', password: 'production-secret' }).join('\n')
-    expect(script).toContain('cmp -s "$VTESS_AUTH_TMP" /etc/vitess/auth.json || VTESS_VTGATE_AUTH_CHANGED=1')
-    expect(script).toContain('if [ "$VTESS_VTGATE_AUTH_CHANGED" = 1 ]; then systemctl restart vitess-vtgate.service; fi')
+    expect(script).toContain('VTESS_VTGATE_AUTH_SHA="$(sha256sum "$VTESS_AUTH_TMP"')
+    expect(script).toContain('/var/lib/vitess/vtgate-auth.sha256')
+    expect(script).toContain('if [ "$VTESS_VTGATE_AUTH_CHANGED" = 1 ]; then systemctl restart vitess-vtgate.service;')
+    const restart = script.split('\n').find(line => line.includes('systemctl restart vitess-vtgate.service'))
+    expect(restart).toContain('printf \'%s')
+    expect(restart).toContain('"$VTESS_VTGATE_AUTH_SHA" > /var/lib/vitess/vtgate-auth.sha256')
   })
 })
 

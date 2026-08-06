@@ -415,6 +415,8 @@ export function buildMysqlctldUnit(config: VitessServiceConfig): string {
 
 /** Where the generated vtgate credentials live. */
 export const VITESS_AUTH_FILE = '/etc/vitess/auth.json'
+/** Last credential document successfully loaded by vtgate. */
+export const VITESS_AUTH_APPLIED_FILE = '/var/lib/vitess/vtgate-auth.sha256'
 
 /**
  * vtgate's static credentials file.
@@ -439,8 +441,9 @@ export function buildVitessAuthFileScript(config: VitessServiceConfig): string[]
     `cat > "$VTESS_AUTH_TMP" <<'TS_CLOUD_VITESS_AUTH_EOF'`,
     auth,
     'TS_CLOUD_VITESS_AUTH_EOF',
-    `VTESS_VTGATE_AUTH_CHANGED=0`,
-    `cmp -s "$VTESS_AUTH_TMP" ${VITESS_AUTH_FILE} || VTESS_VTGATE_AUTH_CHANGED=1`,
+    `VTESS_VTGATE_AUTH_SHA="$(sha256sum "$VTESS_AUTH_TMP" | awk '{print $1}')"`,
+    `VTESS_VTGATE_AUTH_CHANGED=1`,
+    `if [ -f ${VITESS_AUTH_APPLIED_FILE} ] && [ "$(cat ${VITESS_AUTH_APPLIED_FILE})" = "$VTESS_VTGATE_AUTH_SHA" ]; then VTESS_VTGATE_AUTH_CHANGED=0; fi`,
     // Contains a password: readable by the daemon, nobody else.
     `install -o ${VITESS_USER} -g ${VITESS_USER} -m 0600 "$VTESS_AUTH_TMP" ${VITESS_AUTH_FILE}`,
     'rm -f "$VTESS_AUTH_TMP"',
@@ -678,7 +681,7 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
     // changed static-auth file is only read at process start, so rotate it
     // before the health gate while avoiding needless router restarts when the
     // desired credentials are unchanged.
-    'if [ "$VTESS_VTGATE_AUTH_CHANGED" = 1 ]; then systemctl restart vitess-vtgate.service; fi',
+    `if [ "$VTESS_VTGATE_AUTH_CHANGED" = 1 ]; then systemctl restart vitess-vtgate.service; printf '%s\\n' "$VTESS_VTGATE_AUTH_SHA" > ${VITESS_AUTH_APPLIED_FILE}; chown ${VITESS_USER}:${VITESS_USER} ${VITESS_AUTH_APPLIED_FILE}; chmod 0600 ${VITESS_AUTH_APPLIED_FILE}; fi`,
     ...buildVitessBootstrapScript(config),
     ...buildVitessHealthCheck(config),
   )
