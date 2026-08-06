@@ -1,7 +1,7 @@
 {
   "name": "ts-cloud",
   "type": "module",
-  "version": "0.7.104",
+  "version": "0.7.105",
   "private": true,
   "description": "A ",
   "author": "Chris Breuer <chris@stacksjs.com>",

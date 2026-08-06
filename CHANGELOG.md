@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.104...v0.7.105)
+
+## 🧹 Chores
+
+- release v0.7.105 ([d7c021a](https://github.com/stacksjs/ts-cloud/commit/d7c021a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📄 Miscellaneous
+
+- Revert "feat(dns): provision mail DNS on deploy" ([a3a7399](https://github.com/stacksjs/ts-cloud/commit/a3a7399)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.103...v0.7.104)
 
 ## 🚀 Features
