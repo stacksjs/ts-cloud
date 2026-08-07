@@ -29,6 +29,23 @@ export {
 } from './serverless-app'
 export { buildAndPushServerlessImage, type BuildImageOptions, type BuiltImage } from './serverless-image'
 export { type DashboardData, resolveDashboardData } from './dashboard-data'
+// The infrastructure diagram's data model. Exported because the dashboard UI
+// package renders it and needs the same types the resolvers produce.
+export {
+  buildServerlessTopology,
+  buildServerTopology,
+  buildTopology,
+  type TopologyContext,
+  type TopologyFact,
+  type TopologyFlow,
+  type TopologyGroup,
+  type TopologyKind,
+  type TopologyLayer,
+  type TopologyLink,
+  type TopologyModel,
+  type TopologyNode,
+  type TopologyStatus,
+} from './dashboard-topology'
 // Object-storage egress. Exported because the interesting half of this contract
 // lives outside ts-cloud: applications implement the EgressReport shape (see
 // @ts-cloud/core) and this is what reads it, so both sides need to be able to

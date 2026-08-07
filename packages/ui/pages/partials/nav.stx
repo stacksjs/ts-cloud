@@ -95,6 +95,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
       @if (canView('data:read') || canView('fleet:read') || canView('security:read') || canView('runtime:terminal'))
         <section class="nav-group">
           <h2>Infrastructure</h2>
+          @if (canView('fleet:read'))<a class="{{ isActive('topology') ? 'active' : '' }}" href="{{ envHref('/infrastructure/topology') }}">Infrastructure map</a>@endif
           @if (canView('data:read'))<a class="{{ isActive('data-services') ? 'active' : '' }}" href="{{ envHref('/data/services') }}">Data services</a>@endif
           @if (canView('data:read'))<a class="{{ isActive('volumes') ? 'active' : '' }}" href="{{ envHref('/data/volumes') }}">Persistent volumes</a>@endif
           @if (canView('fleet:read'))<a href="{{ envHref('/server/firewall') }}">Network & firewall</a><a href="{{ envHref('/server/ssh-keys') }}">SSH keys</a>@endif
@@ -125,6 +126,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
       @if (canView('secrets:read') || canView('fleet:read') || canView('runtime:read'))
         <section class="nav-group">
           <h2>Settings</h2>
+          @if (canView('fleet:read'))<a class="{{ isActive('topology') ? 'active' : '' }}" href="{{ envHref('/infrastructure/topology') }}">Infrastructure map</a>@endif
           @if (canView('config:read'))<a class="{{ isActive('configuration') ? 'active' : '' }}" href="{{ envHref('/operations/configuration') }}">Environment &amp; secrets</a>@endif
           @if (canView('fleet:read'))<a href="{{ envHref('/serverless/firewall') }}">Network</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/serverless/alarms') }}">Alerts</a>@endif

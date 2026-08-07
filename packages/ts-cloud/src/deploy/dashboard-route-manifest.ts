@@ -200,6 +200,15 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
     adminOnly: true,
   },
   {
+    id: 'infrastructure.topology',
+    path: '/infrastructure/topology',
+    label: 'Infrastructure map',
+    group: 'infrastructure',
+    modes: ['server', 'serverless'],
+    adminOnly: true,
+    legacyPaths: ['/topology'],
+  },
+  {
     id: 'data.services',
     path: '/data/services',
     label: 'Data services',

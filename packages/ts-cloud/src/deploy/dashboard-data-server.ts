@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCloudDriver } from '../drivers'
 import { resolveHetznerLocation } from '../drivers/hetzner/config'
+import { buildServerTopology } from './dashboard-topology'
 import { resolveSiteKind, siteInstallBase } from './site-target'
 import { describeSshKeys } from './ssh-config-editor'
 
@@ -1009,6 +1010,7 @@ export function resolveConfigOnlyServerDashboardData(
   }
   out.diagnostics = diagnosticChecks(config, out)
   out.activity = activityFeed(out)
+  out.topology = buildServerTopology(out, { project: config.project.name, environment })
   return out
 }
 
@@ -1214,5 +1216,8 @@ export async function resolveServerDashboardData(
   out._serverReachable = instanceCount > 0 && !!parsed
   out.diagnostics = diagnosticChecks(config, out)
   out.activity = activityFeed(out)
+  // Rebuilt from the probed data — the config-only topology set earlier knows
+  // nothing about which units are actually running.
+  out.topology = buildServerTopology(out, { project: config.project.name, environment })
   return out
 }

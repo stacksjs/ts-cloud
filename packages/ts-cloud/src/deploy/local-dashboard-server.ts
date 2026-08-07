@@ -936,6 +936,9 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/actions': 'runtime:restart',
   '/server/database': 'data:read',
   '/server/firewall': 'fleet:read',
+  // The map draws the whole stack — proxy, data services, firewall posture — so
+  // it is gated like the rest of the infrastructure view, not like a site page.
+  '/infrastructure/topology': 'fleet:read',
   '/server/security': 'security:read',
   '/security': 'security:read',
   '/integrations': 'sources:read',

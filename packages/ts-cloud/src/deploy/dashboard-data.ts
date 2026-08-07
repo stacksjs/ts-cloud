@@ -18,6 +18,7 @@ import { S3Client } from '../aws/s3'
 import { SQSClient } from '../aws/sqs'
 import { WAFv2Client } from '../aws/wafv2'
 import { runRemoteCommand, serverlessInfo } from './serverless-app'
+import { buildServerlessTopology } from './dashboard-topology'
 
 /** A loosely-typed bag — the pages read named slices, missing ones fall back. */
 export type DashboardData = Record<string, any>
@@ -648,6 +649,10 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
       /* schedule:list optional (needs the tscloud bridge / a php app) */
     }
   }
+
+  // Derived last, so the diagram is assembled from whatever the gathers above
+  // actually managed to read rather than from a second view of the config.
+  out.topology = buildServerlessTopology(out, { project: config.project.name, environment })
 
   return out
 }
