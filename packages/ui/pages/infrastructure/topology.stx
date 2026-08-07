@@ -72,6 +72,7 @@ const stageHeight = 1200
 const stageViewBox = `0 0 ${stageWidth} ${stageHeight}`
 </script>
 <script client>
+import { requestJson } from '../../functions/requestJson.ts'
 import { usePolling } from '../../functions/usePolling.ts'
 import { highlightFor, matchTopology, topologyGeometry } from '../../src/topology.ts'
 
@@ -92,9 +93,9 @@ const panY = state(0)
 let dragging = null
 
 async function load() {
-  const response = await fetch('/api/dashboard-data')
-  if (!response.ok) throw new Error('The dashboard API did not answer.')
-  const body = await response.json()
+  // requestJson raises a DashboardRequestError carrying the HTTP status, which
+  // is how usePolling can tell "exported without an API" from "the API broke".
+  const body = await requestJson('/api/dashboard-data')
   if (!body?.topology?.nodes?.length) throw new Error('This deployment reported no topology to draw.')
   // Re-laying out only when the shape changed keeps positions stable across
   // polls — a diagram that reshuffles every 30s is unreadable.
@@ -120,7 +121,19 @@ function restatus(geometry, next) {
     }),
   }
 }
-const { pollingState, pollingError, lastUpdatedAt, refresh } = usePolling(load, 30000)
+// The map is a read-only view of a payload that is fully baked in at build
+// time, so a deploy without a control plane costs it nothing but freshness.
+const { pollingState, pollingError, lastUpdatedAt, isSnapshot, refresh } = usePolling(load, 30000, {
+  snapshotWhenApiMissing: true,
+})
+// When there is no API to poll, the honest timestamp is when the payload was
+// resolved, not when the browser last asked.
+const builtAtLabel = derived(() => {
+  const at = model().generatedAt
+  if (!at) return 'build time unknown'
+  const when = new Date(at)
+  return Number.isNaN(when.getTime()) ? 'build time unknown' : `built ${when.toLocaleString()}`
+})
 
 const visible = derived(() => matchTopology(geo().nodes, query()))
 const focus = derived(() => highlightFor(geo(), hoveredId() || selectedId() || null))
@@ -271,13 +284,14 @@ function clear() { selectedId.set(''); hoveredId.set(''); query.set('') }
       <div class="header-actions">
         <span class="pill warn" @show="isSample()">sample topology</span>
         <span class="pill" :class="pollingState() === 'live' ? 'ok' : 'warn'">{{ pollingState() }}</span>
-        <small>{{ lastUpdatedAt() ? lastUpdatedAt().toLocaleTimeString() : 'connecting' }}</small>
-        <button class="btn ghost sm" type="button" @click="refresh()">Refresh</button>
+        <small>{{ isSnapshot() ? builtAtLabel() : lastUpdatedAt() ? lastUpdatedAt().toLocaleTimeString() : 'connecting' }}</small>
+        <button class="btn ghost sm" type="button" @show="!isSnapshot()" @click="refresh()">Refresh</button>
       </div>
     </header>
 
     <p class="topo-notice bad" role="alert" @show="!!pollingError()">{{ pollingError() }}</p>
     <p class="topo-notice" role="status" @show="isSample() && !pollingError()">Showing a representative topology until this deployment reports one.</p>
+    <p class="topo-notice" role="status" @show="isSnapshot() && !isSample()">This cockpit was exported without its control plane, so the map cannot refresh. It shows the infrastructure as it stood when the dashboard was built.</p>
     <p class="topo-notice" :for="note in notes">{{ note }}</p>
 
     <section class="topo-summary" aria-label="Topology summary">
