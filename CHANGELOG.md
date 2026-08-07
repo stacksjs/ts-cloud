@@ -1,3 +1,24 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.107...v0.7.108)
+
+## 🚀 Features
+
+- **dashboard**: tell a snapshot deploy apart from a broken one ([d719522](https://github.com/stacksjs/ts-cloud/commit/d719522)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: draw the deployed infrastructure as a diagram ([d6f3472](https://github.com/stacksjs/ts-cloud/commit/d6f3472)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **build**: strip the `// @bun` pragma, which makes Bun read bundles as latin-1 ([1fb3f34](https://github.com/stacksjs/ts-cloud/commit/1fb3f34)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: make the cockpit survive being shipped to a real box ([17e1899](https://github.com/stacksjs/ts-cloud/commit/17e1899)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: keep the infrastructure map consistent with the payload it ships ([4bdb498](https://github.com/stacksjs/ts-cloud/commit/4bdb498)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.108 ([ec98cb2](https://github.com/stacksjs/ts-cloud/commit/ec98cb2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.106...v0.7.107)
 
 ## 🚀 Features
