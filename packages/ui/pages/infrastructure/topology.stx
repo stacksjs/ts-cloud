@@ -250,6 +250,12 @@ function zoomBy(factor) {
   })
 }
 function fit() { zoom.set(1); panX.set(0); panY.set(0) }
+/** Carry the environment across, the way every nav link does. */
+function manageHref(node) {
+  if (!node?.href) return '#'
+  const env = new URLSearchParams(location.search).get('env')
+  return env ? `${node.href}${node.href.includes('?') ? '&' : '?'}env=${encodeURIComponent(env)}` : node.href
+}
 function clear() { selectedId.set(''); hoveredId.set(''); query.set('') }
 </script>
 <!DOCTYPE html>
@@ -379,7 +385,7 @@ function clear() { selectedId.set(''); hoveredId.set(''); query.set('') }
           <span>{{ link.arrow }} {{ link.other }}</span>
           <small>{{ link.note }}</small>
         </div>
-        <a class="btn sm" :href="selected()?.href || '#'" @show="!!selected()?.href">Manage this resource</a>
+        <a class="btn sm" :href="manageHref(selected())" @show="!!selected()?.href">Manage this resource</a>
       </aside>
     </div>
 

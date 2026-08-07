@@ -48,4 +48,44 @@ describe('dashboard data refresh cadence', () => {
     expect(refreshed.sitesDetail).toEqual(previous.sitesDetail)
     expect(refreshed.siteHealth).toEqual(previous.siteHealth)
   })
+
+  it('rebuilds the topology from the sites that ship, not the ones it discarded', () => {
+    // A lightweight refresh discovers no sites, so the topology it arrives with
+    // describes an emptier box than the payload actually carries.
+    const previous = {
+      mode: 'server',
+      sites: [{ name: 'main', route: 'example.com', status: 'live', runtime: 'bun' }],
+      sitesDetail: [{ name: 'main', route: 'example.com', status: 'live' }],
+      siteHealth: [{ name: 'main', status: 'live' }],
+    }
+    const refreshed = preserveDashboardSiteSnapshot(previous, {
+      mode: 'server',
+      environment: 'production',
+      project: { name: 'Acme' },
+      sites: [],
+      sitesDetail: [],
+      siteHealth: [],
+      services: [{ name: 'rpx-gateway', status: 'running' }],
+      topology: { nodes: [], links: [], notes: [], stale: true },
+    })
+
+    const siteNodes = refreshed.topology.nodes.filter((node: any) => node.kind === 'site')
+    expect(siteNodes.map((node: any) => node.label)).toEqual(['main'])
+    expect(refreshed.topology.stale).toBeUndefined()
+    expect(refreshed.topology.environment).toBe('production')
+    expect(refreshed.topology.project).toBe('Acme')
+    // Every restored site is reachable from the proxy, so the map matches the
+    // site list rendered beside it.
+    expect(refreshed.topology.links).toContainEqual(
+      expect.objectContaining({ source: 'proxy', target: 'site:main' }),
+    )
+  })
+
+  it('leaves a serverless payload topology alone', () => {
+    const refreshed = preserveDashboardSiteSnapshot(
+      { sites: [{ name: 'main' }] },
+      { mode: 'serverless', topology: { nodes: [{ id: 'fn:http' }], links: [], notes: [] } },
+    )
+    expect(refreshed.topology.nodes).toEqual([{ id: 'fn:http' }])
+  })
 })

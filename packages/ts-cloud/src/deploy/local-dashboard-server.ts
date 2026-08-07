@@ -65,6 +65,7 @@ import { renderLoginPage, renderPasswordRecoveryPage } from './dashboard-login-p
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
 import { resolveLegacyDashboardRoute } from './dashboard-route-manifest'
 import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
+import { buildServerTopology } from './dashboard-topology'
 import { clearSessionCookie, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
 import { LoginThrottle } from './dashboard-throttle'
@@ -635,12 +636,25 @@ export function preserveDashboardSiteSnapshot(
   next: Record<string, any>,
 ): Record<string, any> {
   if (!previous) return next
-  return {
+  const merged: Record<string, any> = {
     ...next,
     ...(Array.isArray(previous.sites) ? { sites: previous.sites } : {}),
     ...(Array.isArray(previous.sitesDetail) ? { sitesDetail: previous.sitesDetail } : {}),
     ...(Array.isArray(previous.siteHealth) ? { siteHealth: previous.siteHealth } : {}),
   }
+  // The topology is a *derivation* of this payload, so it has to be derived from
+  // the payload that ships. A lightweight refresh skips site discovery, so the
+  // topology `next` carries was built from config-derived sites with no live
+  // status — keeping it would make the infrastructure map disagree with the
+  // very site list sitting next to it, and flicker between live and degraded on
+  // alternating polls.
+  if (merged.mode !== 'serverless' && Array.isArray(merged.sites)) {
+    merged.topology = buildServerTopology(merged, {
+      project: merged.project?.name,
+      environment: merged.environment,
+    })
+  }
+  return merged
 }
 
 function resolveUiSourceDir(cwd: string): string | null {
