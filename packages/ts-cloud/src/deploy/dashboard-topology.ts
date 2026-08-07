@@ -133,9 +133,15 @@ const DATA_SERVICE_KINDS: Array<{ match: RegExp, kind: TopologyKind, label: stri
 
 const PROXY_SERVICES = /^(?:rpx-gateway|nginx|caddy|traefik|haproxy)$/
 
+const EM_DASH = String.fromCharCode(0x2014)
+
 function text(value: unknown, fallback = ''): string {
   const out = value == null ? '' : String(value).trim()
-  return out && out !== '-' && out !== '—' ? out : fallback
+  // The em dash is written as an escape, not a literal: the dashboard's own
+  // "unknown value" placeholder is an em dash, and a literal one here compares
+  // unequal to it wherever the toolchain mis-encodes the bundle, letting
+  // placeholders through as if they were real values.
+  return out && out !== '-' && out !== EM_DASH ? out : fallback
 }
 
 function count(value: unknown): number {
@@ -372,7 +378,7 @@ export function buildServerTopology(data: Record<string, any>, context: Topology
       pushLink(links, { source: consumer, target: `data:${entry.name}`, flow: 'data', label: 'localhost' }, ids)
   }
   if (dataServices.length && consumers.length)
-    notes.push('Data-service edges show co-location on the box — every process on it can reach localhost — not a declared per-site binding.')
+    notes.push('Data-service edges show co-location on the box: every process on it can reach localhost. They are not a declared per-site binding.')
   for (const entry of dataServices) {
     pushLink(links, { source: `data:${entry.name}`, target: 'backup', flow: 'backup', label: 'snapshot' }, ids)
   }
@@ -392,7 +398,7 @@ export function buildServerTopology(data: Record<string, any>, context: Topology
       {
         id: box,
         label: text(server.name, 'App server'),
-        sub: [text(server.provider), text(server.region), text(server.ip)].filter(Boolean).join(' · '),
+        sub: [text(server.provider), text(server.region), text(server.ip)].filter(Boolean).join(' / '),
       },
     ],
     nodes,

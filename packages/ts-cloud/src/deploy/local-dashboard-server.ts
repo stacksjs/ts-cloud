@@ -65,6 +65,7 @@ import { renderLoginPage, renderPasswordRecoveryPage } from './dashboard-login-p
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
 import { resolveLegacyDashboardRoute } from './dashboard-route-manifest'
 import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
+import { encodeDashboardPayload } from './dashboard-payload'
 import { buildServerTopology } from './dashboard-topology'
 import { clearSessionCookie, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
@@ -701,7 +702,7 @@ async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<stri
       stderr: 'pipe',
       env: {
         ...process.env,
-        TSCLOUD_DASHBOARD_DATA: JSON.stringify(data),
+        TSCLOUD_DASHBOARD_DATA: encodeDashboardPayload(data),
       },
     })
     const [stdout, stderr, exitCode] = await Promise.all([

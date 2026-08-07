@@ -1424,6 +1424,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           }
         }
         cli.step('Building dashboard')
+        const { encodeDashboardPayload } = await import('../../src/deploy/dashboard-payload')
         const { execSync } = await import('node:child_process')
         const { rmSync } = await import('node:fs')
         // stx caches built pages by source-content hash and is blind to env, so a
@@ -1436,7 +1437,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         execSync('bun run build', {
           cwd: uiDir,
           stdio: 'inherit',
-          env: { ...process.env, ...(data ? { TSCLOUD_DASHBOARD_DATA: JSON.stringify(data) } : {}) },
+          env: { ...process.env, ...(data ? { TSCLOUD_DASHBOARD_DATA: encodeDashboardPayload(data) } : {}) },
         })
         cli.success(`Dashboard built → ${uiDir}/dist${data ? ' (live data)' : ' (sample data)'}`)
       } catch (error: any) {

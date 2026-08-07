@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const __dirname = import.meta.dirname
 
@@ -157,13 +157,22 @@ async function bundleManagementUi(): Promise<void> {
 }
 
 /**
- * Ship the UI templates + a self-contained `charts.ts` (with `@ts-charts/charts`
- * inlined) at `dist/ui-src/`. The local dashboard server rebuilds this with the
- * project's live data at serve time using the host's stx toolchain, so the
- * cockpit shows REAL data everywhere — not the prebuilt sample-data fallback.
+ * Ship everything the pages import at `dist/ui-src/`: the templates, the
+ * `functions/` composables verbatim, and each `src/` module vendored
+ * dependency-free (its npm imports inlined). The local dashboard server
+ * rebuilds this with the project's live data at serve time using the host's stx
+ * toolchain, so the cockpit shows REAL data everywhere — not the prebuilt
+ * sample-data fallback.
+ *
+ * The completeness check at the end is the important part. stx's bundler
+ * reports a missing import on stderr but still exits 0, so an incomplete
+ * bundle does not fail the box's rebuild — it produces pages whose client
+ * scripts are silently truncated, which is worse than falling back to the
+ * prebuilt UI because the fallback never fires. Publishing a bundle that
+ * cannot rebuild itself must fail here, loudly, instead.
  */
 async function bundleManagementUiSource(): Promise<void> {
-  const { existsSync, cpSync, rmSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { existsSync, cpSync, rmSync, mkdirSync, readFileSync, readdirSync, writeFileSync } = await import('node:fs')
   const uiDir = join(__dirname, '..', 'ui')
   if (!existsSync(join(uiDir, 'pages'))) {
     console.warn('UI source bundle: packages/ui/pages not found — skipping.')
@@ -177,27 +186,77 @@ async function bundleManagementUiSource(): Promise<void> {
   // Ship the page templates (and their partials) verbatim.
   cpSync(join(uiDir, 'pages'), join(dest, 'pages'), { recursive: true })
 
-  // Vendor src/charts.ts into a dependency-free module so the only thing needed
-  // to rebuild the UI at serve time is stx itself (no @ts-charts/charts install).
-  const charts = await Bun.build({
-    entrypoints: [join(uiDir, 'src', 'charts.ts')],
-    target: 'node',
-    format: 'esm',
-    minify: false,
-  })
-  if (!charts.success || charts.outputs.length === 0) {
-    console.warn('UI source bundle: charts bundling failed — skipping ui-src.')
-    rmSync(dest, { recursive: true, force: true })
-    return
+  // The composables are plain TypeScript with no npm imports, so they ship as
+  // they are. Tests stay behind — they would drag `bun:test` into the bundle.
+  mkdirSync(join(dest, 'functions'), { recursive: true })
+  for (const entry of readdirSync(join(uiDir, 'functions'))) {
+    if (!entry.endsWith('.ts') || entry.includes('.test.')) continue
+    cpSync(join(uiDir, 'functions', entry), join(dest, 'functions', entry))
   }
-  writeFileSync(join(dest, 'src', 'charts.ts'), await charts.outputs[0].text())
+
+  // Vendor each src/ module into a dependency-free one, so the only thing the
+  // box needs to rebuild the UI is stx itself (no @ts-charts install).
+  for (const entry of readdirSync(join(uiDir, 'src'))) {
+    if (!entry.endsWith('.ts') || entry.includes('.test.')) continue
+    const bundled = await Bun.build({
+      entrypoints: [join(uiDir, 'src', entry)],
+      target: 'node',
+      format: 'esm',
+      minify: false,
+    })
+    if (!bundled.success || bundled.outputs.length === 0) {
+      console.warn(`UI source bundle: bundling src/${entry} failed — skipping ui-src.`)
+      rmSync(dest, { recursive: true, force: true })
+      return
+    }
+    writeFileSync(join(dest, 'src', entry), await bundled.outputs[0].text())
+  }
 
   // Minimal package.json so resolveUiSourceDir detects the bundle and stx builds it.
   writeFileSync(
     join(dest, 'package.json'),
     `${JSON.stringify({ name: '@ts-cloud/ui', type: 'module', private: true }, null, 2)}\n`,
   )
+
+  const missing = missingUiSourceImports(dest, readdirSync, readFileSync, existsSync)
+  if (missing.length) {
+    rmSync(dest, { recursive: true, force: true })
+    throw new Error(
+      `UI source bundle is incomplete — the box could not rebuild the cockpit from it. Missing:\n  ${missing.join('\n  ')}`,
+    )
+  }
   console.warn(`UI source bundle: shipped live-rebuildable source → ${dest}`)
+}
+
+/**
+ * Every `../../…` import the shipped pages make, that the bundle does not
+ * actually contain. Keeps a new page's helper from being left behind.
+ */
+function missingUiSourceImports(
+  dest: string,
+  readdirSync: typeof import('node:fs').readdirSync,
+  readFileSync: typeof import('node:fs').readFileSync,
+  existsSync: typeof import('node:fs').existsSync,
+): string[] {
+  const pages: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.endsWith('.stx')) pages.push(path)
+    }
+  }
+  walk(join(dest, 'pages'))
+
+  const missing = new Set<string>()
+  for (const page of pages) {
+    const source = readFileSync(page, 'utf8')
+    for (const match of source.matchAll(/from\s+'(\.\.\/[^']+)'/g)) {
+      const target = join(dirname(page), match[1])
+      if (!existsSync(target)) missing.add(`${match[1]} (imported by ${page.slice(dest.length + 1)})`)
+    }
+  }
+  return [...missing].sort()
 }
 
 build()
