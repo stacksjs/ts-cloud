@@ -120,6 +120,10 @@ async function build() {
     process.exit(1)
   }
 
+  // Must run before anything executes the bundles: they are unusable for any
+  // non-ASCII text until the pragma is gone.
+  await stripBunPragma()
+
   // Bundle the management dashboard (the @ts-cloud/ui stx app) into the package so
   // `cloud deploy` can auto-ship it from any consumer project (no local packages/ui).
   await bundleManagementUi()
@@ -129,6 +133,59 @@ async function build() {
   // cockpit with LIVE data in any consumer project that has the stx toolchain
   // (Stacks projects do) — not just the prebuilt sample-data HTML.
   await bundleManagementUiSource()
+}
+
+/**
+ * Remove the `// @bun` pragma Bun.build writes into shebang entry bundles.
+ *
+ * The pragma tells the Bun runtime "this file is already transpiled", which
+ * makes it skip transpilation and load the source down a fast path that decodes
+ * it as latin-1 rather than UTF-8. Every non-ASCII character in every string
+ * literal is then corrupted into its individual UTF-8 bytes: `—` becomes
+ * `â€"`, `·` becomes `Â·`, and the CLI's own `✓` becomes `â`.
+ *
+ * It is not cosmetic and not limited to our own text — it corrupts any customer
+ * data that flows through the CLI or the dashboard payload, so a project or
+ * domain named `Käufer` renders wrong on the box. The pragma alone is the
+ * trigger — the shebang is incidental; it just happens that only our `bin/*.js`
+ * entries get the pragma emitted, which is why the same string is correct when
+ * imported from `dist/index.js` and wrong when the CLI serves it.
+ *
+ * Reported upstream as https://github.com/oven-sh/bun/issues/37161 — drop this
+ * step once that is fixed in the Bun version we build with.
+ *
+ * Dropping the line costs a little startup time and buys back correctness.
+ * Verified by diffing byte-identical bundles that differ only in this line.
+ */
+async function stripBunPragma(): Promise<void> {
+  const { readdirSync, readFileSync, writeFileSync } = await import('node:fs')
+  const binDir = join(__dirname, 'dist', 'bin')
+  const stripped: string[] = []
+  for (const entry of readdirSync(binDir)) {
+    if (!entry.endsWith('.js')) continue
+    const file = join(binDir, entry)
+    const source = readFileSync(file, 'utf8')
+    // Only the pragma line, whether or not a shebang precedes it.
+    const next = source.replace(/^(#![^\n]*\n)?\/\/ @bun\n/, (_match, shebang) => shebang ?? '')
+    if (next !== source) {
+      writeFileSync(file, next)
+      stripped.push(entry)
+    }
+  }
+  // Assert rather than trust: shipping a bundle that still carries the pragma
+  // means every accented character the CLI touches is wrong on the box, and
+  // nothing downstream would catch it.
+  const remaining = readdirSync(binDir).filter(
+    (entry) => entry.endsWith('.js') && /^(?:#![^\n]*\n)?\/\/ @bun\n/.test(readFileSync(join(binDir, entry), 'utf8')),
+  )
+  if (remaining.length)
+    throw new Error(`Bun pragma still present in ${remaining.join(', ')} — non-ASCII text would be corrupted at runtime.`)
+
+  console.warn(
+    stripped.length
+      ? `Bun pragma: stripped '// @bun' from ${stripped.join(', ')} (it makes Bun read the bundle as latin-1).`
+      : "Bun pragma: none found — check whether Bun still emits '// @bun' for shebang bundles.",
+  )
 }
 
 async function bundleManagementUi(): Promise<void> {
