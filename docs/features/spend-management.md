@@ -303,7 +303,10 @@ Only complete hours are judged — a partial hour always reads low.
 ### Per-route detection
 
 Pass `routes: true` and detection also runs per route template, bounded to the
-busiest few (at least 500 requests in the window). A long tail of one-hit routes
+busiest few (at least 500 requests in the window). Only route-aware signals
+take part: usage rollups are priced per meter, not per path, so narrowing one
+to a route would produce the project-wide series recorded under that route's
+name. A long tail of one-hit routes
 produces noise rather than insight. Route anomalies are recorded as
 `http.error_rate@/checkout`, so one route's spike cannot dedupe against
 another's in the same hour.

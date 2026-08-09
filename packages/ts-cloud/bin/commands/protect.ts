@@ -141,7 +141,7 @@ export function registerProtectCommands(app: CLI): void {
           ? value.controls.removeIpRule('allow', cidr)
           : value.controls.addIpRule('allow', cidr)
         output.success(`Allowlist now has ${rules.allow.length} entry(s).`)
-        output.info('Run `cloud protect:apply` to push this to the boxes.')
+        output.info('It reaches the boxes on the next deploy. `cloud protect:apply` shows exactly what will land.')
       } catch (error) {
         fail(error)
       }
@@ -158,7 +158,7 @@ export function registerProtectCommands(app: CLI): void {
           ? value.controls.removeIpRule('block', cidr)
           : value.controls.addIpRule('block', cidr)
         output.success(`Blocklist now has ${rules.block.length} entry(s).`)
-        output.info('Run `cloud protect:apply` to push this to the boxes.')
+        output.info('It reaches the boxes on the next deploy. `cloud protect:apply` shows exactly what will land.')
       } catch (error) {
         fail(error)
       }

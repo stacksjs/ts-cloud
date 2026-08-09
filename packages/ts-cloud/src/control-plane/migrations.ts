@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 39
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 40
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1668,6 +1668,20 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
 
       DROP TABLE notification_channels;
       ALTER TABLE notification_channels_new RENAME TO notification_channels;
+    `,
+  },
+  {
+    version: 40,
+    name: 'telemetry_kind_scope_index',
+    sql: `
+      -- Anomaly detection filters request records by (project, kind, time).
+      -- The existing scope index leads with project_id and environment_id but
+      -- never mentions kind, so every request series scanned each project's
+      -- logs, metrics, and traces too and discarded them in memory. On a
+      -- project emitting mostly logs that is several times the necessary work,
+      -- once a minute, forever.
+      CREATE INDEX telemetry_kind_scope_time_idx
+        ON telemetry_records(project_id, kind, timestamp);
     `,
   },
 ]

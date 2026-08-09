@@ -1,4 +1,5 @@
 import type { CLI } from '@stacksjs/clapp'
+import type { CloudConfig } from '@ts-cloud/core'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import type { ScanResult, SecurityFinding } from '../../src/security/pre-deploy-scanner'
 import { execSync } from 'node:child_process'
@@ -15,6 +16,7 @@ import { ECSClient } from '../../src/aws/ecs'
 import { S3Client } from '../../src/aws/s3'
 import { STSClient } from '../../src/aws/sts'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
+import { mergeControlsIntoConfig, ProtectionControlStore } from '../../src/protection'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { runConfigHook } from '../../src/deploy/hooks'
 import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
@@ -370,6 +372,30 @@ async function enforceContainerReleaseSecurity(
   }
 }
 
+
+/**
+ * Merge live protection controls into a config for a deploy.
+ *
+ * Best-effort: a project without a control plane yet, or with none of these
+ * controls set, deploys exactly as before. Protection must never be the reason
+ * a deploy cannot run.
+ */
+function applyProtectionControls<T extends CloudConfig>(config: T): T {
+  try {
+    const controlPlane = initializeDashboardControlPlane(process.cwd(), config)
+    const controls = new ProtectionControlStore(controlPlane.store).current()
+    if (!controls.attackMode && !controls.mitigationPause && controls.ipRules.allow.length === 0 && controls.ipRules.block.length === 0)
+      return config
+    const merged = mergeControlsIntoConfig(config, controls)
+    cli.info(
+      `Applying protection controls: ${controls.ipRules.allow.length} allow, ${controls.ipRules.block.length} block${controls.attackMode ? ', attack mode ON' : ''}${controls.mitigationPause ? ', mitigation PAUSED' : ''}`,
+    )
+    return merged
+  } catch {
+    return config
+  }
+}
+
 export function registerDeployCommands(app: CLI): void {
   // Security scan command
   app
@@ -459,7 +485,15 @@ export function registerDeployCommands(app: CLI): void {
 
         try {
           // Load configuration after env is set up correctly
-          const config = await loadValidatedConfig()
+          const configFile = await loadValidatedConfig()
+
+          // Fold in the operator's live protection controls (IP allow/block
+          // lists, attack mode) before anything renders a ruleset. The
+          // provisioning builder takes a config and nothing else - deliberately,
+          // since it also builds reusable golden images - so the merge belongs
+          // here, at the one call site that has a control plane. Without it,
+          // `cloud protect:block` writes a rule the deploy silently drops.
+          const config = applyProtectionControls(configFile)
 
           // Validate the per-site deployment model up front — turns silent runtime
           // failures (e.g. a server-app site with no compute server) into an

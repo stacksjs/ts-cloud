@@ -109,7 +109,7 @@ cloud deploy:fullstack E123456789AB example.com \
   --confirm 'E123456789AB:/api/*:example-backend'
 ```
 
-The external DNS adapter upserts the origin CNAME. The ALB default action returns `403`; a higher-priority rule forwards only requests containing the secret header that CloudFront adds. The orchestrator checks `https://origin-api.example.com/api/health` with that header before submitting the CloudFront patch. Keep the header value secret and rotate it with an overlap procedure.
+The external DNS adapter upserts the origin CNAME. The ALB default action returns `403`; a higher-priority rule forwards only requests containing the secret header that CloudFront adds. The orchestrator checks `<https://origin-api.example.com/api/health>` with that header before submitting the CloudFront patch. Keep the header value secret and rotate it with an overlap procedure.
 
 ## Deployment behavior
 

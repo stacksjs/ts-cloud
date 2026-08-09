@@ -266,3 +266,33 @@ export function applyControlsToDdos(
     },
   }
 }
+
+/**
+ * Fold live operator controls into a cloud config before it reaches a driver.
+ *
+ * The provisioning path takes a `CloudConfig` and nothing else, deliberately:
+ * it also builds golden images, and baking one operator's live blocklist into a
+ * reusable image would be wrong. So the merge happens here, at the deploy call
+ * site that has a control plane, rather than inside the builder.
+ *
+ * Without this, `cloud protect:block` writes a rule that the next deploy
+ * silently renders without - the control appears to work and does nothing.
+ *
+ * Returns a shallow copy; the caller's config is not mutated.
+ */
+export function mergeControlsIntoConfig<T extends Record<string, any>>(
+  config: T,
+  controls: ReturnType<ProtectionControlStore['current']>,
+): T {
+  const compute = config?.infrastructure?.compute
+  // Nothing to merge into: a serverless-only config has no box to protect.
+  if (!compute || compute.ddos === false) return config
+  const base = typeof compute.ddos === 'object' && compute.ddos !== null ? compute.ddos : {}
+  return {
+    ...config,
+    infrastructure: {
+      ...config.infrastructure,
+      compute: { ...compute, ddos: applyControlsToDdos(base, controls) },
+    },
+  }
+}

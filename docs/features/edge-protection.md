@@ -126,6 +126,14 @@ browser agents. Volume by itself only ever reaches `monitor`. A 50× surge sprea
 across 100,000 sources with a normal error rate is a viral moment, and the plan
 says so.
 
+`cloud protect:apply` renders the ruleset the current controls produce.
+
+Controls are stored in the control plane and folded into the config at deploy
+time, so `protect:block` takes effect on the next deploy. The merge happens at
+the deploy command rather than inside the provisioning builder, because that
+builder also produces reusable golden images — baking one operator's live
+blocklist into a shared image would be wrong.
+
 Levels: `off` → `monitor` → `rate_limit` → `challenge` → `lockdown`, each with a
 rate-limit multiplier and a list of reasons in plain language.
 

@@ -375,3 +375,87 @@ describe('the cycle covers every signal', () => {
     expect(found.some((anomaly) => anomaly.signal.includes('/webhooks/'))).toBe(false)
   })
 })
+
+describe('route detection only runs signals that have a route', () => {
+  it('marks usage signals as not route-aware', () => {
+    // Usage rollups are priced per meter, not per path. A "cost on /checkout"
+    // series is really the project-wide one wearing a route's name.
+    for (const key of ['cost', 'edge.requests', 'edge.egress_gb', 'function.invocations'])
+      expect({ key, routeAware: signalDefinition(key)!.routeAware }).toEqual({ key, routeAware: false })
+    for (const key of ['http.requests', 'http.error_rate', 'http.latency_p95'])
+      expect({ key, routeAware: signalDefinition(key)!.routeAware }).toEqual({ key, routeAware: true })
+  })
+
+  it('never records a route-tagged cost anomaly', () => {
+    const context = fixture()
+    // Cost spikes, and there is plenty of route traffic to tempt the loop.
+    const start = NOW.getTime() - 14 * 24 * HOUR
+    for (let hour = 0; hour < 14 * 24 - 1; hour++) {
+      context.spend.ingestUsage([
+        {
+          organizationId: context.scope.organizationId,
+          projectId: context.scope.projectId,
+          provider: 'aws',
+          meter: 'edge.egress_gb',
+          quantity: 150,
+          timestamp: new Date(start + hour * HOUR).toISOString(),
+          key: `flat-${hour}`,
+        },
+      ])
+      requests(context.telemetry, context.scope.projectId!, new Date(start + hour * HOUR), 25, { route: '/checkout' })
+    }
+    context.spend.ingestUsage([
+      {
+        organizationId: context.scope.organizationId,
+        projectId: context.scope.projectId,
+        provider: 'aws',
+        meter: 'edge.egress_gb',
+        quantity: 90_000,
+        timestamp: new Date(start + (14 * 24 - 1) * HOUR).toISOString(),
+        key: 'spike',
+      },
+    ])
+    requests(context.telemetry, context.scope.projectId!, new Date(start + (14 * 24 - 1) * HOUR), 25, {
+      route: '/checkout',
+    })
+    const found = context.service.detectAnomalies({ ...context.scope, routes: true }, NOW, { seasonLength: 24 })
+    expect(found.some((anomaly) => anomaly.signal === 'cost')).toBe(true)
+    // The bug this guards: `cost@/checkout` carrying project-wide numbers.
+    expect(found.some((anomaly) => anomaly.signal.startsWith('cost@'))).toBe(false)
+    expect(found.some((anomaly) => anomaly.signal.startsWith('edge.egress_gb@'))).toBe(false)
+  })
+})
+
+describe('counter memoization', () => {
+  it('serves every counter signal from one scan', () => {
+    const { signals, telemetry, controlPlane, scope } = fixture()
+    requests(telemetry, scope.projectId!, new Date('2026-07-10T10:00:00Z'), 100, { errors: 5 })
+    const at = (signal: string) =>
+      signals.series(signal, scope, WINDOW).points.find((item) => item.bucketStart === '2026-07-10T10:00:00.000Z')
+        ?.value
+
+    expect(at('http.requests')).toBe(100)
+    // Delete the rows out from under the source. A memoized result is
+    // unchanged; a second scan would now see nothing.
+    controlPlane.database.run("DELETE FROM telemetry_records WHERE kind = 'request'")
+    expect(at('http.errors')).toBe(5)
+    expect(at('http.error_rate')).toBeCloseTo(0.05, 5)
+
+    signals.resetCache()
+    expect(at('http.requests')).toBe(0)
+  })
+
+  it('keeps separate scopes apart in the memo', () => {
+    const { signals, telemetry, scope } = fixture()
+    const at = new Date('2026-07-10T10:00:00Z')
+    requests(telemetry, scope.projectId!, at, 40, { route: '/a' })
+    requests(telemetry, scope.projectId!, new Date(at.getTime() + 500), 90, { route: '/b' })
+    const value = (route?: string) =>
+      signals
+        .series('http.requests', { ...scope, route }, WINDOW)
+        .points.find((item) => item.bucketStart === '2026-07-10T10:00:00.000Z')?.value
+    expect(value('/a')).toBe(40)
+    expect(value('/b')).toBe(90)
+    expect(value()).toBe(130)
+  })
+})

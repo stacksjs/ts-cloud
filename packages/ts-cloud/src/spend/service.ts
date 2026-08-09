@@ -14,7 +14,7 @@ import type { Budget, EnforcementAction, SpendAnomaly, SpendDecision, UsageDelta
 import type { IngestResult, SpendStore, UsageSummary } from './store'
 import { anomalyOptionsForSignal, detectLatestAnomaly } from './anomaly'
 import { AnomalyConfigStore } from './anomaly-config'
-import { DETECTABLE_SIGNALS, lookbackHoursForSignal, optionsForSignal, SignalSource } from './signals'
+import { DETECTABLE_SIGNALS, lookbackHoursForSignal, optionsForSignal, signalDefinition, SignalSource } from './signals'
 import { evaluateBudget, governingLimitCents, mergeDecisions } from './evaluator'
 import { planEnforcement, runEnforcement, strongestActiveAction } from './enforcement'
 import { aggregateDeltas, CounterTracker, meterTelemetry } from './meter'
@@ -197,6 +197,9 @@ export class SpendService {
     }
     const wanted = options.signals ?? DETECTABLE_SIGNALS.map((signal) => signal.key)
     const found: SpendAnomaly[] = []
+    // Resolved once, not once per signal: it is the same query every time, and
+    // the route set does not depend on which signal is being evaluated.
+    let routes: string[] | undefined
 
     for (const signal of wanted) {
       // Each signal gets the lookback its own seasonality needs. A shared
@@ -207,13 +210,19 @@ export class SpendService {
       const window = { from: new Date(new Date(to).getTime() - hours * 3_600_000).toISOString(), to }
       found.push(...this.detectSignal(signal, scope, window, overrides))
       if (!options.routes) continue
+      // Usage rollups are priced per meter, not per path. Narrowing one to a
+      // route yields the project-wide series recorded under that route's name,
+      // which is a confidently mislabelled anomaly rather than a useful one.
+      if (!signalDefinition(signal)?.routeAware) continue
+      routes ??= this.signals.busiestRoutes(scope, window)
       // Route-scoped detection uses the same machinery; only the scope narrows.
       // A silence on the route is checked before any work is done.
-      for (const route of this.signals.busiestRoutes(scope, window)) {
+      for (const route of routes) {
         if (this.anomalyConfigs.isSilenced(scope, { signal, route })) continue
         found.push(...this.detectSignal(signal, { ...scope, route }, window, overrides, route))
       }
     }
+    this.signals.resetCache()
     return found
   }
 

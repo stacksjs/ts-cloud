@@ -4,6 +4,7 @@ import { ControlPlaneStore } from '../control-plane'
 import { renderNftablesRuleset } from './ddos'
 import {
   applyControlsToDdos,
+  mergeControlsIntoConfig,
   applyControlsToRateLimits,
   describePosture,
   MAX_CONTROL_HOURS,
@@ -227,5 +228,56 @@ describe('persistence', () => {
     controlPlane.setSetting('protection.controls', 'nonsense')
     const store = new ProtectionControlStore(controlPlane, { now: () => NOW })
     expect(store.current()).toEqual({ attackMode: undefined, mitigationPause: undefined, ipRules: { allow: [], block: [] } })
+  })
+})
+
+describe('merging controls into a deploy config', () => {
+  const base = {
+    project: { slug: 'acme' },
+    environments: { production: {} },
+    infrastructure: { compute: { runtime: 'bun' } },
+  } as any
+
+  it('carries an operator blocklist into the rendered ruleset', () => {
+    // The bug this closes: `cloud protect:block` wrote a rule that the next
+    // deploy silently rendered without, so the control appeared to work.
+    const store = fixture()
+    store.addIpRule('block', '203.0.113.0/24')
+    const merged = mergeControlsIntoConfig(base, store.current())
+    expect(renderNftablesRuleset(merged.infrastructure.compute.ddos)).toContain('203.0.113.0/24')
+  })
+
+  it('leaves a config with nothing to merge untouched', () => {
+    const store = fixture()
+    expect(mergeControlsIntoConfig(base, store.current()).infrastructure.compute.ddos).toMatchObject({
+      allowlist: [],
+      blocklist: [],
+    })
+  })
+
+  it('does not mutate the caller config', () => {
+    const store = fixture()
+    store.addIpRule('block', '203.0.113.0/24')
+    mergeControlsIntoConfig(base, store.current())
+    expect(base.infrastructure.compute.ddos).toBeUndefined()
+  })
+
+  it('respects an explicit opt-out rather than re-enabling protection', () => {
+    const store = fixture()
+    store.addIpRule('block', '203.0.113.0/24')
+    const disabled = { ...base, infrastructure: { compute: { runtime: 'bun', ddos: false } } } as any
+    expect(mergeControlsIntoConfig(disabled, store.current()).infrastructure.compute.ddos).toBe(false)
+  })
+
+  it('is a no-op for a serverless config with no box to protect', () => {
+    const serverless = { project: { slug: 'acme' }, environments: {}, infrastructure: {} } as any
+    expect(mergeControlsIntoConfig(serverless, fixture().current())).toBe(serverless)
+  })
+
+  it('carries attack mode through to tighter per-source limits', () => {
+    const store = fixture()
+    store.enableAttackMode({ reason: 'spike' })
+    const merged = mergeControlsIntoConfig(base, store.current())
+    expect(merged.infrastructure.compute.ddos.thresholds.newConnectionsPerSecond).toBe(10)
   })
 })

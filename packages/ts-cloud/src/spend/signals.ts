@@ -48,6 +48,15 @@ export interface SignalDefinition {
   unit: string
   /** True when the signal is a ratio in 0-1. */
   ratio?: boolean
+  /**
+   * True when the signal can be narrowed to a route.
+   *
+   * Usage rollups have no route dimension: they are priced per meter, not per
+   * path. Running route detection over them produces a series that is actually
+   * project-wide and records it under a route's name, which is worse than
+   * useless - it is a confidently mislabelled anomaly.
+   */
+  routeAware: boolean
 }
 
 /**
@@ -59,21 +68,23 @@ export interface SignalDefinition {
  * anything safer.
  */
 export const DETECTABLE_SIGNALS: readonly SignalDefinition[] = [
-  { key: 'cost', label: 'Cost', source: 'usage', gapPolicy: 'zero', minSamples: 0, unit: 'cents' },
-  { key: 'edge.requests', label: 'Edge requests', source: 'usage', gapPolicy: 'zero', minSamples: 0, unit: 'requests' },
-  { key: 'edge.egress_gb', label: 'Edge egress', source: 'usage', gapPolicy: 'zero', minSamples: 0, unit: 'GB' },
+  { key: 'cost', routeAware: false, label: 'Cost', source: 'usage', gapPolicy: 'zero', minSamples: 0, unit: 'cents' },
+  { key: 'edge.requests', routeAware: false, label: 'Edge requests', source: 'usage', gapPolicy: 'zero', minSamples: 0, unit: 'requests' },
+  { key: 'edge.egress_gb', routeAware: false, label: 'Edge egress', source: 'usage', gapPolicy: 'zero', minSamples: 0, unit: 'GB' },
   {
     key: 'function.invocations',
+    routeAware: false,
     label: 'Function invocations',
     source: 'usage',
     gapPolicy: 'zero',
     minSamples: 0,
     unit: 'invocations',
   },
-  { key: 'http.requests', label: 'HTTP requests', source: 'telemetry', gapPolicy: 'zero', minSamples: 0, unit: 'requests' },
-  { key: 'http.errors', label: 'HTTP 5xx', source: 'telemetry', gapPolicy: 'zero', minSamples: 0, unit: 'responses' },
+  { key: 'http.requests', routeAware: true, label: 'HTTP requests', source: 'telemetry', gapPolicy: 'zero', minSamples: 0, unit: 'requests' },
+  { key: 'http.errors', routeAware: true, label: 'HTTP 5xx', source: 'telemetry', gapPolicy: 'zero', minSamples: 0, unit: 'responses' },
   {
     key: 'http.error_rate',
+    routeAware: true,
     label: 'HTTP error rate',
     source: 'telemetry',
     // A rate with no traffic is undefined, not zero. See rule 1.
@@ -84,6 +95,7 @@ export const DETECTABLE_SIGNALS: readonly SignalDefinition[] = [
   },
   {
     key: 'http.client_error_rate',
+    routeAware: true,
     label: 'HTTP 4xx rate',
     source: 'telemetry',
     gapPolicy: 'gap',
@@ -93,6 +105,7 @@ export const DETECTABLE_SIGNALS: readonly SignalDefinition[] = [
   },
   {
     key: 'http.latency_p95',
+    routeAware: true,
     label: 'Latency p95',
     source: 'telemetry',
     // A percentile over four samples is the maximum wearing a hat.
@@ -176,6 +189,8 @@ function assemble(
 }
 
 export class SignalSource {
+  private readonly counterCache = new Map<string, Array<Record<string, unknown>>>()
+
   constructor(
     private readonly controlPlane: ControlPlaneStore,
     private readonly spend: SpendStore,
@@ -204,6 +219,53 @@ export class SignalSource {
     return assemble(definition, window, values)
   }
 
+  private requestFilter(scope: SignalScope, window: SignalWindow): { clauses: string[]; bindings: SQLQueryBindings[] } {
+    const clauses = ['project_id = ?', "kind = 'request'", 'timestamp >= ?', 'timestamp < ?']
+    const bindings: SQLQueryBindings[] = [scope.projectId!, window.from, window.to]
+    if (scope.environmentId) {
+      clauses.push('environment_id = ?')
+      bindings.push(scope.environmentId)
+    }
+    if (scope.route) {
+      clauses.push('path_template = ?')
+      bindings.push(scope.route)
+    }
+    return { clauses, bindings }
+  }
+
+  /**
+   * Per-bucket request counters for a scope and window.
+   *
+   * Memoized because four signals derive from the same numbers. Computing them
+   * separately meant four full passes over the request history every cycle, and
+   * with per-route detection that multiplied by the route count.
+   */
+  private counters(scope: SignalScope, window: SignalWindow): Array<Record<string, unknown>> {
+    const key = [scope.projectId, scope.environmentId ?? '', scope.route ?? '', window.from, window.to].join('\u0000')
+    const cached = this.counterCache.get(key)
+    if (cached) return cached
+    const { clauses, bindings } = this.requestFilter(scope, window)
+    const rows = this.query(
+      `SELECT
+        CAST(strftime('%s', timestamp) AS INTEGER) / 3600 AS bucket,
+        COUNT(*) AS total,
+        SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS server_errors,
+        SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END) AS client_errors
+      FROM telemetry_records
+      WHERE ${clauses.join(' AND ')}
+      GROUP BY bucket
+      ORDER BY bucket`,
+      bindings,
+    )
+    this.counterCache.set(key, rows)
+    return rows
+  }
+
+  /** Drop the memo so a long-lived source re-reads on the next cycle. */
+  resetCache(): void {
+    this.counterCache.clear()
+  }
+
   /**
    * Telemetry-backed series, aggregated in SQL.
    *
@@ -216,32 +278,12 @@ export class SignalSource {
     // Telemetry is per-project. Without one there is no series to build, and a
     // zero-filled one would assert "no traffic" where the truth is "unknown".
     if (!scope.projectId) return { signal: definition.key, points: [], populated: 0, suppressed: 0, unit: definition.unit }
-    const clauses = ["kind = 'request'", 'project_id = ?', 'timestamp >= ?', 'timestamp < ?']
-    const bindings: SQLQueryBindings[] = [scope.projectId, window.from, window.to]
-    if (scope.environmentId) {
-      clauses.push('environment_id = ?')
-      bindings.push(scope.environmentId)
-    }
-    if (scope.route) {
-      clauses.push('path_template = ?')
-      bindings.push(scope.route)
-    }
+    if (definition.key === 'http.latency_p95') return this.latencySeries(definition, scope, window)
 
-    // One pass over the rows produces every counter the signals need, so a
-    // rate is always numerator and denominator from the same scan.
-    const rows = this.query(
-      `SELECT
-        CAST(strftime('%s', timestamp) AS INTEGER) / 3600 AS bucket,
-        COUNT(*) AS total,
-        SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS server_errors,
-        SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END) AS client_errors,
-        SUM(CASE WHEN duration_ms IS NOT NULL THEN 1 ELSE 0 END) AS timed
-      FROM telemetry_records
-      WHERE ${clauses.join(' AND ')}
-      GROUP BY bucket
-      ORDER BY bucket`,
-      bindings,
-    )
+    // One memoized pass over the rows produces every counter the signals need,
+    // so a rate is always numerator and denominator from the same scan - and
+    // four signals share one scan instead of running four.
+    const rows = this.counters(scope, window)
 
     const values = new Map<number, { value: number; samples: number }>()
     for (const row of rows) {
@@ -256,7 +298,6 @@ export class SignalSource {
         values.set(bucket, { value: total > 0 ? Number(row.client_errors) / total : 0, samples: total })
     }
 
-    if (definition.key === 'http.latency_p95') return this.latencySeries(definition, clauses, bindings, window)
     return assemble(definition, window, values)
   }
 
@@ -267,12 +308,8 @@ export class SignalSource {
    * memory: a busy hour is hundreds of thousands of rows, and the point of
    * doing this in SQL is not having to hold them.
    */
-  private latencySeries(
-    definition: SignalDefinition,
-    clauses: string[],
-    bindings: SQLQueryBindings[],
-    window: SignalWindow,
-  ): SignalSeries {
+  private latencySeries(definition: SignalDefinition, scope: SignalScope, window: SignalWindow): SignalSeries {
+    const { clauses, bindings } = this.requestFilter(scope, window)
     const rows = this.query(
       `WITH ranked AS (
         SELECT
