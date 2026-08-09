@@ -4,7 +4,7 @@ export type HealthCheckKind = 'http' | 'tcp' | 'command'
 export type HealthStatus = 'healthy' | 'unhealthy' | 'no_data'
 export type AlertState = 'pending' | 'firing' | 'resolved' | 'silenced'
 export type AlertSeverity = 'info' | 'warning' | 'critical'
-export type NotificationChannelKind = 'slack' | 'discord' | 'teams' | 'telegram' | 'email' | 'webhook'
+export type NotificationChannelKind = 'slack' | 'discord' | 'teams' | 'telegram' | 'email' | 'webhook' | 'sms'
 
 export interface HealthCheck {
   id: string

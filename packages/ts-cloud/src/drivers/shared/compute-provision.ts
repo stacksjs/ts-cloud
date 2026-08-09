@@ -21,6 +21,7 @@ import { buildPantryBootstrapScript } from './package-manager'
 import { buildPhpProvisionScript } from './php-provision'
 import { usesRpxProxy } from './rpx-gateway'
 import { buildAuthorizedKeysScript } from './ssh-keys'
+import { buildProtectionScript } from './protection'
 import { buildUfwScript } from './ufw'
 
 export interface ComputeProvisionScripts {
@@ -81,6 +82,10 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
     )
   }
   extras.push(...buildUfwScript(compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })))
+  // Flood mitigation and the WAF run for every box, not only PHP ones: the
+  // ports UFW opens are the ports an attacker reaches, whatever is behind them.
+  // Both are opt-out rather than opt-in, and the WAF starts detection-only.
+  extras.push(...buildProtectionScript({ ddos: compute.ddos, waf: compute.waf }, compute.firewall?.allowedPorts ?? []))
   extras.push(...buildAutoUpdatesScript(compute.autoUpdates ?? phpBox))
   extras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
   extras.push(...buildAuthorizedKeysScript(compute.sshKeys))

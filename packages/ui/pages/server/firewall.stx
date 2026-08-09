@@ -18,13 +18,65 @@ const newPort = state('')
 const message = state('')
 const messageKind = state('')
 const reserved = [22, 80, 443]
+const posture = state(null)
+const ipRules = state({ allow: [], block: [] })
+const busy = state(false)
 function setMessage(text, kind) { message.set(text); messageKind.set(kind || '') }
 function applyLine(apply) {
   if (!apply) return ''
   if (apply.ok === false) return ' Live UFW apply failed: ' + (apply.error || 'unknown error') + '.'
   return ' Applied to UFW live on the box.'
 }
+async function loadProtection() {
+  try {
+    const data = await requestJson('/api/protection')
+    posture.set(data.posture || null)
+    ipRules.set(data.controls?.ipRules || { allow: [], block: [] })
+  } catch { posture.set(null) }
+}
+async function protect(path, body, note) {
+  busy.set(true)
+  try {
+    await requestJson(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    setMessage(note, 'ok')
+    await loadProtection()
+  } catch (e) { setMessage((e && e.message) || 'Request failed.', 'bad') }
+  finally { busy.set(false) }
+}
+async function toggleAttackMode(on) {
+  if (on && !confirm('Attack mode challenges every visitor, including legitimate ones. Continue?')) return
+  await protect('/api/protection/attack-mode', on ? { enabled: true, reason: 'Enabled from the dashboard.' } : { enabled: false }, on ? 'Attack mode is on. It lifts itself automatically.' : 'Attack mode is off.')
+}
+async function togglePause(on) {
+  if (on) {
+    const reason = prompt('Pausing mitigation serves and bills all traffic, including attacks. Why are you pausing it?')
+    if (!reason) return
+    await protect('/api/protection/pause', { enabled: true, reason }, 'Mitigation paused. It resumes automatically.')
+    return
+  }
+  await protect('/api/protection/pause', { enabled: false }, 'Automatic mitigation resumed.')
+}
+async function addIpRule(list, cidr) {
+  if (!cidr) return
+  await protect('/api/protection/ip-rules', { list, cidr }, `Added ${cidr} to the ${list} list.`)
+}
+async function removeIpRule(list, cidr) {
+  busy.set(true)
+  try {
+    await requestJson('/api/protection/ip-rules', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ list, cidr }) })
+    setMessage(`Removed ${cidr} from the ${list} list.`, 'ok')
+    await loadProtection()
+  } catch (e) { setMessage((e && e.message) || 'Request failed.', 'bad') }
+  finally { busy.set(false) }
+}
+function submitIpRule(event) {
+  event.preventDefault()
+  const value = Object.fromEntries(new FormData(event.currentTarget))
+  void addIpRule(value.list, String(value.cidr || '').trim()).then(() => event.currentTarget.reset())
+}
+
 async function load() {
+  void loadProtection()
   try {
     const res = await fetch('/api/firewall')
     if (!res.ok) throw new Error('Could not read firewall config.')
@@ -74,6 +126,43 @@ onMount(() => { load() })
       <div><h1>Firewall</h1><p>ts-cloud reconciles the host firewall (UFW) from cloud config on every deploy. SSH (22), HTTP (80), and HTTPS (443) are always open and cannot be changed here.</p></div>
       <div class="cmds header-actions"><span class="accent cmd">cloud server:secure {{ server.name }}</span></div>
     </header>
+
+    <div class="section">
+      <h2>Mitigation posture</h2>
+      <div class="panel">
+        <p class="notice" :class="posture()?.attackMode || posture()?.mitigationPaused ? 'warn' : ''" @show="!!posture()">{{ posture()?.summary }}</p>
+        <p class="note" @show="!posture()">Protection controls are unavailable for this account.</p>
+        <div class="actions" @show="!!posture()">
+          <button class="btn ghost sm" :disabled="busy()" @click="toggleAttackMode(!posture()?.attackMode)">{{ posture()?.attackMode ? 'Turn attack mode off' : 'Turn attack mode on' }}</button>
+          <button class="btn danger ghost sm" :disabled="busy()" @click="togglePause(!posture()?.mitigationPaused)">{{ posture()?.mitigationPaused ? 'Resume mitigation' : 'Pause mitigation' }}</button>
+        </div>
+        <p class="note">Attack mode challenges every visitor, so it is time-boxed and lifts itself. Pausing mitigation serves and bills all traffic, including attacks, and is capped at 24 hours.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>IP rules</h2>
+      <div class="panel">
+        <form class="inline-form" @submit="submitIpRule($event)">
+          <select name="list" aria-label="List"><option value="block">Block</option><option value="allow">Allow</option></select>
+          <input name="cidr" placeholder="203.0.113.0/24" aria-label="IP or CIDR" required>
+          <button class="btn sm" type="submit" :disabled="busy()">Add</button>
+        </form>
+        <table>
+          <thead><tr><th scope="col">List</th><th scope="col">CIDR</th><th scope="col"></th></tr></thead>
+          <tbody>
+            <template :for="cidr in ipRules().allow">
+              <tr><td><span class="ok pill">allow</span></td><td class="mono">{{ cidr }}</td><td><button class="btn ghost sm" :disabled="busy()" @click="removeIpRule('allow', cidr)">Remove</button></td></tr>
+            </template>
+            <template :for="cidr in ipRules().block">
+              <tr><td><span class="bad pill">block</span></td><td class="mono">{{ cidr }}</td><td><button class="btn ghost sm" :disabled="busy()" @click="removeIpRule('block', cidr)">Remove</button></td></tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="empty" @show="!ipRules().allow.length && !ipRules().block.length"><strong>No IP rules</strong><span>Allowed ranges bypass every limit; blocked ranges are dropped at the kernel.</span></div>
+        <p class="note">Allow wins over block, so a range cannot sit on both lists. Rules apply on the next deploy.</p>
+      </div>
+    </div>
 
     <div class="section">
       <h2>Always open</h2>

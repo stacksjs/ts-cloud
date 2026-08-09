@@ -5,7 +5,8 @@ const __dirname = import.meta.dirname
 async function build() {
   // Build the library root AND every subpath entry point declared in the
   // package.json exports map ("./aws", "./deploy", "./dns", "./drivers",
-  // "./push"). Bundling only src/index.ts leaves those subpaths as .d.ts-only
+  // "./push", "./spend", "./protection"). Bundling only src/index.ts leaves
+  // those subpaths as .d.ts-only
   // in dist, so `import '@stacksjs/ts-cloud/drivers'` fails at runtime for
   // consumers. Splitting keeps shared code in chunks instead of duplicating
   // it into each subpath bundle.
@@ -17,6 +18,8 @@ async function build() {
       join(__dirname, 'src/dns/index.ts'),
       join(__dirname, 'src/drivers/index.ts'),
       join(__dirname, 'src/push/index.ts'),
+      join(__dirname, 'src/spend/index.ts'),
+      join(__dirname, 'src/protection/index.ts'),
     ],
     outdir: join(__dirname, 'dist'),
     root: join(__dirname, 'src'),

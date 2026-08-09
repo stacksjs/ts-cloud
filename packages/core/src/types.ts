@@ -2795,6 +2795,17 @@ export interface ComputeConfig {
    * primary firewall. @default { enabled: true } for PHP boxes
    */
   firewall?: ComputeFirewallConfig
+  /**
+   * Kernel-level flood mitigation (nftables + sysctl). On by default; `false`
+   * disables it. UFW decides which ports are open, this decides what happens to
+   * the traffic arriving on them.
+   */
+  ddos?: boolean | ComputeDdosConfig
+  /**
+   * Web application firewall (zig-waf). On by default in detection-only mode,
+   * so it scores and logs without refusing anything until you promote it.
+   */
+  waf?: boolean | ComputeWafConfig
 
   /**
    * Automatic unattended security/system updates (Forge's "maintenance"). When
@@ -2921,6 +2932,51 @@ export interface ComputeFirewallConfig {
   enabled?: boolean
   /** TCP ports to allow in addition to SSH/80/443 (always allowed). */
   allowedPorts?: number[]
+}
+
+/**
+ * Kernel-level flood mitigation (nftables + sysctl).
+ *
+ * On by default. UFW decides which ports are open; this decides what happens to
+ * the traffic arriving on them - SYN floods, connection exhaustion, slow-loris,
+ * and single-source hammering. Set `false` to skip it entirely.
+ */
+export interface ComputeDdosConfig {
+  enabled?: boolean
+  /** Ports the ruleset protects. @default [80, 443] */
+  ports?: number[]
+  /** CIDRs that bypass every limit: monitoring, office IPs, a load balancer. */
+  allowlist?: string[]
+  /** CIDRs dropped outright. */
+  blocklist?: string[]
+  /** Count what would be dropped without dropping it. */
+  monitorOnly?: boolean
+  thresholds?: {
+    newConnectionsPerSecond?: number
+    concurrentPerSource?: number
+    synPerSecond?: number
+    burst?: number
+    icmpPerSecond?: number
+    banSeconds?: number
+  }
+}
+
+/**
+ * Web application firewall (zig-waf), configured at provision time.
+ *
+ * Defaults to `detection`: rules evaluate and matches are logged and scored,
+ * nothing is blocked. Promote to `blocking` once you have read your own
+ * detection log - a ruleset nobody has checked against real traffic will refuse
+ * some of it.
+ */
+export interface ComputeWafConfig {
+  mode?: 'off' | 'detection' | 'blocking'
+  /** OWASP CRS paranoia level. 1 is the only level safe unattended. */
+  paranoiaLevel?: 1 | 2 | 3 | 4
+  /** Inbound anomaly score at which a request is blocked in `blocking` mode. */
+  inboundThreshold?: number
+  /** Paths never inspected. Each one is an unguarded route. */
+  bypassPaths?: string[]
 }
 
 /** Scheduled database backup configuration. See {@link ComputeConfig.backups}. */

@@ -426,4 +426,68 @@ export class TsCloudClient {
       body: '{}',
     })
   }
+  // ---------------------------------------------------------------- spend
+
+  /**
+   * Current usage, cost, and budget headroom.
+   *
+   * The call a pipeline makes before doing something expensive. Every budget
+   * carries `remainingCents`, `projectedCents`, and `projectionConfidence`, so
+   * the caller can decide rather than guess.
+   */
+  usage(options: { projectId?: string; environmentId?: string; period?: 'daily' | 'weekly' | 'monthly'; timezone?: string } = {}): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(options)) if (value) query.set(key, String(value))
+    return this.request(`/api/v1/usage${query.size > 0 ? `?${query}` : ''}`)
+  }
+
+  /** Itemized hourly usage rollups for a window. */
+  usageRollups(options: {
+    from: string
+    to: string
+    projectId?: string
+    environmentId?: string
+    meters?: string[]
+    limit?: number
+  }): Promise<{ data: Array<Record<string, unknown>> }> {
+    const query = new URLSearchParams({ from: options.from, to: options.to })
+    if (options.projectId) query.set('projectId', options.projectId)
+    if (options.environmentId) query.set('environmentId', options.environmentId)
+    if (options.limit) query.set('limit', String(options.limit))
+    for (const meter of options.meters ?? []) query.append('meter', meter)
+    return this.request(`/api/v1/usage/rollups?${query}`)
+  }
+
+  /**
+   * Whether an operation is allowed under current spend enforcement.
+   *
+   * One boolean and a reason, deliberately - the caller is a script deciding
+   * whether to continue, not a dashboard rendering a page.
+   */
+  allowance(
+    operation: 'build' | 'deploy' | 'function_invoke' | 'request' = 'deploy',
+    options: { projectId?: string; environmentId?: string } = {},
+  ): Promise<{ allowed: boolean; blockedBy: string | null; reason: string | null }> {
+    const query = new URLSearchParams({ operation })
+    if (options.projectId) query.set('projectId', options.projectId)
+    if (options.environmentId) query.set('environmentId', options.environmentId)
+    return this.request(`/api/v1/spend/allowance?${query}`)
+  }
+
+  /** Budgets governing a scope. */
+  budgets(options: { projectId?: string; environmentId?: string } = {}): Promise<{ data: Array<Record<string, unknown>> }> {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(options)) if (value) query.set(key, String(value))
+    return this.request(`/api/v1/spend/budgets${query.size > 0 ? `?${query}` : ''}`)
+  }
+
+  /** Detected spend anomalies. */
+  anomalies(options: { projectId?: string; since?: string; unacknowledged?: boolean } = {}): Promise<{ data: Array<Record<string, unknown>> }> {
+    const query = new URLSearchParams()
+    if (options.projectId) query.set('projectId', options.projectId)
+    if (options.since) query.set('since', options.since)
+    if (options.unacknowledged) query.set('unacknowledged', 'true')
+    return this.request(`/api/v1/spend/anomalies${query.size > 0 ? `?${query}` : ''}`)
+  }
+
 }

@@ -19,6 +19,8 @@ import {
   registerFirewallCommands,
   registerSslCommands,
   registerCostCommands,
+  registerProtectCommands,
+  registerSpendCommands,
   registerGitCommands,
   registerApplicationCommands,
   registerEnvironmentCommands,
@@ -143,6 +145,8 @@ registerJobCommands(app)
 
 // Cost & Resources
 registerCostCommands(app)
+registerSpendCommands(app)
+registerProtectCommands(app)
 
 // Git & Environment
 registerGitCommands(app)

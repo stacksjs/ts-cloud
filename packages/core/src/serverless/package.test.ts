@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -49,5 +49,24 @@ describe('packageServerlessApp', () => {
     await expect(packageServerlessApp({ projectRoot, app: { kind: 'node' }, skipBuild: true })).rejects.toThrow(
       /entry.*required/,
     )
+  })
+})
+
+describe('runtime staging', () => {
+  it('stages every sibling the adapter imports', () => {
+    // Staging the adapter without its siblings produced a build that failed at
+    // package time. This keeps the list honest as the adapter grows imports.
+    const runtimeDir = join(import.meta.dir, 'runtime')
+    const adapter = readFileSync(join(runtimeDir, 'adapter.ts'), 'utf8')
+    const packageSource = readFileSync(join(import.meta.dir, 'package.ts'), 'utf8')
+    const siblings = [...adapter.matchAll(/from '\.\/([a-z-]+)'/g)].map((match) => `${match[1]}.ts`)
+    expect(siblings.length).toBeGreaterThan(0)
+    for (const sibling of new Set(siblings))
+      expect({ sibling, staged: packageSource.includes(`'${sibling}'`) }).toEqual({ sibling, staged: true })
+  })
+
+  it('ships recursion protection inside the bundle', () => {
+    const packageSource = readFileSync(join(import.meta.dir, 'package.ts'), 'utf8')
+    expect(packageSource).toContain("'auto-recursion.ts'")
   })
 })

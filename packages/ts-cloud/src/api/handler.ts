@@ -10,6 +10,7 @@ import { PreviewEnvironmentService } from '../preview'
 import { DurableOperationQueue } from '../queue'
 import { ReleaseService, releaseStrategyCapabilities } from '../release'
 import { listSourceReferences, reconcileSourceWebhook, syncSourceRepositories, webhookEndpoint } from '../source'
+import { handleSpendRequest, SpendService, SpendStore } from '../spend'
 import { API_VERSION, openApiDocument } from './openapi'
 import { ApiServiceError, AutomationApiService } from './service'
 
@@ -24,6 +25,12 @@ interface ApiV1HandlerOptions {
   }
   now?: () => Date
   rateLimit?: number
+  /**
+   * Spend management. Supplied by default from the control plane, so the
+   * billing endpoints work without extra wiring; pass one to share a store
+   * (and therefore a counter tracker) with a running evaluation loop.
+   */
+  spend?: { store: SpendStore; service: SpendService }
 }
 
 function cursor(value: Record<string, unknown>): string {
@@ -77,6 +84,8 @@ export function createApiV1Handler(
   const previews = new PreviewEnvironmentService(options.controlPlane)
   const compose = new ComposeApplicationService(options.controlPlane)
   const releases = new ReleaseService(options.controlPlane)
+  const spendStore = options.spend?.store ?? new SpendStore(options.controlPlane, { now: options.now })
+  const spend = { store: spendStore, service: options.spend?.service ?? new SpendService(spendStore) }
   const windows = new Map<string, { start: number; count: number }>()
   const now = options.now ?? (() => new Date())
   const limit = options.rateLimit ?? 120
@@ -1213,7 +1222,15 @@ export function createApiV1Handler(
           ...(created.replay ? { 'idempotent-replayed': 'true' } : {}),
         })
       } else {
-        throw new ApiServiceError('not_found', 'API resource was not found.', 404)
+        // Spend routes are handled as a group so the billing surface can be
+        // tested on its own rather than through this whole chain.
+        const spendBody = await handleSpendRequest(
+          { ...spend, authorization: service, now },
+          principal,
+          { method: request.method, url, body: readBody },
+        )
+        if (spendBody === undefined) throw new ApiServiceError('not_found', 'API resource was not found.', 404)
+        body = spendBody
       }
       return response(body, 200, requestId, rateHeaders)
     } catch (error) {

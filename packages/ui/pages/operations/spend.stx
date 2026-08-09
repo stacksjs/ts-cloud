@@ -1,0 +1,225 @@
+<script client>
+import { usePolling } from '../../functions/usePolling.ts'
+
+const report=state(null),budgets=state([]),enforcement=state([]),anomalies=state([]),notice=state(''),actionError=state(''),tab=state('overview'),busy=state(false),period=state('monthly')
+
+async function api(url,options){const response=await fetch(url,options),body=await response.json();if(!response.ok||body.ok===false)throw new Error(body.error||'Request failed.');return body}
+async function optional(url,key,fallback=[]){try{return(await api(url))[key]??fallback}catch{return fallback}}
+
+async function load(){
+  const [usage,budgetList,gate,anomalyList]=await Promise.all([
+    api(`/api/usage?period=${encodeURIComponent(period())}`).catch(()=>null),
+    optional('/api/spend/budgets','budgets'),
+    optional('/api/spend/enforcement','enforcement'),
+    optional('/api/spend/anomalies','anomalies'),
+  ])
+  report.set(usage);budgets.set(budgetList);enforcement.set(gate);anomalies.set(anomalyList)
+}
+
+const {pollingState,pollingError,lastUpdatedAt,refresh}=usePolling(load,30000)
+
+function form(node){return Object.fromEntries(new FormData(node))}
+function money(cents,currency){if(cents==null)return '—';return new Intl.NumberFormat('en-US',{style:'currency',currency:currency||report()?.currency||'USD'}).format(cents/100)}
+function pct(value){return value==null?'—':`${Number(value).toFixed(value<10?1:0)}%`}
+function scopeOf(item){return item.environmentId?'environment':item.projectId?'project':'organization'}
+function tone(level){return level==='hard_capped'?'bad':level==='soft_capped'||level==='warning'?'warn':'ok'}
+function severityTone(value){return value==='critical'?'bad':value==='warning'?'warn':'ok'}
+function when(value){return value?new Date(value).toLocaleString():'—'}
+/** Confidence below this is why a projection is shown greyed rather than acted on. */
+function trusted(budget){return (budget?.projectionConfidence??0)>=0.35}
+
+async function guard(work,message){
+  busy.set(true);actionError.set('')
+  try{await work();notice.set(message);await refresh()}
+  catch(error){actionError.set(error.message)}
+  finally{busy.set(false)}
+}
+
+async function createBudget(event){
+  event.preventDefault()
+  const value=form(event.currentTarget),node=event.currentTarget
+  await guard(()=>api('/api/spend/budgets',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+    name:value.name,
+    scope:value.scope,
+    period:value.period,
+    timezone:value.timezone||undefined,
+    softLimitCents:value.soft?Math.round(Number(value.soft)*100):undefined,
+    hardLimitCents:value.hard?Math.round(Number(value.hard)*100):undefined,
+    graceSeconds:value.graceSeconds?Number(value.graceSeconds):undefined,
+    dryRun:value.dryRun==='on',
+  })}).then(()=>node.reset()),'Budget created.')
+}
+
+async function patchBudget(id,patch){await guard(()=>api('/api/spend/budgets',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({id,...patch})}),'Budget updated.')}
+async function removeBudget(id,name){if(!confirm(`Delete the budget "${name}"? Anything it is enforcing is lifted.`))return;await guard(()=>api('/api/spend/budgets',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({id})}),'Budget deleted and enforcement lifted.')}
+async function runCheck(apply){const result=await api('/api/spend/check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({apply})});notice.set(apply?`Applied ${result.result.applied.join(', ')||'nothing'}; released ${result.result.released.join(', ')||'nothing'}.`:'Preview complete — nothing was applied.');await refresh()}
+async function release(budgetId,action){await guard(()=>api('/api/spend/release',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({budgetId,action})}),'Lifted. The next cycle re-applies it if spend is still over.')}
+async function acknowledge(id){await guard(()=>api('/api/spend/anomalies/acknowledge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})}),'Anomaly acknowledged.')}
+function setPeriod(event){period.set(event.currentTarget.value);void refresh()}
+</script>
+<!DOCTYPE html><html lang="en" data-theme="dark"><head>@include('../partials/head',{title:'ts-cloud · Spend & budgets'})</head><body>
+@include('../partials/nav',{active:'spend',env:'production'})
+<main class="wrap" id="main-content"><div class="crumbs">Operations <span class="sep">/</span> Spend &amp; budgets</div>
+
+<header class="page">
+  <div><h1>Spend &amp; budgets</h1><p>Metered usage, soft and hard caps, enforcement in force, and anomaly detection. Costs are estimated from observed usage, so they update within the hour rather than waiting on a provider invoice.</p></div>
+  <div class="header-actions">
+    <select aria-label="Budget period" @change="setPeriod($event)"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="daily">Daily</option></select>
+    <span class="pill" :class="pollingState()==='live'?'ok':'warn'">{{ pollingState() }}</span>
+    <small>{{ lastUpdatedAt()?.toLocaleTimeString()||'connecting' }}</small>
+    <button class="btn ghost sm" @click="refresh()">Refresh</button>
+  </div>
+</header>
+
+<p class="notice" role="status" @show="!!notice()">{{ notice() }}</p>
+<p class="bad notice" role="alert" @show="!!actionError()">{{ actionError() }}</p>
+<p class="bad notice" role="alert" @show="!!pollingError()">{{ pollingError() }}</p>
+
+<div class="notice panel warn" @show="enforcement().some(item=>!item.simulated)">
+  <strong>Spend enforcement is in force.</strong>
+  <span>{{ enforcement().filter(item=>!item.simulated).map(item=>item.action).join(', ') }} — see the Enforcement tab.</span>
+</div>
+
+<nav class="tabs" aria-label="Spend workspace">
+  <button :class="{active:tab()==='overview'}" @click="tab.set('overview')">Overview</button>
+  <button :class="{active:tab()==='budgets'}" @click="tab.set('budgets')">Budgets</button>
+  <button :class="{active:tab()==='enforcement'}" @click="tab.set('enforcement')">Enforcement</button>
+  <button :class="{active:tab()==='anomalies'}" @click="tab.set('anomalies')">Anomalies</button>
+</nav>
+
+<section @show="tab()==='overview'">
+  <div class="summary">
+    <article class="panel"><b>Spent this period</b><strong>{{ money(report()?.totalCents) }}</strong><small>{{ report()?.window?.label||'—' }}</small></article>
+    <article class="panel"><b>Budgets</b><strong>{{ report()?.budgets?.length||0 }}</strong><small>{{ (report()?.budgets||[]).filter(b=>b.dryRun).length }} in dry run</small></article>
+    <article class="panel"><b>Enforcement</b><strong>{{ report()?.enforcement?.strongestAction||'none' }}</strong><small>{{ enforcement().length }} action(s) recorded</small></article>
+    <article class="panel"><b>Anomalies</b><strong>{{ anomalies().filter(a=>!a.acknowledgedAt).length }}</strong><small>unacknowledged</small></article>
+  </div>
+
+  <h2>Budget headroom</h2>
+  <div class="cards-list">
+    <template :for="budget in (report()?.budgets||[])">
+      <article class="row-card panel">
+        <div>
+          <span class="pill" :class="tone(budget.level)">{{ budget.level }}</span>
+          <span class="pill" @show="budget.dryRun">dry run</span>
+          <b>{{ budget.name }}</b>
+          <code>{{ budget.period }}</code>
+        </div>
+        <p class="note">{{ money(budget.spentCents) }} of {{ money(budget.limitCents) }} · {{ pct(budget.usedPercent) }} used · {{ money(budget.remainingCents) }} remaining</p>
+        <progress :value="Math.min(100,budget.usedPercent||0)" max="100"></progress>
+        <p class="note" :class="trusted(budget)?'':'muted'">
+          Projected {{ money(budget.projectedCents) }} ({{ pct(budget.projectedPercent) }}) at {{ pct((budget.projectionConfidence||0)*100) }} confidence.
+          <template :if="!trusted(budget)"><span> Too early in the period to act on this forecast.</span></template>
+          <template :if="budget.timeToCap"><span> Reaches the cap in {{ budget.timeToCap }}.</span></template>
+        </p>
+        <div class="actions" @show="!!budget.activeActions?.length">
+          <span class="bad pill">enforcing {{ budget.activeActions.join(', ') }}</span>
+        </div>
+      </article>
+    </template>
+    <div class="empty panel" @show="!(report()?.budgets||[]).length">
+      <strong>No budgets</strong>
+      <span>Usage is metered regardless, but nothing is capped. Create a budget to get warnings and, if you want them, hard caps.</span>
+    </div>
+  </div>
+
+  <h2>Usage by meter</h2>
+  <div class="panel table-wrap">
+    <table>
+      <thead><tr><th scope="col">Meter</th><th scope="col">Provider</th><th scope="col">Quantity</th><th scope="col">Cost</th></tr></thead>
+      <tbody>
+        <template :for="row in (report()?.byMeter||[])">
+          <tr><td>{{ row.meter }}</td><td>{{ row.provider||'—' }}</td><td>{{ row.quantity.toLocaleString(undefined,{maximumFractionDigits:3}) }}</td><td>{{ money(row.costCents) }}</td></tr>
+        </template>
+      </tbody>
+    </table>
+    <div class="empty" @show="!(report()?.byMeter||[]).length"><strong>No metered usage yet</strong><span>Usage rolls up hourly. A freshly deployed project shows nothing until its first full hour.</span></div>
+  </div>
+</section>
+
+<section @show="tab()==='budgets'" class="split">
+  <div>
+    <template :for="item in budgets()">
+      <article class="row-card panel">
+        <div>
+          <span class="pill" :class="item.enabled?'ok':'warn'">{{ item.enabled?'enabled':'disabled' }}</span>
+          <span class="pill" @show="item.dryRun">dry run</span>
+          <b>{{ item.name }}</b>
+          <code>{{ scopeOf(item) }} · {{ item.period }} · {{ item.timezone }}</code>
+        </div>
+        <p class="note">Soft {{ money(item.softLimitCents,item.currency) }} · hard {{ money(item.hardLimitCents,item.currency) }} · grace {{ item.graceSeconds }}s · hysteresis {{ item.hysteresisPercent }}%</p>
+        <p class="note">Ladder: <template :for="threshold in item.thresholds"><span class="pill">{{ threshold.atPercent }}%{{ threshold.onProjection?' (forecast)':'' }} → {{ threshold.actions.join('+') }}</span></template></p>
+        <div class="actions">
+          <button class="btn ghost sm" :disabled="busy()" @click="patchBudget(item.id,{dryRun:!item.dryRun})">{{ item.dryRun?'Start enforcing':'Return to dry run' }}</button>
+          <button class="btn ghost sm" :disabled="busy()" @click="patchBudget(item.id,{enabled:!item.enabled})">{{ item.enabled?'Disable':'Enable' }}</button>
+          <button class="btn danger ghost sm" :disabled="busy()" @click="removeBudget(item.id,item.name)">Delete</button>
+        </div>
+      </article>
+    </template>
+    <div class="empty panel" @show="!budgets().length"><strong>No budgets configured</strong><span>Nothing is capping this project.</span></div>
+  </div>
+
+  <form class="editor panel" @submit="createBudget($event)">
+    <h2>New budget</h2>
+    <label>Name<input name="name" required placeholder="Production monthly"></label>
+    <label>Scope<select name="scope"><option value="project">This project</option><option value="environment">This environment</option><option value="organization">Whole organization</option></select></label>
+    <label>Period<select name="period"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="daily">Daily</option></select></label>
+    <label>Timezone<input name="timezone" value="UTC" placeholder="America/Los_Angeles"></label>
+    <label>Soft limit (warn only, dollars)<input name="soft" type="number" step="0.01" min="0"></label>
+    <label>Hard limit (enforces, dollars)<input name="hard" type="number" step="0.01" min="0"></label>
+    <label>Grace seconds<input name="graceSeconds" type="number" min="0" value="300"></label>
+    <label class="checkbox"><input name="dryRun" type="checkbox" checked> Dry run — evaluate and report, enforce nothing</label>
+    <button class="btn" type="submit" :disabled="busy()">Create budget</button>
+    <p class="note">New budgets start in dry run. Watch one for a full period before letting it enforce: the first thing enforcement does is stop your deployments.</p>
+  </form>
+</section>
+
+<section @show="tab()==='enforcement'">
+  <div class="header-actions">
+    <button class="btn ghost sm" :disabled="busy()" @click="runCheck(false)">Preview a cycle</button>
+    <button class="btn sm" :disabled="busy()" @click="runCheck(true)">Run and apply</button>
+  </div>
+  <div class="panel table-wrap">
+    <table>
+      <thead><tr><th scope="col">Action</th><th scope="col">Scope</th><th scope="col">Mode</th><th scope="col">Since</th><th scope="col">Reason</th><th scope="col"></th></tr></thead>
+      <tbody>
+        <template :for="item in enforcement()">
+          <tr>
+            <td><span class="pill" :class="item.simulated?'warn':'bad'">{{ item.action }}</span></td>
+            <td>{{ scopeOf(item) }}</td>
+            <td>{{ item.simulated?'dry run':'enforcing' }}</td>
+            <td>{{ when(item.appliedAt) }}</td>
+            <td>{{ item.reason }}</td>
+            <td><button class="btn ghost sm" :disabled="busy()" @click="release(item.budgetId,item.action)">Lift</button></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div class="empty" @show="!enforcement().length"><strong>Nothing is being enforced</strong><span>Builds, deployments, and traffic are unrestricted by spend.</span></div>
+  </div>
+  <p class="note">Lifting an action is a stopgap. The next spend cycle re-applies it unless the underlying spend falls back below the threshold, or the budget is raised, disabled, or deleted.</p>
+</section>
+
+<section @show="tab()==='anomalies'">
+  <div class="cards-list">
+    <template :for="item in anomalies()">
+      <article class="row-card panel">
+        <div>
+          <span class="pill" :class="severityTone(item.severity)">{{ item.severity }}</span>
+          <span class="pill">{{ item.direction }}</span>
+          <b>{{ item.signal }}</b>
+          <code>{{ when(item.bucketStart) }}</code>
+        </div>
+        <p class="note">Observed {{ money(item.observed) }} against an expected {{ money(item.expected) }} for this hour · score {{ item.score.toFixed(1) }}</p>
+        <p class="muted note">The baseline is the median of the same hour on previous days, so a normal daily peak is not an anomaly.</p>
+        <div class="actions">
+          <button class="btn ghost sm" @show="!item.acknowledgedAt" :disabled="busy()" @click="acknowledge(item.id)">Acknowledge</button>
+          <span class="note" @show="!!item.acknowledgedAt">Acknowledged {{ when(item.acknowledgedAt) }}</span>
+        </div>
+      </article>
+    </template>
+    <div class="empty panel" @show="!anomalies().length"><strong>No anomalies detected</strong><span>Detection needs several days of history before it reports anything, so a new project stays quiet at first.</span></div>
+  </div>
+</section>
+
+</main></body></html>

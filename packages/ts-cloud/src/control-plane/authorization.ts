@@ -26,6 +26,8 @@ export const AUTHORIZATION_CAPABILITIES: readonly AuthorizationCapability[] = [
   'users:manage',
   'users:transfer-ownership',
   'audit:read',
+  'billing:read',
+  'billing:manage',
   'security:read',
   'security:manage',
   'security:waive',
@@ -49,6 +51,9 @@ const VIEWER_CAPABILITIES: readonly AuthorizationCapability[] = [
   'security:read',
   'sources:read',
   'applications:read',
+  // Spend is read-only for a viewer: seeing the bill is not the same as
+  // being able to raise the cap that governs it.
+  'billing:read',
 ]
 
 const ROLE_CAPABILITIES: Record<OrganizationRoleTemplate, ReadonlySet<AuthorizationCapability>> = {

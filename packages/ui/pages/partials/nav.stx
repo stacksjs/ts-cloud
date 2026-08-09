@@ -84,6 +84,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('runtime:read'))<a class="{{ isActive('workloads') ? 'active' : '' }}" href="{{ envHref('/operations/workloads') }}">Workloads</a>@endif
           @if (canView('runtime:logs'))<a class="{{ isActive('observability') ? 'active' : '' }}" href="{{ envHref('/operations/observability') }}">Observability</a>@endif
           @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif
+          @if (canView('billing:read'))<a class="{{ isActive('spend') ? 'active' : '' }}" href="{{ envHref('/operations/spend') }}">Spend & budgets</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/server/metrics') }}">Metrics</a><a href="{{ envHref('/server/services') }}">Runtime services</a>@endif
           @if (canView('automation:read'))<a class="{{ isActive('jobs') ? 'active' : '' }}" href="{{ envHref('/operations/jobs') }}">Workers & schedules</a>@endif
           @if (canView('config:read'))<a class="{{ isActive('configuration') ? 'active' : '' }}" href="{{ envHref('/operations/configuration') }}">Environment &amp; secrets</a>@endif
@@ -158,6 +159,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         @if (canView('runtime:read'))<a class="{{ isActive('workloads') ? 'active' : '' }}" href="{{ envHref('/operations/workloads') }}">Workloads</a>@endif
         @if (canView('runtime:logs'))<a class="{{ isActive('observability') ? 'active' : '' }}" href="{{ envHref('/operations/observability') }}">Observability</a>@endif
         @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif
+          @if (canView('billing:read'))<a class="{{ isActive('spend') ? 'active' : '' }}" href="{{ envHref('/operations/spend') }}">Spend & budgets</a>@endif
         @if (canView('automation:read'))<a class="{{ isActive('jobs') ? 'active' : '' }}" href="{{ envHref('/operations/jobs') }}">Workers & schedules</a>@endif
       </section>
     @endif

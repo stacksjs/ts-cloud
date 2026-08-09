@@ -186,6 +186,53 @@ cloud deploy  # Scans automatically before deployment
 
 See the [security posture center documentation](./docs/features/security-posture.md) for policy, scanner, waiver, and release-artifact behavior.
 
+### 💸 Spend Management
+
+Cloud bills are a trailing indicator, so ts-cloud does not wait for one. Usage
+is metered from telemetry, priced locally, and capped before the money is spent:
+
+- **Soft & hard caps** - A configurable ladder from notify, through blocking
+  builds and deployments, to throttling traffic. Nothing it does deletes data,
+  and every action records what it takes to undo it
+- **Forecasting with confidence** - Projections carry a trust score, and a
+  forecast built from ten minutes of a month never enforces
+- **Anomaly detection** - Median/MAD against a per-phase seasonal baseline, so a
+  normal Monday morning is not an incident
+- **Usage API** - `GET /api/v1/usage` and `/spend/allowance` answer "can I
+  afford this deploy?" for CI, agents, and scripts
+- **Provider-neutral** - Works identically on AWS, Hetzner, and a local box,
+  including providers with no billing API at all
+
+```bash
+cloud usage                                                    # spend and headroom
+cloud budget:create --name 'Production' --hard 500 --soft 400  # starts in dry run
+cloud spend:check --apply                                      # run one cycle now
+cloud spend:work                                               # or run the loop continuously
+```
+
+See the [spend management documentation](./docs/features/spend-management.md).
+
+### 🛡️ Edge Protection
+
+- **L3/L4** - nftables and sysctl hardening against SYN floods, connection
+  exhaustion, slow-loris, and single-source hammering, validated before it is
+  applied
+- **L7 rate limiting** - Token bucket and sliding window, per IP, header,
+  cookie, path, or globally, with adaptive tightening driven by traffic *shape*
+  rather than volume alone
+- **WAF** - OWASP CRS via [zig-waf](https://github.com/zig-utils/zig-waf), in
+  detection mode by default
+- **Recursion protection** - Automatic and on by default: the runtime inspects
+  every invocation and propagates the chain on outbound fetch, catching A→B→A
+  loops a depth counter misses
+- **Attack mode** - Challenge every visitor, block or allow CIDRs, or pause
+  mitigation entirely; all time-boxed so nothing is left on by accident
+
+Kernel filtering, the WAF (detection-only), and recursion protection are applied
+to every deploy without opting in.
+
+See the [edge protection documentation](./docs/features/edge-protection.md).
+
 ### ☁️ Direct Provider Integration
 
 No SDK, no CLI - pure signed HTTPS API calls against the providers themselves:

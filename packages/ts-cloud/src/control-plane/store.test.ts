@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { controlPlaneMigrations } from './migrations'
+import { CONTROL_PLANE_SCHEMA_VERSION, controlPlaneMigrations } from './migrations'
 import { searchControlPlane } from './search'
 import { ControlPlaneStore, sanitizeControlPlaneValue } from './store'
 import { InvalidOperationTransitionError, OptimisticConcurrencyError } from './types'
@@ -85,7 +85,7 @@ describe('ControlPlaneStore schema and persistence', () => {
     const backup = migrated.getSetting('storage.last_backup') as { path: string }
     expect(existsSync(backup.path)).toBe(true)
     expect(backup.path.startsWith(`${path}.v1.`)).toBe(true)
-    expect(migrated.health().schemaVersion).toBe(36)
+    expect(migrated.health().schemaVersion).toBe(CONTROL_PLANE_SCHEMA_VERSION)
     expect(existsSync(parent)).toBe(true)
     migrated.close()
   })
@@ -93,8 +93,9 @@ describe('ControlPlaneStore schema and persistence', () => {
   it('keeps migration numbering contiguous', () => {
     expect(controlPlaneMigrations.map((migration) => migration.version)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-      32, 33, 34, 35, 36,
+      32, 33, 34, 35, 36, 37, 38, 39,
     ])
+    expect(controlPlaneMigrations.at(-1)?.version).toBe(CONTROL_PLANE_SCHEMA_VERSION)
   })
 })
 

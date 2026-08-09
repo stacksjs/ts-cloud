@@ -2,11 +2,12 @@ import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { AuthOidcRole, OidcFetch } from '../auth'
 import type { BackupDestination, BackupPolicy } from '../backups'
 import type { ConfigurationScope } from '../configuration'
-import type { AuthorizationCapability, AuthorizationScope, JsonValue, OperationState, OrganizationRoleTemplate } from '../control-plane'
+import type { AuthorizationCapability, AuthorizationScope, ControlPlaneStore, JsonValue, OperationState, OrganizationRoleTemplate } from '../control-plane'
 import type { DataAction, DataEngine, DataProvider, DataService } from '../data-services'
 import type { JobExecutor } from '../jobs'
 import type { CleanupPlan } from '../maintenance'
 import type { ReleaseDriverResolver } from '../release'
+import type { SpendGate, SpendService, SpendStore } from '../spend'
 import type { RuntimeStreamSnapshot } from '../runtime'
 import type {
   TelemetryAggregation,
@@ -99,6 +100,8 @@ export interface LocalDashboardServerOptions {
   oidcFetch?: OidcFetch
   /** Run the persistent deployment worker in this process. Defaults off in tests. */
   queueWorker?: boolean
+  /** Evaluate spend budgets on a timer. Off in tests, like the queue worker. */
+  spendLoop?: boolean
   /** Maximum number of operations this process may execute in parallel. */
   queueParallelism?: number
   /** Resolve the provider-specific immutable activation primitive for release jobs. */
@@ -524,6 +527,16 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/alerts/rules',
   'PATCH /api/alerts/rules',
   'POST /api/alerts/silences',
+  'POST /api/spend/budgets',
+  'PATCH /api/spend/budgets',
+  'DELETE /api/spend/budgets',
+  'POST /api/spend/check',
+  'POST /api/spend/release',
+  'POST /api/spend/anomalies/acknowledge',
+  'POST /api/protection/attack-mode',
+  'POST /api/protection/pause',
+  'POST /api/protection/ip-rules',
+  'DELETE /api/protection/ip-rules',
   'POST /api/notifications/channels',
   'PATCH /api/notifications/channels',
   'POST /api/notifications/routes',
@@ -1051,6 +1064,36 @@ const DATA_SERVICE_ACTIONS = [
   'databases',
 ] as const satisfies readonly DataAction[]
 
+/**
+ * Spend is loaded on first use, not at dashboard startup.
+ *
+ * The billing routes are rarely hit, and pulling the spend module graph into
+ * this file's import chain slows every dashboard server construction -
+ * including the ones in tests, which start a real server per case and sit on
+ * tight timeouts. The module cache makes the second call free.
+ */
+interface SpendContext {
+  store: SpendStore
+  service: SpendService
+  gate: SpendGate
+}
+
+const spendContexts = new WeakMap<object, SpendContext>()
+
+async function loadSpend(store: ControlPlaneStore): Promise<SpendContext> {
+  const cached = spendContexts.get(store)
+  if (cached) return cached
+  const spendModule = await import('../spend')
+  const spendStore = new spendModule.SpendStore(store)
+  const context: SpendContext = {
+    store: spendStore,
+    service: new spendModule.SpendService(spendStore),
+    gate: new spendModule.SpendGate(store),
+  }
+  spendContexts.set(store, context)
+  return context
+}
+
 export async function startLocalDashboardServer(
   options: LocalDashboardServerOptions = {},
 ): Promise<LocalDashboardServer> {
@@ -1435,6 +1478,7 @@ export async function startLocalDashboardServer(
   const composeService = new ComposeApplicationService(controlPlane.store)
   const releaseService = new ReleaseService(controlPlane.store)
   const alertStore = new AlertStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
+  const resolveSpend = (): Promise<SpendContext> => loadSpend(controlPlane.store)
   for (const environmentRecord of controlPlane.environments.values())
     synchronizeConfiguredJobs(jobStore, config as CloudConfig, {
       organization: controlPlane.organization,
@@ -1948,6 +1992,27 @@ export async function startLocalDashboardServer(
     const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, {
       type: 'environment',
       id: environmentId,
+    })
+    return (
+      !!target &&
+      authorizeOrganization({ membership: principal.membership, grants: principal.grants, capability, target }).allowed
+    )
+  }
+
+  /**
+   * Organization-scoped capability check.
+   *
+   * Billing is not a project permission: a member who can deploy a service is
+   * not automatically someone who may see or change what the organization
+   * spends. The existing helpers all resolve a project, environment, or
+   * resource target, so spend needs its own.
+   */
+  const mayUseCapability = (user: DashboardUser, capability: AuthorizationCapability): boolean => {
+    if (user.role === 'admin') return true
+    const principal = organizationPrincipal(user)
+    if (!principal.membership) return false
+    const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, {
+      type: 'organization',
     })
     return (
       !!target &&
@@ -5312,6 +5377,224 @@ export async function startLocalDashboardServer(
             return json({ ...tracked.result, controlPlaneOperation: tracked.operation }, tracked.result.ok ? 200 : 409)
           }
 
+          if (url.pathname.startsWith('/api/protection')) {
+            // Protection posture is a security control, not a billing one, so
+            // it rides on the security capabilities the firewall page uses.
+            const canRead = user.role === 'admin' || mayUseCapability(user, 'security:read')
+            const canManage = user.role === 'admin' || mayUseCapability(user, 'security:manage')
+            if (!canRead) return json({ ok: false, error: 'Protection controls require security:read.' }, 403)
+            const { ProtectionControlStore, describePosture } = await import('../protection')
+            const controls = new ProtectionControlStore(controlPlane.store)
+            const requireManage = (): void => {
+              if (!canManage) throw new Error('Changing protection controls requires security:manage.')
+            }
+
+            if (url.pathname === '/api/protection' && req.method === 'GET') {
+              const current = controls.current()
+              return json({ ok: true, posture: describePosture(current), controls: current, raw: controls.raw() })
+            }
+
+            if (url.pathname === '/api/protection/attack-mode' && req.method === 'POST') {
+              requireManage()
+              const body = await readJsonBody(req)
+              if (body.enabled === false) return json({ ok: true, disabled: controls.disableAttackMode() })
+              return json({
+                ok: true,
+                control: controls.enableAttackMode({
+                  hours: body.hours == null ? undefined : Number(body.hours),
+                  reason: String(body.reason ?? 'Enabled from the dashboard.'),
+                  actorId: organizationPrincipal(user).actor?.id,
+                }),
+              })
+            }
+
+            if (url.pathname === '/api/protection/pause' && req.method === 'POST') {
+              requireManage()
+              const body = await readJsonBody(req)
+              if (body.enabled === false) return json({ ok: true, resumed: controls.resumeMitigations() })
+              return json({
+                ok: true,
+                control: controls.pauseMitigations({
+                  hours: body.hours == null ? undefined : Number(body.hours),
+                  reason: String(body.reason ?? ''),
+                  actorId: organizationPrincipal(user).actor?.id,
+                }),
+              })
+            }
+
+            if (url.pathname === '/api/protection/ip-rules' && req.method === 'GET')
+              return json({ ok: true, ipRules: controls.current().ipRules })
+
+            if (url.pathname === '/api/protection/ip-rules' && (req.method === 'POST' || req.method === 'DELETE')) {
+              requireManage()
+              const body = await readJsonBody(req)
+              const list = body.list === 'allow' ? 'allow' : 'block'
+              const rules =
+                req.method === 'POST'
+                  ? controls.addIpRule(list, String(body.cidr ?? ''))
+                  : controls.removeIpRule(list, String(body.cidr ?? ''))
+              return json({ ok: true, ipRules: rules })
+            }
+
+            return json({ ok: false, error: 'Protection endpoint was not found.' }, 404)
+          }
+
+          if (url.pathname.startsWith('/api/spend/') || url.pathname === '/api/usage') {
+            // Spend data is organization-scoped, so it is gated on the billing
+            // capabilities rather than the project ones a member holds: seeing
+            // the bill is a different permission from seeing the deployment.
+            const spendCtx = await resolveSpend()
+            const spendStore = spendCtx.store
+            const spendService = spendCtx.service
+            const spendGate = spendCtx.gate
+            const canRead = user.role === 'admin' || mayUseCapability(user, 'billing:read')
+            const canManage = user.role === 'admin' || mayUseCapability(user, 'billing:manage')
+            if (!canRead) return json({ ok: false, error: 'Spend data requires the billing:read capability.' }, 403)
+            const environmentRecord = controlPlane.environments.get(environment)
+            const scope = {
+              organizationId: controlPlane.organization.id,
+              projectId: controlPlane.project.id,
+              environmentId: environmentRecord?.id,
+            }
+            const requireManage = (): void => {
+              if (!canManage) throw new Error('Changing a budget requires the billing:manage capability.')
+            }
+
+            if (url.pathname === '/api/usage' && req.method === 'GET')
+              return json({
+                ok: true,
+                ...(spendService.usageReport({
+                  organizationId: scope.organizationId,
+                  projectId: scope.projectId,
+                  period: (url.searchParams.get('period') as 'daily' | 'weekly' | 'monthly' | null) ?? 'monthly',
+                  timezone: url.searchParams.get('timezone') ?? undefined,
+                }) as Record<string, unknown>),
+              })
+
+            if (url.pathname === '/api/spend/budgets' && req.method === 'GET')
+              return json({
+                ok: true,
+                budgets: spendStore
+                  .listBudgets({ organizationId: scope.organizationId, projectId: scope.projectId })
+                  .map((budget) => ({ ...budget, status: spendService.status(budget) })),
+              })
+
+            if (url.pathname === '/api/spend/budgets' && req.method === 'POST') {
+              requireManage()
+              const body = await readJsonBody(req)
+              const budgetScope = String(body.scope ?? 'project')
+              const budget = spendStore.createBudget({
+                organizationId: scope.organizationId,
+                projectId: budgetScope === 'organization' ? undefined : scope.projectId,
+                environmentId: budgetScope === 'environment' ? scope.environmentId : undefined,
+                name: String(body.name ?? '').trim(),
+                period: (body.period as 'daily' | 'weekly' | 'monthly') ?? 'monthly',
+                timezone: body.timezone ? String(body.timezone) : undefined,
+                softLimitCents: body.softLimitCents == null ? undefined : Math.round(Number(body.softLimitCents)),
+                hardLimitCents: body.hardLimitCents == null ? undefined : Math.round(Number(body.hardLimitCents)),
+                graceSeconds: body.graceSeconds == null ? undefined : Number(body.graceSeconds),
+                // A budget created from the dashboard starts in dry run unless
+                // the operator ticked the box. The first thing enforcement does
+                // is stop deployments, and nobody should meet that by surprise.
+                dryRun: body.dryRun !== false,
+              })
+              return json({ ok: true, budget })
+            }
+
+            if (url.pathname === '/api/spend/budgets' && req.method === 'PATCH') {
+              requireManage()
+              const body = await readJsonBody(req)
+              const id = String(body.id ?? '')
+              const existing = spendStore.getBudget(id)
+              if (!existing || existing.organizationId !== scope.organizationId)
+                return json({ ok: false, error: 'Budget was not found.' }, 404)
+              return json({
+                ok: true,
+                budget: spendStore.updateBudget(
+                  id,
+                  {
+                    softLimitCents: body.softLimitCents == null ? existing.softLimitCents : Math.round(Number(body.softLimitCents)),
+                    hardLimitCents: body.hardLimitCents == null ? existing.hardLimitCents : Math.round(Number(body.hardLimitCents)),
+                    enabled: body.enabled == null ? existing.enabled : body.enabled === true,
+                    dryRun: body.dryRun == null ? existing.dryRun : body.dryRun === true,
+                  },
+                  body.expectedVersion == null ? undefined : Number(body.expectedVersion),
+                ),
+              })
+            }
+
+            if (url.pathname === '/api/spend/budgets' && req.method === 'DELETE') {
+              requireManage()
+              const body = await readJsonBody(req)
+              const id = String(body.id ?? '')
+              const existing = spendStore.getBudget(id)
+              if (!existing || existing.organizationId !== scope.organizationId)
+                return json({ ok: false, error: 'Budget was not found.' }, 404)
+              // Lift first: a deleted budget whose gate entries survive blocks
+              // deploys with nothing left in the UI to explain why.
+              const lifted = spendGate.closeBudget(id)
+              spendStore.deleteBudget(id)
+              return json({ ok: true, deleted: true, lifted })
+            }
+
+            if (url.pathname === '/api/spend/check' && req.method === 'POST') {
+              requireManage()
+              const body = await readJsonBody(req)
+              const { SpendRunner } = await import('../spend')
+              const runner = new SpendRunner({
+                controlPlane: controlPlane.store,
+                store: spendStore,
+                alerts: alertStore,
+              })
+              // Preview by default; the dashboard has to ask explicitly to enforce.
+              if (body.apply !== true) {
+                const budgets = spendStore.budgetsForScope(scope.organizationId, scope.projectId, scope.environmentId)
+                return json({
+                  ok: true,
+                  applied: false,
+                  preview: budgets.map((budget) => spendService.status(budget)),
+                })
+              }
+              const result = await runner.run({ ...scope, environmentKind: environmentRecord?.kind })
+              return json({ ok: true, applied: true, result })
+            }
+
+            if (url.pathname === '/api/spend/enforcement' && req.method === 'GET')
+              return json({ ok: true, enforcement: spendGate.listUnder({ organizationId: scope.organizationId }) })
+
+            if (url.pathname === '/api/spend/release' && req.method === 'POST') {
+              requireManage()
+              const body = await readJsonBody(req)
+              const released = spendGate.close(String(body.budgetId ?? ''), body.action)
+              return json({
+                ok: released,
+                released,
+                // Say so plainly: this is a stopgap, not a resolution.
+                note: released
+                  ? 'The next spend cycle re-applies this if spend is still over the threshold.'
+                  : 'That action was not in force.',
+              })
+            }
+
+            if (url.pathname === '/api/spend/anomalies' && req.method === 'GET')
+              return json({
+                ok: true,
+                anomalies: spendStore.listAnomalies({
+                  organizationId: scope.organizationId,
+                  projectId: scope.projectId,
+                  unacknowledgedOnly: url.searchParams.get('unacknowledged') === 'true',
+                }),
+              })
+
+            if (url.pathname === '/api/spend/anomalies/acknowledge' && req.method === 'POST') {
+              requireManage()
+              const body = await readJsonBody(req)
+              return json({ ok: true, acknowledged: spendStore.acknowledgeAnomaly(String(body.id ?? '')) })
+            }
+
+            return json({ ok: false, error: 'Spend endpoint was not found.' }, 404)
+          }
+
           if (
             url.pathname.startsWith('/api/health/') ||
             url.pathname.startsWith('/api/alerts') ||
@@ -8322,6 +8605,29 @@ export async function startLocalDashboardServer(
 
   queueWorker?.start()
 
+  /**
+   * Budgets evaluate on a timer, not only when someone opens the page.
+   *
+   * A cap nobody runs is a report, not a cap - and the whole point is to act
+   * before the money is gone. The lease keeps this safe when a `spend:work`
+   * worker is running against the same control plane, which is the ordinary
+   * setup on a box that also serves the dashboard.
+   */
+  const spendLoopEnabled = options.spendLoop ?? process.env.NODE_ENV !== 'test'
+  let stopSpendLoop: (() => void) | undefined
+  if (spendLoopEnabled) {
+    void (async () => {
+      const { SpendRunner, SpendLoopLease, startSpendLoop } = await import('../spend')
+      const { store: spendStore } = await loadSpend(controlPlane.store)
+      const runner = new SpendRunner({ controlPlane: controlPlane.store, store: spendStore, alerts: alertStore })
+      stopSpendLoop = startSpendLoop(runner, {
+        lease: new SpendLoopLease(controlPlane.store, { owner: `dashboard:${process.pid}` }),
+        onError: (error) =>
+          console.error(`[ts-cloud] spend cycle failed: ${error instanceof Error ? error.message : String(error)}`),
+      })
+    })()
+  }
+
   const stop = server.stop.bind(server)
   server.stop = ((closeActiveConnections?: boolean) => {
     clearInterval(throttleSweep)
@@ -8336,6 +8642,7 @@ export async function startLocalDashboardServer(
     clearUiCache()
     runtimeStreams.clear()
     queueWorker?.stop()
+    stopSpendLoop?.()
     const result = stop(closeActiveConnections)
     if (queueWorker) void queueWorker.settled().finally(() => controlPlane.store.close())
     else controlPlane.store.close()

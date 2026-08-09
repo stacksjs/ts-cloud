@@ -4,6 +4,7 @@ import type { ApiDeploymentRequest } from './types'
 import { createHash } from 'node:crypto'
 import { authorizeOrganization, sanitizeControlPlaneValue } from '../control-plane'
 import { DurableOperationQueue } from '../queue'
+import { SpendGate } from '../spend/gate'
 
 export class ApiServiceError extends Error {
   constructor(
@@ -32,11 +33,13 @@ export function requestHash(method: string, pathname: string, body: unknown): st
 
 export class AutomationApiService {
   private readonly queue: DurableOperationQueue
+  private readonly spendGate: SpendGate
   constructor(
     private readonly controlPlane: ControlPlaneStore,
     private readonly identities: AutomationIdentityStore,
   ) {
     this.queue = new DurableOperationQueue(controlPlane)
+    this.spendGate = new SpendGate(controlPlane)
   }
 
   target(principal: ApiTokenPrincipal, requested: AuthorizationScope): AuthorizationTarget {
@@ -229,6 +232,20 @@ export class AutomationApiService {
       ? { type: 'resource', id: input.serviceId }
       : { type: 'environment', id: input.environmentId }
     this.authorize(principal, 'deployments:create', requested)
+    // Spend caps are checked after authorization and before idempotency: a
+    // caller must not be told a request was replayed when the cap would have
+    // refused the original, and a 402 is more useful than a 403 here because
+    // it names a condition the caller can actually resolve.
+    const gated = this.spendGate.check('deploy', {
+      organizationId: principal.serviceAccount.organizationId,
+      projectId: input.projectId,
+      environmentId: input.environmentId,
+    })
+    if (!gated.allowed)
+      throw new ApiServiceError('spend_cap_exceeded', gated.reason ?? 'A spend cap is blocking deployments.', 402, {
+        action: gated.action,
+        budgetId: gated.budgetId,
+      })
     const bodyHash = requestHash('POST', '/api/v1/deployments', input)
     const existing = this.identities.getIdempotency(principal.token.id, idempotencyKey)
     if (existing) {

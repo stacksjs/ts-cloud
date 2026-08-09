@@ -22,6 +22,7 @@ describe('dashboard route manifest', () => {
       'runtime.workloads',
       'observability.overview',
       'alerts.overview',
+      'spend.overview',
       'automation.jobs',
       'configuration.entries',
       'backups.list',

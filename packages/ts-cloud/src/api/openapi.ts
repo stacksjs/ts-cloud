@@ -1,3 +1,5 @@
+import { spendOpenApiPaths } from '../spend/api'
+
 export const API_VERSION = '1.6.0'
 
 export function openApiDocument(): Record<string, unknown> {
@@ -45,6 +47,7 @@ export function openApiDocument(): Record<string, unknown> {
     servers: [{ url: '/' }],
     security: [{ bearerAuth: [] }],
     paths: {
+      ...spendOpenApiPaths(),
       '/api/v1/projects': {
         get: {
           operationId: 'listProjects',

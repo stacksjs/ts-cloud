@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 36
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 39
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1463,6 +1463,211 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
           ingested_bytes = ingested_bytes + excluded.ingested_bytes,
           record_count = record_count + 1;
       END;
+    `,
+  },
+  {
+    version: 37,
+    name: 'spend_management',
+    sql: `
+      CREATE TABLE spend_budgets (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        period TEXT NOT NULL CHECK (period IN ('daily', 'weekly', 'monthly')),
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        currency TEXT NOT NULL DEFAULT 'USD',
+        soft_limit_cents INTEGER CHECK (soft_limit_cents IS NULL OR soft_limit_cents >= 0),
+        hard_limit_cents INTEGER CHECK (hard_limit_cents IS NULL OR hard_limit_cents >= 0),
+        thresholds TEXT NOT NULL DEFAULT '[]',
+        meters TEXT NOT NULL DEFAULT '[]',
+        grace_seconds INTEGER NOT NULL DEFAULT 0 CHECK (grace_seconds >= 0),
+        hysteresis_percent REAL NOT NULL DEFAULT 5 CHECK (hysteresis_percent >= 0),
+        dry_run INTEGER NOT NULL DEFAULT 0 CHECK (dry_run IN (0, 1)),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(organization_id, name),
+        CHECK (soft_limit_cents IS NOT NULL OR hard_limit_cents IS NOT NULL)
+      ) STRICT;
+      CREATE INDEX spend_budgets_scope ON spend_budgets(organization_id, project_id, environment_id, enabled);
+
+      -- Hourly rollups. The empty string stands in for "unscoped" so the
+      -- primary key stays usable: SQLite treats every NULL as distinct, which
+      -- would let the same bucket be inserted without limit.
+      CREATE TABLE spend_usage (
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL DEFAULT '',
+        environment_id TEXT NOT NULL DEFAULT '',
+        resource_id TEXT NOT NULL DEFAULT '',
+        provider TEXT NOT NULL DEFAULT '',
+        region TEXT NOT NULL DEFAULT '',
+        meter TEXT NOT NULL,
+        bucket_start TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+        cost_cents REAL NOT NULL DEFAULT 0 CHECK (cost_cents >= 0),
+        sample_count INTEGER NOT NULL DEFAULT 0 CHECK (sample_count >= 0),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(organization_id, project_id, environment_id, resource_id, provider, region, meter, bucket_start)
+      ) STRICT;
+      CREATE INDEX spend_usage_window ON spend_usage(organization_id, bucket_start);
+      CREATE INDEX spend_usage_project_window ON spend_usage(project_id, bucket_start);
+
+      -- Applied deltas, so replaying telemetry cannot double-bill.
+      CREATE TABLE spend_usage_receipts (
+        key TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        bucket_start TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX spend_usage_receipts_age ON spend_usage_receipts(created_at);
+
+      CREATE TABLE spend_enforcements (
+        id TEXT PRIMARY KEY,
+        budget_id TEXT NOT NULL REFERENCES spend_budgets(id) ON DELETE CASCADE,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        action TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('pending', 'active', 'releasing', 'released', 'failed')),
+        reason TEXT NOT NULL,
+        restore TEXT NOT NULL DEFAULT '{}',
+        triggered_at_percent REAL NOT NULL DEFAULT 0,
+        simulated INTEGER NOT NULL DEFAULT 0 CHECK (simulated IN (0, 1)),
+        applied_at TEXT,
+        released_at TEXT,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      -- At most one live enforcement per budget+action; released rows are history.
+      CREATE UNIQUE INDEX spend_enforcements_live
+        ON spend_enforcements(budget_id, action)
+        WHERE state IN ('pending', 'active', 'releasing');
+      CREATE INDEX spend_enforcements_scope ON spend_enforcements(organization_id, state, created_at DESC);
+
+      CREATE TABLE spend_decisions (
+        id TEXT PRIMARY KEY,
+        budget_id TEXT NOT NULL REFERENCES spend_budgets(id) ON DELETE CASCADE,
+        level TEXT NOT NULL CHECK (level IN ('ok', 'warning', 'soft_capped', 'hard_capped')),
+        window_start TEXT NOT NULL,
+        window_end TEXT NOT NULL,
+        used_percent REAL NOT NULL,
+        projected_percent REAL NOT NULL,
+        actual_cents REAL NOT NULL,
+        projected_cents REAL NOT NULL,
+        actions TEXT NOT NULL DEFAULT '[]',
+        simulated INTEGER NOT NULL DEFAULT 0 CHECK (simulated IN (0, 1)),
+        reason TEXT NOT NULL,
+        evaluated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX spend_decisions_budget ON spend_decisions(budget_id, evaluated_at DESC);
+
+      CREATE TABLE spend_anomalies (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        -- The nullable scope columns cannot carry the uniqueness themselves:
+        -- SQLite treats every NULL as distinct, so an org-wide anomaly would
+        -- re-insert on every evaluation. This collapses the scope to a string.
+        scope_key TEXT NOT NULL,
+        signal TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK (direction IN ('spike', 'drop')),
+        observed REAL NOT NULL,
+        expected REAL NOT NULL,
+        score REAL NOT NULL,
+        delta_percent REAL NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
+        bucket_start TEXT NOT NULL,
+        evidence TEXT NOT NULL DEFAULT '{}',
+        acknowledged_at TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(scope_key, signal, bucket_start)
+      ) STRICT;
+      CREATE INDEX spend_anomalies_recent ON spend_anomalies(organization_id, created_at DESC);
+    `,
+  },
+  {
+    version: 38,
+    name: 'anomaly_configuration',
+    sql: `
+      CREATE TABLE anomaly_configs (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        -- Nullable scope columns cannot carry uniqueness in SQLite, so the
+        -- scope is collapsed into a string the way spend_anomalies does.
+        scope_key TEXT NOT NULL,
+        signal TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        -- 'low' widens the threshold, 'high' narrows it. Stored rather than a
+        -- raw z-score so the UI can offer a choice people can reason about.
+        sensitivity TEXT NOT NULL DEFAULT 'medium' CHECK (sensitivity IN ('low', 'medium', 'high')),
+        season_length INTEGER NOT NULL DEFAULT 24 CHECK (season_length > 0),
+        min_absolute_delta REAL NOT NULL DEFAULT 0 CHECK (min_absolute_delta >= 0),
+        detect_drops INTEGER NOT NULL DEFAULT 0 CHECK (detect_drops IN (0, 1)),
+        severity TEXT NOT NULL DEFAULT 'warning' CHECK (severity IN ('info', 'warning', 'critical')),
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(scope_key, signal)
+      ) STRICT;
+      CREATE INDEX anomaly_configs_scope ON anomaly_configs(organization_id, enabled);
+
+      CREATE TABLE anomaly_silences (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        scope_key TEXT NOT NULL,
+        -- A silence matches on any combination; an empty matcher would silence
+        -- everything, which the store refuses rather than storing.
+        signal TEXT,
+        route_pattern TEXT,
+        status_code INTEGER,
+        reason TEXT NOT NULL,
+        actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        expires_at TEXT,
+        created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX anomaly_silences_scope ON anomaly_silences(organization_id, expires_at);
+    `,
+  },
+  {
+    version: 39,
+    name: 'sms_notification_channel',
+    sql: `
+      -- SQLite cannot alter a CHECK constraint, so widening the channel kinds
+      -- means rebuilding the table. Rows are copied first and the old table is
+      -- dropped last, so an interrupted migration leaves the original intact.
+      CREATE TABLE notification_channels_new (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('slack','discord','teams','telegram','email','webhook','sms')),
+        config TEXT NOT NULL DEFAULT '{}',
+        credential_ciphertext TEXT,
+        credential_fingerprint TEXT,
+        status TEXT NOT NULL CHECK (status IN ('active','paused','failing','disabled')),
+        version INTEGER NOT NULL DEFAULT 1,
+        last_tested_at TEXT,
+        last_error TEXT,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(organization_id, name)
+      ) STRICT;
+
+      INSERT INTO notification_channels_new SELECT
+        id, organization_id, name, kind, config, credential_ciphertext, credential_fingerprint,
+        status, version, last_tested_at, last_error, created_by_actor_id, created_at, updated_at
+      FROM notification_channels;
+
+      DROP TABLE notification_channels;
+      ALTER TABLE notification_channels_new RENAME TO notification_channels;
     `,
   },
 ]

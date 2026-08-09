@@ -195,6 +195,14 @@ See [Laravel / Forge-style](/features/laravel) for the `infrastructure.compute` 
 `iam:whoami/users/user/roles/role/groups/policies/policy/simulate` ·
 `audit:start/stop/trail/trails/events/event/create/delete`.
 
+## Spend & budgets
+
+`cloud usage` · `budget:list/create/update/delete` · `spend:check/status/release/anomalies/work` ·
+`anomaly:config/silence` · `protect:status/attack-mode/pause/allow/block/apply`.
+
+See [Spend management](/features/spend-management) for meters, the enforcement
+ladder, the spend gate, anomaly detection, and the usage API.
+
 ## Cost, status & tunnel
 
 `cloud cost` · `cost:analyze` · `cost:breakdown` · `cost:egress` · `optimize` · `resources` · `resources:unused` ·

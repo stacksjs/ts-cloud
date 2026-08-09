@@ -13,6 +13,11 @@ export type NotificationEmail = (input: {
   subject: string
   text: string
 }) => Promise<unknown>
+/**
+ * Send one SMS. Injected rather than imported so the router stays testable and
+ * so a deployment that does not use SMS pays nothing for it.
+ */
+export type NotificationSms = (input: { to: string; from?: string; text: string }) => Promise<unknown>
 
 function minuteInZone(at: Date, timezone: string): { minute: number; weekday: number } {
   const parts = Object.fromEntries(
@@ -109,7 +114,12 @@ export class NotificationRouter {
   private readonly fetchImpl: NotificationFetch
   constructor(
     private readonly store: AlertStore,
-    private readonly options: { fetchImpl?: NotificationFetch; emailImpl?: NotificationEmail; now?: () => Date } = {},
+    private readonly options: {
+      fetchImpl?: NotificationFetch
+      emailImpl?: NotificationEmail
+      smsImpl?: NotificationSms
+      now?: () => Date
+    } = {},
   ) {
     this.fetchImpl = options.fetchImpl ?? (globalThis.fetch as unknown as NotificationFetch)
   }
@@ -234,6 +244,15 @@ export class NotificationRouter {
           subject: `[ts-cloud] ${String((body.alert as any)?.title ?? body.event)}`,
           text: `${text}\n\n${JSON.stringify(body, null, 2)}`,
         })
+        return { ok: true, status: 202 }
+      }
+      if (channel.kind === 'sms') {
+        if (!this.options.smsImpl) return { ok: false, error: 'SMS adapter is not configured.' }
+        const to = channel.config.to
+        if (typeof to !== 'string' || !to.trim()) return { ok: false, error: 'SMS channels need a `to` number.' }
+        // Only the summary line goes out: an SMS is 160 characters and the
+        // recipient is on a phone. The full payload is in the other channels.
+        await this.options.smsImpl({ to, from: channel.config.from as string | undefined, text: text.slice(0, 300) })
         return { ok: true, status: 202 }
       }
       let url = secret.url ?? secret.value

@@ -1,3 +1,6 @@
+import type { RecursionProtectionConfig } from './auto-recursion'
+import { checkInvocation, withInvocation } from './auto-recursion'
+import { recursionBlockedResponse } from './recursion'
 /**
  * Serverless runtime adapter (Node/Bun).
  *
@@ -121,6 +124,12 @@ function isTextContentType(contentType: string | null): boolean {
 
 export interface HttpAdapterOptions {
   /**
+   * Recursion protection. On by default; pass `false` or set
+   * `TS_CLOUD_RECURSION_PROTECTION=0` to disable, or `{ detectionOnly: true }`
+   * to watch what it would block before it blocks anything.
+   */
+  recursionProtection?: RecursionProtectionConfig | false
+  /**
    * Read maintenance state from the environment. When `MAINTENANCE_MODE` is
    * truthy, requests get a 503 unless they carry the bypass secret in the
    * `x-maintenance-bypass` header or a `tscloud_bypass` cookie.
@@ -228,9 +237,33 @@ export function createHttpHandler(handler: FetchHandler | undefined, opts?: Http
       }
     }
 
+    // Recursion protection runs after maintenance (a parked app should answer
+    // 503 either way) and before the handler, so a loop costs one rejected
+    // invocation rather than a full execution plus everything it calls.
+    const recursion = checkInvocation(event.headers ?? {}, opts?.recursionProtection)
+    if (recursion?.blocked) {
+      const blocked = recursionBlockedResponse(recursion.verdict)
+      return {
+        statusCode: blocked.status,
+        headers: { ...blocked.headers, 'retry-after': '60' },
+        body: JSON.stringify(blocked.body),
+        isBase64Encoded: false,
+      }
+    }
+
     const request = eventToRequest(event)
-    const response = await handler(request)
-    return responseToResult(response)
+    if (!recursion) {
+      const response = await handler(request)
+      return responseToResult(response)
+    }
+    if (recursion.observed) {
+      console.warn(
+        `[ts-cloud] recursion detected (${recursion.verdict.reason}) at depth ${recursion.verdict.depth}; detection-only mode let it run`,
+      )
+    }
+    // Run inside the invocation context so outbound fetch carries the chain.
+    // Without this the next hop starts a fresh chain and the loop is invisible.
+    return withInvocation(recursion.verdict, async () => responseToResult(await handler(request)))
   }
 }
 

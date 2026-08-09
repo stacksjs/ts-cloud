@@ -36,6 +36,8 @@ export type AuthorizationCapability =
   | 'users:manage'
   | 'users:transfer-ownership'
   | 'audit:read'
+  | 'billing:read'
+  | 'billing:manage'
   | 'security:read'
   | 'security:manage'
   | 'security:waive'

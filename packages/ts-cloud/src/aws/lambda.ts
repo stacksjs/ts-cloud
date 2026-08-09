@@ -548,6 +548,57 @@ export class LambdaClient {
     })
   }
 
+  /**
+   * Read the reserved-concurrency limit. Returns null when none is set.
+   *
+   * Reserved concurrency is not the same as provisioned concurrency above: it
+   * is a ceiling on how many executions may run at once, and setting it to 0 is
+   * the supported way to stop a function being invoked at all without deleting
+   * it or breaking its triggers.
+   */
+  async getFunctionConcurrency(functionName: string): Promise<number | null> {
+    try {
+      const result: { ReservedConcurrentExecutions?: number } = await this.client.request({
+        service: 'lambda',
+        region: this.region,
+        method: 'GET',
+        path: `/2019-10-31/functions/${encodeURIComponent(functionName)}/concurrency`,
+      })
+      return result?.ReservedConcurrentExecutions ?? null
+    } catch (err: any) {
+      if (/ResourceNotFound|ProvisionedConcurrencyConfigNotFound/i.test(String(err?.message))) return null
+      throw err
+    }
+  }
+
+  /**
+   * Set the reserved-concurrency ceiling.
+   *
+   * Zero throttles every invocation: the trigger still fires, Lambda rejects it,
+   * and nothing runs. That is reversible in one call, which is what makes it
+   * usable as a spend cap rather than a deletion.
+   */
+  async putFunctionConcurrency(functionName: string, reservedConcurrentExecutions: number): Promise<void> {
+    await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'PUT',
+      path: `/2019-10-31/functions/${encodeURIComponent(functionName)}/concurrency`,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ReservedConcurrentExecutions: reservedConcurrentExecutions }),
+    })
+  }
+
+  /** Remove the reserved-concurrency ceiling, returning the function to the account pool. */
+  async deleteFunctionConcurrency(functionName: string): Promise<void> {
+    await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'DELETE',
+      path: `/2019-10-31/functions/${encodeURIComponent(functionName)}/concurrency`,
+    })
+  }
+
   /** Remove a provisioned-concurrency config from a function version/alias. */
   async deleteProvisionedConcurrencyConfig(functionName: string, qualifier: string): Promise<void> {
     await this.client.request({

@@ -18,9 +18,18 @@ import { fileURLToPath } from 'node:url'
 import { generateBootstrap } from './bootstrap'
 import { createZip } from './zip'
 
-/** Absolute path to the bundled runtime adapter source shipped with this package. */
-function adapterSourcePath(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), 'runtime', 'adapter.ts')
+/**
+ * Runtime sources copied into the staging directory.
+ *
+ * The adapter imports its siblings by relative path, so staging the adapter
+ * alone leaves those imports unresolvable. Listing them here keeps the bundle
+ * self-contained; a new sibling import must be added or the build fails loudly
+ * at package time rather than silently at invocation time.
+ */
+const RUNTIME_SOURCES = ['adapter.ts', 'recursion.ts', 'auto-recursion.ts'] as const
+
+function runtimeSourceDir(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), 'runtime')
 }
 
 export interface PackageOptions {
@@ -81,7 +90,7 @@ export async function packageServerlessApp(opts: PackageOptions): Promise<Packag
   // bundle the bootstrap (which imports the user entry by absolute path).
   const stage = mkdtempSync(join(tmpdir(), 'tscloud-pkg-'))
   try {
-    cpSync(adapterSourcePath(), join(stage, 'adapter.ts'))
+    for (const source of RUNTIME_SOURCES) cpSync(join(runtimeSourceDir(), source), join(stage, source))
     const bootstrapPath = join(stage, 'bootstrap.ts')
     writeFileSync(bootstrapPath, generateBootstrap({ entryImport: entryPath, adapterImport: './adapter' }))
 

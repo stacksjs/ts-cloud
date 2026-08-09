@@ -131,6 +131,16 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
     adminOnly: false,
   },
   {
+    id: 'spend.overview',
+    path: '/operations/spend',
+    label: 'Spend & budgets',
+    group: 'operations',
+    modes: ['server', 'serverless'],
+    // Not admin-only: a member with billing:read may look, and the page's
+    // mutations are gated on billing:manage server-side rather than by hiding.
+    adminOnly: false,
+  },
+  {
     id: 'automation.jobs',
     path: '/operations/jobs',
     label: 'Workers & schedules',
