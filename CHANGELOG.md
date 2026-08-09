@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.109...v0.7.110)
+
+## 🐛 Bug Fixes
+
+- **spend**: stop route detection mislabelling project-wide series ([32dc27e](https://github.com/stacksjs/ts-cloud/commit/32dc27e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.110 ([ce67cbf](https://github.com/stacksjs/ts-cloud/commit/ce67cbf)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.108...v0.7.109)
 
 ## 🚀 Features
