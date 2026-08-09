@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.108...v0.7.109)
+
+## 🚀 Features
+
+- cap cloud spend and protect the edge by default ([7dec423](https://github.com/stacksjs/ts-cloud/commit/7dec423)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.109 ([36fbf16](https://github.com/stacksjs/ts-cloud/commit/36fbf16)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.107...v0.7.108)
 
 ## 🚀 Features
