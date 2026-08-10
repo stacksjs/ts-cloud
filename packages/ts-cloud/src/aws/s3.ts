@@ -2013,7 +2013,14 @@ export class S3Client {
       headers,
     })
 
-    return { UploadId: result?.InitiateMultipartUploadResult?.UploadId }
+    // Some S3-compatible endpoints (Hetzner/Ceph RGW among them) return the
+    // initiate response without the envelope element, so the fields sit at the
+    // top level. Unwrapping only the envelope yielded `UploadId: undefined`,
+    // and every subsequent UploadPart then 404'd with NoSuchUpload — a failure
+    // that only shows up on files large enough to go multipart. Same
+    // `?? result` fallback the list operations above already use.
+    const root = result?.InitiateMultipartUploadResult ?? result
+    return { UploadId: root?.UploadId }
   }
 
   /**
@@ -2168,7 +2175,7 @@ export class S3Client {
       queryParams: { uploads: '' },
     })
 
-    const uploads = result?.ListMultipartUploadsResult?.Upload
+    const uploads = (result?.ListMultipartUploadsResult ?? result)?.Upload
     if (!uploads) return []
     const list = Array.isArray(uploads) ? uploads : [uploads]
     return list.map((u: any) => ({
