@@ -897,6 +897,19 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
         'OOMPolicy=stop',
         'Restart=always',
         'RestartSec=5',
+        // Without a start limit, a gateway that cannot bind restarts forever.
+        // A production box was found mid-crash-loop at restart 65: an orphaned
+        // predecessor held :443, every new instance died on EADDRINUSE, and
+        // systemd reported the unit as `activating` the whole time while the
+        // orphan served a stale route table. Bounded, it lands in `failed`,
+        // which is visible to both an operator and a monitor.
+        'StartLimitIntervalSec=120',
+        'StartLimitBurst=5',
+        // `systemctl disable --now` on a predecessor does not kill a process
+        // whose unit is already inactive, and that is precisely the case that
+        // wedged the box. Clear the ports from whatever actually holds them
+        // before binding. `|| true` so a clean boot is not a startup failure.
+        'ExecStartPre=/bin/sh -c \'for p in 80 443; do fuser -k -n tcp "$p" 2>/dev/null || true; done; sleep 1\'',
         'LimitNOFILE=1048576',
         'AmbientCapabilities=CAP_NET_BIND_SERVICE',
         '',
