@@ -768,6 +768,10 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
     expect(joined).toContain('acme:renew')
     expect(joined).toContain('--webroot')
     expect(joined).toContain(DEFAULT_ACME_WEBROOT)
+    expect(joined).toContain('while ! getent ahosts "$d"')
+    expect(joined).toContain("DNS_ATTEMPTS='24'")
+    expect(joined).toContain("DNS_DELAY_SECONDS='5'")
+    expect(joined.indexOf('wait_for_dns "$d"')).toBeLessThan(joined.indexOf('$TLSX acme:issue'))
     expect(joined).toContain(`[ -s "$CERTS/$d.crt" ] && systemctl restart ${RPX_SERVICE_NAME}`)
     expect(joined.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`)).toBeLessThan(joined.indexOf('acme:renew'))
     // Per-app renewal units (slug defaults to 'app').

@@ -16,7 +16,7 @@ import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { resolveNotifications, sendNotifications } from './notifications'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
-import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -32,6 +32,10 @@ const noopLogger: ComputeDeployLogger = {
   error: () => {},
   step: () => {},
   success: () => {},
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`
 }
 
 /**
@@ -812,6 +816,8 @@ export async function renewRpxCertificates(
 
   const rpxConfig = buildRpxConfig(routeSource.sites || {}, { proxy, slug: config.project.slug })
   if (rpxConfig.proxies.length === 0) return true
+  const certDomains = certDomainsForConfig(rpxConfig)
+  if (certDomains.length === 0) return true
 
   const slug = config.project.slug
   const stackName = resolveProjectStackName(config, environment)
@@ -827,9 +833,15 @@ export async function renewRpxCertificates(
   }
 
   logger.step('Issuing rpx TLS certificates after DNS reconciliation...')
+  const certChecks = certDomains
+    .map(domain => `test -s ${shellQuote(`${rpxConfig.productionCerts.certsDir}/${domain}.crt`)}`)
+    .join(' && ')
   const result = await driver.runRemoteDeploy({
     targets,
-    commands: [`systemctl start ${rpxCertRenewServiceName(slug)}`],
+    commands: [
+      `systemctl start ${rpxCertRenewServiceName(slug)}`,
+      certChecks,
+    ],
     comment: `ts-cloud rpx TLS issuance ${slug}`,
     tags: {
       Project: slug,

@@ -547,7 +547,10 @@ describe('renewRpxCertificates', () => {
     expect(ok).toBe(true)
     const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
     expect(call.targets[0].id).toBe('i-abc123')
-    expect(call.commands).toEqual(['systemctl start rpx-cert-renew-my-app.service'])
+    expect(call.commands).toEqual([
+      'systemctl start rpx-cert-renew-my-app.service',
+      "test -s '/etc/rpx/certs/my-app.example.com.crt'",
+    ])
     expect(call.tags.Role).toBe('app')
   })
 
