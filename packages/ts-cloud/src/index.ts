@@ -255,8 +255,11 @@ export {
   // High-level helper with smart defaults (Porkbun, non-SPA, etc.)
   deploySite,
   // Per-site deploy-target model (resolver + validation)
+  hasProxyUpstream,
+  resolveProxyUpstreams,
   resolveSiteDeployTarget,
   resolveSiteKind,
+  shipsARelease,
   validateDeploymentConfig,
   // Serverless application pipeline (Laravel-Vapor-equivalent)
   buildAndPushServerlessImage,

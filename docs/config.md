@@ -164,6 +164,12 @@ Each entry in `sites` deploys to one of two **targets**, set explicitly with
 | `'server'` (or unset, `start` set) | set | **server-app** | Dynamic app run as a `systemd` service. |
 | `'server'` | unset | **server-static** | Static site **built and shipped to the compute box** (to `/var/www/<site>`), optionally fronted by a CDN. |
 
+Two further kinds are **gateway-only**: they ship nothing and are decided by a
+single field rather than by `deploy`/`start` — `redirect` (the gateway answers
+the domain with a `Location`) and `proxyTo` (the gateway forwards the domain to
+an upstream ts-cloud does not manage). See
+[Proxy-only sites](#proxy-only-sites) below.
+
 > Proxying and TLS on compute (`server`) targets are handled by
 > [rpx](https://github.com/stacksjs/rpx) (proxy + TLS). By default ts-cloud
 > provisions the box, runs the systemd app, and ships static assets but leaves
@@ -221,6 +227,37 @@ const config: CloudConfig = {
   },
 }
 ```
+
+### Proxy-only sites
+
+Set `proxyTo` when a service is already running on the box and must stay under
+whatever provisions it. ts-cloud builds, ships and supervises **nothing** for the
+site — no release directory, no systemd unit — but the domain still joins the
+gateway's TLS set, so it gets `certsDirServerNames`,
+`onDemandTls.allowedSuffixes` and the project's `rpx-cert-renew-<slug>` units
+like any other site.
+
+```typescript
+sites: {
+  // Routed here, run and renewed elsewhere.
+  registry: { domain: 'registry.example.com', proxyTo: 'localhost:3001' },
+
+  // Several upstreams are load-balanced with infrastructure.compute.proxy.loadBalancer.
+  api: { domain: 'api.example.com', proxyTo: ['10.0.0.1:8080', '10.0.0.2:8080'] },
+}
+```
+
+Reach for it when the service needs something ts-cloud's generated unit cannot
+express. The case it was built for is a package registry whose unit carries
+`Requires=clamav-daemon.service` and hard memory and task caps: routing it with
+`start` + `port` would have handed ts-cloud the unit and silently dropped that
+hardening, while leaving it out of `sites` entirely meant the host never made it
+into the gateway's certificate set.
+
+`domain` is required. `root`, `start`, `port`, `build` and `preStart` are
+ignored, and `cloud deploy` warns if they are set, so a leftover `root` can never
+turn the site back into a release that would overwrite the running service. A
+`redirect` on the same site wins over `proxyTo`.
 
 ### Server-optional contract
 

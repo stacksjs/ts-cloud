@@ -908,3 +908,56 @@ describe('buildRpxLbConfig is on the package public export barrel', () => {
     })
   })
 })
+
+describe('proxy-only sites', () => {
+  it('routes the domain to the declared upstream without shipping anything', () => {
+    const config = buildRpxConfig(
+      { registry: { domain: 'registry.pantry.dev', proxyTo: 'localhost:3001' } },
+      { proxy: rpxProxy, slug: 'pantry' },
+    )
+
+    const route = config.proxies.find((r) => r.to === 'registry.pantry.dev')!
+    expect(route.from).toBe('localhost:3001')
+    expect(route.static).toBeUndefined()
+    expect(route.redirect).toBeUndefined()
+  })
+
+  it('puts the host in the TLS set, which is the whole point of the kind', () => {
+    // A proxy site exists so a service ts-cloud never deploys still gets
+    // certsDirServerNames + allowedSuffixes, and therefore the project's
+    // rpx-cert-renew units. Without this it would sit on the box's fallback cert.
+    const config = buildRpxConfig(
+      { registry: { domain: 'registry.pantry.dev', proxyTo: 'localhost:3001' } },
+      { proxy: { engine: 'rpx', onDemandTls: true }, slug: 'pantry' },
+    )
+
+    expect(config.productionCerts?.certsDirServerNames).toContain('registry.pantry.dev')
+    expect(config.onDemandTls?.allowedSuffixes).toContain('registry.pantry.dev')
+  })
+
+  it('load-balances across several upstreams', () => {
+    const config = buildRpxConfig(
+      { api: { domain: 'api.example.com', proxyTo: ['10.0.0.1:8080', '10.0.0.2:8080'] } },
+      { proxy: { engine: 'rpx', loadBalancer: { strategy: 'round-robin' } }, slug: 'app' },
+    )
+
+    const route = config.proxies.find((r) => r.to === 'api.example.com')!
+    expect(route.from).toEqual(['10.0.0.1:8080', '10.0.0.2:8080'])
+    expect(route.loadBalancer).toMatchObject({ strategy: 'round-robin' })
+  })
+
+  it('does not take the upstream from `port`, which belongs to sites ts-cloud runs', () => {
+    // `port` on a proxy site is ignored (and warned about) — the upstream is
+    // given verbatim because the service is not ts-cloud's to address.
+    const config = buildRpxConfig(
+      { registry: { domain: 'r.example.com', proxyTo: 'localhost:3001', port: 9999 } },
+      { proxy: rpxProxy, slug: 'app' },
+    )
+    expect(config.proxies.find((r) => r.to === 'r.example.com')!.from).toBe('localhost:3001')
+  })
+
+  it('emits no route when the upstream is blank', () => {
+    const config = buildRpxConfig({ broken: { domain: 'b.example.com', proxyTo: '   ' } }, { proxy: rpxProxy })
+    expect(config.proxies.find((r) => r.to === 'b.example.com')).toBeUndefined()
+  })
+})

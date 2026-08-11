@@ -943,6 +943,35 @@ export interface SiteConfig {
    */
   redirect?: string | SiteRedirectConfig
   /**
+   * Make this a **proxy-only site**: the gateway routes this site's `domain` to
+   * an upstream that ts-cloud does **not** manage. Nothing is built, packaged,
+   * shipped or supervised — no release directory, no systemd unit — but the
+   * domain still joins the gateway's TLS set, so it gets `certsDirServerNames`,
+   * `onDemandTls.allowedSuffixes` and the project's `rpx-cert-renew-<slug>`
+   * units like any other site.
+   *
+   * This is for a service that is provisioned by something else and must stay
+   * that way. The motivating case is a package registry whose systemd unit
+   * carries `Requires=clamav-daemon.service` and hard memory/task caps that
+   * ts-cloud's generated unit template cannot express: before this existed the
+   * only way to route it was `start` + `port`, which forces ts-cloud to own the
+   * unit and would have silently dropped that hardening.
+   *
+   * Give it a `host:port` (or an array of them, load-balanced with
+   * `proxy.loadBalancer`). `domain` is required; `root`, `start`, `port`,
+   * `build` and `preStart` are not used and are ignored.
+   *
+   * ```ts
+   * sites: {
+   *   registry: { domain: 'registry.example.com', proxyTo: 'localhost:3001' },
+   * }
+   * ```
+   *
+   * A {@link redirect} on the same site wins — that answers the domain itself
+   * rather than forwarding it.
+   */
+  proxyTo?: string | string[]
+  /**
    * S3 bucket name. Default: `{slug}-{environment}-site` for `main`,
    * else `{slug}-{environment}-{siteKey}`.
    */

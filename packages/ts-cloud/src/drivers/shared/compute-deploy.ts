@@ -623,6 +623,11 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
     // Redirect-only sites ship nothing — they become a gateway redirect route in
     // reloadRpxGateway. Nothing to build/upload here.
     if (kind === 'redirect') return false
+    // Proxy-only sites ship nothing either: reloadRpxGateway routes them to an
+    // upstream ts-cloud does not manage. Packaging one would look for a `root`
+    // it has no reason to declare, and restarting one would fight whatever
+    // actually supervises that service.
+    if (kind === 'proxy') return false
     return true
   })
 

@@ -2,7 +2,7 @@ import type { CloudConfig, SiteConfig, SiteDeployTarget } from '@ts-cloud/core'
 import { deploymentCoexistenceError } from '@ts-cloud/core'
 
 /**
- * The three resolved deployment kinds for a site:
+ * The resolved deployment kinds for a site:
  *  - `'bucket'`        — upload built `root` to object storage + CDN.
  *  - `'server-app'`    — `server` + `start`: dynamic app as a systemd service.
  *  - `'server-static'` — `server` + no `start` (has static `root`): a static
@@ -10,8 +10,12 @@ import { deploymentCoexistenceError } from '@ts-cloud/core'
  *                        (served by the operator's own proxy, e.g. rpx + tlsx).
  *  - `'redirect'`      — gateway-only: `redirect` is set. Nothing is shipped;
  *                        the gateway answers `domain` with an HTTP redirect.
+ *  - `'proxy'`         — gateway-only: `proxyTo` is set. Nothing is shipped and
+ *                        no unit is managed; the gateway forwards `domain` to an
+ *                        upstream somebody else runs. The domain still joins the
+ *                        gateway's TLS set, which is the point.
  */
-export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static' | 'server-php' | 'redirect'
+export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static' | 'server-php' | 'redirect' | 'proxy'
 
 /**
  * On-disk base directory for a site's atomic release tree
@@ -51,6 +55,26 @@ export function isPhpSite(site: SiteConfig): boolean {
 }
 
 /**
+ * Normalize a proxy-only site's `proxyTo` into the upstream list the gateway
+ * routes to, dropping blanks so a stray empty string cannot produce a route
+ * pointing at nothing.
+ *
+ * Returns `[]` when the site declares no usable upstream, which is what
+ * {@link hasProxyUpstream} keys off.
+ */
+export function resolveProxyUpstreams(site: SiteConfig): string[] {
+  const raw = site.proxyTo
+  if (raw == null) return []
+  const list = Array.isArray(raw) ? raw : [raw]
+  return list.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)
+}
+
+/** Does this site forward to an upstream ts-cloud does not manage? */
+export function hasProxyUpstream(site: SiteConfig): boolean {
+  return resolveProxyUpstreams(site).length > 0
+}
+
+/**
  * Resolve the explicit-or-inferred {@link SiteDeployTarget} for a site.
  *
  * Inference (backward compatible):
@@ -78,6 +102,11 @@ export function resolveSiteKind(site: SiteConfig): SiteDeployKind {
   // A redirect-only site ships nothing — the gateway answers `domain` with a
   // redirect. Wins over every other kind (`root`/`start`/`type` are ignored).
   if (site.redirect) return 'redirect'
+  // A proxy-only site ships nothing either, and ts-cloud manages no unit for it:
+  // the gateway just forwards `domain` to an upstream somebody else runs. Also
+  // wins over `root`/`start`/`type`, so a stale `root` left on the site cannot
+  // turn it back into a release that would overwrite the running service.
+  if (hasProxyUpstream(site)) return 'proxy'
   // PHP/Laravel sites always deploy to the box via git + atomic releases,
   // regardless of `deploy`/`start`.
   if (isPhpSite(site)) return 'server-php'
@@ -142,8 +171,35 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
       const serverOnly: string[] = []
       if (site.start) serverOnly.push('start')
       if (site.root) serverOnly.push('root')
+      if (site.proxyTo) serverOnly.push('proxyTo')
       if (serverOnly.length > 0)
         warnings.push(`Site '${name}' is a redirect site but also sets ${serverOnly.join(', ')}. These are ignored.`)
+      continue
+    }
+
+    // A proxy-only site is gateway-only too: it needs a `domain` to answer on
+    // and an upstream to forward to, and it needs the gateway to exist. It
+    // deliberately does NOT need a port of its own — the upstream carries it,
+    // and the service behind it is not ts-cloud's to supervise, so it is also
+    // exempt from the server-app port-collision check below.
+    if (kind === 'proxy') {
+      if (!site.domain) errors.push(`Site '${name}' is a proxy site but has no \`domain\` to route from.`)
+      if (!computeConfigured) {
+        errors.push(
+          `Site '${name}' is a proxy site but no \`infrastructure.compute\` is configured to host the gateway that forwards it.`,
+        )
+      }
+      const ignored: string[] = []
+      if (site.start) ignored.push('start')
+      if (site.root) ignored.push('root')
+      if (typeof site.port === 'number') ignored.push('port')
+      if (site.build) ignored.push('build')
+      if (site.preStart && site.preStart.length > 0) ignored.push('preStart')
+      if (ignored.length > 0) {
+        warnings.push(
+          `Site '${name}' sets \`proxyTo\`, so ts-cloud ships and supervises nothing for it. ${ignored.join(', ')} ${ignored.length === 1 ? 'is' : 'are'} ignored — remove ${ignored.length === 1 ? 'it' : 'them'}, or drop \`proxyTo\` to let ts-cloud own the service.`,
+        )
+      }
       continue
     }
 
@@ -224,8 +280,10 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
  * Does this site produce a release the compute deploy has to build, package and
  * ship?
  *
- * `false` for the two kinds that ship nothing:
+ * `false` for the kinds that ship nothing:
  *  - `bucket`   — handled by the S3/CloudFront static-site path instead;
+ *  - `proxy`    — the gateway forwards the domain to a service ts-cloud does not
+ *    manage, so there is nothing to build, package or restart;
  *  - `redirect` — the gateway answers the domain with a Location header, so
  *    there is no `root` to package. Filtering these BEFORE the packaging loop
  *    matters: that loop reads `site.root` to build a tarball, and a redirect
@@ -237,5 +295,5 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
  */
 export function shipsARelease(site: SiteConfig): boolean {
   const kind = resolveSiteKind(site)
-  return kind !== 'bucket' && kind !== 'redirect'
+  return kind !== 'bucket' && kind !== 'redirect' && kind !== 'proxy'
 }

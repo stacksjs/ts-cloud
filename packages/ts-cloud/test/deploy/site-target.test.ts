@@ -1,6 +1,8 @@
 import type { CloudConfig, SiteConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
 import {
+  hasProxyUpstream,
+  resolveProxyUpstreams,
   resolveSiteDeployTarget,
   resolveSiteKind,
   shipsARelease,
@@ -290,5 +292,93 @@ describe('shipsARelease', () => {
   it('includes the sites that actually produce a release', () => {
     expect(shipsARelease({ root: 'dist', deploy: 'server' })).toBe(true)
     expect(shipsARelease({ root: '.', start: 'bun run server.ts', port: 3000 })).toBe(true)
+  })
+})
+
+describe('proxy-only sites', () => {
+  const registry: SiteConfig = { domain: 'registry.pantry.dev', proxyTo: 'localhost:3001' }
+
+  it('resolves to the proxy kind', () => {
+    expect(resolveSiteKind(registry)).toBe('proxy')
+    expect(resolveSiteKind({ domain: 'a.com', proxyTo: ['10.0.0.1:8080', '10.0.0.2:8080'] })).toBe('proxy')
+  })
+
+  it('ships no release, so the packaging loop never looks for a root', () => {
+    expect(shipsARelease(registry)).toBe(false)
+  })
+
+  it('wins over root/start, so a stale field cannot turn it back into a release', () => {
+    // The motivating config had a leftover static `root` from an older shape.
+    // If that still produced a release, deploying would overwrite the very
+    // service the proxy exists to leave alone.
+    expect(resolveSiteKind({ ...registry, root: './public' })).toBe('proxy')
+    expect(resolveSiteKind({ ...registry, root: '.', start: 'bun run server.ts', port: 3001 })).toBe('proxy')
+    expect(shipsARelease({ ...registry, root: '.', start: 'bun run server.ts', port: 3001 })).toBe(false)
+  })
+
+  it('yields to redirect, which answers the domain instead of forwarding it', () => {
+    expect(resolveSiteKind({ ...registry, redirect: 'https://elsewhere.example' })).toBe('redirect')
+  })
+
+  it('ignores a blank upstream rather than routing to nothing', () => {
+    expect(resolveProxyUpstreams({ domain: 'a.com', proxyTo: '  ' })).toEqual([])
+    expect(hasProxyUpstream({ domain: 'a.com', proxyTo: '  ' })).toBe(false)
+    expect(resolveSiteKind({ domain: 'a.com', proxyTo: '' })).not.toBe('proxy')
+    expect(resolveProxyUpstreams({ domain: 'a.com', proxyTo: [' a:1 ', '', 'b:2'] })).toEqual(['a:1', 'b:2'])
+  })
+})
+
+describe('validateDeploymentConfig for proxy sites', () => {
+  const compute = { infrastructure: { compute: { size: 'small' } } } as any
+
+  it('accepts a proxy site with a domain and an upstream', () => {
+    const result = validateDeploymentConfig({
+      ...compute,
+      project: { name: 'pantry', slug: 'pantry' },
+      sites: { registry: { domain: 'registry.pantry.dev', proxyTo: 'localhost:3001' } },
+    })
+    expect(result.errors).toEqual([])
+    expect(result.warnings).toEqual([])
+  })
+
+  it('requires a domain to route from', () => {
+    const result = validateDeploymentConfig({
+      ...compute,
+      project: { name: 'p', slug: 'p' },
+      sites: { registry: { proxyTo: 'localhost:3001' } },
+    })
+    expect(result.errors.some((e) => e.includes('no `domain` to route from'))).toBe(true)
+  })
+
+  it('requires a gateway to forward through', () => {
+    const result = validateDeploymentConfig({
+      project: { name: 'p', slug: 'p' },
+      sites: { registry: { domain: 'r.example.com', proxyTo: 'localhost:3001' } },
+    } as any)
+    expect(result.errors.some((e) => e.includes('no `infrastructure.compute` is configured'))).toBe(true)
+  })
+
+  it('does not enter the server-app port-collision check', () => {
+    // The proxied service is not ts-cloud's to supervise, so two proxy sites
+    // pointing at one upstream is normal, not a collision.
+    const result = validateDeploymentConfig({
+      ...compute,
+      project: { name: 'p', slug: 'p' },
+      sites: {
+        registry: { domain: 'registry.example.com', proxyTo: 'localhost:3001' },
+        apex: { domain: 'example.com', proxyTo: 'localhost:3001' },
+      },
+    })
+    expect(result.errors).toEqual([])
+  })
+
+  it('warns that fields it will not act on are ignored', () => {
+    const result = validateDeploymentConfig({
+      ...compute,
+      project: { name: 'p', slug: 'p' },
+      sites: { registry: { domain: 'r.example.com', proxyTo: 'localhost:3001', root: './public', build: 'bun run build' } },
+    })
+    expect(result.errors).toEqual([])
+    expect(result.warnings.some((w) => w.includes('root') && w.includes('build'))).toBe(true)
   })
 })

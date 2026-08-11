@@ -2,10 +2,12 @@
  * Generate the rpx reverse-proxy gateway config + provisioning from the `sites`
  * model.
  *
- * ts-cloud's per-site deploy model resolves each site to one of three kinds
+ * ts-cloud's per-site deploy model resolves each site to a kind
  * (see {@link import('../../deploy/site-target').resolveSiteKind}):
  *  - `server-app`    — a dynamic app running on a port (systemd service);
  *  - `server-static` — a static site shipped to `/var/www/<name>`;
+ *  - `redirect`      — answered here with a Location header, nothing shipped;
+ *  - `proxy`         — forwarded here to an upstream ts-cloud does not manage;
  *  - `bucket`        — object storage + CDN (not on the box; ignored here).
  *
  * The rpx gateway fronts :80/:443 on the box and routes by host **and path**:
@@ -18,7 +20,7 @@
  * tooling), so the gateway is rpx, not Caddy.
  */
 import type { ComputeProxyConfig, RpxLoadBalancerConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
-import { resolveSiteKind } from '../../deploy/site-target'
+import { resolveProxyUpstreams, resolveSiteKind } from '../../deploy/site-target'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
 export const DEFAULT_RPX_CERTS_DIR = '/etc/rpx/certs'
@@ -233,6 +235,29 @@ function buildRpxConfigInternal(
         id,
         ...(auth ? { auth } : {}),
       })
+      domains.add(site.domain)
+      continue
+    }
+
+    if (kind === 'proxy') {
+      // Gateway-only proxy: forward `domain` to an upstream ts-cloud does not
+      // manage. Unlike server-app the upstream is given verbatim (host:port),
+      // because there is no ts-cloud-owned service whose port we could derive
+      // it from — and no appBoxes rewrite, since the operator chose the target.
+      const upstreams = resolveProxyUpstreams(site)
+      if (upstreams.length === 0) continue
+      const from = upstreams.length === 1 ? upstreams[0]! : upstreams
+      proxies.push({
+        to: site.domain,
+        path,
+        from,
+        id,
+        ...(auth ? { auth } : {}),
+        ...(Array.isArray(from) && loadBalancer ? { loadBalancer } : {}),
+      })
+      // Joining `domains` is the whole reason this kind exists: it puts the host
+      // into certsDirServerNames + onDemandTls.allowedSuffixes, so the project's
+      // rpx-cert-renew units cover a service ts-cloud never deploys.
       domains.add(site.domain)
       continue
     }
