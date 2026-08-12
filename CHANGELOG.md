@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.112...v0.7.113)
+
+## 🐛 Bug Fixes
+
+- **deploy**: keep gateway-only sites out of the bucket pipeline ([bb7d62f](https://github.com/stacksjs/ts-cloud/commit/bb7d62f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.113 ([fd3db77](https://github.com/stacksjs/ts-cloud/commit/fd3db77)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.110...v0.7.111)
 
 ## 🐛 Bug Fixes
