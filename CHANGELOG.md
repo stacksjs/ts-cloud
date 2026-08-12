@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.113...v0.7.114)
+
+## 🐛 Bug Fixes
+
+- **deploy**: regenerate the gateway when no site ships a release ([5d245e5](https://github.com/stacksjs/ts-cloud/commit/5d245e5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.114 ([47e9674](https://github.com/stacksjs/ts-cloud/commit/47e9674)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.112...v0.7.113)
 
 ## 🐛 Bug Fixes
