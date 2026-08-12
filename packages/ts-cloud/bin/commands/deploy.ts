@@ -121,7 +121,11 @@ async function deployAppToCompute(
     // Their routes survive — the gateway regenerates from the full model.
     return shipsARelease(s)
   })
-  if (deployable.length === 0) return true
+  // Deliberately NO early return on an empty list. The packaging loop below is
+  // already a no-op, and deployAllComputeSites still has to regenerate the
+  // gateway from the full sites model — a project whose sites are all routes
+  // (every one a `redirect` or a `proxyTo`) has no release to ship and yet is
+  // exactly the project that needs its fragment and cert units written.
 
   if (onlySite)
     cli.info(

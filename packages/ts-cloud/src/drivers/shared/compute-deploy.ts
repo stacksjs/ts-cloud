@@ -631,7 +631,12 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
     return true
   })
 
-  if (deployable.length === 0) return true
+  // No releases to ship does NOT mean nothing to do: the gateway is regenerated
+  // from the FULL sites model, so a project whose sites are all routes (every
+  // one a `redirect` or a `proxyTo`) still needs its fragment and cert units
+  // written. Returning here left such a project silently untouched — the deploy
+  // ran green and the box kept a hand-maintained fragment.
+  if (deployable.length === 0) return reloadRpxGateway(options)
 
   // Attach mode (`cloud.attachTo`): the shared box was provisioned by its OWNER,
   // so no cloud-init of ours ever ran this project's on-box database setup — the
