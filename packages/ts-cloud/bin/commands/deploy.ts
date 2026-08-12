@@ -2417,6 +2417,18 @@ async function deployStaticSitesWithExternalDns(
       continue
     }
 
+    // Gateway-only sites have no bucket front to build either: a redirect is
+    // answered by the proxy, and a `proxyTo` site is forwarded to something
+    // ts-cloud does not manage. Neither declares `deploy:'server'`, so without
+    // this they fell through to the S3/CloudFront pipeline below and reported
+    // "Source directory not found: undefined" once per site — noise on every
+    // deploy of a project whose sites are all routes.
+    const gatewayOnlyKind = resolveSiteKind(siteConfig)
+    if (gatewayOnlyKind === 'redirect' || gatewayOnlyKind === 'proxy') {
+      cli.info(`Site '${siteName}' is a ${gatewayOnlyKind} route — handled by the gateway, nothing to upload.`)
+      continue
+    }
+
     const domain = siteConfig.domain
     if (!domain) {
       cli.error(`Site '${siteName}' has no domain configured`)
