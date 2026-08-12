@@ -20,7 +20,7 @@ import { mergeControlsIntoConfig, ProtectionControlStore } from '../../src/prote
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { runConfigHook } from '../../src/deploy/hooks'
 import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
-import { resolveSiteKind, shipsARelease, validateDeploymentConfig } from '../../src/deploy/site-target'
+import { deployShipsFiles, resolveSiteKind, shipsARelease, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
 import { createCloudDriver } from '../../src/drivers'
@@ -237,6 +237,21 @@ async function runSecurityScan(options: {
   })
 
   return { passed: result.passed, result }
+}
+
+/**
+ * An empty directory to scan when the deploy ships nothing.
+ *
+ * The scan still RUNS and is still recorded — it just has an empty artifact to
+ * look at, which is the truthful answer. Skipping it outright is not the same
+ * thing: the policy evaluates recorded scanner runs, so a missing one counts as
+ * degraded and `scannerFailMode: 'closed'` blocks the deploy. That is what
+ * `--skip-security-scan` runs into.
+ */
+function emptyScanScope(): string {
+  const dir = pathJoin(tmpdir(), `ts-cloud-empty-scan-${process.pid}`)
+  mkdirSync(dir, { recursive: true })
+  return dir
 }
 
 /**
@@ -545,9 +560,20 @@ export function registerDeployCommands(app: CLI): void {
           // Run security scan before deployment (unless skipped)
           let policyScan: ScanResult | undefined
           if (!options?.skipSecurityScan) {
-            const projectRoot = process.cwd()
+            // The scan exists to stop a secret in this directory reaching a
+            // server. When every site is a route, nothing from this directory
+            // goes anywhere, so the whole tree is out of scope — scanning it
+            // only reports findings in code that is not being deployed. A
+            // registry whose sites are all `proxyTo` was failing here on
+            // package-metadata strings in an unrelated workspace package.
+            const shipsFiles = deployShipsFiles(config, options?.site)
+            if (!shipsFiles) {
+              cli.info(
+                'This deploy ships no files — every site in scope is a redirect or proxy route, so only gateway routes and certificates change. Scanning an empty artifact.',
+              )
+            }
             const { result } = await runSecurityScan({
-              sourceDir: projectRoot,
+              sourceDir: shipsFiles ? process.cwd() : emptyScanScope(),
               failOnSeverity: options?.securityFailOn || 'critical',
             })
 

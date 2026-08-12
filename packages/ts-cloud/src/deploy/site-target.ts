@@ -1,5 +1,5 @@
 import type { CloudConfig, SiteConfig, SiteDeployTarget } from '@ts-cloud/core'
-import { deploymentCoexistenceError } from '@ts-cloud/core'
+import { deploymentCoexistenceError, resolveDeploymentMode } from '@ts-cloud/core'
 
 /**
  * The resolved deployment kinds for a site:
@@ -296,4 +296,34 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
 export function shipsARelease(site: SiteConfig): boolean {
   const kind = resolveSiteKind(site)
   return kind !== 'bucket' && kind !== 'redirect' && kind !== 'proxy'
+}
+
+/**
+ * Does this deploy put any file from the working tree onto a server or into a
+ * bucket?
+ *
+ * `false` only when every site in scope is a pure route — a `redirect` the
+ * gateway answers, or a `proxyTo` it forwards to something ts-cloud does not
+ * manage. Those ship no `root`, write no release `.env`, and run no `preStart`,
+ * so nothing in this directory can reach a box through them, and the
+ * pre-deployment secret scan has no artifact to look at.
+ *
+ * Deliberately conservative. A `bucket` site uploads its built `root`, so it
+ * counts as shipping even though {@link shipsARelease} is false for it, and a
+ * serverless project packages a Lambda artifact regardless of `sites`. Both
+ * keep the full scan.
+ */
+export function deployShipsFiles(config: CloudConfig, onlySite?: string): boolean {
+  if (resolveDeploymentMode(config) === 'serverless') return true
+
+  const entries = Object.entries(config.sites ?? {}).filter(([, site]) => site != null)
+  const inScope = onlySite ? entries.filter(([name]) => name === onlySite) : entries
+  // No sites in scope is an infrastructure-only deploy (or a `--site` that
+  // names nothing): say nothing about it and keep the existing behaviour.
+  if (inScope.length === 0) return true
+
+  return !inScope.every(([, site]) => {
+    const kind = resolveSiteKind(site!)
+    return kind === 'redirect' || kind === 'proxy'
+  })
 }

@@ -259,6 +259,15 @@ ignored, and `cloud deploy` warns if they are set, so a leftover `root` can neve
 turn the site back into a release that would overwrite the running service. A
 `redirect` on the same site wins over `proxyTo`.
 
+When **every** site in scope is a route — each one a `redirect` or a `proxyTo` —
+the deploy puts no file from the working tree anywhere, so the pre-deployment
+secret scan has no artifact to examine and runs against an empty one. The scan
+still runs and is still recorded: the security policy evaluates recorded scanner
+runs, so a missing one counts as degraded and `scannerFailMode: 'closed'` blocks
+the deploy, which is what `--skip-security-scan` runs into. One shipping site of
+any kind — including a `bucket` site, whose built `root` does leave the machine —
+puts the full scan back.
+
 ### Server-optional contract
 
 A project with only `bucket` sites needs **no** compute server and validates
