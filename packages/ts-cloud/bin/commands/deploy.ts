@@ -225,15 +225,19 @@ async function runSecurityScan(options: {
   sourceDir: string
   failOnSeverity?: 'critical' | 'high' | 'medium' | 'low'
   skipPatterns?: string[]
+  exclude?: string[]
 }): Promise<{ passed: boolean; result: ScanResult }> {
   const scanner = new PreDeployScanner()
 
   cli.step('Running pre-deployment security scan...')
+  if (options.exclude?.length)
+    cli.info(`Excluding from the scan: ${options.exclude.join(', ')}`)
 
   const result = await scanner.scan({
     directory: options.sourceDir,
     failOnSeverity: options.failOnSeverity || 'critical',
     skipPatterns: options.skipPatterns,
+    exclude: options.exclude,
   })
 
   return { passed: result.passed, result }
@@ -575,6 +579,11 @@ export function registerDeployCommands(app: CLI): void {
             const { result } = await runSecurityScan({
               sourceDir: shipsFiles ? process.cwd() : emptyScanScope(),
               failOnSeverity: options?.securityFailOn || 'critical',
+              // Directories the project declared out of scope via
+              // infrastructure.security.scan — typically a vendored submodule it
+              // neither owns nor ships. Matched on directory name, on top of the
+              // scanner's built-in ignore list.
+              exclude: config.infrastructure?.security?.scan?.exclude,
             })
 
             displaySecurityResults(result)

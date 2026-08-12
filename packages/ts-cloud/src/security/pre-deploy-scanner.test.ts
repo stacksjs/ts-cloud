@@ -135,3 +135,48 @@ describe('pre-deployment secret scanning', () => {
     expect(result.findings.some(finding => finding.pattern.name === 'AWS Secret Key (Generic)')).toBe(true)
   })
 })
+
+describe('scan exclusions', () => {
+  function projectWithVendoredSecret(): string {
+    const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-secret-scan-'))
+    temporaryDirectories.push(directory)
+    // Own code: clean.
+    writeFileSync(join(directory, 'index.ts'), 'export const greeting = "hello"\n')
+    // A vendored submodule's test fixture that trips the AWS key heuristic.
+    // This is the real shape: TypeScript's compiler baselines contain
+    // identifiers long enough to look like a generic secret, and nothing the
+    // project does to its own code makes them go away.
+    const vendored = join(directory, '_submodules', 'typescript-go', 'testdata')
+    mkdirSync(vendored, { recursive: true })
+    writeFileSync(join(vendored, 'baseline.js'), 'export var publicVarWithPrivateModulePropertyTypes1 = exporter.x()\n')
+    return directory
+  }
+
+  it('flags the vendored fixture by default, which is the problem being solved', async () => {
+    const scanner = new PreDeployScanner()
+    const result = await scanner.scan({ directory: projectWithVendoredSecret() })
+
+    expect(result.findings.some((f) => f.file.includes('_submodules'))).toBe(true)
+  })
+
+  it('leaves an excluded directory out of the walk entirely', async () => {
+    const directory = projectWithVendoredSecret()
+    const scanner = new PreDeployScanner()
+
+    const withoutExclusion = await scanner.scan({ directory })
+    const withExclusion = await scanner.scan({ directory, exclude: ['_submodules'] })
+
+    expect(withExclusion.scannedFiles).toBeLessThan(withoutExclusion.scannedFiles)
+    expect(withExclusion.findings.some((f) => f.file.includes('_submodules'))).toBe(false)
+  })
+
+  it('does not let an exclusion hide a secret in the project own code', async () => {
+    const directory = projectWithVendoredSecret()
+    writeFileSync(join(directory, 'leak.ts'), 'const token = "ghp_a1B2c3D4e5F6g7H8i9J0kLmNoPqRsTuVwXyZ12"\n')
+
+    const scanner = new PreDeployScanner()
+    const result = await scanner.scan({ directory, exclude: ['_submodules'] })
+
+    expect(result.findings.some((f) => f.file.includes('leak.ts'))).toBe(true)
+  })
+})

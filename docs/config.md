@@ -259,6 +259,26 @@ ignored, and `cloud deploy` warns if they are set, so a leftover `root` can neve
 turn the site back into a release that would overwrite the running service. A
 `redirect` on the same site wins over `proxyTo`.
 
+### Scoping the pre-deployment secret scan
+
+The scan walks the project directory before every deploy and blocks on what it
+finds. For a tree you neither own nor ship — a vendored git submodule is the
+usual case — name it in `infrastructure.security.scan.exclude`. Entries match a
+directory **name** at any depth, on top of the built-in list (`.git`,
+`node_modules`, `dist`, `build`, `vendor`, `pantry`, `coverage`, …):
+
+```typescript
+infrastructure: {
+  security: { scan: { exclude: ['_submodules'] } },
+}
+```
+
+Third-party test fixtures are a rich source of strings that look like
+credentials, and no amount of remediation in your own code makes them go away:
+the TypeScript compiler's baselines trip the AWS-key heuristic on the identifier
+`publicVarWithPrivateModulePropertyTypes`. Anything inside an excluded directory
+stops being checked, so only list trees you are confident never reach a server.
+
 When **every** site in scope is a route — each one a `redirect` or a `proxyTo` —
 the deploy puts no file from the working tree anywhere, so the pre-deployment
 secret scan has no artifact to examine and runs against an empty one. The scan

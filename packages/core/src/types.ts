@@ -1679,6 +1679,30 @@ export interface SecurityConfig {
   waf?: WafConfig
   kms?: boolean
   /**
+   * Pre-deployment secret scan.
+   *
+   * The scan walks the project directory before a deploy and blocks on secrets
+   * it finds. `scan.exclude` names directories to leave out of that walk, on
+   * top of the built-in list (`.git`, `node_modules`, `dist`, `build`,
+   * `vendor`, `pantry`, `coverage`, ...). Entries are matched on the directory
+   * NAME at any depth, not as globs or paths.
+   *
+   * Use it for trees this project does not own and does not ship — a vendored
+   * git submodule is the usual case. Third-party test fixtures are a rich
+   * source of strings that look like credentials (the TypeScript compiler's
+   * baselines trip the AWS-key heuristic on an identifier), and no amount of
+   * remediation in your own code makes them go away.
+   *
+   * Excluding a directory here means secrets inside it will NOT be caught, so
+   * only list trees you are confident never reach a server.
+   *
+   * @example
+   * security: { scan: { exclude: ['_submodules'] } }
+   */
+  scan?: {
+    exclude?: string[]
+  }
+  /**
    * SSL/TLS Certificate configuration
    */
   certificate?: {
