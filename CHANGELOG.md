@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.115...v0.7.116)
+
+## 🚀 Features
+
+- **security**: let a project exclude directories from the secret scan ([f05914b](https://github.com/stacksjs/ts-cloud/commit/f05914b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.116 ([df6d6dc](https://github.com/stacksjs/ts-cloud/commit/df6d6dc)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.114...v0.7.115)
 
 ## 🐛 Bug Fixes
