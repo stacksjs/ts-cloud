@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.114...v0.7.115)
+
+## 🐛 Bug Fixes
+
+- **security**: scan an empty artifact when the deploy ships no files ([9fd0da5](https://github.com/stacksjs/ts-cloud/commit/9fd0da5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.115 ([e57d442](https://github.com/stacksjs/ts-cloud/commit/e57d442)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.113...v0.7.114)
 
 ## 🐛 Bug Fixes
