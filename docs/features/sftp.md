@@ -1,9 +1,10 @@
 # SFTP File Transfer
 
-ts-cloud provisions an [AWS Transfer Family](https://aws.amazon.com/aws-transfer-family/)
-SFTP endpoint from your `cloud.config.ts` — server, CloudWatch logging role,
-service-managed users, and a per-user IAM role scoped to that user's home
-directory.
+ts-cloud provisions an SFTP endpoint from your `cloud.config.ts` — the server,
+its users, and a home directory per user, each scoped so a user sees only their
+own files. On AWS that is [AWS Transfer Family](https://aws.amazon.com/aws-transfer-family/),
+with a CloudWatch logging role and a per-user IAM role; on a box provider it is
+[ts-sftp](https://github.com/stacksjs/ts-sftp) under systemd.
 
 ## Providers
 
