@@ -112,7 +112,7 @@ describe('compute provisioning', () => {
     environments: { production: { type: 'production' } },
     cloud: { provider: 'hetzner' },
     infrastructure: {
-      compute: { instanceType: 'cpx21' },
+      compute: { size: 'small' },
       sftp: { storage: { type: 'efs' }, users },
     },
   }
@@ -128,7 +128,7 @@ describe('compute provisioning', () => {
   it('leaves a box deploy untouched when no sftp is configured', () => {
     const scripts = buildComputeProvisionScripts({
       ...config,
-      infrastructure: { compute: { instanceType: 'cpx21' } },
+      infrastructure: { compute: { size: 'small' } },
     })
     expect((scripts.servicesProvision ?? []).join(String.fromCharCode(10))).not.toContain("ts-sftp")
   })
@@ -137,7 +137,7 @@ describe('compute provisioning', () => {
     expect(() =>
       buildComputeProvisionScripts({
         ...config,
-        infrastructure: { compute: { instanceType: 'cpx21' }, sftp: { bucket: 'demo-uploads', users } },
+        infrastructure: { compute: { size: 'small' }, sftp: { bucket: 'demo-uploads', users } },
       }),
     ).toThrow(/only available on the aws provider/)
   })
