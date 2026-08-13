@@ -182,7 +182,13 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // Bun natively loads `.env`/`.env.<mode>`, so strip every env file here, not
     // just the shared one.
     ...buildPromoteStagedRelease(paths),
-    `for TS_CLOUD_ENV in ${paths.shared}/.env ${paths.release}/.env ${paths.release}/.env.*; do [ -f "$TS_CLOUD_ENV" ] && sed -i -E '/^[[:space:]]*(PORT|PORT_BACKEND|PORT_ADMIN|PORT_FRONTEND)[[:space:]]*=/d' "$TS_CLOUD_ENV" 2>/dev/null || true; done`,
+    // `envEntries` is the authoritative, already-resolved runtime environment.
+    // Remove deploy-time env files from the artifact before linking shared/.env:
+    // Bun loads `.env.production` after `.env`, so committed ciphertext otherwise
+    // overrides the decrypted values even though the deploy generated a correct
+    // shared file. Examples remain available as documentation.
+    `find ${paths.release} -maxdepth 1 \\( -type f -o -type l \\) -name '.env*' ! -name '.env.example' ! -name '*.example' -delete`,
+    `sed -i -E '/^[[:space:]]*(PORT|PORT_BACKEND|PORT_ADMIN|PORT_FRONTEND)[[:space:]]*=/d' ${paths.shared}/.env 2>/dev/null || true`,
     ...buildLinkSharedPaths(paths, sharedPaths),
     ...preStart,
   ]

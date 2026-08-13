@@ -169,6 +169,17 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(extractIdx).toBeLessThan(installIdx)
     expect(installIdx).toBeLessThan(startIdx)
   })
+
+  it('removes artifact env files before linking the resolved runtime env', () => {
+    const script = buildSiteDeployScript(opts)
+    const removeIdx = script.findIndex(line => line.startsWith('find /var/www/web/releases/abc123 '))
+    const linkIdx = script.findIndex(line => line.includes('ln -sfn /var/www/web/shared/.env'))
+
+    expect(removeIdx).toBeGreaterThan(-1)
+    expect(script[removeIdx]).toContain("-name '.env*'")
+    expect(script[removeIdx]).toContain("! -name '.env.example'")
+    expect(removeIdx).toBeLessThan(linkIdx)
+  })
 })
 
 describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime off)', () => {
