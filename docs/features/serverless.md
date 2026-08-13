@@ -195,13 +195,13 @@ extension in the image instead of configuring `lambdaInsights`.
 
 ## SFTP file transfer
 
-Provision an S3-backed AWS Transfer Family endpoint from the infrastructure
-configuration:
+Provision an AWS Transfer Family endpoint from the infrastructure
+configuration, storing files on the server (EFS) or in a bucket (S3):
 
 ```ts
 infrastructure: {
   sftp: {
-    bucket: 'my-app-production-uploads',
+    storage: { type: 's3', bucket: 'my-app-production-uploads' },
     users: {
       deploy: {
         sshPublicKeys: ['ssh-ed25519 AAAA... deploy@example.com'],
@@ -213,9 +213,9 @@ infrastructure: {
 ```
 
 ts-cloud creates the SFTP server, CloudWatch logging role, service-managed
-users, and a bucket-scoped IAM role for each user. Set `roleArn` on a user to
-bring an existing role, or set `endpointType: 'VPC'` with `endpointDetails` for
-a private endpoint.
+users, and a home-directory-scoped IAM role for each user. See
+[SFTP](/features/sftp) for the EFS-backed form, VPC endpoints, and POSIX
+profiles.
 
 ```ts
 app: { kind: 'node', entry: 'src/server.ts', provisionedConcurrency: 2 }
