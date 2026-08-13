@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.117...v0.7.118)
+
+## 🐛 Bug Fixes
+
+- **deploy**: keep server apps out of bucket pipeline ([d38cae9](https://github.com/stacksjs/ts-cloud/commit/d38cae9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.118 ([cb69edf](https://github.com/stacksjs/ts-cloud/commit/cb69edf)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.116...v0.7.117)
 
 ## ⚡ Performance Improvements
