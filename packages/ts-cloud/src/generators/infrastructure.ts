@@ -2,8 +2,8 @@
  * Infrastructure Generator
  * Generates CloudFormation templates from cloud.config.ts using all Phase 2 modules
  */
-import type { CloudConfig } from '@ts-cloud/core'
-import { AI, ApiGateway, Cache, CDN, Compute, Database, DNS, Email, FileSystem, Monitoring, Network, Permissions, Queue, Redirects, Search, Security, Sftp, Storage, TemplateBuilder } from '@ts-cloud/core'
+import type { CloudConfig, ResolvedSftpStorage, SftpConfig } from '@ts-cloud/core'
+import { AI, ApiGateway, Cache, CDN, Compute, Database, DNS, Email, FileSystem, generateLogicalId, generateResourceName, Monitoring, Network, Permissions, Queue, Redirects, Search, Security, Sftp, Storage, TemplateBuilder } from '@ts-cloud/core'
 
 export interface GenerationOptions {
   config: CloudConfig
@@ -131,6 +131,49 @@ export class InfrastructureGenerator {
 
   private shouldRouteStorageBucketToCompute(name: string, storageConfig: { routeCompute?: boolean }): boolean {
     return name === 'public' || storageConfig.routeCompute === true
+  }
+
+  /** Physical name of the bucket generated for an `infrastructure.storage` entry. */
+  private storageBucketName(slug: string, env: typeof this.environment, name: string): string {
+    return this.mergedConfig.infrastructure?.storage?.[name]?.bucket ?? `${slug}-${env}-${name}`
+  }
+
+  /** Logical ID of the EFS file system generated for an `infrastructure.fileSystem` entry. */
+  private fileSystemLogicalId(slug: string, env: typeof this.environment, name: string): string {
+    return generateLogicalId(generateResourceName({ slug: `${slug}-${name}`, environment: env, resourceType: 'efs' }))
+  }
+
+  /**
+   * Resolve a `storageBucket`/`fileSystem` name reference in `sftp.storage` to the
+   * resource this stack generates for it. Returns undefined when the storage config
+   * already names a concrete backend, which the Sftp module handles on its own.
+   */
+  private resolveSftpStorage(
+    sftp: SftpConfig,
+    slug: string,
+    env: typeof this.environment,
+  ): ResolvedSftpStorage | undefined {
+    const storage = sftp.storage
+
+    if (storage?.type === 'efs' && storage.fileSystem) {
+      if (!this.mergedConfig.infrastructure?.fileSystem?.[storage.fileSystem]) {
+        throw new Error(`sftp: storage.fileSystem "${storage.fileSystem}" is not defined in infrastructure.fileSystem`)
+      }
+      return {
+        type: 'efs',
+        fileSystemId: { Ref: this.fileSystemLogicalId(slug, env, storage.fileSystem) },
+        posixProfile: storage.posixProfile,
+      }
+    }
+
+    if (storage?.type === 's3' && storage.storageBucket) {
+      if (!this.mergedConfig.infrastructure?.storage?.[storage.storageBucket]) {
+        throw new Error(`sftp: storage.storageBucket "${storage.storageBucket}" is not defined in infrastructure.storage`)
+      }
+      return { type: 's3', bucket: this.storageBucketName(slug, env, storage.storageBucket) }
+    }
+
+    return undefined
   }
 
   private resolveComputeCachePathPatterns(routes?: string[]): string[] {
@@ -1480,7 +1523,7 @@ export class InfrastructureGenerator {
         // For website buckets served via CloudFront, don't make them public directly
         // CloudFront OAC will handle access
         const serveViaCloudFront = !!(storageConfig.website && sharedOacLogicalId)
-        const physicalBucketName = storageConfig.bucket ?? `${slug}-${env}-${name}`
+        const physicalBucketName = this.storageBucketName(slug, env, name)
         const { bucket, logicalId } = Storage.createBucket({
           slug,
           name,
@@ -1858,8 +1901,10 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
     // SFTP (AWS Transfer Family)
     // ========================================
     if (this.mergedConfig.infrastructure?.sftp) {
+      const sftpConfig = this.mergedConfig.infrastructure.sftp
       const result = Sftp.create({
-        ...this.mergedConfig.infrastructure.sftp,
+        ...sftpConfig,
+        storage: this.resolveSftpStorage(sftpConfig, slug, env) ?? sftpConfig.storage,
         slug,
         environment: env,
       })
@@ -1872,6 +1917,10 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
       this.builder.addOutput('SftpEndpoint', {
         Value: { 'Fn::Sub': `\${${result.serverLogicalId}}.server.transfer.\${AWS::Region}.amazonaws.com` },
         Description: 'AWS Transfer Family SFTP endpoint',
+      })
+      this.builder.addOutput('SftpStorageDomain', {
+        Value: result.domain,
+        Description: 'Storage backing the SFTP server (EFS or S3)',
       })
     }
 
