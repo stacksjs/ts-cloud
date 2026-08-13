@@ -4,6 +4,7 @@ import {
   hasProxyUpstream,
   resolveProxyUpstreams,
   resolveSiteDeployTarget,
+  hasComputeConfigured,
   resolveSiteKind,
   shipsToBucket,
   shipsARelease,
@@ -35,6 +36,14 @@ describe('resolveSiteDeployTarget', () => {
 
   it('honors an explicit deploy:server even without start', () => {
     expect(resolveSiteDeployTarget({ root: 'docs/.bunpress/dist', deploy: 'server' })).toBe('server')
+  })
+})
+
+describe('hasComputeConfigured', () => {
+  it('accepts both owned compute and an attached owner target', () => {
+    expect(hasComputeConfigured({ infrastructure: { compute: {} } } as any)).toBe(true)
+    expect(hasComputeConfigured({ cloud: { provider: 'hetzner', attachTo: 'stacks' } } as any)).toBe(true)
+    expect(hasComputeConfigured({} as any)).toBe(false)
   })
 })
 

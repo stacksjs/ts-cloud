@@ -2,7 +2,7 @@ import type { CLI } from '@stacksjs/clapp'
 import type { CloudConfig } from '@ts-cloud/core'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import type { ScanResult, SecurityFinding } from '../../src/security/pre-deploy-scanner'
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join as pathJoin, resolve as pathResolve } from 'node:path'
@@ -20,7 +20,7 @@ import { mergeControlsIntoConfig, ProtectionControlStore } from '../../src/prote
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { runConfigHook } from '../../src/deploy/hooks'
 import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
-import { deployShipsFiles, resolveSiteKind, shipsARelease, shipsToBucket, validateDeploymentConfig } from '../../src/deploy/site-target'
+import { deployShipsFiles, hasComputeConfigured, resolveSiteKind, shipsARelease, shipsToBucket, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
 import { createCloudDriver } from '../../src/drivers'
@@ -190,8 +190,13 @@ async function deployAppToCompute(
     try {
       // Honor `site.exclude` so heavy/host-specific paths (node_modules with
       // native binaries, .git, dev caches) stay out of the release tarball.
-      const excludeFlags = (site.exclude || []).map((pattern: string) => `--exclude='${pattern}'`).join(' ')
-      execSync(`tar czf "${tarballPath}" -C "${site.root}" ${excludeFlags} .`, { stdio: 'inherit' })
+      const excludeArgs = (site.exclude || []).map((pattern: string) => `--exclude=${pattern}`)
+      execFileSync('tar', ['czf', tarballPath, '-C', site.root, ...excludeArgs, '.'], {
+        stdio: 'inherit',
+        // macOS bsdtar otherwise stores com.apple.provenance xattrs as
+        // LIBARCHIVE headers, producing thousands of warnings on Linux.
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      })
     } catch (err: any) {
       cli.error(`Failed to package '${siteName}': ${err.message}`)
       return false
@@ -678,7 +683,7 @@ export function registerDeployCommands(app: CLI): void {
           // the driver and deploy onto it — no CloudFormation. Used for Hetzner,
           // and for AWS when `compute.mode === 'server'` (boots an Ubuntu EC2).
           const serverCompute = cloudProvider === 'hetzner' || config.infrastructure?.compute?.mode === 'server'
-          if (serverCompute && config.infrastructure?.compute) {
+          if (serverCompute && hasComputeConfigured(config)) {
             cli.step(`Provisioning ${cloudProvider} compute infrastructure...`)
             const driver = createCloudDriver({ config, provider: cloudProvider })
             if (!driver.provisionComputeInfrastructure) {
@@ -993,7 +998,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           return
         }
 
-        if (!config.infrastructure?.compute) {
+        if (!hasComputeConfigured(config)) {
           cli.error('No `infrastructure.compute` configured — nothing to deploy as a server.')
           cli.info('Add an EC2 compute block to cloud.config, or use `cloud deploy:serverless` for Lambda apps.')
           process.exitCode = 1

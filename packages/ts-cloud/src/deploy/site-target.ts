@@ -116,7 +116,7 @@ export function resolveSiteKind(site: SiteConfig): SiteDeployKind {
 }
 
 /** Does this project own a compute server or attach to an owner's server? */
-function hasComputeConfigured(config: CloudConfig): boolean {
+export function hasComputeConfigured(config: CloudConfig): boolean {
   return config.infrastructure?.compute != null || Boolean(config.cloud?.attachTo?.trim())
 }
 
