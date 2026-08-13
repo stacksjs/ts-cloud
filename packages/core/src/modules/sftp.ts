@@ -1,8 +1,30 @@
-import type { EnvironmentType, SftpConfig } from '../types'
+import type { EnvironmentType, SftpConfig, SftpPosixProfile } from '../types'
 
 export interface SftpResources {
   resources: Record<string, any>
   serverLogicalId: string
+  /** Storage backend the server was built with. */
+  domain: 'S3' | 'EFS'
+}
+
+/**
+ * An EFS file system ID: either a literal `fs-…` or a CloudFormation intrinsic
+ * (`{ Ref: '…' }`) pointing at a file system created in the same stack.
+ */
+export type SftpFileSystemRef = string | Record<string, any>
+
+/**
+ * Storage the module resolved down to a concrete backend. The generator turns
+ * `storageBucket`/`fileSystem` references into these before calling `create`.
+ */
+export type ResolvedSftpStorage =
+  | { type: 's3'; bucket: string }
+  | { type: 'efs'; fileSystemId: SftpFileSystemRef; posixProfile?: SftpPosixProfile }
+
+export interface SftpCreateOptions extends Omit<SftpConfig, 'storage'> {
+  slug: string
+  environment: EnvironmentType
+  storage?: SftpConfig['storage'] | ResolvedSftpStorage
 }
 
 function logicalPart(value: string): string {
@@ -20,10 +42,63 @@ function normalizeHomeDirectory(value: string | undefined, username: string): st
   return path
 }
 
+/** Narrow the user-facing storage config down to one concrete backend. */
+function resolveStorage(options: SftpCreateOptions): ResolvedSftpStorage {
+  const storage = options.storage
+
+  if (storage?.type === 'efs') {
+    const fileSystemId = 'fileSystemId' in storage ? storage.fileSystemId : undefined
+    if (!fileSystemId || (typeof fileSystemId === 'string' && !fileSystemId.trim()))
+      throw new Error('sftp: EFS storage requires fileSystemId, or a fileSystem name defined in infrastructure.fileSystem')
+    return { type: 'efs', fileSystemId, posixProfile: storage.posixProfile }
+  }
+
+  const bucket = (storage?.type === 's3' ? (storage.bucket ?? options.bucket) : options.bucket)?.trim()
+  if (!bucket)
+    throw new Error('sftp: S3 storage requires bucket, or a storageBucket name defined in infrastructure.storage')
+  return { type: 's3', bucket }
+}
+
+function posixProfileFor(
+  username: string,
+  user: { posixProfile?: SftpPosixProfile },
+  fallback: SftpPosixProfile | undefined,
+): Record<string, any> {
+  const profile = user.posixProfile ?? fallback
+  if (!profile)
+    throw new Error(`sftp: user ${username} requires a posixProfile (uid/gid) on an EFS-backed server`)
+
+  for (const id of [profile.uid, profile.gid, ...(profile.secondaryGids ?? [])]) {
+    if (!Number.isInteger(id) || id < 0 || id > 4294967295)
+      throw new Error(`sftp: user ${username} has an invalid posixProfile id ${id}`)
+  }
+
+  return {
+    Uid: profile.uid,
+    Gid: profile.gid,
+    ...(profile.secondaryGids?.length ? { SecondaryGids: profile.secondaryGids } : {}),
+  }
+}
+
+/** `/fs-123/incoming/deploy`, kept as an intrinsic when the file system is in-stack. */
+function efsHomeDirectory(fileSystemId: SftpFileSystemRef, home: string): any {
+  return typeof fileSystemId === 'string'
+    ? `/${fileSystemId}/${home}`
+    : { 'Fn::Sub': [`/\${FileSystemId}/${home}`, { FileSystemId: fileSystemId }] }
+}
+
+function efsFileSystemArn(fileSystemId: SftpFileSystemRef): any {
+  const template = 'arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${FileSystemId}'
+  return typeof fileSystemId === 'string'
+    ? { 'Fn::Sub': template.replace('${FileSystemId}', fileSystemId) }
+    : { 'Fn::Sub': [template, { FileSystemId: fileSystemId }] }
+}
+
 /** Build an AWS Transfer Family SFTP server with service-managed users. */
 export class Sftp {
-  static create(options: SftpConfig & { slug: string; environment: EnvironmentType }): SftpResources {
-    if (!options.bucket.trim()) throw new Error('sftp: bucket is required')
+  static create(options: SftpCreateOptions): SftpResources {
+    const storage = resolveStorage(options)
+    const domain = storage.type === 'efs' ? 'EFS' : 'S3'
 
     const endpointType = options.endpointType ?? 'PUBLIC'
     if (endpointType === 'VPC' && (!options.endpointDetails?.vpcId || !options.endpointDetails.subnetIds.length))
@@ -73,7 +148,7 @@ export class Sftp {
     resources[serverLogicalId] = {
       Type: 'AWS::Transfer::Server',
       Properties: {
-        Domain: 'S3',
+        Domain: domain,
         EndpointType: endpointType,
         IdentityProviderType: 'SERVICE_MANAGED',
         Protocols: ['SFTP'],
@@ -112,7 +187,38 @@ export class Sftp {
 
       if (!roleArn) {
         const roleLogicalId = `${prefix}${userPart}Role`
-        const bucketArn = `arn:aws:s3:::${options.bucket}`
+        let statements: any[]
+
+        if (storage.type === 'efs') {
+          statements = [
+            {
+              Effect: 'Allow',
+              Action: [
+                'elasticfilesystem:ClientMount',
+                'elasticfilesystem:ClientWrite',
+                'elasticfilesystem:DescribeMountTargets',
+              ],
+              Resource: efsFileSystemArn(storage.fileSystemId),
+            },
+          ]
+        }
+        else {
+          const bucketArn = `arn:aws:s3:::${storage.bucket}`
+          statements = [
+            {
+              Effect: 'Allow',
+              Action: ['s3:ListBucket', 's3:GetBucketLocation'],
+              Resource: bucketArn,
+              Condition: { StringLike: { 's3:prefix': [home, `${home}/*`] } },
+            },
+            {
+              Effect: 'Allow',
+              Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:GetObjectVersion'],
+              Resource: `${bucketArn}/${home}/*`,
+            },
+          ]
+        }
+
         resources[roleLogicalId] = {
           Type: 'AWS::IAM::Role',
           Properties: {
@@ -125,22 +231,7 @@ export class Sftp {
             Policies: [
               {
                 PolicyName: 'SftpHomeDirectory',
-                PolicyDocument: {
-                  Version: '2012-10-17',
-                  Statement: [
-                    {
-                      Effect: 'Allow',
-                      Action: ['s3:ListBucket', 's3:GetBucketLocation'],
-                      Resource: bucketArn,
-                      Condition: { StringLike: { 's3:prefix': [home, `${home}/*`] } },
-                    },
-                    {
-                      Effect: 'Allow',
-                      Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:GetObjectVersion'],
-                      Resource: `${bucketArn}/${home}/*`,
-                    },
-                  ],
-                },
+                PolicyDocument: { Version: '2012-10-17', Statement: statements },
               },
             ],
           },
@@ -156,12 +247,16 @@ export class Sftp {
           UserName: username,
           Role: roleArn,
           HomeDirectoryType: 'PATH',
-          HomeDirectory: `/${options.bucket}/${home}`,
+          HomeDirectory:
+            storage.type === 'efs' ? efsHomeDirectory(storage.fileSystemId, home) : `/${storage.bucket}/${home}`,
+          ...(storage.type === 'efs'
+            ? { PosixProfile: posixProfileFor(username, user, storage.posixProfile) }
+            : {}),
           SshPublicKeys: user.sshPublicKeys,
         },
       }
     }
 
-    return { resources, serverLogicalId }
+    return { resources, serverLogicalId, domain }
   }
 }

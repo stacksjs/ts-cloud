@@ -1643,16 +1643,64 @@ export interface CdnConfig {
   certificateArn?: string
 }
 
+/**
+ * POSIX identity a user is mapped to on an EFS-backed server.
+ * Files the user writes are owned by this uid/gid.
+ */
+export interface SftpPosixProfile {
+  uid: number
+  gid: number
+  secondaryGids?: number[]
+}
+
+/** Files live in an S3 bucket. */
+export interface SftpS3Storage {
+  type: 's3'
+  /** Physical bucket name of an existing bucket. */
+  bucket?: string
+  /**
+   * Key from `infrastructure.storage`. ts-cloud points the server at the
+   * bucket it generates for that entry, so the bucket is created with the stack.
+   */
+  storageBucket?: string
+}
+
+/**
+ * Files live on an EFS file system attached to the server, so users get a real
+ * POSIX filesystem (directories, renames, symlinks) instead of object storage.
+ */
+export interface SftpEfsStorage {
+  type: 'efs'
+  /** File system ID (`fs-…`) of an existing EFS file system. */
+  fileSystemId?: string
+  /**
+   * Key from `infrastructure.fileSystem`. ts-cloud points the server at the
+   * file system it generates for that entry, so storage is created with the stack.
+   */
+  fileSystem?: string
+  /** Default POSIX identity for users that do not set their own. */
+  posixProfile?: SftpPosixProfile
+}
+
+export type SftpStorageConfig = SftpS3Storage | SftpEfsStorage
+
+export interface SftpUserConfig {
+  sshPublicKeys: string[]
+  homeDirectory?: string
+  roleArn?: string
+  /** POSIX identity for this user. Required on EFS-backed servers. */
+  posixProfile?: SftpPosixProfile
+}
+
 export interface SftpConfig {
-  bucket: string
-  users: Record<
-    string,
-    {
-      sshPublicKeys: string[]
-      homeDirectory?: string
-      roleArn?: string
-    }
-  >
+  /**
+   * Where uploaded files are stored: an EFS file system on the server
+   * (`{ type: 'efs' }`) or an S3 bucket (`{ type: 's3' }`).
+   */
+  storage?: SftpStorageConfig
+  /** Shorthand for `storage: { type: 's3', bucket }`. */
+  bucket?: string
+  users: Record<string, SftpUserConfig>
   endpointType?: 'PUBLIC' | 'VPC'
   endpointDetails?: {
     vpcId: string
