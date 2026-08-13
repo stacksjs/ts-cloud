@@ -5,7 +5,7 @@ import type { ScanResult, SecurityFinding } from '../../src/security/pre-deploy-
 import { execSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join as pathJoin } from 'node:path'
+import { dirname, join as pathJoin, resolve as pathResolve } from 'node:path'
 import { deploymentCoexistenceError, resolveAppDatabase, resolveCloudProvider, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName } from '@ts-cloud/core'
 import * as cli from '../../src/utils/cli'
 import { detectCredentialSource } from '../../src/aws/client'
@@ -138,6 +138,7 @@ async function deployAppToCompute(
   const driver = createCloudDriver({ config })
   const sha = resolveReleaseSha()
   const tarballs = new Map<string, string>()
+  const packagedRoots = new Map<string, string>()
   const hookLogger = { step: (m: string) => cli.step(m), error: (m: string) => cli.error(m) }
 
   // beforeDeploy / beforeBuild lifecycle hooks (run locally).
@@ -170,6 +171,20 @@ async function deployAppToCompute(
       return false
     }
 
+    // Multiple services often ship the same source root with the same exclude
+    // boundary. Package that immutable input once; the provider's
+    // content-addressed upload cache can then reuse it across every service.
+    // A per-site build may mutate the root, so those artifacts stay isolated.
+    const packageKey = site.build
+      ? undefined
+      : JSON.stringify([pathResolve(site.root), [...(site.exclude || [])].sort()])
+    const packaged = packageKey ? packagedRoots.get(packageKey) : undefined
+    if (packaged) {
+      cli.step(`Reusing package for ${site.root} → ${packaged}`)
+      tarballs.set(siteName, packaged)
+      continue
+    }
+
     const tarballPath = pathJoin(tmpdir(), `${slug}-${siteName}-${sha}.tar.gz`)
     cli.step(`Packaging ${site.root} → ${tarballPath}`)
     try {
@@ -183,6 +198,7 @@ async function deployAppToCompute(
     }
 
     tarballs.set(siteName, tarballPath)
+    if (packageKey) packagedRoots.set(packageKey, tarballPath)
   }
 
   // afterBuild hook (run locally once all sites are built/packaged).
