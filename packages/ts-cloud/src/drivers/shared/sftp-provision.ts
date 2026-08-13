@@ -89,7 +89,12 @@ export function buildSftpProvisionScript(options: SftpProvisionOptions): string[
   const commands: string[] = [
     `# --- ts-sftp (${unit}) ---`,
     `id -u ${serviceUser} >/dev/null 2>&1 || useradd --system --home-dir ${quote(root)} --shell /usr/sbin/nologin ${serviceUser}`,
-    'command -v bun >/dev/null 2>&1 || (curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun)',
+    // cloud-init runs the bootstrap with `set -u` and no $HOME, and bun's
+    // installer dereferences $HOME — without this the install aborts with
+    // "HOME: unbound variable" and takes the whole bootstrap down with it,
+    // since this block runs before the runtime install that exports it.
+    'export HOME="${HOME:-/root}"',
+    'command -v bun >/dev/null 2>&1 || (curl -fsSL https://bun.sh/install | bash && ln -sf "$HOME/.bun/bin/bun" /usr/local/bin/bun)',
     `mkdir -p ${quote(root)} ${SFTP_CONFIG_DIR} ${usersDir} ${SFTP_INSTALL_DIR}`,
     `chmod 750 ${SFTP_CONFIG_DIR}`,
     // Install into its own directory so the server's version is pinned

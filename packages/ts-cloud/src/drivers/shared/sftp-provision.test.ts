@@ -27,6 +27,23 @@ describe('sftp provisioning', () => {
     expect(script).toContain('--user deploy:/etc/ts-sftp/users/deploy.pub')
   })
 
+  it('sets HOME before installing bun', () => {
+    const script = buildSftpProvisionScript({ slug: 'demo', sftp: { users } })
+    const commands = script.join('\n')
+
+    // cloud-init's bootstrap runs under `set -u` with no $HOME, and bun's
+    // installer dereferences it — an unset HOME here aborts the whole
+    // bootstrap, not just this block, because it runs before the runtime
+    // install that exports HOME for everything after it.
+    const homeIndex = script.findIndex((line) => line.includes('export HOME='))
+    const bunIndex = script.findIndex((line) => line.includes('bun.sh/install'))
+
+    expect(homeIndex).toBeGreaterThanOrEqual(0)
+    expect(bunIndex).toBeGreaterThan(homeIndex)
+    expect(commands).toContain('export HOME="${HOME:-/root}"')
+    expect(commands).not.toContain('ln -sf /root/.bun/bin/bun')
+  })
+
   it('gives systemd an interpreter the service user can execute', () => {
     const script = buildSftpProvisionScript({ slug: 'demo', sftp: { users } }).join('\n')
 
