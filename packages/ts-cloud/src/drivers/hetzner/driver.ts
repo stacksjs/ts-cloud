@@ -3,8 +3,8 @@ import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import type { HetznerDriverState } from './state'
 import { execFileSync, execSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
 import { normalizePublicIpv6 } from '../../deploy/server-dns'
@@ -26,6 +26,16 @@ import { readDriverState, writeDriverState } from './state'
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
 const SSH_MAX_BUFFER = 1024 * 1024 * 256
 const SSH_ERROR_OUTPUT_LIMIT = 8_000
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`
+}
+
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  return hash.digest('hex')
+}
 
 function sshErrorOutput(value: unknown): string {
   const output = Buffer.isBuffer(value) ? value.toString('utf8') : typeof value === 'string' ? value : ''
@@ -1008,11 +1018,44 @@ export class HetznerDriver implements CloudDriver {
     const stagingStem = options.remoteKey.replace(/^releases\//, '').replace(/\.tar\.gz$/, '').replace(/\//g, '-')
     const stagingName = `${stagingStem}-${randomUUID()}.tar.gz`
     const remotePath = `/var/ts-cloud/staging/${stagingName}`
+    const digest = await sha256File(options.localPath)
+    const artifactDir = '/var/ts-cloud/artifacts'
+    const cachedPath = `${artifactDir}/${digest}.tar.gz`
     for (const target of targets) {
       if (!target.publicIp) {
         throw new Error(`Target ${target.id} has no public IP for SCP upload`)
       }
-      this.scpToHost(target.publicIp, options.localPath, remotePath)
+
+      // Releases commonly deploy the exact same source tree to several
+      // services. Keep one immutable, content-addressed copy on the box and
+      // stage each site with a server-local copy. On a slow WAN this turns the
+      // second and subsequent site uploads from minutes into milliseconds.
+      const stageCached = [
+        'set -euo pipefail',
+        `mkdir -p ${shellQuote(artifactDir)} /var/ts-cloud/staging`,
+        `test -s ${shellQuote(cachedPath)}`,
+        `cp -- ${shellQuote(cachedPath)} ${shellQuote(remotePath)}`,
+      ].join('\n')
+      try {
+        this.sshExec(target.publicIp, stageCached)
+        continue
+      } catch {
+        // Cache miss: upload to a nonce-scoped temporary name, atomically
+        // publish it, then copy it to this deployment's unique staging path.
+      }
+
+      const uploadPath = `${artifactDir}/.${digest}-${randomUUID()}.tmp`
+      this.scpToHost(target.publicIp, options.localPath, uploadPath)
+      this.sshExec(
+        target.publicIp,
+        [
+          'set -euo pipefail',
+          `chmod 600 ${shellQuote(uploadPath)}`,
+          `mv -f -- ${shellQuote(uploadPath)} ${shellQuote(cachedPath)}`,
+          `cp -- ${shellQuote(cachedPath)} ${shellQuote(remotePath)}`,
+          `find ${shellQuote(artifactDir)} -type f -name '*.tar.gz' -mtime +7 -delete 2>/dev/null || true`,
+        ].join('\n'),
+      )
     }
 
     return { artifactRef: remotePath }

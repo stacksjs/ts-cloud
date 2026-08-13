@@ -243,7 +243,7 @@ describe('HetznerDriver', () => {
     ).toEqual(['502'])
   })
 
-  it('stages every upload under a unique site-specific path', async () => {
+  it('stages unique site paths from one content-addressed upload', async () => {
     const client = mockHetznerClient()
     const driver = new HetznerDriver({
       client,
@@ -252,10 +252,21 @@ describe('HetznerDriver', () => {
       waitForBoot: false,
     })
 
-    // Capture the remote staging path scp targets, without touching the network.
+    const artifact = `${tempCwd}/release.tar.gz`
+    await writeFile(artifact, 'identical release contents')
+
+    // Capture uploads and server-local staging without touching the network.
     const scpCalls: Array<{ localPath: string; remotePath: string }> = []
+    const remoteFiles = new Set<string>()
     ;(driver as any).scpToHost = (_host: string, localPath: string, remotePath: string) => {
       scpCalls.push({ localPath, remotePath })
+      remoteFiles.add(remotePath)
+    }
+    ;(driver as any).sshExec = (_host: string, script: string) => {
+      const testedPath = script.match(/test -s '([^']+)'/)?.[1]
+      if (testedPath && !remoteFiles.has(testedPath)) throw new Error('cache miss')
+      const moved = script.match(/mv -f -- '([^']+)' '([^']+)'/)
+      if (moved) remoteFiles.add(moved[2])
     }
 
     const targets = [{ id: '42', publicIp: '203.0.113.10' } as any]
@@ -266,21 +277,21 @@ describe('HetznerDriver', () => {
       config: baseConfig,
       environment: 'production',
       targets,
-      localPath: '/tmp/my-app-verygoodadblock.tar.gz',
+      localPath: artifact,
       remoteKey: `releases/verygoodadblock/${sha}.tar.gz`,
     })
     const b = await driver.uploadRelease!({
       config: baseConfig,
       environment: 'production',
       targets,
-      localPath: '/tmp/my-app-verygoodadblockWww.tar.gz',
+      localPath: artifact,
       remoteKey: `releases/verygoodadblockWww/${sha}.tar.gz`,
     })
     const retry = await driver.uploadRelease!({
       config: baseConfig,
       environment: 'production',
       targets,
-      localPath: '/tmp/my-app-verygoodadblock-retry.tar.gz',
+      localPath: artifact,
       remoteKey: `releases/verygoodadblock/${sha}.tar.gz`,
     })
 
@@ -294,7 +305,9 @@ describe('HetznerDriver', () => {
     )
     expect(a.artifactRef).not.toBe(b.artifactRef)
     expect(retry.artifactRef).not.toBe(a.artifactRef)
-    expect(scpCalls.map((c) => c.remotePath)).toEqual([a.artifactRef, b.artifactRef, retry.artifactRef])
+    expect(scpCalls).toHaveLength(1)
+    expect(scpCalls[0].localPath).toBe(artifact)
+    expect(scpCalls[0].remotePath).toMatch(/^\/var\/ts-cloud\/artifacts\/\.[a-f0-9]{64}-[0-9a-f-]+\.tmp$/)
   })
 
   it('does not provision a gateway by default (no proxy configured)', async () => {
