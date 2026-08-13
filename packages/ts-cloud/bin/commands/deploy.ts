@@ -20,7 +20,7 @@ import { mergeControlsIntoConfig, ProtectionControlStore } from '../../src/prote
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { runConfigHook } from '../../src/deploy/hooks'
 import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
-import { deployShipsFiles, resolveSiteKind, shipsARelease, validateDeploymentConfig } from '../../src/deploy/site-target'
+import { deployShipsFiles, resolveSiteKind, shipsARelease, shipsToBucket, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
 import { createCloudDriver } from '../../src/drivers'
@@ -2462,25 +2462,13 @@ async function deployStaticSitesWithExternalDns(
       continue
     }
 
-    // Skip sites the user EXPLICITLY targeted at the server (deploy:'server') —
-    // those are handled by the compute path (systemd app or static site shipped
-    // to /var/www), not S3+CloudFront. Backward-compat: a legacy site with `start` and NO
-    // explicit `deploy` still gets its static front here (unchanged behavior);
-    // only an explicit deploy:'server' opts out of the bucket path.
-    if (siteConfig.deploy === 'server') {
-      cli.info(`Site '${siteName}' is deploy:'server' — handled by the compute path, skipping static (bucket) deploy.`)
-      continue
-    }
-
-    // Gateway-only sites have no bucket front to build either: a redirect is
-    // answered by the proxy, and a `proxyTo` site is forwarded to something
-    // ts-cloud does not manage. Neither declares `deploy:'server'`, so without
-    // this they fell through to the S3/CloudFront pipeline below and reported
-    // "Source directory not found: undefined" once per site — noise on every
-    // deploy of a project whose sites are all routes.
-    const gatewayOnlyKind = resolveSiteKind(siteConfig)
-    if (gatewayOnlyKind === 'redirect' || gatewayOnlyKind === 'proxy') {
-      cli.info(`Site '${siteName}' is a ${gatewayOnlyKind} route — handled by the gateway, nothing to upload.`)
+    // The same resolver drives validation, compute packaging, and this bucket
+    // pipeline. In particular, `start` infers a server app even when `deploy`
+    // is omitted; sending that site through CloudFront first both double-
+    // deployed it and made Hetzner deployments depend on AWS credentials.
+    if (!shipsToBucket(siteConfig)) {
+      const kind = resolveSiteKind(siteConfig)
+      cli.info(`Site '${siteName}' is ${kind} — handled outside the static bucket pipeline.`)
       continue
     }
 

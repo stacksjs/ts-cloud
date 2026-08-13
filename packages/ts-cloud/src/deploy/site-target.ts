@@ -298,6 +298,11 @@ export function shipsARelease(site: SiteConfig): boolean {
   return kind !== 'bucket' && kind !== 'redirect' && kind !== 'proxy'
 }
 
+/** Does the static object-storage pipeline own this site? */
+export function shipsToBucket(site: SiteConfig): boolean {
+  return resolveSiteKind(site) === 'bucket'
+}
+
 /**
  * Does this deploy put any file from the working tree onto a server or into a
  * bucket?

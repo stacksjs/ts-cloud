@@ -5,6 +5,7 @@ import {
   resolveProxyUpstreams,
   resolveSiteDeployTarget,
   resolveSiteKind,
+  shipsToBucket,
   shipsARelease,
   siteInstallBase,
   validateDeploymentConfig,
@@ -65,6 +66,18 @@ describe('resolveSiteKind', () => {
         start: 'bun run x',
       }),
     ).toBe('redirect')
+  })
+})
+
+describe('shipsToBucket', () => {
+  it('keeps inferred and explicit server apps out of the bucket pipeline', () => {
+    expect(shipsToBucket({ root: '.', start: 'bun run server.ts' })).toBe(false)
+    expect(shipsToBucket({ root: '.', start: 'bun run server.ts', deploy: 'server' })).toBe(false)
+  })
+
+  it('includes bucket sites, including an explicit start override', () => {
+    expect(shipsToBucket({ root: 'dist' })).toBe(true)
+    expect(shipsToBucket({ root: 'dist', start: 'bun run build', deploy: 'bucket' })).toBe(true)
   })
 })
 
