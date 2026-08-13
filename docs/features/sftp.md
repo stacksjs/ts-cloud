@@ -5,6 +5,20 @@ SFTP endpoint from your `cloud.config.ts` — server, CloudWatch logging role,
 service-managed users, and a per-user IAM role scoped to that user's home
 directory.
 
+## Providers
+
+| Provider | Server | Storage options |
+| --- | --- | --- |
+| `aws` | AWS Transfer Family | On the server (EFS) or a bucket (S3) |
+| `hetzner`, box deploys | [ts-sftp](https://github.com/stacksjs/ts-sftp) as a systemd unit | On the server (a directory) |
+
+The same `infrastructure.sftp` block drives both. On AWS it becomes a Transfer
+Family server; on a box provider it installs and runs ts-sftp, generating a
+host key once and keeping it, so a redeploy does not change the fingerprint
+clients have pinned. Bucket-backed storage asks for S3 specifically, so
+configuring it on a non-AWS provider fails the deploy with that explanation
+rather than quietly doing nothing.
+
 Files can live in either of two places:
 
 | Storage | Config | What users get |
@@ -121,6 +135,41 @@ sftp: {
 
 Set `securityPolicyName` to pin a Transfer security policy, and `logging: false`
 to skip the CloudWatch logging role.
+
+## On box providers
+
+A Hetzner (or other box) deploy serves a directory on the server:
+
+```ts
+infrastructure: {
+  compute: { instanceType: 'cpx21' },
+  sftp: {
+    storage: { type: 'efs', path: '/srv/uploads' }, // defaults to /var/sftp/<slug>
+    port: 2222,
+    users: {
+      deploy: {
+        sshPublicKeys: ['ssh-ed25519 AAAA... deploy@example.com'],
+        homeDirectory: 'incoming/deploy',
+      },
+    },
+  },
+}
+```
+
+ts-cloud installs ts-sftp under `/opt/ts-sftp`, writes each user's keys to
+`/etc/ts-sftp/users/<name>.pub`, runs the server as the `ts-sftp` system
+account under systemd (`<slug>-sftp.service`), and opens the port in the
+provider firewall. Port 2222 is the default, since sshd already owns 22.
+
+Box-only options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `port` | `2222` | Port the server listens on |
+| `readOnly` | `false` | Reject every write |
+| `version` | `latest` | ts-sftp version installed on the box |
+| `serviceUser` | `ts-sftp` | System account the server runs as |
+| `storage.path` | `/var/sftp/<slug>` | Directory served |
 
 ## Deploying and connecting
 

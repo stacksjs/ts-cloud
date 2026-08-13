@@ -10,7 +10,7 @@
  * so a baked image and a cold boot install exactly the same stack.
  */
 import type { CloudConfig } from '@ts-cloud/core'
-import { resolveAppDatabase } from '@ts-cloud/core'
+import { resolveAppDatabase, resolveCloudProvider } from '@ts-cloud/core'
 import { buildBackupProvisionScript } from './backups'
 import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-provision'
 import { buildAutoUpdatesScript } from './maintenance'
@@ -22,6 +22,7 @@ import { buildPhpProvisionScript } from './php-provision'
 import { usesRpxProxy } from './rpx-gateway'
 import { buildAuthorizedKeysScript } from './ssh-keys'
 import { buildProtectionScript } from './protection'
+import { assertSftpSupported, buildSftpProvisionScript } from './sftp-provision'
 import { buildUfwScript } from './ufw'
 
 export interface ComputeProvisionScripts {
@@ -79,6 +80,15 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
     extras.push(
       ...buildServicesProvisionScript(compute.managedServices),
       ...buildDatabaseSetupScript(appDatabase, compute.managedServices),
+    )
+  }
+  // An `infrastructure.sftp` block on a box provider is served by ts-sftp; the
+  // AWS path builds Transfer Family from the same config instead.
+  const sftp = config.infrastructure?.sftp
+  if (sftp) {
+    assertSftpSupported(sftp, resolveCloudProvider(config))
+    extras.push(
+      ...buildSftpProvisionScript({ slug: config.project.slug, sftp }),
     )
   }
   extras.push(...buildUfwScript(compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })))

@@ -1671,6 +1671,12 @@ export interface SftpS3Storage {
  */
 export interface SftpEfsStorage {
   type: 'efs'
+  /**
+   * Directory served on box providers (Hetzner, local), where storage on the
+   * server is a directory rather than an EFS file system.
+   * Defaults to `/var/sftp/<slug>`.
+   */
+  path?: string
   /** File system ID (`fs-…`) of an existing EFS file system. */
   fileSystemId?: string
   /**
@@ -1710,6 +1716,17 @@ export interface SftpConfig {
   }
   securityPolicyName?: string
   logging?: boolean
+  /**
+   * Port the server listens on. Box providers only — AWS Transfer Family is
+   * always reached on port 22. Defaults to 2222, since sshd owns 22 on a box.
+   */
+  port?: number
+  /** Reject every write. Box providers only. */
+  readOnly?: boolean
+  /** ts-sftp version installed on the box. Defaults to the latest release. */
+  version?: string
+  /** System account the box server runs as. Defaults to `ts-sftp`. */
+  serviceUser?: string
 }
 
 export interface DnsConfig {

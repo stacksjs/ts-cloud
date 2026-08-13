@@ -15,6 +15,7 @@ import { buildMonitoringScript } from '../shared/monitoring'
 import { buildNotifierScript } from '../shared/notifications'
 import { buildPhpProvisionScript } from '../shared/php-provision'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
+import { sftpFirewallPorts } from '../shared/sftp-provision'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
 import { HetznerClient, normalizeSshPublicKey } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
@@ -208,7 +209,11 @@ export class HetznerDriver implements CloudDriver {
         // reachable. Only close it when the caller explicitly opts out.
         allowSsh: compute.allowSsh !== false,
         sitePorts,
-        allowedPorts: compute.firewall?.allowedPorts,
+        // An SFTP server on the box is only reachable if its port is open.
+        allowedPorts: [
+          ...(compute.firewall?.allowedPorts ?? []),
+          ...sftpFirewallPorts(config.infrastructure?.sftp),
+        ],
       }),
     )
     const sshKeyId = await this.ensureSshKey(slug, environment, labels)
