@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.118...v0.7.119)
+
+## 🐛 Bug Fixes
+
+- **deploy**: support attached compute artifacts cleanly ([c30cd5c](https://github.com/stacksjs/ts-cloud/commit/c30cd5c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.119 ([c54b6b9](https://github.com/stacksjs/ts-cloud/commit/c54b6b9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.117...v0.7.118)
 
 ## 🐛 Bug Fixes
