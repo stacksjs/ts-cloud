@@ -21,7 +21,7 @@ import { HetznerClient, normalizeSshPublicKey } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { resolveHetznerApiToken, resolveHetznerImage, resolveHetznerSettings } from './config'
 import { buildHetznerFirewallRules } from './firewall-rules'
-import { matchesTsCloudLabels, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
+import { matchesTsCloudLabels, matchesTsCloudProject, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState } from './state'
 
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
@@ -865,8 +865,12 @@ export class HetznerDriver implements CloudDriver {
 
   /**
    * Tear down the compute — single server or full fleet (load balancer, all
-   * app + services servers, firewalls, and the private network) — and clear
-   * local state.
+   * app + services servers, firewalls, the private network, and the SSH key
+   * this project created) — and clear local state.
+   *
+   * Only resources ts-cloud created for this project and environment are
+   * removed; anything it merely reused (an SSH key already on the account, say)
+   * is left where it is.
    */
   async destroyCompute(options: ProvisionComputeOptions): Promise<{ destroyed: string[] }> {
     const { config, environment } = options
@@ -949,6 +953,25 @@ export class HetznerDriver implements CloudDriver {
         } catch {
           await this.sleep(3000)
         }
+      }
+    }
+
+    // 5. SSH keys this project created. Only labelled keys are ours: when the
+    //    public key was already on the account, `ensureSshKey` reuses it and
+    //    labels nothing, so a shared or personal key is never deleted here.
+    //    Deleting the key does not lock anyone out of a surviving box — Hetzner
+    //    reads it at server creation, and it lives in authorized_keys after.
+    const sshKeys = await this.client.listSshKeys().catch(() => [])
+    // Select first: deleting while walking the client's own list would skip
+    // entries if that list is the collection being mutated.
+    const ourKeys = sshKeys.filter((key) => matchesTsCloudProject(key.labels, slug, environment))
+    for (const key of ourKeys) {
+      try {
+        await this.client.deleteSshKey(key.id)
+        destroyed.push(`ssh key ${key.name}`)
+      }
+      catch {
+        /* leftover surfaces on the next teardown */
       }
     }
 

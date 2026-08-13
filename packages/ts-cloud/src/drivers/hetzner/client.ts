@@ -491,6 +491,14 @@ export class HetznerClient {
     return data.ssh_key
   }
 
+  /**
+   * Delete an SSH key. Running servers are unaffected — the key is only read
+   * when a server is created, and lives in the box's authorized_keys after.
+   */
+  async deleteSshKey(id: number): Promise<void> {
+    await this.request<void>('DELETE', `/ssh_keys/${id}`)
+  }
+
   async getAction(actionId: number): Promise<HetznerAction> {
     const data = await this.request<{ action: HetznerAction }>('GET', `/actions/${actionId}`)
     return data.action

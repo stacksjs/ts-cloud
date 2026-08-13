@@ -45,10 +45,26 @@ export function matchesTsCloudLabels(
   environment: string,
   role = 'app',
 ): boolean {
+  return matchesTsCloudProject(labels, slug, environment) && labels![`${TS_CLOUD_LABEL_PREFIX}/role`] === role
+}
+
+/**
+ * Whether a resource belongs to this project and environment, whatever role it
+ * plays. Use this for resources that are not per-role — an SSH key is created
+ * once and used by app, services, and load balancer boxes alike.
+ *
+ * A resource ts-cloud merely *reused* (an SSH key already on the account under
+ * someone else's name, say) carries no ts-cloud labels, so it never matches —
+ * which is what keeps teardown from deleting something it did not create.
+ */
+export function matchesTsCloudProject(
+  labels: Record<string, string> | undefined,
+  slug: string,
+  environment: string,
+): boolean {
   if (!labels) return false
   return (
     labels[`${TS_CLOUD_LABEL_PREFIX}/project`] === slug &&
-    labels[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment &&
-    labels[`${TS_CLOUD_LABEL_PREFIX}/role`] === role
+    labels[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment
   )
 }
