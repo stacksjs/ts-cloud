@@ -1438,9 +1438,7 @@ export class HetznerDriver implements CloudDriver {
     while (Date.now() - start < sshTimeoutMs) {
       try {
         execSync(
-          `ssh ${this.sshBaseArgs(host, ['-o', 'ConnectTimeout=5'])
-            .map((a) => `'${a.replace(/'/g, '\\"')}"`)
-            .join(' ')} true`,
+          `ssh ${this.sshBaseArgs(host, ['-o', 'ConnectTimeout=5']).map(shellQuote).join(' ')} true`,
           {
             stdio: 'pipe',
             maxBuffer: SSH_MAX_BUFFER,
