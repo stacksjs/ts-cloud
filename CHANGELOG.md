@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.116...v0.7.117)
+
+## ⚡ Performance Improvements
+
+- **hetzner**: cache release uploads by content ([1630c60](https://github.com/stacksjs/ts-cloud/commit/1630c60)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: package shared source roots once ([39be9f4](https://github.com/stacksjs/ts-cloud/commit/39be9f4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.117 ([a472558](https://github.com/stacksjs/ts-cloud/commit/a472558)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.115...v0.7.116)
 
 ## 🚀 Features
