@@ -17,6 +17,8 @@ export interface AwsDriverOptions {
    * a fake so the driver's decisions can be exercised without AWS.
    */
   ec2Client?: (region: string) => EC2Client
+  /** Build the CloudFormation client for a region. Same purpose as {@link ec2Client}. */
+  cfnClient?: (region: string) => CloudFormationClient
 }
 
 /**
@@ -43,10 +45,12 @@ export class AwsDriver implements CloudDriver {
   private region: string
 
   private readonly ec2Client: (region: string) => EC2Client
+  private readonly cfnClient: (region: string) => CloudFormationClient
 
   constructor(options: AwsDriverOptions = {}) {
     this.region = options.region || 'us-east-1'
     this.ec2Client = options.ec2Client ?? ((region) => new EC2Client(region))
+    this.cfnClient = options.cfnClient ?? ((region) => new CloudFormationClient(region))
   }
 
   private resolveRegion(config: CloudConfig): string {
@@ -235,7 +239,7 @@ export class AwsDriver implements CloudDriver {
   async getComputeOutputs(options: ProvisionComputeOptions): Promise<ComputeStackOutputs> {
     const region = this.resolveRegion(options.config)
     const stackName = resolveProjectStackName(options.config, options.environment)
-    const cfn = new CloudFormationClient(region)
+    const cfn = this.cfnClient(region)
     try {
       const outputs = await cfn.getStackOutputs(stackName)
       return {
@@ -317,7 +321,7 @@ export class AwsDriver implements CloudDriver {
     let pinnedId = readPinnedInstanceId(stackName)
     if (!pinnedId) {
       try {
-        pinnedId = (await new CloudFormationClient(region).getStackOutputs(stackName)).appInstanceId ?? null
+        pinnedId = (await this.cfnClient(region).getStackOutputs(stackName)).appInstanceId ?? null
       } catch {
         pinnedId = null // no stack (lightweight boot path) — nothing to pin from
       }

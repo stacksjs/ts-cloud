@@ -4,6 +4,7 @@
  * it deletes.
  */
 
+import type { CloudFormationClient } from '../../src/aws/cloudformation'
 import type { EC2Client } from '../../src/aws/ec2'
 import type { CloudConfig } from '@ts-cloud/core'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -30,6 +31,11 @@ interface FakeAws {
   deletedGroups: string[]
   describedIn: string[]
   ec2Client: (region: string) => EC2Client
+  /**
+   * A lightweight EC2 deploy has no CloudFormation stack. Without this the
+   * driver's fallback would reach the real AWS API from a unit test.
+   */
+  cfnClient: (region: string) => CloudFormationClient
 }
 
 /** An EC2 API whose contents differ per region, so a wrong region shows up. */
@@ -40,6 +46,12 @@ function fakeAws(byRegion: Record<string, { instances?: FakeInstance[]; groups?:
     deletedGroups: [],
     describedIn: [],
     ec2Client: () => ({}) as EC2Client,
+    cfnClient: () =>
+      ({
+        getStackOutputs: async () => {
+          throw new Error('Stack with id my-app-production does not exist')
+        },
+      }) as unknown as CloudFormationClient,
   }
 
   state.ec2Client = (region: string): EC2Client => {
@@ -127,7 +139,7 @@ describe('AwsDriver.destroyCompute', () => {
     const aws = fakeAws({
       'us-east-1': { instances: [instance('i-1', 'vpc-app')], groups: [ourGroup('sg-1', 'vpc-app')] },
     })
-    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client })
+    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client, cfnClient: aws.cfnClient })
 
     const result = await driver.destroyCompute!({ config: config('us-east-1'), environment: 'production' })
 
@@ -143,7 +155,7 @@ describe('AwsDriver.destroyCompute', () => {
       'eu-central-1': { instances: [instance('i-eu', 'vpc-eu')], groups: [ourGroup('sg-eu', 'vpc-eu')] },
       'us-east-1': { instances: [instance('i-us', 'vpc-us')], groups: [ourGroup('sg-us', 'vpc-us')] },
     })
-    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client })
+    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client, cfnClient: aws.cfnClient })
 
     await driver.destroyCompute!({ config: config('eu-central-1'), environment: 'production' })
 
@@ -162,7 +174,7 @@ describe('AwsDriver.destroyCompute', () => {
         ],
       },
     })
-    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client })
+    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client, cfnClient: aws.cfnClient })
 
     await driver.destroyCompute!({ config: config('us-east-1'), environment: 'production' })
 
@@ -183,7 +195,7 @@ describe('AwsDriver.destroyCompute', () => {
         ],
       },
     })
-    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client })
+    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client, cfnClient: aws.cfnClient })
 
     const result = await driver.destroyCompute!({ config: config('us-east-1'), environment: 'production' })
 
@@ -193,7 +205,7 @@ describe('AwsDriver.destroyCompute', () => {
 
   it('reports nothing when the project has nothing left', async () => {
     const aws = fakeAws({ 'us-east-1': {} })
-    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client })
+    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client, cfnClient: aws.cfnClient })
 
     const result = await driver.destroyCompute!({ config: config('us-east-1'), environment: 'production' })
 
@@ -207,7 +219,7 @@ describe('AwsDriver.destroyCompute', () => {
     const aws = fakeAws({
       'us-east-1': { groups: [{ GroupId: 'sg-legacy', GroupName: 'my-app-production-app-sg', VpcId: 'vpc-app' }] },
     })
-    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client })
+    const driver = new AwsDriver({ region: 'us-east-1', ec2Client: aws.ec2Client, cfnClient: aws.cfnClient })
 
     const result = await driver.destroyCompute!({ config: config('us-east-1'), environment: 'production' })
 
