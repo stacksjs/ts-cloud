@@ -88,3 +88,81 @@ export function encodeUserData(userData: string): string {
 export function resolveAwsImageId(config: CloudConfig): string | null {
   return config.infrastructure?.compute?.image ?? null
 }
+
+/** The security group name ts-cloud gives a project's app box. */
+export function awsSecurityGroupName(slug: string, environment: string): string {
+  return `${slug}-${environment}-app-sg`
+}
+
+/**
+ * Tags ts-cloud puts on every AWS resource it creates for a project — the same
+ * vocabulary the instances are tagged with, so teardown can tell what it owns
+ * from what it merely found.
+ */
+export function awsResourceTags(slug: string, environment: string, role = 'app'): { Key: string; Value: string }[] {
+  return [
+    { Key: 'Project', Value: slug },
+    { Key: 'Environment', Value: environment },
+    { Key: 'Role', Value: role },
+    { Key: 'ManagedBy', Value: 'ts-cloud' },
+  ]
+}
+
+/** Whether a resource's tags mark it as belonging to this project and environment. */
+export function matchesAwsProjectTags(
+  tags: { Key?: string; Value?: string }[] | undefined,
+  slug: string,
+  environment: string,
+): boolean {
+  if (!tags?.length) return false
+  const value = (key: string): string | undefined => tags.find((tag) => tag.Key === key)?.Value
+  return value('Project') === slug && value('Environment') === environment
+}
+
+/** A security group as teardown needs to judge it. */
+export interface AwsSecurityGroupCandidate {
+  GroupId?: string
+  GroupName?: string
+  VpcId?: string
+  Tags?: { Key?: string; Value?: string }[]
+}
+
+export interface SelectSecurityGroupOptions {
+  slug: string
+  environment: string
+  /** VPC the project's instances were in, when it could still be read. */
+  vpcId?: string
+}
+
+/**
+ * Pick the security group teardown should delete: the one provisioning would
+ * have reused.
+ *
+ * Provisioning scopes its lookup to a VPC, because a same-named group in
+ * another VPC belongs to something else — teardown has to be at least as
+ * careful, or it deletes another VPC's group (or fails forever against one
+ * still in use, reporting nothing).
+ *
+ * A group tagged for a different project or environment is never a candidate.
+ * Groups created before ts-cloud tagged them carry no tags at all; those are
+ * still deleted, but only when the VPC pins them to this project's box.
+ */
+export function selectProjectSecurityGroup(
+  groups: AwsSecurityGroupCandidate[],
+  options: SelectSecurityGroupOptions,
+): AwsSecurityGroupCandidate | undefined {
+  const name = awsSecurityGroupName(options.slug, options.environment)
+
+  return groups.find((group) => {
+    if (group.GroupName !== name) return false
+    if (options.vpcId && group.VpcId && group.VpcId !== options.vpcId) return false
+
+    // Tagged for someone else: not ours, whatever it is called.
+    const tagged = !!group.Tags?.some((tag) => tag.Key === 'Project')
+    if (tagged) return matchesAwsProjectTags(group.Tags, options.slug, options.environment)
+
+    // Untagged (pre-tagging releases): only when the VPC places it on this
+    // project's box, so an unrelated group of the same name is left alone.
+    return !!options.vpcId && group.VpcId === options.vpcId
+  })
+}

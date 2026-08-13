@@ -8,7 +8,7 @@ import { normalizePublicIpv6 } from '../../deploy/server-dns'
 import { EC2Client } from '../../aws/ec2'
 import { S3Client } from '../../aws/s3'
 import { SSMClient } from '../../aws/ssm'
-import { awsComputeIngressRules, buildAwsUserData, encodeUserData, resolveAwsImageId, UBUNTU_AMI_SSM_PARAM } from './provision'
+import { awsComputeIngressRules, awsResourceTags, awsSecurityGroupName, buildAwsUserData, encodeUserData, resolveAwsImageId, selectProjectSecurityGroup, UBUNTU_AMI_SSM_PARAM } from './provision'
 
 export interface AwsDriverOptions {
   region?: string
@@ -100,7 +100,7 @@ export class AwsDriver implements CloudDriver {
 
     // Security group scoped to the VPC (a same-named SG in another VPC must not
     // be reused). Reconcile ingress rules every time so config changes apply.
-    const sgName = `${slug}-${environment}-app-sg`
+    const sgName = awsSecurityGroupName(slug, environment)
     const found = await ec2.describeSecurityGroups({
       Filters: [
         { Name: 'group-name', Values: [sgName] },
@@ -113,6 +113,9 @@ export class AwsDriver implements CloudDriver {
         GroupName: sgName,
         Description: `ts-cloud ${slug}/${environment} app`,
         VpcId: vpc.VpcId,
+        // Tagged so teardown can tell a group ts-cloud created from one it
+        // merely found under the same name.
+        TagSpecifications: [{ ResourceType: 'security-group', Tags: awsResourceTags(slug, environment) }],
       })
       groupId = created.GroupId
     }
@@ -147,12 +150,7 @@ export class AwsDriver implements CloudDriver {
       TagSpecifications: [
         {
           ResourceType: 'instance',
-          Tags: [
-            { Key: 'Name', Value: `${slug}-${environment}-app` },
-            { Key: 'Project', Value: slug },
-            { Key: 'Environment', Value: environment },
-            { Key: 'Role', Value: 'app' },
-          ],
+          Tags: [{ Key: 'Name', Value: `${slug}-${environment}-app` }, ...awsResourceTags(slug, environment)],
         },
       ],
     })
@@ -171,15 +169,32 @@ export class AwsDriver implements CloudDriver {
     }
   }
 
-  /** Terminate the lightweight EC2 box + delete its security group. */
+  /**
+   * Terminate the lightweight EC2 box and delete the security group ts-cloud
+   * created for it.
+   *
+   * Only this project's own resources are removed: the group must sit in the
+   * VPC the instances ran in, and must not be tagged for another project. A
+   * group ts-cloud found rather than created is left where it is.
+   */
   async destroyCompute(options: ProvisionComputeOptions): Promise<{ destroyed: string[] }> {
     const { config, environment } = options
+    const slug = config.project.slug
     const region = this.resolveRegion(config)
     const ec2 = new EC2Client(region)
     const destroyed: string[] = []
 
-    const targets = await this.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
+    const targets = await this.findComputeTargets({ slug, environment, role: 'app' })
     const ids = targets.map((t) => t.id)
+
+    // Read the VPC before the instances go away — afterwards there is nothing
+    // left to place the security group by.
+    let vpcId: string | undefined
+    if (ids.length > 0) {
+      const described = await ec2.describeInstances({ InstanceIds: ids }).catch(() => ({ Reservations: [] }))
+      vpcId = described.Reservations?.flatMap((reservation) => reservation.Instances ?? []).find((i) => i.VpcId)?.VpcId
+    }
+
     if (ids.length > 0) {
       await ec2.terminateInstances(ids)
       destroyed.push(...ids.map((id) => `instance ${id}`))
@@ -187,18 +202,21 @@ export class AwsDriver implements CloudDriver {
       await Promise.all(ids.map((id) => ec2.waitForInstanceState(id, 'terminated').catch(() => undefined)))
     }
 
-    const sgName = `${config.project.slug}-${environment}-app-sg`
-    const found = await ec2
-      .describeSecurityGroups({ Filters: [{ Name: 'group-name', Values: [sgName] }] })
-      .catch(() => ({ SecurityGroups: [] }))
-    const groupId = found.SecurityGroups?.[0]?.GroupId
-    if (groupId) {
+    const sgName = awsSecurityGroupName(slug, environment)
+    const filters: { Name: string; Values: string[] }[] = [{ Name: 'group-name', Values: [sgName] }]
+    if (vpcId) filters.push({ Name: 'vpc-id', Values: [vpcId] })
+
+    const found = await ec2.describeSecurityGroups({ Filters: filters }).catch(() => ({ SecurityGroups: [] }))
+    const group = selectProjectSecurityGroup(found.SecurityGroups ?? [], { slug, environment, vpcId })
+
+    if (group?.GroupId) {
       for (let i = 0; i < 10; i++) {
         try {
-          await ec2.deleteSecurityGroup(groupId)
+          await ec2.deleteSecurityGroup(group.GroupId)
           destroyed.push(`security group ${sgName}`)
           break
-        } catch {
+        }
+        catch {
           await new Promise((r) => setTimeout(r, 3000))
         }
       }
