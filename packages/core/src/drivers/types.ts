@@ -64,6 +64,13 @@ export interface FindComputeTargetsOptions {
   environment: EnvironmentType
   role?: string
   /**
+   * Region to search, for drivers that have one. Defaults to the driver's own.
+   * A driver method that resolved a region from config passes it here, so the
+   * lookup and whatever is done with the results cannot disagree about where
+   * the instances are.
+   */
+  region?: string
+  /**
    * Project stack name (`resolveProjectStackName(config, environment)`), used
    * by drivers that can pin targets from local state when label/tag scans
    * don't match — e.g. a project riding a shared box whose labels belong to

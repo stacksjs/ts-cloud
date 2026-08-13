@@ -12,6 +12,11 @@ import { awsComputeIngressRules, awsResourceTags, awsSecurityGroupName, buildAws
 
 export interface AwsDriverOptions {
   region?: string
+  /**
+   * Build the EC2 client for a region. Defaults to a real client; tests supply
+   * a fake so the driver's decisions can be exercised without AWS.
+   */
+  ec2Client?: (region: string) => EC2Client
 }
 
 /**
@@ -37,8 +42,11 @@ export class AwsDriver implements CloudDriver {
 
   private region: string
 
+  private readonly ec2Client: (region: string) => EC2Client
+
   constructor(options: AwsDriverOptions = {}) {
     this.region = options.region || 'us-east-1'
+    this.ec2Client = options.ec2Client ?? ((region) => new EC2Client(region))
   }
 
   private resolveRegion(config: CloudConfig): string {
@@ -62,10 +70,10 @@ export class AwsDriver implements CloudDriver {
     const compute = config.infrastructure?.compute
     if (!compute) throw new Error('infrastructure.compute is required to provision AWS compute')
 
-    const ec2 = new EC2Client(region)
+    const ec2 = this.ec2Client(region)
 
     // Idempotency — reuse a running/pending box tagged for this project.
-    const existing = await this.findComputeTargets({ slug, environment, role: 'app' })
+    const existing = await this.findComputeTargets({ slug, environment, role: 'app', region })
     if (existing.length > 0) {
       const first = existing[0]
       return {
@@ -181,10 +189,10 @@ export class AwsDriver implements CloudDriver {
     const { config, environment } = options
     const slug = config.project.slug
     const region = this.resolveRegion(config)
-    const ec2 = new EC2Client(region)
+    const ec2 = this.ec2Client(region)
     const destroyed: string[] = []
 
-    const targets = await this.findComputeTargets({ slug, environment, role: 'app' })
+    const targets = await this.findComputeTargets({ slug, environment, role: 'app', region })
     const ids = targets.map((t) => t.id)
 
     // Read the VPC before the instances go away — afterwards there is nothing
@@ -246,6 +254,7 @@ export class AwsDriver implements CloudDriver {
         slug: options.config.project.slug,
         environment: options.environment,
         role: 'app',
+        region,
       })
       const first = targets[0]
       return {
@@ -282,8 +291,12 @@ export class AwsDriver implements CloudDriver {
   }
 
   async findComputeTargets(options: FindComputeTargetsOptions): Promise<ComputeTarget[]> {
-    const region = this.region
-    const ec2 = new EC2Client(region)
+    // A caller that resolved the region from config passes it; otherwise the
+    // driver's own region stands in. Without this, a driver whose region
+    // differs from `config.project.region` would scan one region while
+    // provision and destroy act on another.
+    const region = options.region ?? this.region
+    const ec2 = this.ec2Client(region)
     const filters = [
       { Name: 'tag:Project', Values: [options.slug] },
       { Name: 'tag:Environment', Values: [options.environment] },
