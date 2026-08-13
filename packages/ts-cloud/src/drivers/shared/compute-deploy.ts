@@ -250,6 +250,8 @@ export async function deploySiteRelease(
           // sites (workers/schedulers) always stop/start — see the builder.
           zeroDowntime: site.zeroDowntime !== false,
           healthCheckPath: site.healthCheck?.path,
+          memoryHigh: site.memoryHigh,
+          memoryMax: site.memoryMax,
         })
 
   // A static site served on the box can be fronted by nginx (default) with

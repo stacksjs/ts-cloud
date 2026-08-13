@@ -57,6 +57,27 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(joined).not.toContain('systemctl restart my-app-web.service')
   })
 
+  it('contains an app leak inside its own cgroup instead of the whole box', () => {
+    // A shared box runs many tenants. Unbounded, one that leaks fills memory
+    // and swap and the kernel starts OOM-killing arbitrary victims, so a leak
+    // in one app takes every other tenant down with it.
+    const joined = buildSiteDeployScript(opts).join('\n')
+    expect(joined).toContain('MemoryAccounting=true')
+    expect(joined).toContain('MemoryHigh=2G')
+    // Soft by default: a hard cap would turn a heavy-but-healthy app into a
+    // restart loop, and the default has to be safe for unmeasured workloads.
+    expect(joined).not.toContain('MemoryMax=')
+
+    const tuned = buildSiteDeployScript({ ...opts, memoryHigh: '512M', memoryMax: '768M' }).join('\n')
+    expect(tuned).toContain('MemoryHigh=512M')
+    expect(tuned).toContain('MemoryMax=768M')
+  })
+
+  it('lets a site opt out of the memory ceiling', () => {
+    const joined = buildSiteDeployScript({ ...opts, memoryHigh: 'infinity' }).join('\n')
+    expect(joined).toContain('MemoryHigh=infinity')
+  })
+
   it('health-gates the new instance BEFORE stopping the old one, and aborts without flipping current on failure', () => {
     const script = buildSiteDeployScript(opts)
     const startIdx = script.findIndex((l) => l === 'systemctl restart my-app-web@abc123.service')

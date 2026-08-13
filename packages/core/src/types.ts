@@ -1077,6 +1077,37 @@ export interface SiteConfig {
   preStart?: string[]
 
   /**
+   * systemd `MemoryHigh` for this site's app unit — the soft limit at which
+   * the kernel starts reclaiming the service's own memory, throttling it
+   * rather than letting pressure build box-wide.
+   *
+   * This is the same containment the rpx gateway has carried for a while, and
+   * app units are where it was missing. On a shared box a single tenant that
+   * leaks takes down every other tenant: memory fills, swap fills, and the
+   * kernel's OOM killer starts picking arbitrary victims. Squeezing the
+   * offender's own cgroup first keeps the blast radius on the service that
+   * actually grew.
+   *
+   * Accepts systemd size values (`512M`, `2G`, …), or `'infinity'` to opt a
+   * site out. Applies to the app unit only; queue workers have their own
+   * `--memory` restart threshold. @default '2G'
+   */
+  memoryHigh?: string
+
+  /**
+   * systemd `MemoryMax` for this site's app unit — the hard limit. Crossing it
+   * invokes the OOM killer INSIDE this service's cgroup, so the unit's
+   * `Restart=always` brings it straight back rather than the kernel killing a
+   * co-tenant.
+   *
+   * Unset by default, deliberately: a hard cap turns a slow leak into a
+   * restart loop for an app that legitimately needs the memory, and the
+   * default has to be safe for workloads nobody has measured. Set it once you
+   * know a site's real ceiling. Should be higher than {@link memoryHigh}.
+   */
+  memoryMax?: string
+
+  /**
    * SSR only. tar `--exclude` patterns applied when packaging the release
    * tarball. Keep host-specific / heavy paths out of the artifact — most
    * importantly `node_modules` (host-built native binaries won't run on the

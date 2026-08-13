@@ -83,6 +83,13 @@ export interface BuildSiteDeployScriptOptions {
    * @default 5
    */
   healthGateSeconds?: number
+  /**
+   * systemd `MemoryHigh` for the app unit. See {@link SiteConfig.memoryHigh}.
+   * @default '2G'
+   */
+  memoryHigh?: string
+  /** systemd `MemoryMax` for the app unit. Unset by default. */
+  memoryMax?: string
 }
 
 /**
@@ -113,6 +120,16 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     preStartCommands = [],
     healthCheckPath,
     healthGateSeconds = 5,
+    // A shared box runs many tenants. Without a limit, one that leaks fills
+    // memory and then swap, and the kernel's OOM killer starts choosing
+    // victims box-wide — a leak in one app takes every other tenant down with
+    // it, which is exactly how a 15G host was lost to a single service that
+    // had grown to 3.2G. `MemoryHigh` squeezes the offender's own cgroup
+    // first. Soft by default and generous on purpose: it throttles and
+    // reclaims rather than killing, so it cannot turn a heavy-but-healthy app
+    // into a restart loop. Set `memoryMax` per site once its ceiling is known.
+    memoryHigh = '2G',
+    memoryMax,
   } = options
   const zeroDowntime = options.zeroDowntime ?? port != null
   const base = options.appDir ?? `/var/www/${siteName}`
@@ -199,6 +216,9 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       `ExecStart=${execStart}`,
       'Restart=always',
       'RestartSec=5',
+      'MemoryAccounting=true',
+      ...(memoryHigh ? [`MemoryHigh=${memoryHigh}`] : []),
+      ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
       `EnvironmentFile=${paths.releases}/%i/.env`,
       `Environment=PORT=${port}`,
       '',
