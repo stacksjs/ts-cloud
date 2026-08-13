@@ -17,6 +17,8 @@ import type { SftpConfig } from '@ts-cloud/core'
 export const SFTP_CONFIG_DIR = '/etc/ts-sftp'
 /** Where ts-sftp itself is installed. */
 export const SFTP_INSTALL_DIR = '/opt/ts-sftp'
+/** Bun interpreter the service runs, copied out of /root when it lives there. */
+export const SFTP_BUN_BIN = '/usr/local/bin/ts-sftp-bun'
 /** Default port. 2222 rather than 22, which sshd already owns. */
 export const DEFAULT_SFTP_PORT = 2222
 
@@ -97,6 +99,12 @@ export function buildSftpProvisionScript(options: SftpProvisionOptions): string[
     // Generate the host key once; keeping it means clients keep trusting the box.
     `[ -f ${hostKey} ] || bun ${SFTP_INSTALL_DIR}/node_modules/ts-sftp/dist/bin/cli.js keygen --out ${hostKey} --comment ${quote(`${slug}-sftp`)}`,
     `chmod 600 ${hostKey}`,
+    // The service runs as an unprivileged account, which cannot traverse /root
+    // — where bun's own installer puts the binary. Copy it somewhere the
+    // service user can actually execute, or systemd fails the unit with
+    // status=203/EXEC.
+    'BUN_REAL=$(readlink -f "$(command -v bun)")',
+    `case "$BUN_REAL" in /root/*) install -m 0755 "$BUN_REAL" ${SFTP_BUN_BIN}; BUN_BIN=${SFTP_BUN_BIN};; *) BUN_BIN="$BUN_REAL";; esac`,
   ]
 
   const userFlags: string[] = []
@@ -117,7 +125,6 @@ export function buildSftpProvisionScript(options: SftpProvisionOptions): string[
     `chown -R ${serviceUser}:${serviceUser} ${quote(root)} ${SFTP_CONFIG_DIR}`,
     // Unquoted heredoc so $BUN_BIN resolves to the interpreter's real path;
     // systemd needs an absolute ExecStart.
-    'BUN_BIN=$(command -v bun)',
     `cat > /etc/systemd/system/${unit}.service <<TSCLOUD_SFTP_UNIT`,
     '[Unit]',
     'Description=ts-sftp file transfer server',

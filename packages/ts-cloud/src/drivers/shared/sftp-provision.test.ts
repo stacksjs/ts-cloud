@@ -5,6 +5,7 @@ import {
   assertSftpSupported,
   buildSftpProvisionScript,
   DEFAULT_SFTP_PORT,
+  SFTP_BUN_BIN,
   sftpFirewallPorts,
   sftpRoot,
   sftpUnitName,
@@ -24,6 +25,27 @@ describe('sftp provisioning', () => {
     expect(script).toContain('--root /var/sftp/demo')
     expect(script).toContain(`--port ${DEFAULT_SFTP_PORT}`)
     expect(script).toContain('--user deploy:/etc/ts-sftp/users/deploy.pub')
+  })
+
+  it('gives systemd an interpreter the service user can execute', () => {
+    const script = buildSftpProvisionScript({ slug: 'demo', sftp: { users } }).join('\n')
+
+    // bun's installer drops the binary under /root, which an unprivileged
+    // service cannot traverse — systemd fails such a unit with 203/EXEC.
+    expect(script).toContain('BUN_REAL=$(readlink -f "$(command -v bun)")')
+    expect(script).toContain(`case "$BUN_REAL" in /root/*) install -m 0755 "$BUN_REAL" ${SFTP_BUN_BIN}`)
+    expect(script).toContain('ExecStart=$BUN_BIN /opt/ts-sftp/node_modules/ts-sftp/dist/bin/cli.js')
+    expect(script).not.toContain('ExecStart=/root/')
+  })
+
+  it('confines the unit to its own tree', () => {
+    const script = buildSftpProvisionScript({ slug: 'demo', sftp: { users } }).join('\n')
+
+    expect(script).toContain('User=ts-sftp')
+    expect(script).toContain('NoNewPrivileges=true')
+    expect(script).toContain('ProtectSystem=strict')
+    expect(script).toContain('ReadWritePaths=/var/sftp/demo')
+    expect(script).toContain('chown -R ts-sftp:ts-sftp')
   })
 
   it('keeps an existing host key so the fingerprint survives a redeploy', () => {
