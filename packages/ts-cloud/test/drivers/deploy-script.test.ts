@@ -227,6 +227,23 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
     expect(activateIdx).toBeLessThan(restartIdx)
   })
 
+  it('carries memory ceilings from config, so a portless site need not be bounded by hand', () => {
+    const bounded = buildSiteDeployScript({ ...portless, memoryHigh: '512M', memoryMax: '768M' }).join('\n')
+    expect(bounded).toContain('MemoryAccounting=true')
+    expect(bounded).toContain('MemoryHigh=512M')
+    expect(bounded).toContain('MemoryMax=768M')
+
+    // Absent config it inherits the same generous soft default as a ported
+    // site, rather than staying unbounded. A portless unit shares the box with
+    // everyone else, so "no ceiling" is the one setting that lets it take the
+    // host down — which is the incident this default exists for.
+    const defaulted = buildSiteDeployScript(portless).join('\n')
+    expect(defaulted).toContain('MemoryHigh=2G')
+    // Still no hard cap unless asked: a soft limit throttles, and only an
+    // explicit `memoryMax` should be able to kill a worker outright.
+    expect(defaulted).not.toContain('MemoryMax=')
+  })
+
   it('zeroDowntime: false opts a ported site back into the restart flow', () => {
     const joined = buildSiteDeployScript({ ...portless, siteName: 'web', port: 3000, zeroDowntime: false }).join('\n')
     expect(joined).toContain('systemctl restart my-app-web.service')

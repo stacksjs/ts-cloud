@@ -312,6 +312,16 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     `ExecStart=${execStart}`,
     'Restart=always',
     'RestartSec=5',
+    // Same ceilings as the zero-downtime path above. Leaving them out here
+    // meant a portless site — every worker, scheduler and dashboard — could
+    // not express a memory limit in config at all, so the only way to bound
+    // one was `systemctl set-property` on the box. That is how a dashboard
+    // ended up pinned under a hand-typed MemoryHigh of 256M while it needed
+    // 311M: throttled 180,379 times, invisible to the repo, and surviving
+    // every deploy because nothing in config had an opinion to overwrite it.
+    'MemoryAccounting=true',
+    ...(memoryHigh ? [`MemoryHigh=${memoryHigh}`] : []),
+    ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
     `EnvironmentFile=${paths.current}/.env`,
     ...(port ? [`Environment=PORT=${port}`] : []),
     '',
