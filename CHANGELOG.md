@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.122...v0.7.123)
+
+## 🐛 Bug Fixes
+
+- **deploy**: let a portless site carry a memory ceiling from config ([0613d93](https://github.com/stacksjs/ts-cloud/commit/0613d93)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.123 ([0e11c02](https://github.com/stacksjs/ts-cloud/commit/0e11c02)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.121...v0.7.122)
 
 ## 🐛 Bug Fixes
