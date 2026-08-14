@@ -244,6 +244,30 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
     expect(defaulted).not.toContain('MemoryMax=')
   })
 
+  it('emits declared CPU/IO/task priority, in both unit shapes', () => {
+    const qos = { cpuWeight: 500, ioWeight: 400, tasksMax: 256 }
+
+    // Portless (restart) and ported (templated overlap) units must agree:
+    // a site's declared priority should not depend on whether it has a port.
+    for (const script of [
+      buildSiteDeployScript({ ...portless, ...qos }),
+      buildSiteDeployScript({ ...portless, siteName: 'web', port: 3000, ...qos }),
+    ]) {
+      const joined = script.join('\n')
+      expect(joined).toContain('CPUWeight=500')
+      expect(joined).toContain('IOWeight=400')
+      expect(joined).toContain('TasksMax=256')
+    }
+
+    // Nothing is invented when nothing is asked for: a box running one
+    // workload has no hierarchy to express, and a surprise one is worse than
+    // none.
+    const plain = buildSiteDeployScript(portless).join('\n')
+    expect(plain).not.toContain('CPUWeight=')
+    expect(plain).not.toContain('IOWeight=')
+    expect(plain).not.toContain('TasksMax=')
+  })
+
   it('zeroDowntime: false opts a ported site back into the restart flow', () => {
     const joined = buildSiteDeployScript({ ...portless, siteName: 'web', port: 3000, zeroDowntime: false }).join('\n')
     expect(joined).toContain('systemctl restart my-app-web.service')

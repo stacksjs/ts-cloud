@@ -1108,6 +1108,34 @@ export interface SiteConfig {
   memoryMax?: string
 
   /**
+   * systemd `CPUWeight` for this site's unit — its relative share of the CPU
+   * when the box is contended. Default weight is 100; higher wins.
+   *
+   * Worth setting on a shared box, where not everything deserves an equal
+   * slice: the gateway serving every tenant should outrank a nightly batch
+   * job, and a monitoring dashboard should outrank neither. Without it a
+   * background job that saturates the cores slows the serving path exactly as
+   * much as it slows itself.
+   *
+   * Unset by default — a box running one workload has nothing to rank.
+   */
+  cpuWeight?: number
+
+  /**
+   * systemd `IOWeight` for this site's unit — the same relative share, for
+   * disk bandwidth. Unset by default.
+   */
+  ioWeight?: number
+
+  /**
+   * systemd `TasksMax` for this site's unit — a ceiling on threads and
+   * processes. Catches a runaway spawn loop before it exhausts the box's PID
+   * space, which is a failure that takes down every tenant, not just the one
+   * that caused it. Unset by default.
+   */
+  tasksMax?: number
+
+  /**
    * SSR only. tar `--exclude` patterns applied when packaging the release
    * tarball. Keep host-specific / heavy paths out of the artifact — most
    * importantly `node_modules` (host-built native binaries won't run on the

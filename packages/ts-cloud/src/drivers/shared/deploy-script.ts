@@ -90,6 +90,24 @@ export interface BuildSiteDeployScriptOptions {
   memoryHigh?: string
   /** systemd `MemoryMax` for the app unit. Unset by default. */
   memoryMax?: string
+  /**
+   * systemd `CPUWeight` for the unit — relative CPU share under contention.
+   *
+   * Everything on a shared box competes for the same eight cores, and not
+   * everything on it matters equally: the gateway every tenant is served
+   * through should outrank a batch scanner, and a monitoring dashboard should
+   * outrank neither. Left unset the kernel gives every unit the same weight,
+   * so a background job saturating the CPU degrades the serving path just as
+   * much as it degrades itself.
+   *
+   * Unset by default: a box with one workload has nothing to prioritise, and
+   * inventing a hierarchy where none was asked for is its own surprise.
+   */
+  cpuWeight?: number
+  /** systemd `IOWeight` — the same idea for disk bandwidth. Unset by default. */
+  ioWeight?: number
+  /** systemd `TasksMax` — cap on threads/processes. Unset by default. */
+  tasksMax?: number
 }
 
 /**
@@ -130,7 +148,17 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // into a restart loop. Set `memoryMax` per site once its ceiling is known.
     memoryHigh = '2G',
     memoryMax,
+    cpuWeight,
+    ioWeight,
+    tasksMax,
   } = options
+  // Emitted into both unit shapes below, so a site's declared priority does not
+  // depend on whether it happens to have a port.
+  const qosDirectives = [
+    ...(cpuWeight != null ? [`CPUWeight=${cpuWeight}`] : []),
+    ...(ioWeight != null ? [`IOWeight=${ioWeight}`] : []),
+    ...(tasksMax != null ? [`TasksMax=${tasksMax}`] : []),
+  ]
   const zeroDowntime = options.zeroDowntime ?? port != null
   const base = options.appDir ?? `/var/www/${siteName}`
   const paths = releasePaths(base, releaseId)
@@ -225,6 +253,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       'MemoryAccounting=true',
       ...(memoryHigh ? [`MemoryHigh=${memoryHigh}`] : []),
       ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
+      ...qosDirectives,
       `EnvironmentFile=${paths.releases}/%i/.env`,
       `Environment=PORT=${port}`,
       '',
@@ -322,6 +351,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     'MemoryAccounting=true',
     ...(memoryHigh ? [`MemoryHigh=${memoryHigh}`] : []),
     ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
+    ...qosDirectives,
     `EnvironmentFile=${paths.current}/.env`,
     ...(port ? [`Environment=PORT=${port}`] : []),
     '',

@@ -312,6 +312,17 @@ export function resolveManagementDashboardSites(
       preStart: ['bun install --production --no-save'],
       start: `bun ${DASHBOARD_ENTRY} --box --host 127.0.0.1 --port ${port}`,
       port,
+      // A dashboard watches the box; it is never the reason the box exists.
+      // At the default weight of 100 it competes evenly with the sites it is
+      // reporting on, so the act of observing a busy host makes it busier.
+      // Ranked below everything it monitors, it simply waits its turn — which
+      // costs a monitoring page nothing anyone will notice.
+      cpuWeight: 10,
+      ioWeight: 10,
+      // Enough for the server and its workers, low enough that a spawn loop
+      // hits this ceiling instead of the box's PID space, where it would take
+      // every other tenant with it.
+      tasksMax: 128,
       // The shared-box owner is the single background monitoring agent.
       // Attached tenant configs return no dashboard site above.
       env: {

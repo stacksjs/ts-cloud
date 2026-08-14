@@ -938,6 +938,20 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
         'MemoryAccounting=true',
         `MemoryHigh=${memoryHigh}`,
         `MemoryMax=${memoryMax}`,
+        // Every tenant on the box is served THROUGH this process, so under
+        // contention it has to outrank the work it is serving. The default
+        // weight is 100: a batch scanner or a build saturating the cores would
+        // otherwise compete with the gateway on equal terms, and the symptom
+        // is every site on the host getting slower at once — which reads as a
+        // network problem rather than a scheduling one.
+        //
+        // This box had exactly this hierarchy applied by hand, gateway at 500
+        // down to dashboards at 10, recorded in no repo and surviving only
+        // because nobody rebuilt the machine. Declared here it survives a
+        // rebuild, which is the whole difference between a policy and a
+        // memory of one.
+        'CPUWeight=500',
+        'IOWeight=500',
         'OOMPolicy=stop',
         'Restart=always',
         'RestartSec=5',

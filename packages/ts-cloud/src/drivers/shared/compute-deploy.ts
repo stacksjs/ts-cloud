@@ -252,6 +252,9 @@ export async function deploySiteRelease(
           healthCheckPath: site.healthCheck?.path,
           memoryHigh: site.memoryHigh,
           memoryMax: site.memoryMax,
+          cpuWeight: site.cpuWeight,
+          ioWeight: site.ioWeight,
+          tasksMax: site.tasksMax,
         })
 
   // A static site served on the box can be fronted by nginx (default) with

@@ -633,6 +633,18 @@ describe('buildRpxProvisionScript', () => {
     expect(script.indexOf('RPX_MAX_UPSTREAM_CONNS')).toBeLessThan(script.indexOf('Restart=always'))
   })
 
+  it('outranks the work it serves when the box is contended', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
+
+    // Every tenant is served through this process, so it cannot sit at the
+    // default weight of 100 alongside batch work. Where it does, a saturating
+    // background job slows every site on the host at once — a scheduling
+    // problem that presents as a network one.
+    expect(script).toContain('CPUWeight=500')
+    expect(script).toContain('IOWeight=500')
+  })
+
   it('contains gateway memory spikes inside the rpx cgroup', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     const defaults = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
