@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.124...v0.7.125)
+
+## 🐛 Bug Fixes
+
+- **deploy**: stop demanding DNS credentials for work the deploy will not do ([b50a6ff](https://github.com/stacksjs/ts-cloud/commit/b50a6ff)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.125 ([db9980c](https://github.com/stacksjs/ts-cloud/commit/db9980c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.123...v0.7.124)
 
 ## 🚀 Features
