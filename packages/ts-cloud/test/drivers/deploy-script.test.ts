@@ -114,6 +114,29 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(activateIdx).toBeLessThan(stopOldIdx)
   })
 
+  it('verifies the port is actually listening once the old instances are retired', () => {
+    const script = buildSiteDeployScript(opts)
+    const stopOldIdx = script.findIndex(l => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
+    const listenIdx = script.findIndex(l => l.includes('TS_CLOUD_LISTENING=0'))
+
+    // `is-active` reports a live process, not a bound socket. A server that
+    // swallows its bind error stays active with nothing listening, and while
+    // the old instance still holds the port every earlier check passes — so
+    // the socket can only be trusted after the old instances are gone.
+    expect(listenIdx).toBeGreaterThan(stopOldIdx)
+    expect(script[listenIdx]).toContain('ss -ltnH "sport = :3000"')
+
+    // Self-heal: the port is free now, so a restart binds it.
+    const healIdx = script.findIndex(l => l.includes('nothing is listening on 3000'))
+    expect(healIdx).toBeGreaterThan(listenIdx)
+    expect(script[healIdx]).toContain('systemctl restart my-app-web@abc123.service')
+
+    // A release that cannot bind an uncontended port still fails the deploy.
+    const failIdx = script.findIndex(l => l.includes('never bound 3000'))
+    expect(failIdx).toBeGreaterThan(healIdx)
+    expect(script[failIdx]).toContain('exit 1')
+  })
+
   it('polls the configured health path against the site port as part of the gate', () => {
     const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
     const joined = script.join('\n')

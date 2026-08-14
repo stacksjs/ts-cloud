@@ -265,6 +265,23 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       ...buildActivateRelease(paths),
       `systemctl enable ${instance} 2>/dev/null || true`,
       `for TS_CLOUD_U in \${TS_CLOUD_OLD_UNITS}; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
+      // The port is only knowable once the old instances are gone.
+      //
+      // `is-active` says a process is running, not that it is listening, and
+      // the two come apart exactly here: a server that swallows its own bind
+      // error keeps its process alive with no socket. During the overlap
+      // window the old instance still holds the port, so the gate above sees a
+      // healthy unit and a served port and promotes — and retiring the old
+      // instance then leaves the port dark. That is how a deploy of
+      // theopentimes' broadcast service passed every check and still answered
+      // 502 (`Failed to start server. Is port ${port} in use?`, unit `active`).
+      //
+      // A restart now lands on a free port, so the self-heal is the same one
+      // the overlap failure already uses. Only a release that cannot bind an
+      // uncontended port fails here, and that is worth failing on.
+      `TS_CLOUD_LISTENING=0; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do if ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .; then TS_CLOUD_LISTENING=1; break; fi; sleep 1; done`,
+      `if [ "\$TS_CLOUD_LISTENING" -ne 1 ]; then echo "[ts-cloud] nothing is listening on ${port} after retiring the previous release — restarting ${instance} on the now-free port" >&2; systemctl restart ${instance}; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do if ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .; then TS_CLOUD_LISTENING=1; break; fi; sleep 1; done; fi`,
+      `if [ "\$TS_CLOUD_LISTENING" -ne 1 ]; then echo "[ts-cloud] ${instance} is active but never bound ${port}" >&2; journalctl -u ${instance} -n 50 --no-pager >&2 || true; exit 1; fi`,
       // Drop enabled-but-stopped instances from older deploys and the legacy
       // non-templated unit so only the live release starts at boot. The glob
       // also matches the TEMPLATE file (`<base>@.service`) — never disable it:
