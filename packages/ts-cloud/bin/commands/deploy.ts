@@ -16,6 +16,7 @@ import { ECSClient } from '../../src/aws/ecs'
 import { S3Client } from '../../src/aws/s3'
 import { STSClient } from '../../src/aws/sts'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
+import { checkReleaseContent } from '../../src/deploy/release-content'
 import { mergeControlsIntoConfig, ProtectionControlStore } from '../../src/protection'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { runConfigHook } from '../../src/deploy/hooks'
@@ -166,10 +167,20 @@ async function deployAppToCompute(
       }
     }
 
-    if (!existsSync(site.root)) {
-      cli.error(`Build output not found at ${site.root} for site '${siteName}'`)
-      return false
+    // A directory existing is not the same as a directory holding a site. The
+    // expensive miss is a generator that renders into a subdirectory of its
+    // output dir: `root` exists, the tarball ships, and every URL 404s while
+    // the deploy reports success.
+    const contentIssues = checkReleaseContent({
+      root: site.root,
+      siteName,
+      expectIndex: kind === 'server-static',
+    })
+    for (const issue of contentIssues) {
+      if (issue.level === 'error') cli.error(issue.message)
+      else cli.warn(issue.message)
     }
+    if (contentIssues.some((issue) => issue.level === 'error')) return false
 
     // Multiple services often ship the same source root with the same exclude
     // boundary. Package that immutable input once; the provider's
