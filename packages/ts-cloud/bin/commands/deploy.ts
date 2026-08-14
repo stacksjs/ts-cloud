@@ -1,6 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
 import type { CloudConfig } from '@ts-cloud/core'
-import type { DnsProviderConfig } from '../../src/dns/types'
+import type { DnsProvider, DnsProviderConfig } from '../../src/dns/types'
 import type { ScanResult, SecurityFinding } from '../../src/security/pre-deploy-scanner'
 import { execFileSync, execSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -2450,26 +2450,49 @@ async function deployStaticSitesWithExternalDns(
     return
   }
 
-  // Get DNS provider config from environment
-  const dnsConfig = resolveDnsProviderConfig(dnsProviderName)
-  if (!dnsConfig) {
-    cli.error(`DNS provider '${dnsProviderName}' is not configured. Please set the required environment variables.`)
-    cli.info('\nFor Cloudflare: CLOUDFLARE_API_TOKEN')
-    cli.info('For Porkbun: PORKBUN_API_KEY, PORKBUN_SECRET_KEY')
-    cli.info('For GoDaddy: GODADDY_API_KEY, GODADDY_API_SECRET')
-    return
-  }
+  // The DNS provider is resolved on first use, not up front.
+  //
+  // Only sites that ship to a bucket reach it — every other site is skipped in
+  // the loop below. Resolving eagerly meant a project whose sites are all
+  // server-deployed had to supply DNS credentials for work this function was
+  // never going to do, and the deploy died before packaging anything. It also
+  // made the guidance below unreachable: resolveDnsProviderConfig THROWS for
+  // the providers whose credentials are missing rather than returning null, so
+  // the operator got a stack trace instead of the list of variables to set.
+  let resolvedDns: { config: DnsProviderConfig, provider: DnsProvider } | null = null
+  let dnsUnavailable = false
 
-  // Merge config-level DNS settings (e.g., hostedZoneId from cloud.config.ts)
-  // so users don't have to set AWS_HOSTED_ZONE_ID just to point at an existing zone.
-  if (dnsConfig.provider === 'route53') {
-    const configHostedZoneId = config.infrastructure?.dns?.hostedZoneId
-    if (configHostedZoneId && !dnsConfig.hostedZoneId) {
-      dnsConfig.hostedZoneId = configHostedZoneId
+  const requireDns = (): { config: DnsProviderConfig, provider: DnsProvider } | null => {
+    if (resolvedDns || dnsUnavailable) return resolvedDns
+
+    let dnsConfig: DnsProviderConfig | null = null
+    try {
+      dnsConfig = resolveDnsProviderConfig(dnsProviderName)
+    } catch (err: any) {
+      cli.error(err.message)
     }
-  }
 
-  const dnsProvider = createDnsProvider(dnsConfig)
+    if (!dnsConfig) {
+      cli.error(`DNS provider '${dnsProviderName}' is not configured. Please set the required environment variables.`)
+      cli.info('\nFor Cloudflare: CLOUDFLARE_API_TOKEN')
+      cli.info('For Porkbun: PORKBUN_API_KEY, PORKBUN_SECRET_KEY')
+      cli.info('For GoDaddy: GODADDY_API_KEY, GODADDY_API_SECRET')
+      dnsUnavailable = true
+      return null
+    }
+
+    // Merge config-level DNS settings (e.g., hostedZoneId from cloud.config.ts)
+    // so users don't have to set AWS_HOSTED_ZONE_ID just to point at an existing zone.
+    if (dnsConfig.provider === 'route53') {
+      const configHostedZoneId = config.infrastructure?.dns?.hostedZoneId
+      if (configHostedZoneId && !dnsConfig.hostedZoneId) {
+        dnsConfig.hostedZoneId = configHostedZoneId
+      }
+    }
+
+    resolvedDns = { config: dnsConfig, provider: createDnsProvider(dnsConfig) }
+    return resolvedDns
+  }
 
   for (const siteName of siteNames) {
     const siteConfig = sites[siteName]
@@ -2487,6 +2510,11 @@ async function deployStaticSitesWithExternalDns(
       cli.info(`Site '${siteName}' is ${kind} — handled outside the static bucket pipeline.`)
       continue
     }
+
+    // First bucket site: this is the point where DNS credentials are genuinely
+    // needed, so this is where they are demanded.
+    const dns = requireDns()
+    if (!dns) return
 
     const domain = siteConfig.domain
     if (!domain) {
@@ -2528,7 +2556,7 @@ async function deployStaticSitesWithExternalDns(
 
     // Check for existing DNS records
     cli.step('Checking existing DNS records...')
-    const existingRecords = await dnsProvider.listRecords(domain)
+    const existingRecords = await dns.provider.listRecords(domain)
 
     if (existingRecords.success && existingRecords.records.length > 0) {
       // Look for existing CNAME records that might be pointing to Netlify or other providers
@@ -2569,7 +2597,7 @@ async function deployStaticSitesWithExternalDns(
 
           // Delete the old CNAME record before deploying
           cli.step(`Removing old ${providerName} CNAME record...`)
-          const deleteResult = await dnsProvider.deleteRecord(domain, {
+          const deleteResult = await dns.provider.deleteRecord(domain, {
             name: existingCname.name,
             type: 'CNAME',
             content: existingCname.content,
@@ -2649,7 +2677,7 @@ async function deployStaticSitesWithExternalDns(
       ),
       sourceDir: deploySourceDir,
       certificateArn: siteConfig.certificateArn,
-      dnsProvider: dnsConfig,
+      dnsProvider: dns.config,
       skipDnsVerification,
       passthroughUrls: hasInstallScript,
       dynamicApp: !!config.infrastructure?.compute?.cloudFrontOriginDomain,
