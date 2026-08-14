@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.120...v0.7.121)
+
+## 🐛 Bug Fixes
+
+- **deploy**: refuse a release that would 404, instead of shipping it ([420e0b4](https://github.com/stacksjs/ts-cloud/commit/420e0b4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.121 ([15f9776](https://github.com/stacksjs/ts-cloud/commit/15f9776)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.118...v0.7.119)
 
 ## 🐛 Bug Fixes
