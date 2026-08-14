@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.123...v0.7.124)
+
+## 🚀 Features
+
+- **deploy**: declare CPU, IO and task priority alongside memory ([3f31915](https://github.com/stacksjs/ts-cloud/commit/3f31915)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.124 ([48b2dee](https://github.com/stacksjs/ts-cloud/commit/48b2dee)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.122...v0.7.123)
 
 ## 🐛 Bug Fixes
