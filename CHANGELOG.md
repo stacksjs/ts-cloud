@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.121...v0.7.122)
+
+## 🐛 Bug Fixes
+
+- **deploy**: gate on the socket, not just on the unit being active ([6c3267d](https://github.com/stacksjs/ts-cloud/commit/6c3267d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.122 ([7c676ec](https://github.com/stacksjs/ts-cloud/commit/7c676ec)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.120...v0.7.121)
 
 ## 🐛 Bug Fixes
