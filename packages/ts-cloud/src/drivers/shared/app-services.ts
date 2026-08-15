@@ -72,6 +72,18 @@ function systemdUnit(opts: {
   stopWaitSecs?: number
   user?: string
   environment?: Record<string, string>
+  /**
+   * Soft memory ceiling. Defaults to the same 2G an app unit gets, because
+   * these are the processes with the least reason to be unbounded: a queue
+   * worker, a daemon and a scheduler all run forever, and nobody watches
+   * them the way a serving path gets watched.
+   *
+   * They were the only units ts-cloud wrote with no ceiling at all, which
+   * is how a scheduler on a shared host can grow until the kernel starts
+   * choosing victims among its neighbours.
+   */
+  memoryHigh?: string
+  memoryMax?: string
 }): string {
   const lines = [
     '[Unit]',
@@ -85,6 +97,9 @@ function systemdUnit(opts: {
     `ExecStart=${opts.execStart}`,
     `Restart=${opts.restart || 'always'}`,
     'RestartSec=5',
+    'MemoryAccounting=true',
+    `MemoryHigh=${opts.memoryHigh ?? '2G'}`,
+    ...(opts.memoryMax ? [`MemoryMax=${opts.memoryMax}`] : []),
   ]
   if (opts.user) lines.push(`User=${opts.user}`)
   if (typeof opts.stopWaitSecs === 'number') lines.push(`TimeoutStopSec=${opts.stopWaitSecs}`)
