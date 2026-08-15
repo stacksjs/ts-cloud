@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.126...v0.7.127)
+
+## 🐛 Bug Fixes
+
+- **deploy**: give queue workers, daemons and schedulers a memory ceiling too ([e73cd14](https://github.com/stacksjs/ts-cloud/commit/e73cd14)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.127 ([cc3c754](https://github.com/stacksjs/ts-cloud/commit/cc3c754)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.125...v0.7.126)
 
 ## 🚀 Features
