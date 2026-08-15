@@ -268,6 +268,16 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
     expect(plain).not.toContain('TasksMax=')
   })
 
+  it('lets a draining worker finish before systemd escalates to SIGKILL', () => {
+    const draining = buildSiteDeployScript({ ...portless, stopTimeout: '15min' }).join('\n')
+    expect(draining).toContain('TimeoutStopSec=15min')
+
+    // systemd's 90s default is right for a service that stops at once, so
+    // nothing is emitted unless a site asks. An ingest worker that finishes
+    // its current shard was killed mid-write under the default.
+    expect(buildSiteDeployScript(portless).join('\n')).not.toContain('TimeoutStopSec=')
+  })
+
   it('zeroDowntime: false opts a ported site back into the restart flow', () => {
     const joined = buildSiteDeployScript({ ...portless, siteName: 'web', port: 3000, zeroDowntime: false }).join('\n')
     expect(joined).toContain('systemctl restart my-app-web.service')

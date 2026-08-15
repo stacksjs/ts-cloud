@@ -108,6 +108,22 @@ export interface BuildSiteDeployScriptOptions {
   ioWeight?: number
   /** systemd `TasksMax` — cap on threads/processes. Unset by default. */
   tasksMax?: number
+  /**
+   * systemd `TimeoutStopSec` — how long a unit may take to shut down before
+   * systemd escalates from SIGTERM to SIGKILL.
+   *
+   * Worth raising for a worker that drains on SIGTERM. systemd's default is 90
+   * seconds, which is generous for a server and far too short for a job that
+   * finishes the shard in its hands before letting go: it gets killed
+   * mid-write instead, which is precisely the outcome the drain exists to
+   * avoid. A trail-ingest worker on a shared box was SIGKILLed exactly that
+   * way while logging `finishing current shard`.
+   *
+   * Unset by default — systemd's own default is right for anything that can
+   * stop immediately, and a long stop timeout on a service that hangs is a
+   * deploy that waits for it.
+   */
+  stopTimeout?: string
 }
 
 /**
@@ -151,6 +167,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     cpuWeight,
     ioWeight,
     tasksMax,
+    stopTimeout,
   } = options
   // Emitted into both unit shapes below, so a site's declared priority does not
   // depend on whether it happens to have a port.
@@ -158,6 +175,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     ...(cpuWeight != null ? [`CPUWeight=${cpuWeight}`] : []),
     ...(ioWeight != null ? [`IOWeight=${ioWeight}`] : []),
     ...(tasksMax != null ? [`TasksMax=${tasksMax}`] : []),
+    ...(stopTimeout ? [`TimeoutStopSec=${stopTimeout}`] : []),
   ]
   const zeroDowntime = options.zeroDowntime ?? port != null
   const base = options.appDir ?? `/var/www/${siteName}`

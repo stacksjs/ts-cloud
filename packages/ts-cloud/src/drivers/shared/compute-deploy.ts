@@ -255,6 +255,7 @@ export async function deploySiteRelease(
           cpuWeight: site.cpuWeight,
           ioWeight: site.ioWeight,
           tasksMax: site.tasksMax,
+          stopTimeout: site.stopTimeout,
         })
 
   // A static site served on the box can be fronted by nginx (default) with

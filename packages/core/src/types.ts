@@ -1136,6 +1136,17 @@ export interface SiteConfig {
   tasksMax?: number
 
   /**
+   * systemd `TimeoutStopSec` for this site's unit — how long it may take to
+   * shut down before SIGTERM is escalated to SIGKILL.
+   *
+   * Raise it for a worker that drains on SIGTERM. The default of 90s suits a
+   * server that can stop at once, and kills a long job mid-write: an ingest
+   * worker that finishes its current shard before exiting was SIGKILLed doing
+   * exactly that. Leave unset for anything that stops immediately.
+   */
+  stopTimeout?: string
+
+  /**
    * SSR only. tar `--exclude` patterns applied when packaging the release
    * tarball. Keep host-specific / heavy paths out of the artifact — most
    * importantly `node_modules` (host-built native binaries won't run on the
