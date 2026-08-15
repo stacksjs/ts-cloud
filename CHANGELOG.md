@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.125...v0.7.126)
+
+## 🚀 Features
+
+- **deploy**: let a site say how long it may take to stop ([75584f0](https://github.com/stacksjs/ts-cloud/commit/75584f0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.126 ([f83c897](https://github.com/stacksjs/ts-cloud/commit/f83c897)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.124...v0.7.125)
 
 ## 🐛 Bug Fixes
