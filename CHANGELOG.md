@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.8.1...v0.8.2)
+
+## 🚀 Features
+
+- **rpx**: export gatewayHostnames so DNS publishes exactly what the gateway routes ([61193aa](https://github.com/stacksjs/ts-cloud/commit/61193aa)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.8.2 ([2593c59](https://github.com/stacksjs/ts-cloud/commit/2593c59)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.8.0...v0.8.1)
 
 ## 🐛 Bug Fixes
