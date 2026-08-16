@@ -9,6 +9,7 @@ import {
   certDomainsForConfig,
   DEFAULT_ACME_WEBROOT,
   deriveRouteId,
+  gatewayHostnames,
   mergeRpxFragments,
   normalizeRoutePath,
   normalizeSiteRedirect,
@@ -971,5 +972,58 @@ describe('proxy-only sites', () => {
   it('emits no route when the upstream is blank', () => {
     const config = buildRpxConfig({ broken: { domain: 'b.example.com', proxyTo: '   ' } }, { proxy: rpxProxy })
     expect(config.proxies.find((r) => r.to === 'b.example.com')).toBeUndefined()
+  })
+})
+
+describe('gatewayHostnames', () => {
+  // The set DNS publishes and the set the gateway routes must be the same set.
+  // When they drift, a name resolves with no route and no cert of its own, and
+  // rpx answers it with the fallback certificate — on a shared box, another
+  // tenant's. This locks the two together.
+  const cases: Array<[string, Record<string, SiteConfig>]> = [
+    ['apex plus autoWww', {
+      main: { root: '.', domain: 'example.com', port: 3000, start: 'bun run start' },
+    }],
+    ['subdomain site with an explicit www', {
+      main: { root: '.', domain: 'ps1.stacksjs.com', port: 3170, start: 'bun run start' },
+      wwwMain: { domain: 'www.ps1.stacksjs.com', redirect: 'https://ps1.stacksjs.com' },
+    }],
+    ['redirect-only alias', {
+      main: { root: '.', domain: 'trifitla.stacksjs.com', port: 3140, start: 'bun run start' },
+      alias: { domain: 'trifit.stacksjs.com', redirect: 'https://trifitla.stacksjs.com' },
+    }],
+    ['loopback site contributes nothing', {
+      main: { root: '.', domain: 'example.com', port: 3000, start: 'bun run start' },
+      api: { root: '.', port: 3008, start: 'bun run api' },
+    }],
+  ]
+
+  for (const [name, sites] of cases) {
+    it(`matches the routed domains: ${name}`, () => {
+      const config = buildRpxConfig(sites, { proxy: rpxProxy })
+      expect(gatewayHostnames(sites).sort()).toEqual(certDomainsForConfig(config).sort())
+    })
+  }
+
+  it('keeps an explicitly declared www host instead of collapsing it to the apex', () => {
+    const sites: Record<string, SiteConfig> = {
+      main: { root: '.', domain: 'ps1.stacksjs.com', port: 3170, start: 'bun run start' },
+      wwwMain: { domain: 'www.ps1.stacksjs.com', redirect: 'https://ps1.stacksjs.com' },
+    }
+    expect(gatewayHostnames(sites).sort()).toEqual(['ps1.stacksjs.com', 'www.ps1.stacksjs.com'])
+  })
+
+  it('does not invent a www host for a subdomain site', () => {
+    const sites: Record<string, SiteConfig> = {
+      main: { root: '.', domain: 'campushq.stacksjs.com', port: 3160, start: 'bun run start' },
+    }
+    expect(gatewayHostnames(sites)).toEqual(['campushq.stacksjs.com'])
+  })
+
+  it('honours autoWww: false', () => {
+    const sites: Record<string, SiteConfig> = {
+      main: { root: '.', domain: 'example.com', port: 3000, start: 'bun run start' },
+    }
+    expect(gatewayHostnames(sites, { autoWww: false })).toEqual(['example.com'])
   })
 })

@@ -94,6 +94,8 @@ export {
   buildRpxLbConfig,
   buildRpxProvisionScript,
   deriveRouteId,
+  gatewayHostnames,
+  hasAutoWwwVariant,
   normalizeRoutePath,
   renderRpxLauncher,
   DEFAULT_RPX_CERTS_DIR,

@@ -25,6 +25,54 @@ import { resolveProxyUpstreams, resolveSiteKind } from '../../deploy/site-target
 /** Default directory on the box that holds real per-domain TLS certs. */
 export const DEFAULT_RPX_CERTS_DIR = '/etc/rpx/certs'
 
+/** Whether the gateway adds a `www.` redirect for `domain` on its own. */
+export function hasAutoWwwVariant(domain: string): boolean {
+  return domain.split('.').length === 2
+}
+
+/**
+ * Every hostname the gateway will answer for a sites config.
+ *
+ * This is the set DNS has to publish, and it is deliberately derived from the
+ * same rules {@link buildRpxConfig} routes by, because the two drifting apart
+ * produces a specific and nasty failure: a name that resolves, has no route or
+ * certificate, and so is served the gateway's fallback cert — which on a shared
+ * box belongs to whichever *other* tenant sorts first. A visitor gets someone
+ * else's certificate and a browser warning, which is strictly worse than the
+ * name not existing.
+ *
+ * Two rules, both mirroring the route builder:
+ *  - every site's literal `domain`, including an explicitly declared
+ *    `www.<sub>.<apex>` (that host gets a real route here, so it needs a real
+ *    record — collapsing it to its apex is what left `www.ps1.stacksjs.com`
+ *    resolving onto another tenant's cert);
+ *  - plus `www.<domain>` for two-label apexes, which the gateway synthesizes
+ *    itself unless `autoWww` is off.
+ *
+ * `bucket` sites are excluded: they live on object storage + CDN, not this box.
+ */
+export function gatewayHostnames(
+  sites: Record<string, SiteConfig | undefined>,
+  options: { autoWww?: boolean } = {},
+): string[] {
+  const hosts = new Set<string>()
+
+  for (const site of Object.values(sites)) {
+    if (!site?.domain) continue
+    if (resolveSiteKind(site) === 'bucket') continue
+    hosts.add(site.domain)
+  }
+
+  if (options.autoWww !== false) {
+    for (const domain of [...hosts]) {
+      if (!hasAutoWwwVariant(domain)) continue
+      hosts.add(`www.${domain}`)
+    }
+  }
+
+  return [...hosts]
+}
+
 /** Default webroot the gateway serves ACME http-01 challenges from on `:80`. */
 export const DEFAULT_ACME_WEBROOT = '/var/www/acme-challenge'
 
@@ -308,7 +356,7 @@ function buildRpxConfigInternal(
   // custom domains where `www.<domain>` might belong to someone else).
   if (options.proxy.autoWww !== false) {
     for (const domain of [...domains]) {
-      if (domain.split('.').length !== 2) continue
+      if (!hasAutoWwwVariant(domain)) continue
       const wwwDomain = `www.${domain}`
       if (domains.has(wwwDomain)) continue
       proxies.push({ to: wwwDomain, redirect: { to: `https://${domain}` }, id: deriveRouteId(wwwDomain) })
