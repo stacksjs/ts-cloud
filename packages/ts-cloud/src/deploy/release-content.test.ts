@@ -80,7 +80,7 @@ describe('checkReleaseContent', () => {
   })
 
   it('warns rather than guessing when several subdirectories have an index', () => {
-    const root = tree({ 'a/index.html': 'x', 'b/index.html': 'y' })
+    const root = tree({ 'b/index.html': 'y', 'a/index.html': 'x' })
 
     const issues = check(root)
 

@@ -88,7 +88,7 @@ function childDirsWithIndex(root: string): string[] {
       // Unreadable child: not a candidate, and not worth failing the deploy over.
     }
   }
-  return hits
+  return hits.sort((left, right) => left.localeCompare(right))
 }
 
 /**
