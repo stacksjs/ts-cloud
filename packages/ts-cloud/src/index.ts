@@ -345,6 +345,12 @@ export {
   // reloaded, so ACME cannot have issued a certificate for it yet.
   reloadRpxGateway,
   renewRpxCertificates,
+  // The hostnames the gateway will answer. A DNS reconciler has to publish
+  // exactly this set — anything it misses resolves without a certificate of
+  // its own and gets served the fallback cert, which on a shared box belongs
+  // to another tenant.
+  gatewayHostnames,
+  hasAutoWwwVariant,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
 export {
