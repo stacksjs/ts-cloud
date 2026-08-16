@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.8.0...v0.8.1)
+
+## 🐛 Bug Fixes
+
+- **deploy**: sort release content candidates ([129fa82](https://github.com/stacksjs/ts-cloud/commit/129fa82)) _(by Chris <chris@stacksjs.com>)_
+
+## 🧹 Chores
+
+- release v0.8.1 ([d7316b9](https://github.com/stacksjs/ts-cloud/commit/d7316b9)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.126...v0.7.127)
 
 ## 🐛 Bug Fixes
