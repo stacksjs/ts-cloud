@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.8.2...v0.8.3)
+
+## 🐛 Bug Fixes
+
+- **exports**: surface gatewayHostnames from the package root ([c93b5e4](https://github.com/stacksjs/ts-cloud/commit/c93b5e4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.8.3 ([bdfe5f5](https://github.com/stacksjs/ts-cloud/commit/bdfe5f5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.8.1...v0.8.2)
 
 ## 🚀 Features
