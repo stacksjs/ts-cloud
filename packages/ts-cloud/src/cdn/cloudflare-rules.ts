@@ -69,11 +69,18 @@ export function hostCondition(hosts: readonly string[]): string {
 /**
  * Cache rules for a static site fronted by Cloudflare.
  *
- * Order matters: Cloudflare evaluates cache rules top-down, so bypasses come
- * first, then the immutable-asset rule, then the catch-all for documents. Every
- * rule is scoped to `hosts` — the zone may serve other names that have nothing
- * to do with this site, and a catch-all that matched them would quietly start
- * caching someone else's dynamic responses.
+ * The three rules are **mutually exclusive by construction** — each carries the
+ * negation of the ones before it — rather than relying on evaluation order.
+ * That is deliberate. Cloudflare applies every matching rule in this phase and
+ * lets a later one override an earlier one's settings, so a plain catch-all for
+ * documents (`http.host eq …`) silently matches `.js` and `.css` too and undoes
+ * the asset rule: fingerprinted files come back with the HTML's short browser
+ * TTL, which is the opposite of the intent and invisible unless you inspect the
+ * response headers.
+ *
+ * Every rule is also scoped to `hosts`. The zone may serve names that have
+ * nothing to do with this site, and a catch-all matching them would quietly
+ * start caching someone else's dynamic responses.
  */
 export function buildStaticSiteCacheRules(
   hosts: readonly string[],
@@ -85,25 +92,33 @@ export function buildStaticSiteCacheRules(
   const rules: CloudflareRule[] = []
 
   const bypassPaths = settings.bypassPaths ?? []
-  if (bypassPaths.length > 0) {
-    const paths = bypassPaths
-      .map(path => `starts_with(http.request.uri.path, ${quote(path)})`)
-      .join(' or ')
+  const bypassClause = bypassPaths.length > 0
+    ? `(${bypassPaths.map(path => `starts_with(http.request.uri.path, ${quote(path)})`).join(' or ')})`
+    : undefined
+
+  if (bypassClause) {
     rules.push({
       action: 'set_cache_settings',
       description: 'bypass cache',
-      expression: `(${host} and (${paths}))`,
+      expression: `(${host} and ${bypassClause})`,
       enabled: true,
       action_parameters: { cache: false },
     })
   }
 
+  // Shared prefix for the two caching rules: in scope, and not a bypassed path.
+  const cacheable = bypassClause ? `${host} and not ${bypassClause}` : host
+
   const extensions = settings.assetExtensions ?? DEFAULT_STATIC_ASSET_EXTENSIONS
-  if (extensions.length > 0) {
+  const assetClause = extensions.length > 0
+    ? `lower(http.request.uri.path.extension) in ${set([...extensions])}`
+    : undefined
+
+  if (assetClause) {
     rules.push({
       action: 'set_cache_settings',
       description: 'cache fingerprinted assets',
-      expression: `(${host} and lower(http.request.uri.path.extension) in ${set([...extensions])})`,
+      expression: `(${cacheable} and ${assetClause})`,
       enabled: true,
       action_parameters: {
         cache: true,
@@ -116,7 +131,7 @@ export function buildStaticSiteCacheRules(
   rules.push({
     action: 'set_cache_settings',
     description: 'cache documents',
-    expression: `(${host})`,
+    expression: assetClause ? `(${cacheable} and not ${assetClause})` : `(${cacheable})`,
     enabled: true,
     action_parameters: {
       cache: true,

@@ -73,6 +73,18 @@ export function gatewayHostnames(
   return [...hosts]
 }
 
+/**
+ * Public recursive resolvers used to decide whether a hostname is ready for an
+ * ACME http-01 challenge.
+ *
+ * The question the check has to answer is "can Let's Encrypt see this record
+ * yet", and LE resolves from the public internet — so the box's own resolver is
+ * the wrong vantage point, and a stale negative entry there blocks issuance for
+ * a record the rest of the world can already resolve. Two independent operators
+ * so one being unreachable does not stall a deploy.
+ */
+export const PUBLIC_DNS_RESOLVERS: readonly string[] = ['1.1.1.1', '8.8.8.8']
+
 /** Default webroot the gateway serves ACME http-01 challenges from on `:80`. */
 export const DEFAULT_ACME_WEBROOT = '/var/www/acme-challenge'
 
@@ -844,13 +856,37 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
     `WEBROOT='${webroot}'`,
     `EMAIL='${email}'`,
     `TLSX="${tlsxCli}"`,
+    `BUN='${bunBin}'`,
     `DOMAINS='${csv}'`,
     "DNS_ATTEMPTS='24'",
     "DNS_DELAY_SECONDS='5'",
+    `DNS_RESOLVERS='${PUBLIC_DNS_RESOLVERS.join(' ')}'`,
+    // Ask PUBLIC resolvers, not this box's.
+    //
+    // Let's Encrypt validates from its own recursive resolvers, which query the
+    // domain's authoritative nameservers — the box's view of DNS has nothing to
+    // do with whether the challenge will succeed. Gating on `getent` (the local
+    // stub, i.e. whatever the host provider runs) made a freshly-created record
+    // unissuable for as long as that resolver cached the zone's previous
+    // negative answer: Hetzner's resolvers hold NODATA for the zone's SOA
+    // minimum, which is routinely 30 minutes, so the first deploy of a new
+    // domain waited two minutes, gave up, and shipped a site with no
+    // certificate — while the record had been publicly resolvable the whole time.
+    'dns_resolves() {',
+    '  d="$1"',
+    '  for ns in $DNS_RESOLVERS; do',
+    '    if $BUN --eval "const{Resolver}=require(\'node:dns\');const r=new Resolver();r.setServers([process.argv[1]]);r.resolve4(process.argv[2],e=>process.exit(e?1:0))" "$ns" "$d" >/dev/null 2>&1; then',
+    '      return 0',
+    '    fi',
+    '  done',
+    // Last resort: the local resolver. Correct whenever it is not holding a
+    // stale negative answer, and the only option if egress to :53 is blocked.
+    '  getent ahosts "$d" >/dev/null 2>&1',
+    '}',
     'wait_for_dns() {',
     '  d="$1"',
     '  attempt=1',
-    '  while ! getent ahosts "$d" >/dev/null 2>&1; do',
+    '  while ! dns_resolves "$d"; do',
     '    if [ "$attempt" -ge "$DNS_ATTEMPTS" ]; then',
     '      echo "DNS for $d did not become resolvable after $DNS_ATTEMPTS attempts" >&2',
     '      return 1',

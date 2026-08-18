@@ -781,7 +781,15 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
     expect(joined).toContain('acme:renew')
     expect(joined).toContain('--webroot')
     expect(joined).toContain(DEFAULT_ACME_WEBROOT)
-    expect(joined).toContain('while ! getent ahosts "$d"')
+    expect(joined).toContain('while ! dns_resolves "$d"')
+    // The readiness check must consult PUBLIC resolvers, because Let's Encrypt
+    // validates from its own — gating on the box's resolver made a new record
+    // unissuable for as long as the host provider cached the zone's previous
+    // negative answer. `getent` survives only as the last-resort fallback.
+    expect(joined).toContain("DNS_RESOLVERS='1.1.1.1 8.8.8.8'")
+    expect(joined).toContain('for ns in $DNS_RESOLVERS')
+    expect(joined).toContain('getent ahosts "$d" >/dev/null 2>&1')
+    expect(joined.indexOf('for ns in $DNS_RESOLVERS')).toBeLessThan(joined.indexOf('getent ahosts "$d"'))
     expect(joined).toContain("DNS_ATTEMPTS='24'")
     expect(joined).toContain("DNS_DELAY_SECONDS='5'")
     expect(joined.indexOf('wait_for_dns "$d"')).toBeLessThan(joined.indexOf('$TLSX acme:issue'))

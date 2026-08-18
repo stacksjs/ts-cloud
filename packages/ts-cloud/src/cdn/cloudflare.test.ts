@@ -172,13 +172,31 @@ describe('managed ruleset writes', () => {
 })
 
 describe('cache rules', () => {
-  it('orders bypass before assets before the document catch-all', () => {
+  it('emits bypass, asset and document rules', () => {
     const rules = buildStaticSiteCacheRules(['example.com'], { bypassPaths: ['/api'] })
     expect(rules.map(r => r.description)).toEqual([
       'bypass cache',
       'cache fingerprinted assets',
       'cache documents',
     ])
+  })
+
+  it('keeps the document rule from matching assets', () => {
+    // Cloudflare applies EVERY matching rule in this phase and lets a later one
+    // override an earlier one, so a bare `http.host eq …` catch-all silently
+    // re-caches `.js`/`.css` with the HTML browser TTL and undoes the asset
+    // rule. The rules must therefore be mutually exclusive by construction.
+    const rules = buildStaticSiteCacheRules(['example.com'])
+    const documents = rules.find(r => r.description === 'cache documents')!
+    expect(documents.expression).toContain('not lower(http.request.uri.path.extension) in')
+  })
+
+  it('excludes bypassed paths from both caching rules', () => {
+    const rules = buildStaticSiteCacheRules(['example.com'], { bypassPaths: ['/api'] })
+    for (const description of ['cache fingerprinted assets', 'cache documents']) {
+      const rule = rules.find(r => r.description === description)!
+      expect(rule.expression).toContain('not (starts_with(http.request.uri.path, "/api"))')
+    }
   })
 
   it('scopes every rule to the fronted hosts', () => {
