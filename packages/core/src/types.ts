@@ -15,7 +15,34 @@ export interface CloudProviderConfig {
    * this project's sites, and adds its own additive rpx `sites.d/<slug>.json`
    * fragment + DNS — never touching the owner's box lifecycle, firewall, or other
    * tenants. The owner provisions and manages the shared box; attachers only
-   * deploy onto it. Requires read access via the same `HCLOUD_TOKEN`.
+   * deploy onto it.
+   *
+   * ## This widens what your CI credential can reach
+   *
+   * Attaching resolves the host by listing the provider's servers with THIS
+   * project's own token, so the owner's box has to be visible to it, which means
+   * both projects live in the same provider project. On Hetzner that is the whole
+   * story: Cloud API tokens are scoped to a project with Read or Read & Write and
+   * offer no per-resource scoping, and a deploy needs write. So the moment this is
+   * set, this project's CI token can modify and delete EVERY server in that
+   * provider project, not just the box it deploys to.
+   *
+   * Concretely, three apps that each owned one box become three pipelines that
+   * each reach all three, plus anything else in the project. That is a real change
+   * in blast radius: a compromised CI run or a mistargeted teardown now reaches
+   * production systems belonging to unrelated apps.
+   *
+   * **Per-project isolation and attaching are mutually exclusive.** An app kept in
+   * its own provider project cannot be attached at all, because its token cannot
+   * see the owner's box. Choosing to co-host is choosing to trade credential
+   * isolation for a shared box; the reverse trade is equally available, and neither
+   * is a default worth stumbling into.
+   *
+   * `describeCredentialReach()` reports what a given token can actually reach, so
+   * the radius can be shown before an attach is approved rather than discovered
+   * afterwards.
+   *
+   * @see https://github.com/stacksjs/ts-cloud/issues/169
    */
   attachTo?: string
 }

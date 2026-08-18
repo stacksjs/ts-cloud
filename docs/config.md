@@ -105,6 +105,54 @@ Every field is optional, and each resolves through the same chain:
 
 `infrastructure.compute.image` overrides `hetzner.image` when set: it is the provider-agnostic way to pin an image, and it is what a golden-image bake sets.
 
+## Attaching to another project's server
+
+Set `cloud.attachTo` to an owner project's `project.slug` to deploy this project's
+sites onto a box that project already runs, instead of provisioning one:
+
+```typescript
+export default {
+  project: { name: 'LogHQ', slug: 'loghq', region: 'us-east-1' },
+  cloud: { provider: 'hetzner', attachTo: 'statushq' },
+  sites: { app: { root: 'dist', start: 'bun run server.ts', port: 3022 } },
+} satisfies Partial<CloudConfig>
+```
+
+The deploy targets the owner's `<slug>-<environment>-app` server, ships only this
+project's sites, and adds its own additive rpx `sites.d/<slug>.json` fragment plus
+DNS. It never touches the owner's box lifecycle, firewall, or other tenants: the
+owner provisions and manages the shared box, attachers only deploy onto it.
+
+### It widens what your CI credential can reach
+
+Attaching finds the owner's box by **listing** the provider's servers with this
+project's own token. That is the whole mechanism, and it has a consequence worth
+stating plainly before you adopt it: the owner's box must be visible to the
+attacher's credential, so both projects have to live in the same provider project.
+
+On Hetzner there is no narrower option. A Cloud API token is scoped to a project
+with Read or Read & Write, with no per-resource scoping, and a deploy needs write.
+So once `attachTo` is set, this project's CI token can modify and delete every
+server in that provider project:
+
+| Before | After |
+|---|---|
+| `loghq` CI reaches the `loghq` box | `loghq` CI reaches `statushq`, `bughq`, `stacks`, `localtunnels` |
+| `bughq` CI reaches the `bughq` box | `bughq` CI reaches all of the above |
+
+Three pipelines that each had blast radius over one box now each have it over the
+whole fleet. A compromised CI run or a mistargeted teardown reaches production
+systems belonging to unrelated apps.
+
+**Per-project isolation and attaching are mutually exclusive.** An app kept in its
+own provider project cannot be attached at all, because its token cannot see the
+owner's box. Co-hosting trades credential isolation for a shared box; that trade
+is often worth making, but it should be a decision rather than a surprise.
+
+`describeCredentialReach()` and `formatCredentialReach()` report what a given
+token actually reaches, separating the owner's boxes from the ones no one asked
+for, so the radius can be shown before an attach is approved.
+
 ## Two app models
 
 ts-cloud deploys apps two ways; pick per environment:
