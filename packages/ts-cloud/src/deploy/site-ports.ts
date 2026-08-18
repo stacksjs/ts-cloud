@@ -9,8 +9,22 @@ import { resolveSiteKind } from './site-target'
  * That composes cleanly for ROUTES, because routes are keyed by host. It does
  * not compose for PORTS, because every app generated from the same template
  * declares the same loopback ports, and `validateDeploymentConfig` only ever
- * sees one project's `sites`. The second attach therefore passes validation and
- * then fails at `systemctl start` with a bind error, naming neither culprit.
+ * sees one project's `sites`.
+ *
+ * The second attach therefore passes validation, and then does something worse
+ * than failing: ts-cloud's units do not set exclusive binding, so both listeners
+ * bind and the kernel load-balances between them. Nothing errors, both services
+ * look healthy, and each domain answers with the other project's site for about
+ * half its requests. That is not hypothetical - it is what happened to
+ * predicthq.org when a storefront picked a port by reading other projects'
+ * config files rather than the box (see `assertPortsAreFree` in stacks).
+ *
+ * `assertPortsAreFree` catches this late, from the deploying box over SSH, by
+ * comparing wanted ports against live listeners. That is the better evidence and
+ * it stays the last line of defence. What it cannot do is avoid the clash: it
+ * exits and tells the operator to go pick free ports by hand. This module is the
+ * other half - deciding the ports before anything is shipped, from data a plan
+ * already has.
  *
  * The fix does not need new bookkeeping on the box. The fragments already record
  * every upstream a project serves, so the host is its own port registry - it was

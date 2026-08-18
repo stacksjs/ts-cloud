@@ -131,9 +131,11 @@ export interface ValidateDeploymentOptions {
    *
    * Validation is otherwise blind to co-tenants: it only ever sees one project's
    * `sites`, so two apps attached to the same server can both declare the
-   * template's default port, both pass, and the second one fail at
-   * `systemctl start` naming neither owner. Supplying this turns that into a
-   * plan-time error that names the project holding the port.
+   * template's default port and both pass. The box does not reject the second
+   * one either - ts-cloud's units do not set exclusive binding, so both bind and
+   * the kernel load-balances, leaving each domain serving the other project's
+   * site about half the time with nothing logged as an error. Supplying this
+   * turns that into a plan-time error naming the project holding the port.
    *
    * Build it with `occupiedHostPorts()` from `./site-ports`, passing the
    * deploying project's own slug as `ignoreSlug` - its fragment is already on the

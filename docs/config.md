@@ -395,8 +395,15 @@ Ports do not compose. Every `server-app` route resolves to `from:
 'localhost:<port>'` on one shared loopback namespace, and apps generated from the
 same template declare the same ports. `validateDeploymentConfig` only ever sees
 one project's `sites`, so a second project attaching to an occupied box passes
-validation and then fails at `systemctl start` with a bind error naming neither
-side.
+validation.
+
+What happens next is worse than a failure. ts-cloud's units do not set exclusive
+binding, so both listeners bind and the kernel load-balances between them: nothing
+errors, both services look healthy, and each domain answers with the other
+project's site for roughly half its requests. `buddy deploy` catches this late via
+`assertPortsAreFree`, which compares wanted ports against the box's live listeners
+and stops the deploy, but its only remedy is to tell you to pick free ports by
+hand.
 
 The fragments already answer this, since every one of them records its upstream
 port. `site-ports.ts` reads them:
