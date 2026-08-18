@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.0...v0.9.1)
+
+## 🐛 Bug Fixes
+
+- **exports**: surface CloudflareProvider from the package root ([5f6f969](https://github.com/stacksjs/ts-cloud/commit/5f6f969)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.9.1 ([23258b5](https://github.com/stacksjs/ts-cloud/commit/23258b5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.8.3...v0.9.0)
 
 ## 🚀 Features
