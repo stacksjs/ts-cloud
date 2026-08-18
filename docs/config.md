@@ -318,6 +318,14 @@ in front of the box:
 
 ts-cloud does not provision a Hetzner-native CDN.
 
+### Declaring DNS records
+
+`infrastructure.dns.records` publishes the records a deploy cannot infer — mail
+(MX, SPF, DMARC, autodiscover), verification tokens, third-party CNAMEs — on
+every deploy. Upsert-only, with per-type matching rules (a second SPF record is a
+permerror, so policy TXT records replace rather than accumulate). See
+[Cloudflare → Declaring records](./features/cloudflare.md#declaring-records-mail-verification-third-party).
+
 ### Reverse proxy: rpx
 
 The reverse-proxy gateway on a compute box is [rpx](https://github.com/stacksjs/rpx)

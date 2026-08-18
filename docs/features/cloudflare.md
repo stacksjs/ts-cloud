@@ -209,6 +209,58 @@ being guarded with the wrong value — which would reject every request and take
 working host down. The mismatch is logged by the gateway assembler.
 :::
 
+## Declaring records (mail, verification, third-party)
+
+A deploy can derive the address records for your sites, but not the rest of the
+zone — mail, domain-verification tokens, third-party CNAMEs. Those are exactly
+the records that vanish in a nameserver migration and are not noticed until
+someone reports that mail stopped, because nothing in a normal deploy reads or
+writes them.
+
+Declare them and every deploy publishes them:
+
+```ts
+infrastructure: {
+  dns: {
+    provider: 'cloudflare',
+    domain: 'example.com',
+    records: [
+      { type: 'MX',    name: '@',             content: 'example-com.mail.protection.outlook.com', priority: 0 },
+      { type: 'TXT',   name: '@',             content: 'v=spf1 include:spf.protection.outlook.com ~all' },
+      { type: 'TXT',   name: '_dmarc',        content: 'v=DMARC1; p=none' },
+      { type: 'CNAME', name: 'autodiscover',  content: 'autodiscover.outlook.com' },
+    ],
+  },
+}
+```
+
+`name` accepts `'@'` (or omission) for the apex, a bare label, or an FQDN.
+Records default to **DNS-only** — mail records cannot be proxied at all, and a
+proxied `autodiscover` CNAME resolves to Cloudflare instead of Microsoft and
+breaks client auto-configuration.
+
+### How records are matched
+
+Reconciliation is **upsert-only** — ts-cloud never deletes a record it was not
+asked to manage, because a real zone holds records owned by other tools and
+people. What counts as "the same record" depends on the type:
+
+- **A, AAAA, CNAME** — one value per name in practice, so an existing record with
+  that name and type is updated in place.
+- **MX, SRV, CAA, NS** — legitimately multi-valued, so a record is matched on its
+  value and only created when that exact value is absent. An undeclared value at
+  the same name is **reported, not removed**: a leftover MX from a previous
+  provider splits mail delivery and you need to see it, but silently deleting
+  someone else's record is the worse outcome.
+- **TXT** — multi-valued in general, so verification tokens sit beside each other
+  untouched. The exception is a **policy record**: two `v=spf1` records are not
+  two policies but a permerror, and receivers conclude the domain has no usable
+  SPF at all, so mail that used to pass starts failing. Two `v=DMARC1` records
+  are likewise ignored wholesale. A TXT opening with a policy tag therefore
+  *replaces* the record carrying the same tag, and the old one is removed before
+  the new one is written — briefly having no SPF evaluates as neutral, whereas
+  briefly having two is a hard failure.
+
 ## DNS-only zones
 
 Cloudflare works as a plain DNS provider with no CDN at all — set

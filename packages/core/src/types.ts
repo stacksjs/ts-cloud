@@ -1808,6 +1808,70 @@ export interface DnsConfig {
    * instead of Route53
    */
   provider?: 'route53' | 'cloudflare' | 'porkbun' | 'godaddy'
+  /**
+   * Records to publish on every deploy, alongside the address records ts-cloud
+   * derives from `sites`.
+   *
+   * This is for the half of a zone a deploy cannot infer — mail (MX, SPF,
+   * DMARC, autodiscover), domain-verification TXT records, third-party CNAMEs.
+   * Those are exactly the records that go missing in a nameserver migration and
+   * are not noticed until someone reports that mail stopped, because nothing in
+   * a normal deploy touches or checks them. Declaring them here makes the zone
+   * reproducible from the repo instead of from someone's memory of a dashboard.
+   *
+   * Reconciliation is **upsert-only**: ts-cloud never deletes a record it was
+   * not asked to manage, because a zone routinely holds records owned by other
+   * tools and people. The one exception is a policy TXT record (SPF, DMARC),
+   * where a *second* record is not additive but a hard failure — see
+   * {@link DnsRecordConfig}.
+   */
+  records?: DnsRecordConfig[]
+}
+
+/**
+ * One record published by {@link DnsConfig.records}.
+ *
+ * How a record is matched against what already exists depends on its type,
+ * because "the same record" means different things:
+ *
+ *  - **A, AAAA, CNAME** — one value per name in practice, so an existing record
+ *    with this name and type is UPDATED.
+ *  - **MX, SRV, CAA, NS** — legitimately multi-valued, so a record is matched on
+ *    its content and only created when that exact value is absent. Undeclared
+ *    values at the same name are reported, never removed: a stray MX means split
+ *    mail delivery, which the operator must see, but deleting someone else's
+ *    record on a shared zone is worse.
+ *  - **TXT** — multi-valued in general (verification tokens sit beside each
+ *    other), EXCEPT for policy records. Two `v=spf1` records are not two
+ *    policies; they are a permerror, and receivers treat the domain as having no
+ *    usable SPF at all. Two `v=DMARC1` records are likewise ignored wholesale.
+ *    So a TXT whose value opens with a policy tag REPLACES the existing record
+ *    carrying that same tag, and any other TXT at that name is left untouched.
+ */
+export interface DnsRecordConfig {
+  type: 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA' | 'NS'
+  /**
+   * Record name: `'@'` (or omitted) for the zone apex, a bare label such as
+   * `'autodiscover'`, or a fully-qualified name. Bare labels are qualified with
+   * the zone.
+   */
+  name?: string
+  /** Record value. */
+  content: string
+  /** TTL in seconds. @default 3600 */
+  ttl?: number
+  /** Priority — required for MX, used by SRV. */
+  priority?: number
+  /**
+   * Cloudflare only: serve through the proxy. @default false
+   *
+   * Declared records default to DNS-only deliberately. Mail records cannot be
+   * proxied at all, and a proxied `autodiscover` CNAME resolves to Cloudflare
+   * rather than Microsoft and quietly breaks client auto-configuration.
+   */
+  proxied?: boolean
+  /** Free-text note stored with the record where the provider supports it. */
+  comment?: string
 }
 
 export interface SecurityConfig {

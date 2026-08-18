@@ -24,6 +24,7 @@ import { collectServerDnsDomains, normalizePublicIpv6, reconcileAddressRecords }
 import { deployShipsFiles, hasComputeConfigured, resolveSiteKind, shipsARelease, shipsToBucket, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
+import { reconcileDeclaredRecords, resolveDeclaredRecords } from '../../src/dns/declared-records'
 import { CloudflareProvider } from '../../src/dns/cloudflare'
 import { reconcileCloudflareCdn, resolveCloudflareCdnPlan } from '../../src/cdn'
 import { createCloudDriver } from '../../src/drivers'
@@ -727,6 +728,7 @@ export function registerDeployCommands(app: CLI): void {
                 cli.info('DNS verification and record reconciliation skipped (--skip-dns-verification)')
               } else {
                 await reconcileServerDns(config, outputs.appPublicIp, dnsProvider, outputs.appPublicIpv6)
+                await reconcileConfiguredDnsRecords(config, dnsProvider)
               }
               const tlsOk = await renewRpxCertificates({
                 config,
@@ -2438,6 +2440,56 @@ async function reconcileServerDns(
     } catch (error) {
       cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the address record manually.`)
     }
+  }
+}
+
+/**
+ * Publish `infrastructure.dns.records` — the records a deploy cannot infer:
+ * mail (MX, SPF, DMARC, autodiscover), verification tokens, third-party CNAMEs.
+ *
+ * Opt-in with the same `infrastructure.dns.provider` the address pass uses, and
+ * upsert-only: nothing outside the declared set is ever removed. Failures are
+ * reported per record rather than aborting — this runs after the release is
+ * live, and one rejected TXT should not read as a failed deploy.
+ */
+async function reconcileConfiguredDnsRecords(config: any, dnsProviderName: string | undefined): Promise<void> {
+  const declared = config.infrastructure?.dns?.records as any[] | undefined
+  if (!dnsProviderName || !declared?.length) return
+
+  const zone = config.infrastructure?.dns?.domain as string | undefined
+  if (!zone) {
+    cli.warn('DNS records: infrastructure.dns.domain is not set — skipping declared records.')
+    return
+  }
+
+  let dnsConfig
+  try {
+    dnsConfig = resolveDnsProviderConfig(dnsProviderName)
+  } catch (error) {
+    cli.warn(`DNS records: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+  if (!dnsConfig) {
+    cli.warn(`DNS records: provider '${dnsProviderName}' is not configured — skipping.`)
+    return
+  }
+
+  const provider = createDnsProvider(dnsConfig)
+  const records = resolveDeclaredRecords(declared, zone)
+  cli.step(`Reconciling ${records.length} declared DNS record(s) on ${zone}...`)
+
+  try {
+    const report = await reconcileDeclaredRecords({ provider, zone, records })
+    for (const outcome of report.outcomes) {
+      const { record, action } = outcome
+      const label = `${record.type} ${record.name} -> ${record.content.slice(0, 60)}`
+      if (action === 'failed') cli.warn(`  ⚠ ${label}: ${outcome.message || 'failed'}`)
+      else if (action === 'unchanged') cli.info(`  = ${label}`)
+      else cli.success(`  ✓ ${label} (${action})`)
+    }
+    for (const warning of report.warnings) cli.warn(`  ⚠ ${warning}`)
+  } catch (error) {
+    cli.warn(`DNS records: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 

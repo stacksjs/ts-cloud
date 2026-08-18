@@ -7,6 +7,18 @@ export * from './types'
 export { PorkbunProvider } from './porkbun'
 export { GoDaddyProvider } from './godaddy'
 export { CloudflareProvider } from './cloudflare'
+export type {
+  DeclaredRecord,
+  DeclaredRecordInput,
+  DeclaredRecordOutcome,
+  DeclaredRecordsReport,
+} from './declared-records'
+export {
+  policyTag,
+  qualifyName,
+  reconcileDeclaredRecords,
+  resolveDeclaredRecords,
+} from './declared-records'
 export { Route53Provider } from './route53-adapter'
 export {
   UnifiedDnsValidator,

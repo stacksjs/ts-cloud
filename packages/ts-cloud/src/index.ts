@@ -381,6 +381,10 @@ export {
   // from the package root, while `CloudflareProviderOptions` right below
   // exported fine and made the gap look like a bug in the consumer's import.
   CloudflareProvider,
+  policyTag,
+  qualifyName,
+  reconcileDeclaredRecords,
+  resolveDeclaredRecords,
   UnifiedDnsValidator,
   createPorkbunValidator,
   createGoDaddyValidator,
@@ -410,6 +414,12 @@ export type {
   ListRecordsResult,
 } from './dns'
 export { PROXIABLE_RECORD_TYPES } from './dns'
+export type {
+  DeclaredRecord,
+  DeclaredRecordInput,
+  DeclaredRecordOutcome,
+  DeclaredRecordsReport,
+} from './dns'
 
 // Re-export core functionality (these take precedence for common types)
 export * from '@ts-cloud/core'
