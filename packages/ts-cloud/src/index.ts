@@ -375,6 +375,12 @@ export {
   PorkbunProvider,
   GoDaddyProvider,
   Route53Provider,
+  // Every other provider is surfaced here, and the Cloudflare CDN reconciler
+  // takes a CloudflareProvider INSTANCE — so leaving the class reachable only
+  // through the `/dns` subpath made the documented flow impossible to write
+  // from the package root, while `CloudflareProviderOptions` right below
+  // exported fine and made the gap look like a bug in the consumer's import.
+  CloudflareProvider,
   UnifiedDnsValidator,
   createPorkbunValidator,
   createGoDaddyValidator,
