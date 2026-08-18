@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.1...v0.9.2)
+
+## 🚀 Features
+
+- **dns**: declare mail and verification records in config ([3eb3d0d](https://github.com/stacksjs/ts-cloud/commit/3eb3d0d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.9.2 ([9466328](https://github.com/stacksjs/ts-cloud/commit/9466328)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.0...v0.9.1)
 
 ## 🐛 Bug Fixes
