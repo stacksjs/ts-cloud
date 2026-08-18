@@ -3465,12 +3465,33 @@ export interface RpxLoadBalancerConfig {
 /** CDN-in-front-of-gateway configuration (see {@link ComputeProxyConfig.cdn}). */
 export interface CdnFrontConfig {
   /**
+   * Which CDN sits in front of the gateway. @default 'cloudfront'
+   *
+   * The two work differently enough that it changes what this config means:
+   * CloudFront is a distribution you point at an origin hostname, while
+   * Cloudflare's proxy *is* the DNS record — see {@link originDomain}.
+   */
+  provider?: 'cloudfront' | 'cloudflare'
+  /**
    * Hostname the CDN connects to (e.g. `origin.example.com`). MUST resolve to
    * this box and MUST NOT be one of {@link frontedHosts} (else the CDN loops).
+   *
+   * Required for CloudFront. **Not used by Cloudflare**, and supplying one there
+   * is a mistake worth understanding: Cloudflare forwards to the address stored
+   * in the proxied record itself, so the apex fronts its own origin without
+   * looping, and a separate publicly-resolvable origin hostname would only serve
+   * as a documented way around the edge.
    */
-  originDomain: string
-  /** Public hosts served through the CDN (its aliases) — locked down when {@link secret} is set. */
-  frontedHosts: string[]
+  originDomain?: string
+  /**
+   * Public hosts served through the CDN (its aliases) — locked down when
+   * {@link secret} is set.
+   *
+   * Optional: defaults to every hostname the gateway answers for, which is the
+   * same set DNS publishes. List them explicitly only when some of the box's
+   * names should stay off the edge.
+   */
+  frontedHosts?: string[]
   /** Shared secret the CDN injects on the origin hop; the gateway enforces it on {@link frontedHosts}. */
   secret?: string
   /** Header name carrying {@link secret}. @default 'X-Origin-Verify' */
@@ -3479,6 +3500,121 @@ export interface CdnFrontConfig {
   originShield?: boolean
   /** AWS region used by Origin Shield. Required when {@link originShield} is enabled. */
   originShieldRegion?: string
+  /** Cloudflare-specific tuning. Ignored unless {@link provider} is `'cloudflare'`. */
+  cloudflare?: CloudflareCdnConfig
+}
+
+/**
+ * Cloudflare proxy-CDN configuration.
+ *
+ * Everything here is optional: with `provider: 'cloudflare'` and nothing else,
+ * ts-cloud proxies the fronted hosts, applies the static-site zone settings, and
+ * writes cache rules — which is the whole point of the integration.
+ */
+export interface CloudflareCdnConfig {
+  /**
+   * Zone id. Falls back to `CLOUDFLARE_ZONE_ID`.
+   *
+   * Supplying it is what allows a single-zone API token: zone lookup by name
+   * goes through an account-level listing that a zone-scoped token cannot read.
+   */
+  zoneId?: string
+  /** Account id. Falls back to `CLOUDFLARE_ACCOUNT_ID`. Only needed for account-scoped resources. */
+  accountId?: string
+  /**
+   * Serve the fronted hosts through the proxy (the "orange cloud"). @default true
+   *
+   * `false` keeps the records DNS-only — Cloudflare answers with the origin
+   * address and no edge is involved, which also disables every other option
+   * here, since they all configure the edge.
+   */
+  proxied?: boolean
+  /** Zone settings to reconcile. Defaults to ts-cloud's static-site profile. */
+  settings?: CloudflareZoneSettingsConfig
+  /** Cache-rule tuning for the fronted hosts. */
+  cache?: CloudflareCacheRulesConfig
+  /** Purge the edge cache at the end of a deploy. @default true */
+  purgeOnDeploy?: boolean
+  /**
+   * Skip the origin TLS probe and proxy the records immediately. @default false
+   *
+   * The probe exists because a box issues its certificate over ACME HTTP-01,
+   * which needs the hostname to reach the box directly — proxying before that
+   * happens can strand the name with no certificate. Skip it only when the
+   * origin certificate already exists.
+   */
+  skipOriginProbe?: boolean
+}
+
+/** HSTS settings for a Cloudflare zone. */
+export interface CloudflareHstsConfig {
+  enabled: boolean
+  /** Lifetime in seconds. @default 31536000 (1 year) */
+  maxAge?: number
+  /** Apply to every subdomain. @default false */
+  includeSubdomains?: boolean
+  /** Submit to browser preload lists — effectively irreversible. @default false */
+  preload?: boolean
+  /** Send `X-Content-Type-Options: nosniff`. @default true */
+  noSniff?: boolean
+}
+
+/**
+ * Zone-level Cloudflare settings ts-cloud reconciles. Anything left undefined is
+ * not touched, so a zone keeps settings this deploy has no opinion about.
+ */
+export interface CloudflareZoneSettingsConfig {
+  /**
+   * How Cloudflare reaches the origin. `strict` (Full (strict)) is the only mode
+   * that verifies the origin certificate, and the right answer for a ts-cloud
+   * box, which holds a real one. `flexible` sends plaintext to the origin and
+   * loops against a gateway that redirects HTTP to HTTPS.
+   */
+  ssl?: 'off' | 'flexible' | 'full' | 'strict'
+  /** Redirect HTTP to HTTPS at the edge. */
+  alwaysUseHttps?: boolean
+  /** Rewrite http:// references in HTML to https://. */
+  automaticHttpsRewrites?: boolean
+  /** Minimum TLS version accepted from visitors. */
+  minTlsVersion?: '1.0' | '1.1' | '1.2' | '1.3'
+  /** Offer TLS 1.3. */
+  tls13?: boolean
+  /** Brotli-compress responses. */
+  brotli?: boolean
+  /** Offer HTTP/3 (QUIC). */
+  http3?: boolean
+  /** TLS 1.3 0-RTT resumption. */
+  zeroRtt?: boolean
+  /** Send 103 Early Hints. */
+  earlyHints?: boolean
+  /** HSTS. */
+  hsts?: CloudflareHstsConfig
+  /** Default browser cache TTL in seconds; `0` respects the origin's headers. */
+  browserCacheTtl?: number
+  /** Serve a cached copy when the origin is unreachable. */
+  alwaysOnline?: boolean
+  /** Proxy WebSocket upgrades. */
+  websockets?: boolean
+  /** Raw Cloudflare setting ids, merged last. */
+  raw?: Record<string, unknown>
+}
+
+/** Cache-rule tuning for a Cloudflare-fronted static site. */
+export interface CloudflareCacheRulesConfig {
+  /** Generate cache rules at all. @default true */
+  enabled?: boolean
+  /** Extensions treated as immutable, fingerprinted build output. */
+  assetExtensions?: string[]
+  /** Edge TTL for those assets, in seconds. @default 2592000 (30 days) */
+  assetEdgeTtl?: number
+  /** Browser TTL for those assets, in seconds. @default 31536000 (1 year) */
+  assetBrowserTtl?: number
+  /** Edge TTL for HTML documents, in seconds. @default 3600 */
+  documentEdgeTtl?: number
+  /** Browser TTL for HTML documents, in seconds. @default 0 (revalidate) */
+  documentBrowserTtl?: number
+  /** Path prefixes that must never be cached, matched with `starts_with`. */
+  bypassPaths?: string[]
 }
 
 export interface DatabaseItemConfig {

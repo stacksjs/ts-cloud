@@ -60,6 +60,7 @@ const config: BunPressConfig = {
         { text: 'Cost Analysis', link: '/features/cost' },
         { text: 'Security Scanning', link: '/features/security' },
         { text: 'CDN over Hetzner', link: '/features/cdn-hetzner-origin' },
+        { text: 'Cloudflare', link: '/features/cloudflare' },
       ],
     },
     {

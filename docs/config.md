@@ -306,9 +306,17 @@ The `cache` hint applies to either origin:
   operator's own proxy (rpx + tlsx), not by ts-cloud.
 
 On **AWS**, a server origin can sit behind CloudFront via the existing
-compute-origin routing. On **Hetzner** there is no native CDN — you can place
-CloudFront / Cloudflare / bunny in front of the box yourself. ts-cloud does not
-provision a Hetzner CDN.
+compute-origin routing. On **Hetzner** there is no native CDN, so a CDN is placed
+in front of the box:
+
+- **Cloudflare** is managed end-to-end — proxied records, zone settings, cache
+  rules, origin lockdown and purge-on-deploy. Set
+  `infrastructure.compute.proxy.cdn.provider: 'cloudflare'`; see
+  [Cloudflare](./features/cloudflare.md).
+- **CloudFront** in front of a Hetzner box is the `provider: 'cloudfront'`
+  default; see [CDN in front of a Hetzner origin](./features/cdn-hetzner-origin.md).
+
+ts-cloud does not provision a Hetzner-native CDN.
 
 ### Reverse proxy: rpx
 

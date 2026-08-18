@@ -400,12 +400,19 @@ function buildRpxConfigInternal(
   }
 
   // CDN-in-front origin lockdown: enforce the shared secret on the fronted hosts.
+  //
+  // `frontedHosts` defaults to every hostname the gateway answers for — the same
+  // default the CDN reconcile uses. Deriving both from one rule is what keeps the
+  // guarded set and the fronted set identical: a host the CDN fronts but the
+  // gateway does not guard is a way around the edge, and a host the gateway
+  // guards but the CDN does not front rejects all of its traffic.
   const cdn = options.proxy.cdn
-  if (cdn?.secret && cdn.frontedHosts.length > 0) {
+  const guardedHosts = cdn?.frontedHosts?.length ? cdn.frontedHosts : [...domains]
+  if (cdn?.secret && guardedHosts.length > 0) {
     config.originGuard = {
       header: cdn.secretHeader ?? 'X-Origin-Verify',
       value: cdn.secret,
-      hosts: cdn.frontedHosts,
+      hosts: guardedHosts,
     }
   }
 
@@ -550,8 +557,17 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
     if (f.productionCerts?.certsDir) certsDir = f.productionCerts.certsDir
     acmeChallengeWebroot ??= f.acmeChallengeWebroot
     if (f.originGuard) {
+      // rpx enforces ONE header/value pair for the whole gateway, so co-tenants
+      // cannot each bring their own secret. Adopting the first and then adding a
+      // disagreeing tenant's hosts to the guarded set would be the worst
+      // possible outcome: its CDN sends secret B, the gateway demands secret A,
+      // and every request to that host is rejected — a total outage for a host
+      // that was working. Leaving those hosts unguarded is a weaker posture but
+      // a serving one, so the conflict degrades instead of breaking.
       guard ??= { header: f.originGuard.header, value: f.originGuard.value }
-      for (const h of f.originGuard.hosts) guardHosts.add(h)
+      if (f.originGuard.header === guard.header && f.originGuard.value === guard.value) {
+        for (const h of f.originGuard.hosts) guardHosts.add(h)
+      }
     }
   }
 
@@ -630,8 +646,18 @@ for (const f of files) {
   if (frag.productionCerts?.certsDir) certsDir = frag.productionCerts.certsDir
   acmeChallengeWebroot ??= frag.acmeChallengeWebroot
   if (frag.originGuard) {
+    // One gateway means one origin-guard secret (rpx takes a single
+    // header/value). A tenant whose secret disagrees with the adopted one must
+    // NOT have its hosts guarded: its CDN would send a different value, the
+    // gateway would reject every request, and a working host would go dark.
+    // Unguarded is weaker but serving, and the mismatch is logged.
     guard ??= { header: frag.originGuard.header, value: frag.originGuard.value }
-    for (const h of frag.originGuard.hosts ?? []) guardHosts.add(h)
+    if (frag.originGuard.header === guard.header && frag.originGuard.value === guard.value) {
+      for (const h of frag.originGuard.hosts ?? []) guardHosts.add(h)
+    }
+    else {
+      console.warn('[rpx-assembler] origin-guard secret in ' + f + ' differs from the one already in force; its hosts stay unguarded rather than rejecting all traffic')
+    }
   }
 }
 const config = {

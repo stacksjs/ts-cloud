@@ -53,7 +53,12 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
         if (!apiToken) {
           throw new Error('CLOUDFLARE_API_TOKEN environment variable is required for Cloudflare provider')
         }
-        return { provider: 'cloudflare', apiToken }
+        return {
+          provider: 'cloudflare',
+          apiToken,
+          zoneId: process.env.CLOUDFLARE_ZONE_ID,
+          accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+        }
       }
       default:
         throw new Error(`Unknown DNS provider: ${providerName}. Supported: porkbun, godaddy, route53, cloudflare`)
@@ -95,6 +100,8 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
     return {
       provider: 'cloudflare',
       apiToken: process.env.CLOUDFLARE_API_TOKEN,
+      zoneId: process.env.CLOUDFLARE_ZONE_ID,
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     }
   }
 

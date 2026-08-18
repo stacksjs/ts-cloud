@@ -288,6 +288,7 @@ export {
   verifyAddressRecord,
 } from './deploy/server-dns'
 export type { AddressRecordReport } from './deploy/server-dns'
+export * from './cdn'
 export type {
   EnsureDashboardLogger,
   ResolvedDashboardAuth,
@@ -379,6 +380,13 @@ export {
   createGoDaddyValidator,
   createRoute53Validator,
 } from './dns'
+export type {
+  CloudflareProviderOptions,
+  CloudflareRule,
+  CloudflareRulesetPhase,
+  CloudflareZoneSetting,
+} from './dns/cloudflare'
+export { CLOUDFLARE_MANAGED_RULE_PREFIX } from './dns/cloudflare'
 
 // Provider-neutral Git source connections, repository bindings, and webhooks
 export * from './source'
@@ -395,6 +403,7 @@ export type {
   DeleteRecordResult,
   ListRecordsResult,
 } from './dns'
+export { PROXIABLE_RECORD_TYPES } from './dns'
 
 // Re-export core functionality (these take precedence for common types)
 export * from '@ts-cloud/core'

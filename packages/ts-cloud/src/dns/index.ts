@@ -36,7 +36,7 @@ export function createDnsProvider(config: DnsProviderConfig): DnsProvider {
       return new GoDaddyProvider(config.apiKey, config.apiSecret, config.environment)
 
     case 'cloudflare':
-      return new CloudflareProvider(config.apiToken)
+      return new CloudflareProvider(config.apiToken, { zoneId: config.zoneId, accountId: config.accountId })
 
     default:
       throw new Error(`Unknown DNS provider: ${(config as any).provider}`)
@@ -112,10 +112,12 @@ export class DnsProviderFactory {
   /**
    * Add Cloudflare provider
    */
-  addCloudflare(apiToken: string): this {
+  addCloudflare(apiToken: string, options: { zoneId?: string, accountId?: string } = {}): this {
     this.configs.push({
       provider: 'cloudflare',
       apiToken,
+      zoneId: options.zoneId,
+      accountId: options.accountId,
     })
     return this
   }
@@ -144,10 +146,15 @@ export class DnsProviderFactory {
       this.addGoDaddy(godaddyApiKey, godaddyApiSecret, env)
     }
 
-    // Cloudflare
+    // Cloudflare. The zone id is optional but is what allows a token scoped to
+    // a single zone — without it the provider has to list zones by name, which
+    // needs account-wide Zone:Read.
     const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN
     if (cloudflareApiToken) {
-      this.addCloudflare(cloudflareApiToken)
+      this.addCloudflare(cloudflareApiToken, {
+        zoneId: process.env.CLOUDFLARE_ZONE_ID,
+        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+      })
     }
 
     return this

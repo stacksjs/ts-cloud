@@ -20,10 +20,12 @@ import { checkReleaseContent } from '../../src/deploy/release-content'
 import { mergeControlsIntoConfig, ProtectionControlStore } from '../../src/protection'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { runConfigHook } from '../../src/deploy/hooks'
-import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
+import { collectServerDnsDomains, normalizePublicIpv6, reconcileAddressRecords } from '../../src/deploy/server-dns'
 import { deployShipsFiles, hasComputeConfigured, resolveSiteKind, shipsARelease, shipsToBucket, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
+import { CloudflareProvider } from '../../src/dns/cloudflare'
+import { reconcileCloudflareCdn, resolveCloudflareCdnPlan } from '../../src/cdn'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
@@ -724,7 +726,7 @@ export function registerDeployCommands(app: CLI): void {
               if (options?.skipDnsVerification) {
                 cli.info('DNS verification and record reconciliation skipped (--skip-dns-verification)')
               } else {
-                await reconcileServerDns(config, outputs.appPublicIp, dnsProvider)
+                await reconcileServerDns(config, outputs.appPublicIp, dnsProvider, outputs.appPublicIpv6)
               }
               const tlsOk = await renewRpxCertificates({
                 config,
@@ -734,6 +736,15 @@ export function registerDeployCommands(app: CLI): void {
               })
               if (!tlsOk) cli.error('App deployed, but rpx TLS certificate reconciliation failed')
               if (!tlsOk) process.exitCode = 1
+
+              // The Cloudflare CDN reconcile runs AFTER certificate renewal, and
+              // that order is load-bearing: it proxies a hostname only once the
+              // origin can prove it serves a trusted certificate for that name,
+              // and the origin gets that certificate from an ACME HTTP-01
+              // challenge which needs the name to reach it directly. Running it
+              // first would proxy the name, cut the challenge off from the box,
+              // and leave the site without a certificate to issue.
+              if (!options?.skipDnsVerification) await reconcileCloudflareCdnForDeploy(config, outputs.appPublicIp, outputs.appPublicIpv6)
             }
             return
           }
@@ -2374,6 +2385,7 @@ async function reconcileServerDns(
   config: any,
   appPublicIp: string | undefined,
   dnsProviderName: string | undefined,
+  appPublicIpv6?: string,
 ): Promise<void> {
   if (!dnsProviderName) return // opt-in — no DNS provider configured, nothing to do
 
@@ -2407,25 +2419,77 @@ async function reconcileServerDns(
 
   const dnsProvider = createDnsProvider(dnsConfig)
   const configuredZone = config.infrastructure?.dns?.domain as string | undefined
-  cli.step(`Reconciling DNS: ${domains.size} A record(s) → ${appPublicIp} via ${dnsProviderName}...`)
+  const ipv6 = normalizePublicIpv6(appPublicIpv6)
+  const families = ipv6 ? 'A/AAAA' : 'A'
+  cli.step(`Reconciling DNS: ${domains.size} ${families} record(s) → ${appPublicIp} via ${dnsProviderName}...`)
   for (const domain of domains) {
     // The zone is the registrable apex (config `dns.domain` wins; otherwise the
     // last two labels — good enough for `sub.example.com`).
     const zone =
       configuredZone && domain.endsWith(configuredZone) ? configuredZone : domain.split('.').slice(-2).join('.')
     try {
-      const res = await dnsProvider.upsertRecord(zone, { name: domain, type: 'A', content: appPublicIp, ttl: 300 })
-      if (res.success) cli.success(`  ✓ ${domain} A → ${appPublicIp}`)
-      else cli.warn(`  ⚠ ${domain}: ${res.message} — set the A record manually.`)
-
-      if (res.success) {
-        const cleanupWarnings = await removeStaleServerAddressRecords(dnsProvider, zone, domain, appPublicIp)
-        for (const warning of cleanupWarnings) cli.warn(`  ⚠ ${domain}: ${warning}`)
-        if (cleanupWarnings.length === 0) cli.info(`  ✓ ${domain}: stale duplicate A records reconciled`)
-      }
+      // Shared with the framework's deploy path so the upsert / stale-cleanup /
+      // verify rules — and the IPv4-vs-IPv6 split — live in exactly one place.
+      // Writing only A records here left a dual-stack box with stale AAAA
+      // records that dual-stack clients prefer, sending them to a dead address.
+      const report = await reconcileAddressRecords({ provider: dnsProvider, zone, fqdn: domain, ipv4: appPublicIp, ipv6 })
+      for (const record of report.published) cli.success(`  ✓ ${record.fqdn} ${record.type} → ${record.content}`)
+      for (const warning of report.warnings) cli.warn(`  ⚠ ${domain}: ${warning}`)
     } catch (error) {
-      cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the A record manually.`)
+      cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the address record manually.`)
     }
+  }
+}
+
+/**
+ * Reconcile the Cloudflare proxy CDN in front of a compute box.
+ *
+ * Opt-in via `infrastructure.compute.proxy.cdn.provider === 'cloudflare'`, and
+ * deliberately non-fatal: it runs after the release is already live, so a
+ * plan-gated zone setting or a too-narrow API token is worth reporting loudly
+ * without turning a successful deploy into a failed one.
+ */
+async function reconcileCloudflareCdnForDeploy(
+  config: any,
+  appPublicIp: string | undefined,
+  appPublicIpv6?: string,
+): Promise<void> {
+  const { plan, errors } = resolveCloudflareCdnPlan(config)
+  for (const error of errors) cli.warn(`Cloudflare CDN: ${error}`)
+  if (!plan) return
+
+  if (!appPublicIp) {
+    cli.warn('Cloudflare CDN: no app server IP resolved — skipping.')
+    return
+  }
+
+  cli.step(`Cloudflare CDN: reconciling ${plan.hosts.length} host(s) on ${plan.zone}...`)
+  const provider = new CloudflareProvider(plan.apiToken, { zoneId: plan.zoneId, accountId: plan.accountId })
+
+  try {
+    const report = await reconcileCloudflareCdn({
+      provider,
+      zone: plan.zone,
+      hosts: plan.hosts,
+      ipv4: appPublicIp,
+      ipv6: normalizePublicIpv6(appPublicIpv6),
+      proxied: plan.proxied,
+      settings: plan.settings,
+      cache: plan.cache,
+      originGuard: plan.originGuard,
+      purge: plan.purge,
+      skipOriginProbe: plan.skipOriginProbe,
+    })
+
+    for (const record of report.records)
+      cli.success(`  ✓ ${record.host} ${record.type} → ${record.content}${record.proxied ? ' (proxied)' : ' (DNS-only)'}`)
+    for (const setting of report.settingsChanged) cli.info(`  ✓ ${setting.id}: ${JSON.stringify(setting.from)} → ${JSON.stringify(setting.to)}`)
+    if (report.cacheRules > 0) cli.success(`  ✓ ${report.cacheRules} cache rule(s) applied`)
+    if (report.originGuard) cli.success('  ✓ origin guard header applied')
+    if (report.purged) cli.success('  ✓ edge cache purged')
+    for (const warning of report.warnings) cli.warn(`  ⚠ ${warning}`)
+  } catch (error) {
+    cli.warn(`Cloudflare CDN: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
