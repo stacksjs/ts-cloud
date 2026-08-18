@@ -384,6 +384,56 @@ regenerates the route config and restarts the gateway — so new
 server-app/server-static sites appear automatically. Leaving `proxy` unset
 keeps the prior behavior (no gateway installed; you run your own).
 
+### Ports on a shared box
+
+Each project's deploy writes only its own route fragment,
+`/etc/rpx/sites.d/<slug>.json`, and the gateway merges them at startup. That is
+what lets several independent projects share one box: routes are keyed by host, so
+they compose.
+
+Ports do not compose. Every `server-app` route resolves to `from:
+'localhost:<port>'` on one shared loopback namespace, and apps generated from the
+same template declare the same ports. `validateDeploymentConfig` only ever sees
+one project's `sites`, so a second project attaching to an occupied box passes
+validation.
+
+What happens next is worse than a failure. ts-cloud's units do not set exclusive
+binding, so both listeners bind and the kernel load-balances between them: nothing
+errors, both services look healthy, and each domain answers with the other
+project's site for roughly half its requests. `buddy deploy` catches this late via
+`assertPortsAreFree`, which compares wanted ports against the box's live listeners
+and stops the deploy, but its only remedy is to tell you to pick free ports by
+hand.
+
+The fragments already answer this, since every one of them records its upstream
+port. `site-ports.ts` reads them:
+
+```typescript
+import { allocateSitePorts, buildHostSitePortsScript, occupiedHostPorts, parseHostSiteFragments } from './deploy/site-ports'
+import { validateDeploymentConfig } from './deploy/site-target'
+
+// `stdout` is the output of buildHostSitePortsScript() run on the box.
+const occupiedPorts = occupiedHostPorts(parseHostSiteFragments(stdout), { ignoreSlug: config.project.slug })
+
+// Reports a collision at plan time, naming the project that holds the port.
+const { errors } = validateDeploymentConfig(config, { occupiedPorts })
+
+// Or allocate around it, so no app has to hand-pick a globally unique port.
+const { allocations } = allocateSitePorts(config, occupiedPorts)
+```
+
+Two details matter:
+
+- **`ignoreSlug` is required.** This project's own fragment is already on the box
+  from its last deploy, so counting it makes every redeploy conflict with itself.
+- **A declared port is kept whenever it is free.** A box with no co-tenants
+  allocates nothing and ports stay stable across deploys; only a site that
+  actually collides moves, and it moves to the next free port rather than
+  somewhere arbitrary.
+
+Omitting `occupiedPorts` validates exactly as before, so this is additive for any
+single-project box.
+
 ## Preset Configuration
 
 ### Static Site Preset
