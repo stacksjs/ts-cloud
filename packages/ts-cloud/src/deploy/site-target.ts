@@ -125,6 +125,28 @@ export interface DeploymentValidationResult {
   warnings: string[]
 }
 
+export interface ValidateDeploymentOptions {
+  /**
+   * Ports this box already serves for OTHER projects, as port -> owning slug.
+   *
+   * Validation is otherwise blind to co-tenants: it only ever sees one project's
+   * `sites`, so two apps attached to the same server can both declare the
+   * template's default port, both pass, and the second one fail at
+   * `systemctl start` naming neither owner. Supplying this turns that into a
+   * plan-time error that names the project holding the port.
+   *
+   * Build it with `occupiedHostPorts()` from `./site-ports`, passing the
+   * deploying project's own slug as `ignoreSlug` - its fragment is already on the
+   * box from the last deploy, and counting it would make every redeploy conflict
+   * with itself.
+   *
+   * Omitted means "no co-tenant information", which validates exactly as before.
+   *
+   * @see https://github.com/stacksjs/ts-cloud/issues/168
+   */
+  occupiedPorts?: ReadonlyMap<number, string>
+}
+
 /**
  * Validate the per-site deployment configuration up front, turning what used to
  * be silent runtime failures (e.g. a `start` site with no compute server) into
@@ -133,7 +155,10 @@ export interface DeploymentValidationResult {
  * Never throws — returns structured `{ errors, warnings }`. Callers should abort
  * on any error and print warnings while continuing.
  */
-export function validateDeploymentConfig(config: CloudConfig): DeploymentValidationResult {
+export function validateDeploymentConfig(
+  config: CloudConfig,
+  options: ValidateDeploymentOptions = {},
+): DeploymentValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
   const sites = config.sites || {}
@@ -233,6 +258,18 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
       }
 
       if (typeof site.port === 'number') {
+        // A co-tenant on the same box holds this port. Reported separately from
+        // the same-config clash below because the fix is different: the operator
+        // cannot see the other project's config from here, so the message has to
+        // name the owning project rather than a sibling site.
+        const coTenant = options.occupiedPorts?.get(site.port)
+        if (coTenant) {
+          errors.push(
+            `Site '${name}' wants port ${site.port}, which project '${coTenant}' already serves on this box. `
+            + `Attached projects share one port namespace. Give '${name}' a free port, or let the attach allocate one.`,
+          )
+        }
+
         const existing = portOwners.get(site.port)
         if (existing) {
           errors.push(
