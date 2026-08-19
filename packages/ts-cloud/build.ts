@@ -26,7 +26,9 @@ async function build() {
     target: 'node',
     format: 'esm',
     splitting: true,
-    minify: false,
+    // The library is 9MB of JS across ~90 chunks and every consumer downloads
+    // all of it. Unminified it was a quarter whitespace.
+    minify: true,
   })
 
   if (!libResult.success) {

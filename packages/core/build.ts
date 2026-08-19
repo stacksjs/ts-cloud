@@ -1,5 +1,6 @@
 async function build() {
   const result = await Bun.build({
+    minify: true,
     entrypoints: ['./src/index.ts'],
     outdir: './dist',
     target: 'node',
