@@ -155,6 +155,7 @@ See [Preview environments](/features/preview-environments) for policy, source li
 | `cloud server:ssh <name>` / `server:logs <name>` / `server:monitoring <name>` | Connect / logs / metrics. |
 | `cloud server:deploy <name>` / `server:reboot` / `server:resize <name> <type>` | Deploy / reboot / resize. |
 | `cloud server:rename <name> <new-name> [--apply]` | Rename a server in place. Prints the plan; `--apply` performs it. |
+| `cloud site:move <name> --to <server> [--apply]` | Move a deployed site to another server, DNS cutover included. |
 | `cloud server:recipe <name> <recipe>` | Run a reusable script across servers. |
 | `cloud server:worker:add/list/restart/remove` | Queue workers (Supervisor). |
 | `cloud server:cron:add/list/remove` | Scheduled jobs / cron. |
@@ -164,6 +165,53 @@ See [Preview environments](/features/preview-environments) for policy, source li
 | `cloud server:update <name>` / `server:secure <name>` | OS updates / hardening. |
 
 See [Laravel / Forge-style](/features/laravel) for the `infrastructure.compute` + `sites` config.
+
+### Moving a site to another server
+
+Consolidation's second operation: three boxes with one app each becoming one box
+with three sites.
+
+```bash
+cloud site:move bughq --to statushq-box            # plan only
+cloud site:move bughq --to statushq-box --apply    # perform it
+```
+
+It moves the site's on-box footprint wholesale — the whole
+`/var/www/<slug>-<site>` tree (every release, `shared/`, the `current` symlink)
+plus the systemd units that run it. Those units are not regenerated, they are
+moved: rebuilding from the repo on the target would not be a move but a fresh
+deploy that happens to be preceded by a data copy, picking up whatever the repo
+says today rather than what is actually running.
+
+The order is chosen so that **every prefix of the plan is a working system**,
+on the old box or the new one:
+
+| Step | Why there |
+|---|---|
+| Stop background work on the source | A queue worker writing mid-`tar` produces a torn snapshot. The web service keeps serving — the source is still live. |
+| Archive, carry, unpack, start | The target comes up but nothing routes to it yet. |
+| Health gate on the target's loopback | The public name still points at the source, so asking it would wave a broken target through. |
+| Route the site on the target | Same gateway builder the deploy uses, so a moved site is routed byte-identically to a deployed one. |
+| Cut DNS over | Only after the target has proved itself. A provider warning stops the run here rather than continuing to the drain. |
+| Drain the source | Units stopped and disabled, gateway fragment removed. **Files left in place.** |
+
+Nothing in the operation deletes anything, so a bad cutover is undone by starting
+the source's units again and pointing DNS back. That reversibility lasts until
+the source *server* is destroyed, which is a separate and deliberately separate
+command. Background units are enabled but not started on the target until the
+source is drained, so the two boxes can never both run a scheduler against one
+dataset.
+
+The archive travels through the machine running the command rather than directly
+between the boxes: a direct hop would need the target to hold a credential for
+the source, which is the same credential-radius problem consolidation already
+has. Both boxes must be enrolled with pinned host keys (`cloud server:validate`).
+
+Resuming works the same way as `server:rename` — re-run the identical command and
+the finished steps skip themselves. Two steps deliberately never skip: the
+snapshot (an archive from an earlier attempt predates whatever the source has
+served since) and the health gate (a gate that remembers a previous pass is not a
+gate).
 
 ### Renaming a server
 
