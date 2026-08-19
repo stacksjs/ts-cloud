@@ -340,6 +340,31 @@ export function buildPromoteStagedRelease(paths: ReleasePaths): string[] {
 }
 
 /**
+ * Seed an as-yet-empty shared FILE from the copy the incoming release shipped.
+ *
+ * {@link buildAdoptSharedPathFn} rescues state from the release that is
+ * currently live, which covers a path that becomes shared on an existing site.
+ * It cannot cover a site's FIRST deploy: there is no live release to adopt
+ * from, so the layout step leaves a zero-byte placeholder and the link below
+ * would replace the artifact's real file with it — an app shipping a seeded
+ * SQLite database would come up empty on the very deploy that created it.
+ *
+ * Narrow on purpose: only a regular, non-empty file in the release, and only
+ * when the shared target is still zero bytes (what a placeholder looks like,
+ * and what no real SQLite database ever is — a database with any schema in it
+ * is at least one page). It can therefore only ever put content where there
+ * was none.
+ */
+function buildSeedSharedFromRelease(link: string, target: string): string[] {
+  return [
+    `if [ -f ${link} ] && [ ! -L ${link} ] && [ -s ${link} ] && [ ! -s ${target} ]; then`,
+    `  cp -a ${link} ${target}`,
+    `  echo "[ts-cloud] seeded shared/ from the release's own copy of the file"`,
+    'fi',
+  ]
+}
+
+/**
  * Symlink every shared path from `shared/` into the freshly checked-out release,
  * replacing whatever the checkout shipped (e.g. the repo's empty `storage`).
  */
@@ -355,6 +380,9 @@ export function buildLinkSharedPaths(
 
     // A site that owns the target always links: the layout step just created it.
     if (seed) {
+      // `.env` is excluded: the deploy writes the shared one itself, and the
+      // release's own env files are deleted before this runs.
+      if (p !== '.env' && isFileSharedPath(p)) lines.push(...buildSeedSharedFromRelease(link, target))
       lines.push(...relink)
       continue
     }

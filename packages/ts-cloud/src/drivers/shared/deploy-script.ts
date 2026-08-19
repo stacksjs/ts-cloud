@@ -13,6 +13,7 @@
 import type { SharedPathEntry } from '@ts-cloud/core'
 import { formatEnvFile } from './env-file'
 import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
+import { sqliteSharedPaths } from './sqlite-shared-path'
 
 /**
  * Translate a `start` command (e.g. "bun run server.ts") into an absolute
@@ -184,7 +185,15 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   const serviceName = `${unitBase}.service`
   const tarball = releaseTarballTmpPath(slug, siteName, releaseId)
   // `.env` is always shared; a site adds anything else it writes and must keep.
-  const sharedPaths = dedupeSharedPaths(['.env', ...(options.sharedPaths ?? [])])
+  // A SQLite database is added for it: the deploy already knows the connection
+  // and the file path from the env it is about to write, and an undeclared
+  // SQLite file inside the release is discarded by the NEXT deploy.
+  const declaredSharedPaths = options.sharedPaths ?? []
+  const sharedPaths = dedupeSharedPaths([
+    '.env',
+    ...declaredSharedPaths,
+    ...sqliteSharedPaths(envEntries, declaredSharedPaths),
+  ])
 
   const envFile = formatEnvFile(envEntries)
 

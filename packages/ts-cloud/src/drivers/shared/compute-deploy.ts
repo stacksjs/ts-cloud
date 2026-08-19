@@ -17,6 +17,7 @@ import { resolveNotifications, sendNotifications } from './notifications'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
+import { inferSqliteSharedPath } from './sqlite-shared-path'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -94,6 +95,14 @@ export async function deploySiteRelease(
     // select Bun's development exports or dev-only runtime paths on the box.
     ...productionEnv,
   }
+
+  // A SQLite database inside the release directory is thrown away by the next
+  // deploy. The script builders share it automatically when the env says where
+  // it lives; when the env says SQLite but not where, only the operator can
+  // resolve it — so say so here rather than deploying quietly over it.
+  const sqlite = inferSqliteSharedPath(envWithServices, site.sharedPaths ?? [])
+  if (sqlite.warning) logger.warn(`Site '${siteName}': ${sqlite.warning}`)
+  else if (sqlite.path) logger.info(`Site '${siteName}': sharing '${sqlite.path}' so the SQLite database survives deploys.`)
 
   // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
   // tarball upload). The box clones the repo, runs the deploy script inside the

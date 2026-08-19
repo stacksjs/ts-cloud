@@ -19,6 +19,7 @@ import { formatEnvFile } from './env-file'
 import { buildGitCheckoutScript } from './git-deploy'
 import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
 import { buildActivateRelease, buildDeployHistoryHeader, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPruneReleases, DEFAULT_KEEP_RELEASES, DEFAULT_SHARED_PATHS, releasePaths } from './releases'
+import { sqliteSharedPaths } from './sqlite-shared-path'
 
 export const MACRO_CREATE_RELEASE = '$CREATE_RELEASE'
 export const MACRO_ACTIVATE_RELEASE = '$ACTIVATE_RELEASE'
@@ -142,7 +143,11 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
   // pinned at install time (php.net@<version>), not in the deploy command.
   const phpBin = 'php'
   const paths = releasePaths(base, releaseId)
-  const sharedPaths = site.sharedPaths ?? DEFAULT_SHARED_PATHS
+  const declaredSharedPaths = site.sharedPaths ?? DEFAULT_SHARED_PATHS
+  // Share the app's SQLite database automatically when the env names one inside
+  // the release — see `./sqlite-shared-path`. A `database/*.sqlite` left out of
+  // `sharedPaths` is thrown away by the next deploy.
+  const sharedPaths = [...declaredSharedPaths, ...sqliteSharedPaths(site.env, declaredSharedPaths)]
   const keepReleases = site.keepReleases ?? DEFAULT_KEEP_RELEASES
   const template = site.deployScript?.length ? site.deployScript : defaultDeployScriptFor(site.type ?? 'laravel')
 
