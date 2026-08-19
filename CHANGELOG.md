@@ -1,3 +1,26 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.2...v0.9.3)
+
+## 🐛 Bug Fixes
+
+- **deploy**: allocate site ports per box, so a second attach cannot collide (#170) ([cfc2dc6](https://github.com/stacksjs/ts-cloud/commit/cfc2dc6)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#170](https://github.com/stacksjs/ts-cloud/issues/170), [#170](https://github.com/stacksjs/ts-cloud/issues/170))
+
+## ⚡ Performance Improvements
+
+- **build**: stop shipping the same code twice, in the dashboard and the bins ([1573ba0](https://github.com/stacksjs/ts-cloud/commit/1573ba0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📚 Documentation
+
+- **cloud**: say what attaching does to a credential's blast radius (#171) ([71c7046](https://github.com/stacksjs/ts-cloud/commit/71c7046)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#171](https://github.com/stacksjs/ts-cloud/issues/171), [#171](https://github.com/stacksjs/ts-cloud/issues/171))
+
+## 🧹 Chores
+
+- release v0.9.3 ([b50b580](https://github.com/stacksjs/ts-cloud/commit/b50b580)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _Glenn Michael Torregosa <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.1...v0.9.2)
 
 ## 🚀 Features
