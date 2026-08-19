@@ -58,66 +58,36 @@ async function build() {
   const declarationExitCode = await declarations.exited
   if (declarationExitCode !== 0) process.exit(declarationExitCode)
 
-  // Build CLI entry point
-  const cliResult = await Bun.build({
-    entrypoints: [join(__dirname, 'bin/cli.ts')],
+  // Build the three executables together, with splitting on.
+  //
+  // Separately and unsplit, each one inlined the entire graph it reaches: the
+  // CLI and the dashboard server overlap almost completely — config loading,
+  // the AWS and Hetzner drivers, the deploy pipeline — and shipped two full
+  // copies of it, 5.6MB for 3.6MB of distinct code. One build lets Bun put the
+  // shared half in chunks that both entries import.
+  //
+  // The entries keep their own graphs at runtime: a chunk is loaded only by an
+  // entry that imports it, so the long-running dashboard still does not pull
+  // in the CLI's whole command tree, which is the reason it has its own entry.
+  const executablesResult = await Bun.build({
+    entrypoints: [
+      join(__dirname, 'bin/cli.ts'),
+      join(__dirname, 'bin/dashboard-server.ts'),
+      join(__dirname, 'bin/stacks-scheduler.ts'),
+    ],
     outdir: join(__dirname, 'dist/bin'),
     target: 'node',
     format: 'esm',
-    splitting: false,
-    minify: true,
-  })
-
-  if (!cliResult.success) {
-    console.error('CLI build failed:')
-    for (const log of cliResult.logs) {
-      console.error(log)
-    }
-    process.exit(1)
-  }
-
-  // The long-running dashboard must not boot the general-purpose CLI and its
-  // entire command graph. Build a dedicated production entry that contains
-  // only the dashboard server and its runtime dependencies.
-  const dashboardResult = await Bun.build({
-    entrypoints: [join(__dirname, 'bin/dashboard-server.ts')],
-    outdir: join(__dirname, 'dist/bin'),
-    target: 'node',
-    format: 'esm',
-    splitting: false,
+    splitting: true,
     minify: true,
     define: {
       'process.env.NODE_ENV': '"production"',
     },
   })
 
-  if (!dashboardResult.success) {
-    console.error('Dashboard server build failed:')
-    for (const log of dashboardResult.logs) {
-      console.error(log)
-    }
-    process.exit(1)
-  }
-
-  // The Stacks scheduler action is itself the long-lived process. Invoking it
-  // through Buddy leaves the full CLI command graph resident while Buddy waits
-  // on the child forever. This dedicated production entry resolves and imports
-  // only the app's canonical scheduler action.
-  const schedulerResult = await Bun.build({
-    entrypoints: [join(__dirname, 'bin/stacks-scheduler.ts')],
-    outdir: join(__dirname, 'dist/bin'),
-    target: 'node',
-    format: 'esm',
-    splitting: false,
-    minify: true,
-    define: {
-      'process.env.NODE_ENV': '"production"',
-    },
-  })
-
-  if (!schedulerResult.success) {
-    console.error('Stacks scheduler build failed:')
-    for (const log of schedulerResult.logs) {
+  if (!executablesResult.success) {
+    console.error('Executable build failed:')
+    for (const log of executablesResult.logs) {
       console.error(log)
     }
     process.exit(1)

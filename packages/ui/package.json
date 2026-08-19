@@ -13,6 +13,6 @@
     "@ts-charts/graph": "^0.2.7"
   },
   "devDependencies": {
-    "@stacksjs/stx": "^0.2.73"
+    "@stacksjs/stx": "^0.2.194"
   }
 }
