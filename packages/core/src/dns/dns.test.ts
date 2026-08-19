@@ -108,7 +108,7 @@ describe('Route53 Routing Manager', () => {
         name: 'geo-prox',
         coordinates: {
           latitude: 40.7128,
-          longitude: -74.0060,
+          longitude: -74.006,
         },
         setIdentifier: 'nyc-endpoint',
       })
@@ -153,7 +153,7 @@ describe('Route53 Routing Manager', () => {
       expect(healthCheck.healthCheckStatus).toBe('Unknown')
 
       // Wait for health check execution
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(['Healthy', 'Unhealthy']).toContain(healthCheck.healthCheckStatus)
     })
@@ -181,7 +181,7 @@ describe('Route53 Routing Manager', () => {
       expect(healthCheck.type).toBe('tcp')
       expect(healthCheck.port).toBe(3306)
 
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(['Healthy', 'Unhealthy']).toContain(healthCheck.healthCheckStatus)
     })
@@ -208,7 +208,7 @@ describe('Route53 Routing Manager', () => {
       expect(calculated.type).toBe('calculated')
       expect(calculated.childHealthChecks).toHaveLength(2)
 
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise((resolve) => setTimeout(resolve, 200))
 
       expect(['Healthy', 'Unhealthy']).toContain(calculated.healthCheckStatus)
     })
@@ -309,7 +309,7 @@ describe('DNSSEC Manager', () => {
       expect(config.id).toContain('dnssec')
       expect(config.status).toBe('SIGNING')
 
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(config.status).toBe('SIGNED')
     })
@@ -323,7 +323,7 @@ describe('DNSSEC Manager', () => {
 
       expect(disabled.status).toBe('DELETING')
 
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(disabled.status).toBe('NOT_SIGNING')
     })
@@ -442,7 +442,7 @@ describe('Route53 Resolver Manager', () => {
       expect(endpoint.direction).toBe('INBOUND')
       expect(endpoint.status).toBe('CREATING')
 
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(endpoint.status).toBe('OPERATIONAL')
       expect(endpoint.ipAddresses[0].ip).toBeDefined()
@@ -478,7 +478,7 @@ describe('Route53 Resolver Manager', () => {
       expect(rule.ruleType).toBe('FORWARD')
       expect(rule.targetIps).toHaveLength(2)
 
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(rule.status).toBe('COMPLETE')
     })
@@ -503,7 +503,7 @@ describe('Route53 Resolver Manager', () => {
       expect(domainList.id).toContain('domain-list')
       expect(domainList.domains).toHaveLength(2)
 
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(domainList.status).toBe('COMPLETE')
     })

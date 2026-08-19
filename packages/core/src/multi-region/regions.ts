@@ -198,7 +198,7 @@ export const AWS_REGIONS: RegionInfo[] = [
  * Get region by code
  */
 export function getRegion(code: string): RegionInfo | undefined {
-  return AWS_REGIONS.find(r => r.code === code)
+  return AWS_REGIONS.find((r) => r.code === code)
 }
 
 /**
@@ -213,37 +213,34 @@ export function getAllRegions(): RegionInfo[] {
  */
 export function getRegionsByLocation(location: string): RegionInfo[] {
   const lowerLocation = location.toLowerCase()
-  return AWS_REGIONS.filter(r => r.location.toLowerCase().includes(lowerLocation))
+  return AWS_REGIONS.filter((r) => r.location.toLowerCase().includes(lowerLocation))
 }
 
 /**
  * Get regions with specific compliance
  */
 export function getRegionsByCompliance(compliance: string): RegionInfo[] {
-  return AWS_REGIONS.filter(r => r.compliance.includes(compliance))
+  return AWS_REGIONS.filter((r) => r.compliance.includes(compliance))
 }
 
 /**
  * Get regions by pricing tier
  */
 export function getRegionsByPricingTier(tier: 'standard' | 'reduced' | 'premium'): RegionInfo[] {
-  return AWS_REGIONS.filter(r => r.pricing.tier === tier)
+  return AWS_REGIONS.filter((r) => r.pricing.tier === tier)
 }
 
 /**
  * Validate region code
  */
 export function isValidRegion(code: string): boolean {
-  return AWS_REGIONS.some(r => r.code === code)
+  return AWS_REGIONS.some((r) => r.code === code)
 }
 
 /**
  * Get closest region to user location
  */
-export function getClosestRegion(userLocation: {
-  continent?: string
-  country?: string
-}): RegionInfo {
+export function getClosestRegion(userLocation: { continent?: string; country?: string }): RegionInfo {
   // Simple heuristic based on location
   if (userLocation.continent === 'North America') {
     return getRegion('us-east-1')!
@@ -277,16 +274,12 @@ export function suggestRegions(requirements: RegionRequirements): RegionInfo[] {
 
   // Filter by compliance
   if (requirements.compliance) {
-    candidates = candidates.filter(r =>
-      requirements.compliance!.every(c => r.compliance.includes(c)),
-    )
+    candidates = candidates.filter((r) => requirements.compliance!.every((c) => r.compliance.includes(c)))
   }
 
   // Filter by required services
   if (requirements.requiredServices) {
-    candidates = candidates.filter(r =>
-      requirements.requiredServices!.every(s => r.services[s]),
-    )
+    candidates = candidates.filter((r) => requirements.requiredServices!.every((s) => r.services[s]))
   }
 
   // Sort by pricing if price sensitive
@@ -353,18 +346,17 @@ function calculateDistance(region1: RegionInfo, region2: RegionInfo): number {
   const continents = {
     'North America': 0,
     'South America': 1,
-    'Europe': 2,
-    'Asia': 3,
-    'Africa': 4,
-    'Oceania': 5,
+    Europe: 2,
+    Asia: 3,
+    Africa: 4,
+    Oceania: 5,
   }
 
   const continent1 = getContinentFromLocation(region1.location)
   const continent2 = getContinentFromLocation(region2.location)
 
   return Math.abs(
-    (continents[continent1 as keyof typeof continents] || 0)
-      - (continents[continent2 as keyof typeof continents] || 0),
+    (continents[continent1 as keyof typeof continents] || 0) - (continents[continent2 as keyof typeof continents] || 0),
   )
 }
 
@@ -408,7 +400,7 @@ export function formatRegion(region: RegionInfo): string {
  * Format region list for display
  */
 export function formatRegionList(regions: RegionInfo[]): string {
-  return regions.map(r => formatRegion(r)).join('\n')
+  return regions.map((r) => formatRegion(r)).join('\n')
 }
 
 /**

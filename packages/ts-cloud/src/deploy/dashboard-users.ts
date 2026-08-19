@@ -1,20 +1,23 @@
 /**
  * The dashboard's user store: a JSON file of {@link DashboardUser} records at
- * `.ts-cloud/dashboard-users.json` (0600), holding scrypt hashes and site
- * grants. Small on purpose — a box hosts a handful of collaborators, not a
- * directory service.
+ * `dashboard-users.json` (0600) inside the state directory, holding scrypt
+ * hashes and site grants. Small on purpose — a box hosts a handful of
+ * collaborators, not a directory service.
  *
  * On first use the store bootstraps a single admin so a freshly provisioned
  * dashboard is never reachable without credentials. The generated password is
  * returned to the caller to print once; only its hash is ever written.
  */
-
 import type { BoxRole, DashboardUser, SiteRole } from './dashboard-auth'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
+import { resolveStatePath, statePath } from '@ts-cloud/core'
 import { generatePassword, hashPassword } from './dashboard-auth'
 
-export const USERS_FILE: string = join('.ts-cloud', 'dashboard-users.json')
+/** Project-relative location of the user store, for messages and docs. */
+export function usersFile(): string {
+  return statePath('dashboard-users.json')
+}
 
 interface UsersFile {
   users: DashboardUser[]
@@ -26,7 +29,12 @@ export function isValidUsername(value: string): boolean {
 }
 
 function normalizeUser(raw: any): DashboardUser | null {
-  if (!raw || typeof raw.username !== 'string' || typeof raw.passwordHash !== 'string')
+  if (
+    !raw
+    || typeof raw.username !== 'string'
+    || !isValidUsername(raw.username)
+    || typeof raw.passwordHash !== 'string'
+  )
     return null
   const role: BoxRole = raw.role === 'admin' ? 'admin' : 'member'
   const sites: Record<string, SiteRole> = {}
@@ -34,8 +42,7 @@ function normalizeUser(raw: any): DashboardUser | null {
     for (const [site, siteRole] of Object.entries(raw.sites)) {
       // Anything that isn't a recognized site role is dropped rather than
       // coerced — a typo must not silently widen a grant.
-      if (siteRole === 'owner' || siteRole === 'collaborator')
-        sites[site] = siteRole
+      if (siteRole === 'owner' || siteRole === 'collaborator') sites[site] = siteRole
     }
   }
   return {
@@ -44,6 +51,7 @@ function normalizeUser(raw: any): DashboardUser | null {
     role,
     sites,
     name: typeof raw.name === 'string' ? raw.name : undefined,
+    email: typeof raw.email === 'string' ? raw.email.trim().toLowerCase() : undefined,
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
   }
 }
@@ -51,27 +59,23 @@ function normalizeUser(raw: any): DashboardUser | null {
 export function parseUsersFile(text: string): DashboardUser[] {
   try {
     const parsed = JSON.parse(text) as UsersFile
-    if (!Array.isArray(parsed?.users))
-      return []
+    if (!Array.isArray(parsed?.users)) return []
     return parsed.users.map(normalizeUser).filter((u): u is DashboardUser => u !== null)
-  }
-  catch {
+  } catch {
     return []
   }
 }
 
 export function usersFilePath(cwd: string): string {
-  return join(cwd, USERS_FILE)
+  return resolveStatePath(cwd, 'dashboard-users.json')
 }
 
 export function loadUsers(cwd: string): DashboardUser[] {
   const file = usersFilePath(cwd)
-  if (!existsSync(file))
-    return []
+  if (!existsSync(file)) return []
   try {
     return parseUsersFile(readFileSync(file, 'utf8'))
-  }
-  catch {
+  } catch {
     return []
   }
 }
@@ -86,13 +90,13 @@ export function saveUsers(cwd: string, users: DashboardUser[]): void {
 
 export function findUser(users: DashboardUser[], username: string): DashboardUser | undefined {
   const wanted = username.trim().toLowerCase()
-  return users.find(u => u.username.toLowerCase() === wanted)
+  return users.find((u) => u.username.toLowerCase() === wanted)
 }
 
 export interface BootstrapResult {
   users: DashboardUser[]
   /** Set only when an admin was just created — print it once, then it's gone. */
-  generated?: { username: string, password: string }
+  generated?: { username: string; password: string }
 }
 
 /**
@@ -102,8 +106,7 @@ export interface BootstrapResult {
  */
 export function ensureAdminUser(cwd: string, username = 'admin'): BootstrapResult {
   const users = loadUsers(cwd)
-  if (users.some(u => u.role === 'admin'))
-    return { users }
+  if (users.some((u) => u.role === 'admin')) return { users }
 
   const password = process.env.TS_CLOUD_UI_PASSWORD?.trim() || generatePassword()
   const admin: DashboardUser = {
@@ -123,6 +126,7 @@ export interface UpsertMemberInput {
   username: string
   password?: string
   name?: string
+  email?: string
   sites: Record<string, SiteRole>
 }
 
@@ -133,7 +137,7 @@ export interface UpsertMemberInput {
  * Members are created through this path only — it cannot produce an admin, so
  * an invite flow can never escalate someone to box-wide control.
  */
-export function upsertMember(cwd: string, input: UpsertMemberInput): { user: DashboardUser, password?: string } {
+export function upsertMember(cwd: string, input: UpsertMemberInput): { user: DashboardUser; password?: string } {
   const users = loadUsers(cwd)
   const existing = findUser(users, input.username)
 
@@ -146,30 +150,46 @@ export function upsertMember(cwd: string, input: UpsertMemberInput): { user: Das
     role: existing?.role ?? 'member',
     sites: input.sites,
     name: input.name ?? existing?.name,
+    email: input.email?.trim().toLowerCase() ?? existing?.email,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
   }
 
   const next = existing
-    ? users.map(u => (u.username.toLowerCase() === user.username.toLowerCase() ? user : u))
+    ? users.map((u) => (u.username.toLowerCase() === user.username.toLowerCase() ? user : u))
     : [...users, user]
   saveUsers(cwd, next)
   return { user, password }
+}
+
+/** Replace a local credential while preserving the user's role and grants. */
+export function updateUserPassword(cwd: string, username: string, passwordHash: string): DashboardUser {
+  const users = loadUsers(cwd)
+  const existing = findUser(users, username)
+  if (!existing) throw new Error('Authentication user was not found')
+  const user = { ...existing, passwordHash }
+  saveUsers(
+    cwd,
+    users.map((item) => (item.username.toLowerCase() === existing.username.toLowerCase() ? user : item)),
+  )
+  return user
 }
 
 /**
  * Remove a user. The last admin cannot be removed — that would lock everyone
  * out of the box with no way back in short of editing the file by hand.
  */
-export function removeUser(cwd: string, username: string): { ok: boolean, error?: string } {
+export function removeUser(cwd: string, username: string): { ok: boolean; error?: string } {
   const users = loadUsers(cwd)
   const target = findUser(users, username)
-  if (!target)
-    return { ok: false, error: `No such user: ${username}` }
+  if (!target) return { ok: false, error: `No such user: ${username}` }
 
-  if (target.role === 'admin' && users.filter(u => u.role === 'admin').length === 1)
+  if (target.role === 'admin' && users.filter((u) => u.role === 'admin').length === 1)
     return { ok: false, error: 'Cannot remove the last admin.' }
 
-  saveUsers(cwd, users.filter(u => u.username.toLowerCase() !== target.username.toLowerCase()))
+  saveUsers(
+    cwd,
+    users.filter((u) => u.username.toLowerCase() !== target.username.toLowerCase()),
+  )
   return { ok: true }
 }
 
@@ -179,6 +199,7 @@ export function describeUser(user: DashboardUser): Record<string, any> {
     username: user.username,
     name: user.name ?? user.username,
     role: user.role,
+    email: user.email,
     sites: user.sites,
     siteCount: Object.keys(user.sites).length,
     createdAt: user.createdAt,

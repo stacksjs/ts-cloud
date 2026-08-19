@@ -1,3 +1,5 @@
+/* pickier-disable quotes */
+
 /**
  * GitHub integration for preview environments
  * Generates GitHub Actions workflows for automated preview deployments
@@ -33,7 +35,7 @@ on:
   ${trigger}:
     types: [opened, synchronize, reopened, closed]
     branches:
-${branches.map(b => `      - ${b}`).join('\n')}
+${branches.map((b) => `      - ${b}`).join('\n')}
 
 env:
   AWS_REGION: ${awsRegion}
@@ -59,18 +61,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      ${awsRole
-        ? `- name: Configure AWS credentials
+      ${
+        awsRole
+          ? `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ env.AWS_REGION }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ env.AWS_REGION }}`}
+          aws-region: \${{ env.AWS_REGION }}`
+      }
 
       - name: Deploy preview environment
         if: github.event.action != 'closed'
@@ -147,18 +151,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      ${awsRole
-        ? `- name: Configure AWS credentials
+      ${
+        awsRole
+          ? `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ env.AWS_REGION }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ env.AWS_REGION }}`}
+          aws-region: \${{ env.AWS_REGION }}`
+      }
 
       - name: Cleanup stale environments
         run: |
@@ -170,11 +176,13 @@ jobs:
 /**
  * Generate scheduled cleanup workflow
  */
-export function generateCleanupWorkflow(options: {
-  schedule?: string
-  maxAge?: number
-  keepCount?: number
-} = {}): string {
+export function generateCleanupWorkflow(
+  options: {
+    schedule?: string
+    maxAge?: number
+    keepCount?: number
+  } = {},
+): string {
   const {
     schedule = '0 0 * * *', // Daily at midnight
     maxAge = 48, // 48 hours
@@ -232,10 +240,12 @@ jobs:
 /**
  * Generate cost report workflow
  */
-export function generateCostReportWorkflow(options: {
-  schedule?: string
-  webhookUrl?: string
-} = {}): string {
+export function generateCostReportWorkflow(
+  options: {
+    schedule?: string
+    webhookUrl?: string
+  } = {},
+): string {
   const {
     schedule = '0 8 * * 1', // Weekly on Monday at 8am
     webhookUrl,
@@ -284,14 +294,16 @@ jobs:
           echo "cost_json=\$COST_JSON" >> $GITHUB_OUTPUT
 
       - name: Send cost report${webhookUrl ? ' to Slack' : ''}
-        ${webhookUrl
-          ? `env:
+        ${
+          webhookUrl
+            ? `env:
           SLACK_WEBHOOK_URL: ${webhookUrl}
         run: |
           curl -X POST -H 'Content-type: application/json' \\
             --data '{"text":"Preview Environment Cost Report\\n\${{ steps.cost.outputs.cost_json }}"}' \\
             \$SLACK_WEBHOOK_URL`
-          : `run: |
-          echo "\${{ steps.cost.outputs.cost_json }}"`}
+            : `run: |
+          echo "\${{ steps.cost.outputs.cost_json }}"`
+        }
 `
 }

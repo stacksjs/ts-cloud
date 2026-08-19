@@ -114,12 +114,7 @@ describe('monitoring Module - Alarms', () => {
 
 describe('monitoring Module - Common Alarm Types', () => {
   test('should create high CPU alarm', () => {
-    const alarmConfig = Monitoring.AlarmTypes.highCpu(
-      slug,
-      environment,
-      'i-1234567890abcdef0',
-      90,
-    )
+    const alarmConfig = Monitoring.AlarmTypes.highCpu(slug, environment, 'i-1234567890abcdef0', 90)
 
     expect(alarmConfig.metricName).toBe('CPUUtilization')
     expect(alarmConfig.namespace).toBe('AWS/EC2')
@@ -144,12 +139,7 @@ describe('monitoring Module - Common Alarm Types', () => {
   })
 
   test('should create API Gateway 5xx errors alarm', () => {
-    const alarmConfig = Monitoring.AlarmTypes.apiGateway5xxErrors(
-      slug,
-      environment,
-      'my-api',
-      5,
-    )
+    const alarmConfig = Monitoring.AlarmTypes.apiGateway5xxErrors(slug, environment, 'my-api', 5)
 
     expect(alarmConfig.metricName).toBe('5XXError')
     expect(alarmConfig.namespace).toBe('AWS/ApiGateway')
@@ -157,12 +147,7 @@ describe('monitoring Module - Common Alarm Types', () => {
   })
 
   test('should create DynamoDB throttles alarm', () => {
-    const alarmConfig = Monitoring.AlarmTypes.dynamoDBThrottles(
-      slug,
-      environment,
-      'my-table',
-      3,
-    )
+    const alarmConfig = Monitoring.AlarmTypes.dynamoDBThrottles(slug, environment, 'my-table', 3)
 
     expect(alarmConfig.metricName).toBe('UserErrors')
     expect(alarmConfig.namespace).toBe('AWS/DynamoDB')
@@ -171,12 +156,7 @@ describe('monitoring Module - Common Alarm Types', () => {
   })
 
   test('should create RDS CPU alarm', () => {
-    const alarmConfig = Monitoring.AlarmTypes.rdsCpu(
-      slug,
-      environment,
-      'my-db-instance',
-      75,
-    )
+    const alarmConfig = Monitoring.AlarmTypes.rdsCpu(slug, environment, 'my-db-instance', 75)
 
     expect(alarmConfig.metricName).toBe('CPUUtilization')
     expect(alarmConfig.namespace).toBe('AWS/RDS')
@@ -185,12 +165,7 @@ describe('monitoring Module - Common Alarm Types', () => {
   })
 
   test('should create SQS queue depth alarm', () => {
-    const alarmConfig = Monitoring.AlarmTypes.sqsQueueDepth(
-      slug,
-      environment,
-      'my-queue',
-      200,
-    )
+    const alarmConfig = Monitoring.AlarmTypes.sqsQueueDepth(slug, environment, 'my-queue', 200)
 
     expect(alarmConfig.metricName).toBe('ApproximateNumberOfMessagesVisible')
     expect(alarmConfig.namespace).toBe('AWS/SQS')
@@ -207,18 +182,10 @@ describe('monitoring Module - Dashboards', () => {
         0,
         12,
         6,
-        [
-          ['AWS/EC2', 'CPUUtilization', { InstanceId: 'i-1234567890abcdef0' }],
-        ],
+        [['AWS/EC2', 'CPUUtilization', { InstanceId: 'i-1234567890abcdef0' }]],
         'CPU Utilization',
       ),
-      Monitoring.DashboardWidgets.text(
-        12,
-        0,
-        12,
-        6,
-        '# Dashboard Title\nThis is a test dashboard',
-      ),
+      Monitoring.DashboardWidgets.text(12, 0, 12, 6, '# Dashboard Title\nThis is a test dashboard'),
     ]
 
     const { dashboard, logicalId } = Monitoring.createDashboard({
@@ -261,13 +228,7 @@ describe('monitoring Module - Dashboards', () => {
   })
 
   test('should create text widget', () => {
-    const widget = Monitoring.DashboardWidgets.text(
-      0,
-      0,
-      24,
-      2,
-      '# Production Dashboard',
-    )
+    const widget = Monitoring.DashboardWidgets.text(0, 0, 24, 2, '# Production Dashboard')
 
     expect(widget.type).toBe('text')
     expect(widget.properties.markdown).toBe('# Production Dashboard')
@@ -505,15 +466,7 @@ describe('monitoring Module - Integration with TemplateBuilder', () => {
     const { dashboard, logicalId } = Monitoring.createDashboard({
       slug,
       environment,
-      widgets: [
-        Monitoring.DashboardWidgets.metric(
-          0,
-          0,
-          12,
-          6,
-          [['AWS/EC2', 'CPUUtilization']],
-        ),
-      ],
+      widgets: [Monitoring.DashboardWidgets.metric(0, 0, 12, 6, [['AWS/EC2', 'CPUUtilization']])],
     })
 
     builder.addResource(logicalId, dashboard)
@@ -599,22 +552,8 @@ describe('monitoring Module - Integration with TemplateBuilder', () => {
       slug,
       environment,
       widgets: [
-        Monitoring.DashboardWidgets.metric(
-          0,
-          0,
-          12,
-          6,
-          [['MyApp/Lambda', 'ErrorCount']],
-          'Lambda Errors',
-        ),
-        Monitoring.DashboardWidgets.log(
-          0,
-          6,
-          12,
-          6,
-          ['/aws/lambda/my-function'],
-          'Recent Errors',
-        ),
+        Monitoring.DashboardWidgets.metric(0, 0, 12, 6, [['MyApp/Lambda', 'ErrorCount']], 'Lambda Errors'),
+        Monitoring.DashboardWidgets.log(0, 6, 12, 6, ['/aws/lambda/my-function'], 'Recent Errors'),
       ],
     })
 

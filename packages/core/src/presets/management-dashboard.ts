@@ -1,4 +1,5 @@
 import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
+import { DEFAULT_STATE_DIR } from '../state-dir'
 
 /**
  * Auto-deployed management dashboard (the `@ts-cloud/ui` stx app — the Server +
@@ -20,8 +21,10 @@ import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
  * site on the box. Kept for boxes that cannot run the service.
  *
  * Live mode is single-host by design: one control panel per box, many sites,
- * per-site grants (the Forge/Coolify model). Static mode fans out one dashboard
- * per apex, since it is only serving the same files on each domain.
+ * per-site grants (the Forge/Coolify model). Attached projects never create
+ * another dashboard; the server owner's dashboard discovers their rpx fragments
+ * and managed services. Static mode fans out one dashboard per apex only for the
+ * server-owning project, since it is only serving the same files on each domain.
  */
 
 export interface ManagementDashboardOptions {
@@ -60,19 +63,26 @@ export interface ManagementDashboardOptions {
   version?: string
 }
 
-/** Where the live dashboard keeps its users, session key and cache. */
-export const DASHBOARD_STATE_DIR = '.ts-cloud'
+/**
+ * Where the live dashboard keeps its users, session key and cache ON THE BOX,
+ * relative to its release directory.
+ *
+ * Deliberately the literal default rather than {@link stateDir}: that one is
+ * about the operator's machine (a Stacks checkout points it at `storage/cloud`),
+ * while this is the path the deploy carries across releases via `sharedPaths`.
+ * The two must agree with each other, not with the local checkout.
+ */
+export const DASHBOARD_STATE_DIR: string = DEFAULT_STATE_DIR
 
 /**
- * The dashboard service's entry point inside its release dir. The CLI is
- * installed from npm by the release's `bun install`, so this path exists on the
- * box without the deploy having to ship a binary.
+ * The dashboard service's dedicated production entry inside its release dir.
+ * It is installed from npm by the release's `bun install`, so this path exists
+ * on the box without the deploy having to ship a separate binary.
  *
- * Called through the module path rather than the `cloud` bin shim because the
- * systemd unit runs `/usr/local/bin/bun <args>` directly — a bare `cloud` would
- * be resolved by bun as a FILE to execute, and the service would never start.
+ * This avoids loading the general-purpose cloud CLI and every command module
+ * into a long-running monitoring process.
  */
-export const DASHBOARD_ENTRY = './node_modules/@stacksjs/ts-cloud/dist/bin/cli.js'
+export const DASHBOARD_ENTRY = './node_modules/@stacksjs/ts-cloud/dist/bin/dashboard-server.js'
 
 /** The registrable apex (`acme.com`) of a hostname, naïvely the last two labels. */
 function apexOf(domain: string): string {
@@ -82,7 +92,7 @@ function apexOf(domain: string): string {
 
 /** 32-bit FNV-1a hash — deterministic, dependency-free, good spread for hostnames. */
 function fnv1a(str: string): number {
-  let h = 0x811C9DC5
+  let h = 0x811c9dc5
   for (let i = 0; i < str.length; i++) {
     h ^= str.charCodeAt(i)
     h = Math.imul(h, 0x01000193)
@@ -130,11 +140,9 @@ export function deriveManagementDashboardPort(dashboardHost: string): number {
  */
 function dashboardHostFor(domain: string, ownedDomains: Iterable<string>): string {
   const apex = apexOf(domain)
-  if (apex === domain)
-    return `dashboard.${apex}`
+  if (apex === domain) return `dashboard.${apex}`
   for (const owned of ownedDomains) {
-    if (owned === apex)
-      return `dashboard.${apex}`
+    if (owned === apex) return `dashboard.${apex}`
   }
   return `dashboard.${domain}`
 }
@@ -149,16 +157,21 @@ function dashboardHostFor(domain: string, ownedDomains: Iterable<string>): strin
  * dashboard).
  */
 function collectDomains(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment?: EnvironmentType,
 ): string[] {
   const candidates: string[] = []
   const dnsDomain = (config.infrastructure as { dns?: { domain?: string } } | undefined)?.dns?.domain
-  if (dnsDomain) candidates.push(dnsDomain)
+  // On an attached project, `dns.domain` is commonly the owner's hosted zone
+  // (for example stacksjs.com), not a domain the tenant serves. Treating that
+  // zone as project ownership makes every tenant claim dashboard.stacksjs.com,
+  // derive the same port, and crash-loop behind the first dashboard that bound
+  // it. Attached projects derive ownership from their environment/sites only.
+  if (dnsDomain && !config.cloud?.attachTo) candidates.push(dnsDomain)
   if (environment && config.environments?.[environment]?.domain)
     candidates.push(config.environments[environment].domain!)
   for (const site of Object.values(config.sites ?? {})) {
-    const s = site as { domain?: string | string[], redirect?: string } | undefined
+    const s = site as { domain?: string | string[]; redirect?: string } | undefined
     // Redirect-only sites (a `redirect` target, e.g. www → apex) serve no app and
     // get no dashboard — otherwise every alias would spawn a redundant cert.
     if (!s || s.redirect) continue
@@ -167,7 +180,7 @@ function collectDomains(
     else if (Array.isArray(d)) candidates.push(...d.filter((x): x is string => typeof x === 'string'))
   }
 
-  return candidates.filter(d => d && !d.startsWith('dashboard.'))
+  return candidates.filter((d) => d && !d.startsWith('dashboard.'))
 }
 
 /**
@@ -177,17 +190,15 @@ function collectDomains(
  * nothing is available.
  */
 export function resolveDashboardDomain(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment?: EnvironmentType,
   explicit?: string,
 ): string | null {
-  if (explicit)
-    return explicit
+  if (explicit) return explicit
 
   const domains = collectDomains(config, environment)
   const base = domains[0]
-  if (!base)
-    return null
+  if (!base) return null
   // Pass the full owned set so the apex is only claimed when this project
   // actually serves it (see dashboardHostFor).
   return dashboardHostFor(base, domains)
@@ -203,12 +214,11 @@ export function resolveDashboardDomain(
  * suppresses the per-apex fan-out — an operator asking for one host gets one.
  */
 export function resolveDashboardDomains(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment?: EnvironmentType,
   explicit?: string,
 ): string[] {
-  if (explicit)
-    return [explicit]
+  if (explicit) return [explicit]
 
   const domains = collectDomains(config, environment)
   const hosts: string[] = []
@@ -227,7 +237,12 @@ export function hasManagementDashboardSite(config: Pick<CloudConfig, 'sites'>): 
   return Object.entries(config.sites ?? {}).some(([name, site]) => {
     if (!site) return false
     const root = (site as { root?: string }).root ?? ''
-    return isManagementDashboardSiteName(name) || root === 'ui/dist' || root.endsWith('/ui/dist') || root.endsWith('/dist/ui')
+    return (
+      isManagementDashboardSiteName(name) ||
+      root === 'ui/dist' ||
+      root.endsWith('/ui/dist') ||
+      root.endsWith('/dist/ui')
+    )
   })
 }
 
@@ -268,12 +283,12 @@ export function isManagementDashboardSiteName(name: string): boolean {
  * feature (the default) — the same files served on each domain.
  */
 export function resolveManagementDashboardSites(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment: EnvironmentType,
   opts: ManagementDashboardOptions,
-): Array<{ name: string, site: SiteConfig }> {
-  if (hasManagementDashboardSite(config))
-    return []
+): Array<{ name: string; site: SiteConfig }> {
+  if (hasManagementDashboardSite(config)) return []
+  if (config.cloud?.attachTo) return []
 
   const auth = opts.password
     ? { auth: { username: opts.username || 'admin', password: opts.password, realm: opts.realm } }
@@ -283,10 +298,10 @@ export function resolveManagementDashboardSites(
   // Live is the default: one control panel per box, authenticating itself.
   if (opts.live !== false) {
     const domain = resolveDashboardDomain(config, environment, opts.domain)
-    if (!domain)
-      return []
+    if (!domain) return []
 
     const port = opts.port ?? deriveManagementDashboardPort(domain)
+    const database = config.infrastructure?.appDatabase ?? config.infrastructure?.compute?.database
     const site: SiteConfig = {
       // The release ships the project's cloud config + a package.json; the
       // CLI (and the UI it serves) come from npm via `bun install` below, so
@@ -295,8 +310,27 @@ export function resolveManagementDashboardSites(
       deploy: 'server',
       domain,
       preStart: ['bun install --production --no-save'],
-      start: `bun ${DASHBOARD_ENTRY} dashboard:serve --box --host 127.0.0.1 --port ${port}`,
+      start: `bun ${DASHBOARD_ENTRY} --box --host 127.0.0.1 --port ${port}`,
       port,
+      // A dashboard watches the box; it is never the reason the box exists.
+      // At the default weight of 100 it competes evenly with the sites it is
+      // reporting on, so the act of observing a busy host makes it busier.
+      // Ranked below everything it monitors, it simply waits its turn — which
+      // costs a monitoring page nothing anyone will notice.
+      cpuWeight: 10,
+      ioWeight: 10,
+      // Enough for the server and its workers, low enough that a spawn loop
+      // hits this ceiling instead of the box's PID space, where it would take
+      // every other tenant with it.
+      tasksMax: 128,
+      // The shared-box owner is the single background monitoring agent.
+      // Attached tenant configs return no dashboard site above.
+      env: {
+        APP_ENV: 'production',
+        NODE_ENV: 'production',
+        TS_CLOUD_DASHBOARD_TELEMETRY: '1',
+        ...(database?.password ? { TS_CLOUD_DASHBOARD_DB_PASSWORD: database.password } : {}),
+      },
       // The zero-downtime cutover overlaps two instances on one port via
       // SO_REUSEPORT. The dashboard's server does not bind that way, so the new
       // instance would hit EADDRINUSE, fail, and only start after a retry that
@@ -318,7 +352,7 @@ export function resolveManagementDashboardSites(
   }
 
   const domains = resolveDashboardDomains(config, environment, opts.domain)
-  return domains.map(domain => ({
+  return domains.map((domain) => ({
     name: managementDashboardSiteName(domain),
     site: {
       root: opts.uiRoot,
@@ -340,9 +374,9 @@ export function resolveManagementDashboardSites(
  * callers that only want the single primary host.
  */
 export function resolveManagementDashboardSite(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment: EnvironmentType,
   opts: ManagementDashboardOptions,
-): { name: string, site: SiteConfig } | null {
+): { name: string; site: SiteConfig } | null {
   return resolveManagementDashboardSites(config, environment, opts)[0] ?? null
 }

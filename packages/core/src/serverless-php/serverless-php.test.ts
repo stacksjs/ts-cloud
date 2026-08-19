@@ -19,7 +19,7 @@ describe('generatePhpFpmConfig', () => {
 describe('phpRuntimeLayerAssets', () => {
   it('ships the bootstrap (executable) + runtime loops + fpm config', () => {
     const assets = phpRuntimeLayerAssets()
-    const byPath = Object.fromEntries(assets.map(a => [a.path, a]))
+    const byPath = Object.fromEntries(assets.map((a) => [a.path, a]))
     expect(byPath.bootstrap.mode).toBe(0o755)
     expect(byPath.bootstrap.contents).toContain('TSCLOUD_LAMBDA_MODE')
     expect(byPath['tscloud/runtime.php'].contents).toContain('invocation/next')
@@ -29,7 +29,7 @@ describe('phpRuntimeLayerAssets', () => {
   })
 
   it('includes the octane runtime, and the bootstrap selects it via TSCLOUD_OCTANE', () => {
-    const byPath = Object.fromEntries(phpRuntimeLayerAssets().map(a => [a.path, a]))
+    const byPath = Object.fromEntries(phpRuntimeLayerAssets().map((a) => [a.path, a]))
     expect(byPath['tscloud/octane-runtime.php'].contents).toContain('Contracts\\Http\\Kernel')
     expect(byPath.bootstrap.contents).toContain('TSCLOUD_OCTANE')
     expect(byPath.bootstrap.contents).toContain('octane-runtime.php')
@@ -51,8 +51,8 @@ describe('laravelServerlessEnvDefaults', () => {
   })
 
   it('exposes the build-time artisan caching steps', () => {
-    expect(LARAVEL_SERVERLESS_BUILD_STEPS.some(s => s.includes('config:cache'))).toBe(true)
-    expect(LARAVEL_SERVERLESS_BUILD_STEPS.some(s => s.includes('composer install'))).toBe(true)
+    expect(LARAVEL_SERVERLESS_BUILD_STEPS.some((s) => s.includes('config:cache'))).toBe(true)
+    expect(LARAVEL_SERVERLESS_BUILD_STEPS.some((s) => s.includes('composer install'))).toBe(true)
   })
 })
 
@@ -86,13 +86,12 @@ describe('packagePhpApp', () => {
       writeFileSync(join(root, 'node_modules', 'junk.js'), 'junk')
 
       const artifact = packagePhpApp({ projectRoot: root, app: { kind: 'php' }, skipBuild: true })
-      expect(artifact.zip.readUInt32LE(0)).toBe(0x04034B50)
+      expect(artifact.zip.readUInt32LE(0)).toBe(0x04034b50)
       expect(artifact.handlers.http).toBe('public/index.php')
       expect(artifact.sha256).toMatch(/^[a-f0-9]{64}$/)
       // node_modules is excluded; index.php + artisan + vendor are included.
       expect(artifact.fileCount).toBe(3)
-    }
-    finally {
+    } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })

@@ -16,7 +16,7 @@ describe('hetzner config wiring', () => {
   /** Field names declared on the HetznerConfig interface. */
   function hetznerConfigFields(): string[] {
     const block = /export interface HetznerConfig \{([\s\S]*?)\n\}/.exec(typesSource)?.[1] ?? ''
-    return [...block.matchAll(/^\s{2}(\w+)\??:/gm)].map(m => m[1])
+    return [...block.matchAll(/^\s{2}(\w+)\??:/gm)].map((m) => m[1])
   }
 
   it('finds the HetznerConfig fields (guards the scan itself)', () => {
@@ -34,7 +34,9 @@ describe('hetzner config wiring', () => {
     // Each field must be referenced as `hetzner?.<field>` or `hetzner.<field>`
     // by the factory, the resolver or the driver — otherwise setting it in
     // cloud.config.ts silently does nothing.
-    const unread = hetznerConfigFields().filter(field => !wiring.includes(`hetzner?.${field}`) && !wiring.includes(`hetzner.${field}`))
+    const unread = hetznerConfigFields().filter(
+      (field) => !wiring.includes(`hetzner?.${field}`) && !wiring.includes(`hetzner.${field}`),
+    )
     expect(unread).toEqual([])
   })
 

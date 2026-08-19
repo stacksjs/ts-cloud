@@ -10,18 +10,18 @@ import {
 describe('buildServicesProvisionScript', () => {
   it('installs and enables the requested engines via pantry', () => {
     const script = buildServicesProvisionScript({ mysql: true, redis: true }).join('\n')
-    expect(script).toContain('pantry install \'mysql.com@8.0.43\' \'redis.io\'')
-    expect(script).toContain('pantry enable \'mysql\'')
-    expect(script).toContain('pantry start \'mysql\'')
-    expect(script).toContain('pantry start \'redis\'')
+    expect(script).toContain("pantry install 'mysql.com@8.0.43' 'redis.io'")
+    expect(script).toContain("pantry enable 'mysql'")
+    expect(script).toContain("pantry start 'mysql'")
+    expect(script).toContain("pantry start 'redis'")
     expect(script).not.toContain('apt-get')
   })
 
   it('installs postgres + meilisearch when requested', () => {
     const script = buildServicesProvisionScript({ postgres: true, meilisearch: { version: '1.6' } }).join('\n')
-    expect(script).toContain('pantry install \'postgresql.org\' \'meilisearch.com\'')
-    expect(script).toContain('pantry start \'postgres\'')
-    expect(script).toContain('pantry start \'meilisearch\'')
+    expect(script).toContain("pantry install 'postgresql.org' 'meilisearch.com'")
+    expect(script).toContain("pantry start 'postgres'")
+    expect(script).toContain("pantry start 'meilisearch'")
   })
 
   it('emits nothing for an empty config', () => {
@@ -44,21 +44,19 @@ describe('buildDatabaseSetupScript', () => {
   })
 
   it('creates a MariaDB database via the mariadb socket', () => {
-    const script = buildDatabaseSetupScript(
-      { name: 'app', username: 'app', password: 'pw' },
-      { mariadb: true },
-    ).join('\n')
+    const script = buildDatabaseSetupScript({ name: 'app', username: 'app', password: 'pw' }, { mariadb: true }).join(
+      '\n',
+    )
     expect(script).toContain('mysql --socket=/var/lib/pantry/mariadb/mariadbd.sock -u root')
     expect(script).toContain("CREATE USER IF NOT EXISTS 'app'@'%' IDENTIFIED BY 'pw'")
   })
 
   it('creates a Postgres role + database with existence guards', () => {
-    const script = buildDatabaseSetupScript(
-      { name: 'app', username: 'app', password: 'pw' },
-      { postgres: true },
-    ).join('\n')
+    const script = buildDatabaseSetupScript({ name: 'app', username: 'app', password: 'pw' }, { postgres: true }).join(
+      '\n',
+    )
     // Role guarded by a DO block; identifiers double-quoted, password literal.
-    expect(script).toContain('IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = \'app\')')
+    expect(script).toContain("IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app')")
     expect(script).toContain('CREATE ROLE "app" LOGIN PASSWORD \'pw\'')
     // Database created idempotently via \gexec.
     expect(script).toContain('CREATE DATABASE "app" OWNER "app"')
@@ -69,11 +67,10 @@ describe('buildDatabaseSetupScript', () => {
   // over TCP loopback (and the postgres superuser has no password) — admin
   // commands against the co-located engine must NOT pass -h 127.0.0.1.
   it('connects the Postgres setup over the local unix socket, not TCP', () => {
-    const script = buildDatabaseSetupScript(
-      { name: 'app', username: 'app', password: 'pw' },
-      { postgres: true },
-    ).join('\n')
-    expect(script).toContain('psql -p 5432 -U postgres <<\'TS_CLOUD_PG_EOF\'')
+    const script = buildDatabaseSetupScript({ name: 'app', username: 'app', password: 'pw' }, { postgres: true }).join(
+      '\n',
+    )
+    expect(script).toContain("psql -p 5432 -U postgres <<'TS_CLOUD_PG_EOF'")
     expect(script).not.toContain('psql -h')
     expect(script).toContain('pg_isready -p 5432 -q')
     expect(script).not.toContain('pg_isready -h')
@@ -115,15 +112,14 @@ describe('buildDatabaseSetupScript', () => {
     expect(script).toContain('CREATE ROLE "reporter" LOGIN PASSWORD \'ro\'')
     expect(script).toContain('GRANT CONNECT ON DATABASE "app" TO "reporter"')
     expect(script).toContain('GRANT SELECT ON ALL TABLES IN SCHEMA public TO "reporter"')
-    expect(script).toContain('ALTER DEFAULT PRIVILEGES FOR ROLE "app" IN SCHEMA public GRANT SELECT ON TABLES TO "reporter"')
+    expect(script).toContain(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE "app" IN SCHEMA public GRANT SELECT ON TABLES TO "reporter"',
+    )
     expect(script).toContain('\\connect "app"')
   })
 
   it('skips creation for a managed (remote-host) database', () => {
-    const script = buildDatabaseSetupScript(
-      { name: 'app', host: 'db.internal.example.com' },
-      { mysql: true },
-    )
+    const script = buildDatabaseSetupScript({ name: 'app', host: 'db.internal.example.com' }, { mysql: true })
     expect(script).toEqual([])
   })
 
@@ -163,18 +159,21 @@ describe('pgAdminCommand', () => {
   })
 
   it('keeps TCP with credentials for an external host', () => {
-    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', username: 'admin', password: 's3cret' }))
-      .toBe(`PGPASSWORD='s3cret' psql -h db.example.com -p 5432 -U admin -w`)
+    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', username: 'admin', password: 's3cret' })).toBe(
+      `PGPASSWORD='s3cret' psql -h db.example.com -p 5432 -U admin -w`,
+    )
   })
 
   it('omits PGPASSWORD for an external host without a password (still never prompts)', () => {
-    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', username: 'admin' }))
-      .toBe('psql -h db.example.com -p 5432 -U admin -w')
+    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', username: 'admin' })).toBe(
+      'psql -h db.example.com -p 5432 -U admin -w',
+    )
   })
 
   it('escapes a single quote in the external password', () => {
-    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', password: "a'b" }))
-      .toBe(`PGPASSWORD='a'\\''b' psql -h db.example.com -p 5432 -U postgres -w`)
+    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', password: "a'b" })).toBe(
+      `PGPASSWORD='a'\\''b' psql -h db.example.com -p 5432 -U postgres -w`,
+    )
   })
 })
 

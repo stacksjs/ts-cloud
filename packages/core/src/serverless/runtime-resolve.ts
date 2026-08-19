@@ -8,7 +8,6 @@
  * versions all run on `provided.al2023` with a ts-cloud layer, while common Node
  * versions stay on the managed runtime for simplicity.
  */
-
 import type { ServerlessAppConfig } from '../types'
 
 /** Node major versions AWS provides a managed runtime for (`nodejs{N}.x`). */

@@ -1,6 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
-import type { Distribution } from '../../src/aws/cloudfront'
 import type { CertificateDetail } from '../../src/aws/acm'
+import type { Distribution } from '../../src/aws/cloudfront'
 import * as cli from '../../src/utils/cli'
 import { loadValidatedConfig } from './shared'
 
@@ -46,11 +46,10 @@ export function registerStatusCommands(app: CLI): void {
           ec2Spinner.succeed('EC2 instances checked')
           checks.push({
             name: 'EC2 Instances',
-            status: running > 0 ? 'OK' : (total > 0 ? 'WARN' : 'INFO'),
+            status: running > 0 ? 'OK' : total > 0 ? 'WARN' : 'INFO',
             details: `${running} running, ${stopped} stopped, ${total} total`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           ec2Spinner.fail('EC2 check failed')
           checks.push({ name: 'EC2 Instances', status: 'ERROR', details: error.message })
         }
@@ -64,16 +63,16 @@ export function registerStatusCommands(app: CLI): void {
           const result = await rds.describeDBInstances()
           const instances = result.DBInstances || []
 
-          const available = instances.filter(i => i.DBInstanceStatus === 'available').length
+          const available = instances.filter((i) => i.DBInstanceStatus === 'available').length
 
           rdsSpinner.succeed('RDS instances checked')
           checks.push({
             name: 'RDS Databases',
-            status: instances.length > 0 && available === instances.length ? 'OK' : (instances.length > 0 ? 'WARN' : 'INFO'),
+            status:
+              instances.length > 0 && available === instances.length ? 'OK' : instances.length > 0 ? 'WARN' : 'INFO',
             details: `${available} available, ${instances.length} total`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           rdsSpinner.fail('RDS check failed')
           checks.push({ name: 'RDS Databases', status: 'ERROR', details: error.message })
         }
@@ -93,8 +92,7 @@ export function registerStatusCommands(app: CLI): void {
             status: 'OK',
             details: `${functions.length} function(s)`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           lambdaSpinner.fail('Lambda check failed')
           checks.push({ name: 'Lambda Functions', status: 'ERROR', details: error.message })
         }
@@ -114,8 +112,7 @@ export function registerStatusCommands(app: CLI): void {
             status: 'OK',
             details: `${buckets.length} bucket(s)`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           s3Spinner.fail('S3 check failed')
           checks.push({ name: 'S3 Buckets', status: 'ERROR', details: error.message })
         }
@@ -133,11 +130,15 @@ export function registerStatusCommands(app: CLI): void {
           cfSpinner.succeed('CloudFront checked')
           checks.push({
             name: 'CloudFront',
-            status: distributions.length > 0 && deployed === distributions.length ? 'OK' : (distributions.length > 0 ? 'WARN' : 'INFO'),
+            status:
+              distributions.length > 0 && deployed === distributions.length
+                ? 'OK'
+                : distributions.length > 0
+                  ? 'WARN'
+                  : 'INFO',
             details: `${deployed} deployed, ${distributions.length} total`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           cfSpinner.fail('CloudFront check failed')
           checks.push({ name: 'CloudFront', status: 'ERROR', details: error.message })
         }
@@ -157,8 +158,7 @@ export function registerStatusCommands(app: CLI): void {
             status: 'OK',
             details: `${queues.length} queue(s)`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           sqsSpinner.fail('SQS check failed')
           checks.push({ name: 'SQS Queues', status: 'ERROR', details: error.message })
         }
@@ -179,26 +179,21 @@ export function registerStatusCommands(app: CLI): void {
           ])
           const stacks = result.StackSummaries || []
 
-          const healthy = stacks.filter(s =>
-            s.StackStatus === 'CREATE_COMPLETE' || s.StackStatus === 'UPDATE_COMPLETE',
+          const healthy = stacks.filter(
+            (s) => s.StackStatus === 'CREATE_COMPLETE' || s.StackStatus === 'UPDATE_COMPLETE',
           ).length
 
-          const inProgress = stacks.filter(s =>
-            s.StackStatus?.includes('IN_PROGRESS'),
-          ).length
+          const inProgress = stacks.filter((s) => s.StackStatus?.includes('IN_PROGRESS')).length
 
-          const failed = stacks.filter(s =>
-            s.StackStatus?.includes('ROLLBACK'),
-          ).length
+          const failed = stacks.filter((s) => s.StackStatus?.includes('ROLLBACK')).length
 
           cfnSpinner.succeed('CloudFormation checked')
           checks.push({
             name: 'CloudFormation',
-            status: failed > 0 ? 'WARN' : (inProgress > 0 ? 'INFO' : 'OK'),
+            status: failed > 0 ? 'WARN' : inProgress > 0 ? 'INFO' : 'OK',
             details: `${healthy} healthy, ${inProgress} in progress, ${failed} rolled back`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           cfnSpinner.fail('CloudFormation check failed')
           checks.push({ name: 'CloudFormation', status: 'ERROR', details: error.message })
         }
@@ -214,11 +209,11 @@ export function registerStatusCommands(app: CLI): void {
 
           // Get full details for each certificate to access Status and NotAfter
           const certs: CertificateDetail[] = await Promise.all(
-            certSummaries.map(c => acm.describeCertificate({ CertificateArn: c.CertificateArn })),
+            certSummaries.map((c) => acm.describeCertificate({ CertificateArn: c.CertificateArn })),
           )
 
-          const issued = certs.filter(c => c.Status === 'ISSUED').length
-          const pending = certs.filter(c => c.Status === 'PENDING_VALIDATION').length
+          const issued = certs.filter((c) => c.Status === 'ISSUED').length
+          const pending = certs.filter((c) => c.Status === 'PENDING_VALIDATION').length
           const expiringSoon = certs.filter((c) => {
             if (c.NotAfter) {
               const daysUntilExpiry = (new Date(c.NotAfter).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -230,11 +225,10 @@ export function registerStatusCommands(app: CLI): void {
           acmSpinner.succeed('SSL certificates checked')
           checks.push({
             name: 'SSL Certificates',
-            status: expiringSoon > 0 ? 'WARN' : (pending > 0 ? 'INFO' : 'OK'),
+            status: expiringSoon > 0 ? 'WARN' : pending > 0 ? 'INFO' : 'OK',
             details: `${issued} issued, ${pending} pending${expiringSoon > 0 ? `, ${expiringSoon} expiring soon` : ''}`,
           })
-        }
-        catch (error: any) {
+        } catch (error: any) {
           acmSpinner.fail('ACM check failed')
           checks.push({ name: 'SSL Certificates', status: 'ERROR', details: error.message })
         }
@@ -248,14 +242,11 @@ export function registerStatusCommands(app: CLI): void {
           let icon = ''
           if (check.status === 'OK') {
             icon = `${cli.colors.green}[OK]${cli.colors.reset}`
-          }
-          else if (check.status === 'WARN') {
+          } else if (check.status === 'WARN') {
             icon = `${cli.colors.yellow}[WARN]${cli.colors.reset}`
-          }
-          else if (check.status === 'ERROR') {
+          } else if (check.status === 'ERROR') {
             icon = `${cli.colors.red}[ERROR]${cli.colors.reset}`
-          }
-          else {
+          } else {
             icon = `${cli.colors.blue}[INFO]${cli.colors.reset}`
           }
 
@@ -263,21 +254,18 @@ export function registerStatusCommands(app: CLI): void {
         }
 
         // Overall status
-        const hasErrors = checks.some(c => c.status === 'ERROR')
-        const hasWarnings = checks.some(c => c.status === 'WARN')
+        const hasErrors = checks.some((c) => c.status === 'ERROR')
+        const hasWarnings = checks.some((c) => c.status === 'WARN')
 
         cli.info('')
         if (hasErrors) {
           cli.error('Some services have errors. Check the details above.')
-        }
-        else if (hasWarnings) {
+        } else if (hasWarnings) {
           cli.warn('Some services need attention. Check the warnings above.')
-        }
-        else {
+        } else {
           cli.success('All services are healthy!')
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get status: ${error.message}`)
         process.exit(1)
       }
@@ -304,8 +292,7 @@ export function registerStatusCommands(app: CLI): void {
         // Note: Cost Explorer API requires special permissions
         cli.info('Note: Cost data requires AWS Cost Explorer API access.')
         cli.info('Run `cloud cost` for detailed cost analysis.')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get cost summary: ${error.message}`)
         process.exit(1)
       }
@@ -376,8 +363,7 @@ export function registerStatusCommands(app: CLI): void {
             cli.error(`  - ${alarm.AlarmName}: ${alarm.AlarmDescription || 'No description'}`)
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get alarms: ${error.message}`)
         process.exit(1)
       }

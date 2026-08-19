@@ -38,7 +38,13 @@ const baseConfig: CloudConfig = {
  * fleet's reconcile-by-label logic (reuse existing / create the delta /
  * destroy extras) the way the real API would.
  */
-function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient, servers: any[], deletedServerIds: number[], deletedFirewallNames: string[], deletedNetworkNames: string[] } {
+function fakeHetznerClient(initialServers: any[] = []): {
+  client: HetznerClient
+  servers: any[]
+  deletedServerIds: number[]
+  deletedFirewallNames: string[]
+  deletedNetworkNames: string[]
+} {
   const servers: any[] = [...initialServers]
   let nextId = (initialServers.reduce((m, s) => Math.max(m, s.id), 0) || 100) + 1
   const firewalls: any[] = []
@@ -59,7 +65,7 @@ function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient,
       public_key: TEST_PUBLIC_KEY,
     })),
     getServer: mock(async (id: number) => {
-      const s = servers.find(s => s.id === id)
+      const s = servers.find((s) => s.id === id)
       if (!s) throw new Error(`server ${id} not found`)
       return s
     }),
@@ -71,9 +77,9 @@ function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient,
       return { firewall: fw, actions: [] }
     }),
     deleteFirewall: mock(async (id: number) => {
-      const fw = firewalls.find(f => f.id === id)
+      const fw = firewalls.find((f) => f.id === id)
       if (fw) deletedFirewallNames.push(fw.name)
-      const idx = firewalls.findIndex(f => f.id === id)
+      const idx = firewalls.findIndex((f) => f.id === id)
       if (idx >= 0) firewalls.splice(idx, 1)
     }),
     listNetworks: mock(async () => networks),
@@ -83,9 +89,9 @@ function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient,
       return net
     }),
     deleteNetwork: mock(async (id: number) => {
-      const net = networks.find(n => n.id === id)
+      const net = networks.find((n) => n.id === id)
       if (net) deletedNetworkNames.push(net.name)
-      const idx = networks.findIndex(n => n.id === id)
+      const idx = networks.findIndex((n) => n.id === id)
       if (idx >= 0) networks.splice(idx, 1)
     }),
     listLoadBalancers: mock(async () => []),
@@ -108,13 +114,13 @@ function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient,
     }),
     deleteServer: mock(async (id: number) => {
       deletedServerIds.push(id)
-      const idx = servers.findIndex(s => s.id === id)
+      const idx = servers.findIndex((s) => s.id === id)
       if (idx >= 0) servers.splice(idx, 1)
       return { id: id + 9000, status: 'success' as const }
     }),
     waitForAction: mock(async (id: number) => ({ id, status: 'success' as const })),
     waitForServerRunning: mock(async (id: number) => {
-      const s = servers.find(s => s.id === id)
+      const s = servers.find((s) => s.id === id)
       if (!s) throw new Error(`server ${id} not found`)
       return s
     }),
@@ -153,12 +159,17 @@ describe('HetznerDriver bun+rpx fleet', () => {
 
   it('provisions N app servers + exactly 1 dedicated rpx LB server (bun runtime, appServers > 1)', async () => {
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     const outputs = await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
-    const appServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'app')
-    const lbServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'lb')
+    const appServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'app')
+    const lbServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'lb')
     expect(appServers).toHaveLength(2)
     expect(lbServers).toHaveLength(1)
 
@@ -176,12 +187,17 @@ describe('HetznerDriver bun+rpx fleet', () => {
 
   it("the LB's rpx config references the app boxes' private IPs, not localhost", async () => {
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
-    const lbServer = servers.find(s => s.labels?.['ts-cloud/role'] === 'lb')!
-    const appServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'app')
+    const lbServer = servers.find((s) => s.labels?.['ts-cloud/role'] === 'lb')!
+    const appServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'app')
 
     const createServerCalls = (client.createServer as any).mock.calls as Array<[any]>
     const lbCreateCall = createServerCalls.find(([opts]) => opts.labels?.['ts-cloud/role'] === 'lb')!
@@ -200,7 +216,12 @@ describe('HetznerDriver bun+rpx fleet', () => {
 
   it('app boxes do NOT run their own rpx gateway (LB-only gateway)', async () => {
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -215,24 +236,85 @@ describe('HetznerDriver bun+rpx fleet', () => {
   it('scale-down destroys extra app servers and keeps exactly the desired count', async () => {
     // Simulate a prior fleet of 3 app servers + 1 LB already existing.
     const existing = [
-      { id: 201, name: 'my-app-production-app-1', status: 'running', public_net: { ipv4: { ip: '203.0.113.201' } }, private_net: [{ ip: '10.0.0.201' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'app', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cx23' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
-      { id: 202, name: 'my-app-production-app-2', status: 'running', public_net: { ipv4: { ip: '203.0.113.202' } }, private_net: [{ ip: '10.0.0.202' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'app', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cx23' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
-      { id: 203, name: 'my-app-production-app-3', status: 'running', public_net: { ipv4: { ip: '203.0.113.203' } }, private_net: [{ ip: '10.0.0.203' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'app', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cx23' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
-      { id: 204, name: 'my-app-production-lb', status: 'running', public_net: { ipv4: { ip: '203.0.113.204' } }, private_net: [{ ip: '10.0.0.204' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'lb', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cpx11' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
+      {
+        id: 201,
+        name: 'my-app-production-app-1',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.201' } },
+        private_net: [{ ip: '10.0.0.201' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'app',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cx23' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
+      {
+        id: 202,
+        name: 'my-app-production-app-2',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.202' } },
+        private_net: [{ ip: '10.0.0.202' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'app',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cx23' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
+      {
+        id: 203,
+        name: 'my-app-production-app-3',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.203' } },
+        private_net: [{ ip: '10.0.0.203' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'app',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cx23' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
+      {
+        id: 204,
+        name: 'my-app-production-lb',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.204' } },
+        private_net: [{ ip: '10.0.0.204' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'lb',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cpx11' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
     ]
     const { client, servers, deletedServerIds } = fakeHetznerClient(existing)
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
     const sshExecMock = mock(() => '')
     ;(driver as any).sshExec = sshExecMock
 
     // Desired count is 2 (baseConfig.appServers) — one existing app server must be destroyed.
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
-    const remainingAppServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'app')
+    const remainingAppServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'app')
     expect(remainingAppServers).toHaveLength(2)
     expect(deletedServerIds).toContain(203)
     // The existing (reused) LB server is not recreated.
-    const lbServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'lb')
+    const lbServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'lb')
     expect(lbServers).toHaveLength(1)
     expect(lbServers[0].id).toBe(204)
     // ... and its routes are refreshed to the SURVIVING upstreams — the
@@ -251,18 +333,28 @@ describe('HetznerDriver bun+rpx fleet', () => {
       infrastructure: { compute: { size: 'small', runtime: 'bun' } },
     }
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: singleConfig, environment: 'production' })
 
     // Falls through to the plain single-box path — no fleet-role labels at all.
-    const lbServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'lb')
+    const lbServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'lb')
     expect(lbServers).toHaveLength(0)
   })
 
   it('destroyCompute tears down the LB box, all app boxes, the network, and firewalls', async () => {
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
     expect(servers.length).toBeGreaterThan(0)
@@ -270,26 +362,38 @@ describe('HetznerDriver bun+rpx fleet', () => {
     const result = await driver.destroyCompute!({ config: baseConfig, environment: 'production' })
 
     expect(servers).toHaveLength(0)
-    expect(result.destroyed.some(d => d.startsWith('firewall'))).toBe(true)
-    expect(result.destroyed.some(d => d.startsWith('network'))).toBe(true)
-    expect(result.destroyed.filter(d => d.startsWith('server')).length).toBeGreaterThanOrEqual(3) // 2 app + 1 lb
+    expect(result.destroyed.some((d) => d.startsWith('firewall'))).toBe(true)
+    expect(result.destroyed.some((d) => d.startsWith('network'))).toBe(true)
+    expect(result.destroyed.filter((d) => d.startsWith('server')).length).toBeGreaterThanOrEqual(3) // 2 app + 1 lb
   })
 
   it('does not create a PHP fleet (Hetzner-native LB) for a bun app — provisions the rpx LB box instead', async () => {
-    const createLoadBalancer = mock(async () => { throw new Error('should not use Hetzner-native Load Balancer for a bun fleet') })
+    const createLoadBalancer = mock(async () => {
+      throw new Error('should not use Hetzner-native Load Balancer for a bun fleet')
+    })
     const { client, servers } = fakeHetznerClient()
     ;(client as any).createLoadBalancer = createLoadBalancer
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
     expect(createLoadBalancer).not.toHaveBeenCalled()
-    expect(servers.some(s => s.labels?.['ts-cloud/role'] === 'lb')).toBe(true)
+    expect(servers.some((s) => s.labels?.['ts-cloud/role'] === 'lb')).toBe(true)
   })
 
   it('persists lbServerId + appServerIds in local state for idempotent re-runs', async () => {
     const { client } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -300,7 +404,12 @@ describe('HetznerDriver bun+rpx fleet', () => {
 
   it('re-running provision is idempotent (reuses the existing fleet, does not recreate)', async () => {
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
     const sshExecMock = mock(() => '')
     ;(driver as any).sshExec = sshExecMock
 
@@ -313,7 +422,12 @@ describe('HetznerDriver bun+rpx fleet', () => {
 
   it('refreshes the LB route fragment on every re-run so later sites + current upstreams reach the gateway', async () => {
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
     const sshExecMock = mock(() => '')
     ;(driver as any).sshExec = sshExecMock
 
@@ -336,14 +450,14 @@ describe('HetznerDriver bun+rpx fleet', () => {
     expect(servers).toHaveLength(3)
     expect(sshExecMock).toHaveBeenCalledTimes(1)
     const [host, script] = sshExecMock.mock.calls[0] as unknown as [string, string]
-    const lbServer = servers.find(s => s.labels?.['ts-cloud/role'] === 'lb')!
+    const lbServer = servers.find((s) => s.labels?.['ts-cloud/role'] === 'lb')!
     expect(host).toBe(lbServer.public_net.ipv4.ip)
     expect(script).toContain('/etc/rpx/sites.d/my-app.json')
     expect(script).toContain('"slug": "my-app"')
     expect(script).toContain('my-app.example.com')
     expect(script).toContain('api.my-app.example.com')
     // Multi-upstream routes point at the CURRENT app boxes' private IPs.
-    for (const app of servers.filter(s => s.labels?.['ts-cloud/role'] === 'app')) {
+    for (const app of servers.filter((s) => s.labels?.['ts-cloud/role'] === 'app')) {
       expect(script).toContain(`${app.private_net[0].ip}:3000`)
       expect(script).toContain(`${app.private_net[0].ip}:3001`)
     }
@@ -358,12 +472,59 @@ describe('HetznerDriver bun+rpx fleet', () => {
     // so provisioning takes the full reconcile path and reuses every box by
     // label. The reused LB's cloud-init ran long ago — its fragment is stale.
     const existing = [
-      { id: 201, name: 'my-app-production-app-1', status: 'running', public_net: { ipv4: { ip: '203.0.113.201' } }, private_net: [{ ip: '10.0.0.201' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'app', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cx23' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
-      { id: 202, name: 'my-app-production-app-2', status: 'running', public_net: { ipv4: { ip: '203.0.113.202' } }, private_net: [{ ip: '10.0.0.202' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'app', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cx23' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
-      { id: 204, name: 'my-app-production-lb', status: 'running', public_net: { ipv4: { ip: '203.0.113.204' } }, private_net: [{ ip: '10.0.0.204' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'lb', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cpx11' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
+      {
+        id: 201,
+        name: 'my-app-production-app-1',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.201' } },
+        private_net: [{ ip: '10.0.0.201' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'app',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cx23' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
+      {
+        id: 202,
+        name: 'my-app-production-app-2',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.202' } },
+        private_net: [{ ip: '10.0.0.202' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'app',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cx23' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
+      {
+        id: 204,
+        name: 'my-app-production-lb',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.204' } },
+        private_net: [{ ip: '10.0.0.204' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'lb',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cpx11' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
     ]
     const { client, servers } = fakeHetznerClient(existing)
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
     const sshExecMock = mock(() => '')
     ;(driver as any).sshExec = sshExecMock
 
@@ -387,10 +548,29 @@ describe('HetznerDriver bun+rpx fleet', () => {
     // The LB is alive but every app box is gone. Refreshing would write an
     // upstream-less fragment (every route 502s), so the stale fragment stays.
     const existing = [
-      { id: 204, name: 'my-app-production-lb', status: 'running', public_net: { ipv4: { ip: '203.0.113.204' } }, private_net: [{ ip: '10.0.0.204' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'lb', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cpx11' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
+      {
+        id: 204,
+        name: 'my-app-production-lb',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.204' } },
+        private_net: [{ ip: '10.0.0.204' }],
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'lb',
+          'ts-cloud/managed-by': 'ts-cloud',
+        },
+        server_type: { name: 'cpx11' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
     ]
     const { client } = fakeHetznerClient(existing)
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
     const sshExecMock = mock(() => '')
     ;(driver as any).sshExec = sshExecMock
     const statePath = driverStatePath(stackName)
@@ -407,14 +587,22 @@ describe('HetznerDriver bun+rpx fleet', () => {
     // A deploy that cannot reach its LB to update routes must not silently
     // serve stale ones — the SSH failure propagates and fails the provision.
     const { client } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
     const sshExecMock = mock(() => '')
     ;(driver as any).sshExec = sshExecMock
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
-    sshExecMock.mockImplementation(() => { throw new Error('ssh: connection refused') })
-    await expect(driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' }))
-      .rejects.toThrow('ssh: connection refused')
+    sshExecMock.mockImplementation(() => {
+      throw new Error('ssh: connection refused')
+    })
+    await expect(
+      driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' }),
+    ).rejects.toThrow('ssh: connection refused')
   })
 
   it('does NOT provision a dedicated services box for a plain bun fleet (no servicesServer/managedServices set)', async () => {
@@ -424,11 +612,16 @@ describe('HetznerDriver bun+rpx fleet', () => {
     // plain `{ appServers: 2 }` bun config was unexpectedly getting a 3rd
     // "services" box, burning through the test account's server-count limit.
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
-    const servicesServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'services')
+    const servicesServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'services')
     expect(servicesServers).toHaveLength(0)
     // Exactly app (2) + lb (1) — no extra services box inflating the count.
     expect(servers).toHaveLength(3)
@@ -436,7 +629,12 @@ describe('HetznerDriver bun+rpx fleet', () => {
 
   it('DOES provision a dedicated services box when servicesServer is explicitly set', async () => {
     const { client, servers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     const configWithServices: CloudConfig = {
       ...baseConfig,
@@ -447,7 +645,7 @@ describe('HetznerDriver bun+rpx fleet', () => {
 
     await driver.provisionComputeInfrastructure!({ config: configWithServices, environment: 'production' })
 
-    const servicesServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'services')
+    const servicesServers = servers.filter((s) => s.labels?.['ts-cloud/role'] === 'services')
     expect(servicesServers).toHaveLength(1)
   })
 
@@ -467,7 +665,12 @@ describe('HetznerDriver bun+rpx fleet', () => {
       },
     }
     const { client } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: configWithManaged, environment: 'production' })
 

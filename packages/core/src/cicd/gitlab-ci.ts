@@ -29,7 +29,7 @@ export function generateDeploymentPipeline(options: GitLabCIOptions = {}): strin
   } = options
 
   return `stages:
-${stages.map(s => `  - ${s}`).join('\n')}
+${stages.map((s) => `  - ${s}`).join('\n')}
 
 variables:
   AWS_DEFAULT_REGION: ${awsRegion}
@@ -87,7 +87,9 @@ export function generateMultiEnvPipeline(options: {
 }): string {
   const { environments, awsRegion = 'us-east-1' } = options
 
-  const deployJobs = environments.map(env => `
+  const deployJobs = environments
+    .map(
+      (env) => `
 deploy:${env.name}:
   stage: deploy
   script:
@@ -98,7 +100,9 @@ deploy:${env.name}:
   only:
     - ${env.branch}
   ${env.manual ? 'when: manual' : ''}
-`).join('\n')
+`,
+    )
+    .join('\n')
 
   return `stages:
   - test
@@ -135,10 +139,12 @@ ${deployJobs}
 /**
  * Generate PR/MR preview pipeline
  */
-export function generatePreviewPipeline(options: {
-  awsRegion?: string
-  ttl?: number
-} = {}): string {
+export function generatePreviewPipeline(
+  options: {
+    awsRegion?: string
+    ttl?: number
+  } = {},
+): string {
   const { awsRegion = 'us-east-1', ttl = 24 } = options
 
   return `stages:
@@ -192,10 +198,7 @@ cleanup:preview:
 /**
  * Generate scheduled pipeline
  */
-export function generateScheduledPipeline(options: {
-  environment: string
-  awsRegion?: string
-}): string {
+export function generateScheduledPipeline(options: { environment: string; awsRegion?: string }): string {
   const { environment, awsRegion = 'us-east-1' } = options
 
   return `stages:
@@ -223,13 +226,12 @@ deploy:scheduled:
 /**
  * Generate manual deployment pipeline
  */
-export function generateManualPipeline(options: {
-  environments: string[]
-  awsRegion?: string
-}): string {
+export function generateManualPipeline(options: { environments: string[]; awsRegion?: string }): string {
   const { environments, awsRegion = 'us-east-1' } = options
 
-  const deployJobs = environments.map(env => `
+  const deployJobs = environments
+    .map(
+      (env) => `
 deploy:${env}:
   stage: deploy
   script:
@@ -240,7 +242,9 @@ deploy:${env}:
   when: manual
   only:
     - main
-`).join('\n')
+`,
+    )
+    .join('\n')
 
   return `stages:
   - deploy

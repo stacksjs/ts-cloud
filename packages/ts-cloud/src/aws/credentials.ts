@@ -8,7 +8,6 @@
  *   - Implicit (no profile passed): standard precedence —
  *       AWS_ACCESS_KEY_ID/SECRET env vars > AWS_PROFILE > 'default'.
  */
-
 import type { AWSCredentials } from './client'
 
 export function resolveCredentials(profile?: string): AWSCredentials {

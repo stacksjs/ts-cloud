@@ -2,7 +2,6 @@
  * AWS OpenSearch Types
  * CloudFormation resource types for AWS OpenSearch Service
  */
-
 import type { Tag } from './common'
 
 export interface OpenSearchDomain {

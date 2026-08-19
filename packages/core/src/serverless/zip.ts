@@ -7,7 +7,6 @@
  * PHP/Laravel application tree (many files). Uses Node's `zlib` only — no
  * third-party zip dependency, in keeping with the zero-dependency ethos.
  */
-
 import { deflateRawSync } from 'node:zlib'
 
 export interface ZipEntry {
@@ -25,16 +24,16 @@ const CRC_TABLE: number[] = (() => {
   const table: number[] = []
   for (let i = 0; i < 256; i++) {
     let c = i
-    for (let j = 0; j < 8; j++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1
+    for (let j = 0; j < 8; j++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
     table[i] = c >>> 0
   }
   return table
 })()
 
 function crc32(data: Buffer): number {
-  let crc = 0xFFFFFFFF
-  for (let i = 0; i < data.length; i++) crc = CRC_TABLE[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8)
-  return (crc ^ 0xFFFFFFFF) >>> 0
+  let crc = 0xffffffff
+  for (let i = 0; i < data.length; i++) crc = CRC_TABLE[(crc ^ data[i]) & 0xff] ^ (crc >>> 8)
+  return (crc ^ 0xffffffff) >>> 0
 }
 
 function toBuffer(data: Buffer | Uint8Array | string): Buffer {
@@ -43,11 +42,11 @@ function toBuffer(data: Buffer | Uint8Array | string): Buffer {
   return Buffer.from(data)
 }
 
-function dosTimeDate(date: Date): { time: number, date: number } {
+function dosTimeDate(date: Date): { time: number; date: number } {
   // ZIP/DOS timestamps can't represent dates before 1980; clamp to keep it valid.
   const year = Math.max(1980, date.getFullYear())
-  const time = ((date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1)) & 0xFFFF
-  const d = (((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()) & 0xFFFF
+  const time = ((date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1)) & 0xffff
+  const d = (((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()) & 0xffff
   return { time, date: d }
 }
 
@@ -70,7 +69,7 @@ export function createZip(entries: ZipEntry[]): Buffer {
     const mode = entry.mode ?? 0o644
 
     const local = Buffer.alloc(30 + nameBuf.length)
-    local.writeUInt32LE(0x04034B50, 0)
+    local.writeUInt32LE(0x04034b50, 0)
     local.writeUInt16LE(20, 4)
     local.writeUInt16LE(0, 6)
     local.writeUInt16LE(8, 8) // deflate
@@ -84,8 +83,8 @@ export function createZip(entries: ZipEntry[]): Buffer {
     nameBuf.copy(local, 30)
 
     const central = Buffer.alloc(46 + nameBuf.length)
-    central.writeUInt32LE(0x02014B50, 0)
-    central.writeUInt16LE(0x031E, 4) // version made by: 0x03 = Unix, 30 = 3.0
+    central.writeUInt32LE(0x02014b50, 0)
+    central.writeUInt16LE(0x031e, 4) // version made by: 0x03 = Unix, 30 = 3.0
     central.writeUInt16LE(20, 6)
     central.writeUInt16LE(0, 8)
     central.writeUInt16LE(8, 10)
@@ -100,7 +99,7 @@ export function createZip(entries: ZipEntry[]): Buffer {
     central.writeUInt16LE(0, 34)
     central.writeUInt16LE(0, 36)
     // External attributes: Unix mode in the high 16 bits.
-    central.writeUInt32LE((mode & 0xFFFF) << 16, 38)
+    central.writeUInt32LE((mode & 0xffff) << 16, 38)
     central.writeUInt32LE(offset, 42)
     nameBuf.copy(central, 46)
 
@@ -111,7 +110,7 @@ export function createZip(entries: ZipEntry[]): Buffer {
 
   const centralDir = Buffer.concat(centralParts)
   const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054B50, 0)
+  end.writeUInt32LE(0x06054b50, 0)
   end.writeUInt16LE(0, 4)
   end.writeUInt16LE(0, 6)
   end.writeUInt16LE(entries.length, 8)

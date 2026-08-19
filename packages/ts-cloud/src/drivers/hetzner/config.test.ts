@@ -34,11 +34,12 @@ function clearEnv(): void {
 clearEnv()
 afterEach(clearEnv)
 
-const config = (hetzner: CloudConfig['hetzner'], compute?: Record<string, any>): CloudConfig => ({
-  project: { name: 'acme', slug: 'acme' },
-  hetzner,
-  ...(compute ? { infrastructure: { compute } } : {}),
-}) as CloudConfig
+const config = (hetzner: CloudConfig['hetzner'], compute?: Record<string, any>): CloudConfig =>
+  ({
+    project: { name: 'acme', slug: 'acme' },
+    hetzner,
+    ...(compute ? { infrastructure: { compute } } : {}),
+  }) as CloudConfig
 
 describe('precedence', () => {
   it('falls back to the documented default', () => {
@@ -143,15 +144,21 @@ describe('ssh paths', () => {
   it('derives the public key from the private key by default', () => {
     const privateKey = resolveHetznerSshPrivateKeyPath(config({ sshPrivateKeyPath: '/keys/deploy' }))
     expect(privateKey).toBe('/keys/deploy')
-    expect(resolveHetznerSshPublicKeyPath(config({ sshPrivateKeyPath: '/keys/deploy' }), undefined, privateKey)).toBe('/keys/deploy.pub')
+    expect(resolveHetznerSshPublicKeyPath(config({ sshPrivateKeyPath: '/keys/deploy' }), undefined, privateKey)).toBe(
+      '/keys/deploy.pub',
+    )
   })
 
   it('tracks a custom private key when deriving the public key', () => {
-    expect(resolveHetznerSettings(config({ sshPrivateKeyPath: '/keys/custom' })).sshPublicKeyPath).toBe('/keys/custom.pub')
+    expect(resolveHetznerSettings(config({ sshPrivateKeyPath: '/keys/custom' })).sshPublicKeyPath).toBe(
+      '/keys/custom.pub',
+    )
   })
 
   it('honors an explicit public key path', () => {
-    expect(resolveHetznerSshPublicKeyPath(config({ sshPublicKeyPath: '~/keys/other.pub' }))).toBe(`${homedir()}/keys/other.pub`)
+    expect(resolveHetznerSshPublicKeyPath(config({ sshPublicKeyPath: '~/keys/other.pub' }))).toBe(
+      `${homedir()}/keys/other.pub`,
+    )
   })
 
   it('defaults both paths', () => {
@@ -163,7 +170,9 @@ describe('ssh paths', () => {
 
 describe('resolveHetznerSettings', () => {
   it('resolves everything together', () => {
-    const settings = resolveHetznerSettings(config({ location: 'nbg1', image: 'debian-12', sshUser: 'deploy', apiToken: 't' }))
+    const settings = resolveHetznerSettings(
+      config({ location: 'nbg1', image: 'debian-12', sshUser: 'deploy', apiToken: 't' }),
+    )
     expect(settings).toEqual({
       apiToken: 't',
       location: 'nbg1',

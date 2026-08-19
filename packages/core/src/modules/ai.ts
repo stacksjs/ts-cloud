@@ -1,7 +1,4 @@
-import type {
-  IAMRole,
-  IAMManagedPolicy,
-} from '@ts-cloud/aws-types'
+import type { IAMManagedPolicy, IAMRole } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
@@ -35,22 +32,18 @@ export class AI {
     servicePrincipal: string,
     options: BedrockRoleOptions,
   ): {
-      role: IAMRole
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      name,
-      models = ['*'],
-      allowStreaming = true,
-    } = options
+    role: IAMRole
+    logicalId: string
+  } {
+    const { slug, environment, name, models = ['*'], allowStreaming = true } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'bedrock-role',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'bedrock-role',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -61,10 +54,8 @@ export class AI {
     }
 
     // Build resource ARNs for models
-    const modelArns = models.map(model =>
-      model === '*'
-        ? 'arn:aws:bedrock:*::foundation-model/*'
-        : `arn:aws:bedrock:*::foundation-model/${model}`,
+    const modelArns = models.map((model) =>
+      model === '*' ? 'arn:aws:bedrock:*::foundation-model/*' : `arn:aws:bedrock:*::foundation-model/${model}`,
     )
 
     const role: IAMRole = {
@@ -125,11 +116,13 @@ export class AI {
       allowAsync = false,
     } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'bedrock-policy',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'bedrock-policy',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -146,10 +139,8 @@ export class AI {
     }
 
     // Build resource ARNs for models
-    const modelArns = models.map(model =>
-      model === '*'
-        ? 'arn:aws:bedrock:*::foundation-model/*'
-        : `arn:aws:bedrock:*::foundation-model/${model}`,
+    const modelArns = models.map((model) =>
+      model === '*' ? 'arn:aws:bedrock:*::foundation-model/*' : `arn:aws:bedrock:*::foundation-model/${model}`,
     )
 
     const policy: IAMManagedPolicy = {
@@ -209,11 +200,7 @@ export class AI {
   /**
    * Add Bedrock permissions to an existing role
    */
-  static addBedrockPermissions(
-    role: IAMRole,
-    models: string[] = ['*'],
-    allowStreaming = true,
-  ): IAMRole {
+  static addBedrockPermissions(role: IAMRole, models: string[] = ['*'], allowStreaming = true): IAMRole {
     // Build actions array
     const actions = ['bedrock:InvokeModel']
     if (allowStreaming) {
@@ -221,10 +208,8 @@ export class AI {
     }
 
     // Build resource ARNs for models
-    const modelArns = models.map(model =>
-      model === '*'
-        ? 'arn:aws:bedrock:*::foundation-model/*'
-        : `arn:aws:bedrock:*::foundation-model/${model}`,
+    const modelArns = models.map((model) =>
+      model === '*' ? 'arn:aws:bedrock:*::foundation-model/*' : `arn:aws:bedrock:*::foundation-model/${model}`,
     )
 
     if (!role.Properties.Policies) {
@@ -327,14 +312,7 @@ export class AI {
       'meta.llama3-2-11b-instruct-v1:0',
       'mistral.mistral-7b-instruct-v0:2',
     ],
-    EmbeddingModels: [
-      'amazon.titan-embed-text-v1',
-      'cohere.embed-english-v3',
-      'cohere.embed-multilingual-v3',
-    ],
-    ImageModels: [
-      'amazon.titan-image-generator-v1',
-      'stability.stable-diffusion-xl-v1',
-    ],
+    EmbeddingModels: ['amazon.titan-embed-text-v1', 'cohere.embed-english-v3', 'cohere.embed-multilingual-v3'],
+    ImageModels: ['amazon.titan-image-generator-v1', 'stability.stable-diffusion-xl-v1'],
   } as const
 }

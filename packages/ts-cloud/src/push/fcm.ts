@@ -21,7 +21,6 @@
  * })
  * ```
  */
-
 import { createSign } from 'node:crypto'
 
 export interface FCMConfig {
@@ -222,7 +221,7 @@ export class FCMClient {
       throw new Error(`Failed to get access token: ${errorText}`)
     }
 
-    const data = await response.json() as Record<string, any>
+    const data = (await response.json()) as Record<string, any>
     this.accessToken = data.access_token
     this.tokenExpiresAt = Date.now() + TOKEN_EXPIRY_MS
 
@@ -238,11 +237,9 @@ export class FCMClient {
     // Target (one of: token, topic, condition)
     if (notification.token) {
       message.token = notification.token
-    }
-else if (notification.topic) {
+    } else if (notification.topic) {
       message.topic = notification.topic
-    }
-else if (notification.condition) {
+    } else if (notification.condition) {
       message.condition = notification.condition
     }
 
@@ -321,35 +318,30 @@ else if (notification.condition) {
       const accessToken = await this.getAccessToken()
       const payload = this.buildMessage(notification)
 
-      const response = await fetch(
-        `${FCM_API_URL}/${this.config.projectId}/messages:send`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
-      )
+      const response = await fetch(`${FCM_API_URL}/${this.config.projectId}/messages:send`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
 
-      const data = await response.json() as Record<string, any>
+      const data = (await response.json()) as Record<string, any>
 
       if (response.ok) {
         return {
           success: true,
           messageId: data.name,
         }
-      }
-else {
+      } else {
         return {
           success: false,
           error: data.error?.message || 'Unknown error',
           errorCode: data.error?.status,
         }
       }
-    }
-catch (error: any) {
+    } catch (error: any) {
       return {
         success: false,
         error: error.message,
@@ -363,7 +355,7 @@ catch (error: any) {
   async sendBatch(
     tokens: string[],
     notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>,
-    options?: { concurrency?: number }
+    options?: { concurrency?: number },
   ): Promise<FCMBatchResult> {
     const concurrency = options?.concurrency || 10
     const results: Array<FCMSendResult & { token?: string }> = []
@@ -380,8 +372,8 @@ catch (error: any) {
     }
 
     return {
-      sent: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length,
+      sent: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
       results,
     }
   }
@@ -391,7 +383,7 @@ catch (error: any) {
    */
   async sendToTopic(
     topic: string,
-    notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>
+    notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>,
   ): Promise<FCMSendResult> {
     return this.send({ ...notification, topic })
   }
@@ -402,7 +394,7 @@ catch (error: any) {
    */
   async sendToCondition(
     condition: string,
-    notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>
+    notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>,
   ): Promise<FCMSendResult> {
     return this.send({ ...notification, condition })
   }
@@ -410,12 +402,7 @@ catch (error: any) {
   /**
    * Send a simple notification (convenience method)
    */
-  async sendSimple(
-    token: string,
-    title: string,
-    body: string,
-    data?: Record<string, string>
-  ): Promise<FCMSendResult> {
+  async sendSimple(token: string, title: string, body: string, data?: Record<string, string>): Promise<FCMSendResult> {
     return this.send({
       token,
       title,
@@ -427,10 +414,7 @@ catch (error: any) {
   /**
    * Send a data-only (silent) notification
    */
-  async sendSilent(
-    token: string,
-    data: Record<string, string>
-  ): Promise<FCMSendResult> {
+  async sendSilent(token: string, data: Record<string, string>): Promise<FCMSendResult> {
     return this.send({
       token,
       data,
@@ -447,30 +431,25 @@ catch (error: any) {
     try {
       const accessToken = await this.getAccessToken()
 
-      const response = await fetch(
-        `https://iid.googleapis.com/iid/v1:batchAdd`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: `/topics/${topic}`,
-            registration_tokens: tokens,
-          }),
-        }
-      )
+      const response = await fetch(`https://iid.googleapis.com/iid/v1:batchAdd`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: `/topics/${topic}`,
+          registration_tokens: tokens,
+        }),
+      })
 
       if (response.ok) {
         return { success: true }
-      }
-else {
-        const data = await response.json() as Record<string, any>
+      } else {
+        const data = (await response.json()) as Record<string, any>
         return { success: false, error: data.error?.message || 'Failed to subscribe' }
       }
-    }
-catch (error: any) {
+    } catch (error: any) {
       return { success: false, error: error.message }
     }
   }
@@ -482,30 +461,25 @@ catch (error: any) {
     try {
       const accessToken = await this.getAccessToken()
 
-      const response = await fetch(
-        `https://iid.googleapis.com/iid/v1:batchRemove`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: `/topics/${topic}`,
-            registration_tokens: tokens,
-          }),
-        }
-      )
+      const response = await fetch(`https://iid.googleapis.com/iid/v1:batchRemove`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: `/topics/${topic}`,
+          registration_tokens: tokens,
+        }),
+      })
 
       if (response.ok) {
         return { success: true }
-      }
-else {
-        const data = await response.json() as Record<string, any>
+      } else {
+        const data = (await response.json()) as Record<string, any>
         return { success: false, error: data.error?.message || 'Failed to unsubscribe' }
       }
-    }
-catch (error: any) {
+    } catch (error: any) {
       return { success: false, error: error.message }
     }
   }

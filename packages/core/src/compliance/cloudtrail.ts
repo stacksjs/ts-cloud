@@ -124,10 +124,7 @@ export class CloudTrailManager {
           excludeManagementEventSources: [],
         },
       ],
-      insightSelectors: [
-        { insightType: 'ApiCallRateInsight' },
-        { insightType: 'ApiErrorRateInsight' },
-      ],
+      insightSelectors: [{ insightType: 'ApiCallRateInsight' }, { insightType: 'ApiErrorRateInsight' }],
     })
   }
 
@@ -145,7 +142,7 @@ export class CloudTrailManager {
     if (options.s3DataBuckets && options.s3DataBuckets.length > 0) {
       dataResources.push({
         type: 'AWS::S3::Object',
-        values: options.s3DataBuckets.map(bucket => `arn:aws:s3:::${bucket}/*`),
+        values: options.s3DataBuckets.map((bucket) => `arn:aws:s3:::${bucket}/*`),
       })
     }
 
@@ -194,10 +191,7 @@ export class CloudTrailManager {
   /**
    * Create read-only trail
    */
-  createReadOnlyTrail(options: {
-    name: string
-    s3BucketName: string
-  }): CloudTrailConfig {
+  createReadOnlyTrail(options: { name: string; s3BucketName: string }): CloudTrailConfig {
     return this.createTrail({
       name: options.name,
       s3BucketName: options.s3BucketName,
@@ -216,10 +210,7 @@ export class CloudTrailManager {
   /**
    * Create write-only trail
    */
-  createWriteOnlyTrail(options: {
-    name: string
-    s3BucketName: string
-  }): CloudTrailConfig {
+  createWriteOnlyTrail(options: { name: string; s3BucketName: string }): CloudTrailConfig {
     return this.createTrail({
       name: options.name,
       s3BucketName: options.s3BucketName,
@@ -286,11 +277,11 @@ export class CloudTrailManager {
     }
 
     if (trail.eventSelectors) {
-      cf.Properties.EventSelectors = trail.eventSelectors.map(selector => ({
+      cf.Properties.EventSelectors = trail.eventSelectors.map((selector) => ({
         ReadWriteType: selector.readWriteType,
         IncludeManagementEvents: selector.includeManagementEvents ?? true,
         ...(selector.dataResources && {
-          DataResources: selector.dataResources.map(dr => ({
+          DataResources: selector.dataResources.map((dr) => ({
             Type: dr.type,
             Values: dr.values,
           })),
@@ -302,15 +293,15 @@ export class CloudTrailManager {
     }
 
     if (trail.insightSelectors) {
-      cf.Properties.InsightSelectors = trail.insightSelectors.map(selector => ({
+      cf.Properties.InsightSelectors = trail.insightSelectors.map((selector) => ({
         InsightType: selector.insightType,
       }))
     }
 
     if (trail.advancedEventSelectors) {
-      cf.Properties.AdvancedEventSelectors = trail.advancedEventSelectors.map(selector => ({
+      cf.Properties.AdvancedEventSelectors = trail.advancedEventSelectors.map((selector) => ({
         Name: selector.name,
-        FieldSelectors: selector.fieldSelectors.map(fs => ({
+        FieldSelectors: selector.fieldSelectors.map((fs) => ({
           Field: fs.field,
           ...(fs.equals && { Equals: fs.equals }),
           ...(fs.startsWith && { StartsWith: fs.startsWith }),
@@ -348,9 +339,7 @@ export class CloudTrailManager {
             Service: 'cloudtrail.amazonaws.com',
           },
           Action: 's3:PutObject',
-          Resource: trailAccountIds.map(
-            accountId => `arn:aws:s3:::${bucketName}/AWSLogs/${accountId}/*`,
-          ),
+          Resource: trailAccountIds.map((accountId) => `arn:aws:s3:::${bucketName}/AWSLogs/${accountId}/*`),
           Condition: {
             StringEquals: {
               's3:x-amz-acl': 'bucket-owner-full-control',

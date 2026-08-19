@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort, setFirewallPorts } from './firewall-config-editor'
+import {
+  addFirewallPort,
+  isValidPort,
+  normalizePorts,
+  removeFirewallPort,
+  setFirewallPorts,
+} from './firewall-config-editor'
 
 const withFirewall = `const config = {
   infrastructure: {

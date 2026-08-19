@@ -79,7 +79,7 @@ export class SenderReputationManager {
     const spamReports = Math.floor(Math.random() * 10)
 
     // Calculate overall score (0-100)
-    const overallScore = Math.max(0, 100 - (bounceRate * 10) - (complaintRate * 100) - (spamReports * 2))
+    const overallScore = Math.max(0, 100 - bounceRate * 10 - complaintRate * 100 - spamReports * 2)
 
     const recommendations: string[] = []
     if (bounceRate > 2) recommendations.push('Reduce bounce rate by cleaning email list')
@@ -116,15 +116,9 @@ export class SenderReputationManager {
    * Check blacklists
    */
   private checkBlacklists(): BlacklistStatus[] {
-    const blacklists = [
-      'Spamhaus ZEN',
-      'Spamcop',
-      'SORBS',
-      'Barracuda',
-      'URIBL',
-    ]
+    const blacklists = ['Spamhaus ZEN', 'Spamcop', 'SORBS', 'Barracuda', 'URIBL']
 
-    return blacklists.map(listName => ({
+    return blacklists.map((listName) => ({
       listName,
       listed: Math.random() > 0.95, // 5% chance of being listed
       delistUrl: `https://www.${listName.toLowerCase().replace(/\s/g, '')}.org/delist`,
@@ -146,7 +140,7 @@ export class SenderReputationManager {
     const increment = (options.targetDailyLimit - options.initialDailyLimit) / options.durationDays
 
     for (let day = 0; day < options.durationDays; day++) {
-      dailyLimits.push(Math.floor(options.initialDailyLimit + (increment * day)))
+      dailyLimits.push(Math.floor(options.initialDailyLimit + increment * day))
     }
 
     const warmupPlan: WarmupPlan = {
@@ -168,9 +162,7 @@ export class SenderReputationManager {
   /**
    * Create aggressive warmup plan
    */
-  createAggressiveWarmupPlan(options: {
-    name: string
-  }): WarmupPlan {
+  createAggressiveWarmupPlan(options: { name: string }): WarmupPlan {
     return this.createWarmupPlan({
       name: options.name,
       initialDailyLimit: 500,
@@ -182,9 +174,7 @@ export class SenderReputationManager {
   /**
    * Create conservative warmup plan
    */
-  createConservativeWarmupPlan(options: {
-    name: string
-  }): WarmupPlan {
+  createConservativeWarmupPlan(options: { name: string }): WarmupPlan {
     return this.createWarmupPlan({
       name: options.name,
       initialDailyLimit: 200,
@@ -236,8 +226,8 @@ export class SenderReputationManager {
     // eslint-disable-next-line regexp/no-super-linear-backtracking
     const complaintRate = options.delivered > 0 ? (options.complained / options.delivered) * 100 : 0
 
-    const engagementScore = (openRate * 0.4) + (clickRate * 0.6)
-    const reputationScore = Math.max(0, 100 - (bounceRate * 10) - (complaintRate * 100) + (engagementScore * 0.2))
+    const engagementScore = openRate * 0.4 + clickRate * 0.6
+    const reputationScore = Math.max(0, 100 - bounceRate * 10 - complaintRate * 100 + engagementScore * 0.2)
 
     const domainReputation: DomainReputation = {
       id,

@@ -18,13 +18,7 @@ export interface Certificate {
 }
 
 export type CertificateStatus =
-  | 'PENDING_VALIDATION'
-  | 'ISSUED'
-  | 'INACTIVE'
-  | 'EXPIRED'
-  | 'VALIDATION_TIMED_OUT'
-  | 'REVOKED'
-  | 'FAILED'
+  'PENDING_VALIDATION' | 'ISSUED' | 'INACTIVE' | 'EXPIRED' | 'VALIDATION_TIMED_OUT' | 'REVOKED' | 'FAILED'
 
 export interface CertificateRenewal {
   id: string
@@ -115,10 +109,7 @@ export class CertificateManager {
   /**
    * Request wildcard certificate
    */
-  requestWildcardCertificate(options: {
-    domainName: string
-    includeApex?: boolean
-  }): Certificate {
+  requestWildcardCertificate(options: { domainName: string; includeApex?: boolean }): Certificate {
     const sans: string[] = []
 
     if (options.includeApex) {
@@ -165,8 +156,7 @@ export class CertificateManager {
           value: `_${Math.random().toString(36).slice(2)}.acm-validations.aws.`,
         },
       ]
-    }
-else {
+    } else {
       validation.validationEmails = [
         `admin@${certificate.domainName}`,
         `administrator@${certificate.domainName}`,
@@ -204,10 +194,7 @@ else {
   /**
    * Enable auto-renewal
    */
-  enableAutoRenewal(options: {
-    certificateArn: string
-    renewBeforeDays?: number
-  }): CertificateRenewal {
+  enableAutoRenewal(options: { certificateArn: string; renewBeforeDays?: number }): CertificateRenewal {
     const id = `renewal-${Date.now()}-${this.renewalCounter++}`
 
     const renewal: CertificateRenewal = {
@@ -232,9 +219,7 @@ else {
       return { success: false, message: 'Renewal configuration not found' }
     }
 
-    const certificate = Array.from(this.certificates.values()).find(
-      c => c.arn === renewal.certificateArn
-    )
+    const certificate = Array.from(this.certificates.values()).find((c) => c.arn === renewal.certificateArn)
 
     if (!certificate) {
       return { success: false, message: 'Certificate not found' }
@@ -256,17 +241,14 @@ else {
       // Update renewal record
       renewal.lastRenewal = new Date()
       renewal.renewalStatus = 'success'
-      renewal.nextRenewal = new Date(
-        certificate.expiresAt.getTime() - renewal.renewBeforeDays * 24 * 60 * 60 * 1000
-      )
+      renewal.nextRenewal = new Date(certificate.expiresAt.getTime() - renewal.renewBeforeDays * 24 * 60 * 60 * 1000)
 
       console.log('\n✓ Certificate renewed successfully')
       console.log(`  New expiration: ${certificate.expiresAt.toISOString()}`)
       console.log(`  Next renewal: ${renewal.nextRenewal.toISOString()}`)
 
       return { success: true, message: 'Certificate renewed successfully' }
-    }
-catch (error) {
+    } catch (error) {
       renewal.renewalStatus = 'failed'
       this.createAlert({
         certificateArn: certificate.arn,
@@ -308,8 +290,7 @@ catch (error) {
     for (const certificate of this.certificates.values()) {
       if (!certificate.expiresAt) continue
 
-      const daysUntilExpiration =
-        (certificate.expiresAt.getTime() - now) / (1000 * 60 * 60 * 24)
+      const daysUntilExpiration = (certificate.expiresAt.getTime() - now) / (1000 * 60 * 60 * 24)
 
       // Check if expired
       if (daysUntilExpiration < 0) {
@@ -319,7 +300,7 @@ catch (error) {
             alertType: 'expired',
             severity: 'critical',
             message: `Certificate has expired for ${certificate.domainName}`,
-          })
+          }),
         )
       }
       // Check if expiring soon (within 30 days)
@@ -330,7 +311,7 @@ catch (error) {
             alertType: 'expiring_soon',
             severity: daysUntilExpiration < 7 ? 'critical' : 'warning',
             message: `Certificate expiring in ${Math.floor(daysUntilExpiration)} days for ${certificate.domainName}`,
-          })
+          }),
         )
       }
     }
@@ -387,7 +368,7 @@ catch (error) {
     const cutoffTime = Date.now() + days * 24 * 60 * 60 * 1000
 
     return Array.from(this.certificates.values()).filter(
-      cert => cert.expiresAt && cert.expiresAt.getTime() < cutoffTime
+      (cert) => cert.expiresAt && cert.expiresAt.getTime() < cutoffTime,
     )
   }
 
@@ -416,9 +397,7 @@ catch (error) {
    * List alerts
    */
   listAlerts(acknowledged: boolean = false): CertificateAlert[] {
-    return Array.from(this.alerts.values()).filter(
-      alert => alert.acknowledged === acknowledged
-    )
+    return Array.from(this.alerts.values()).filter((alert) => alert.acknowledged === acknowledged)
   }
 
   /**

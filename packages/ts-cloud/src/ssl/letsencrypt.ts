@@ -4,10 +4,9 @@
  * Provides utilities for obtaining and managing Let's Encrypt certificates.
  * Supports both HTTP-01 and DNS-01 challenges with multiple DNS providers.
  */
-
 import type { DnsProvider, DnsProviderConfig } from '../dns/types'
-import { createDnsProvider } from '../dns'
 import { Route53Client } from '../aws/route53'
+import { createDnsProvider } from '../dns'
 
 export interface LetsEncryptConfig {
   /**
@@ -95,7 +94,7 @@ export function generateLetsEncryptUserData(config: LetsEncryptConfig): string {
   } = config
 
   const primaryDomain = domains[0]
-  const domainFlags = domains.map(d => `-d ${d}`).join(' ')
+  const domainFlags = domains.map((d) => `-d ${d}`).join(' ')
   const stagingFlag = staging ? '--staging' : ''
 
   if (challengeType === 'http-01') {
@@ -109,8 +108,7 @@ export function generateLetsEncryptUserData(config: LetsEncryptConfig): string {
       stagingFlag,
       primaryDomain,
     })
-  }
-  else {
+  } else {
     // Determine DNS provider type
     const dnsProviderType = config.dnsProvider?.provider || (config.hostedZoneId ? 'route53' : undefined)
 
@@ -538,12 +536,7 @@ export function generateHttpsServerCode(options: {
   certPath?: string
   redirectHttp?: boolean
 }): string {
-  const {
-    httpPort = 80,
-    httpsPort = 443,
-    certPath = '/etc/ssl/stacks',
-    redirectHttp = true,
-  } = options
+  const { httpPort = 80, httpsPort = 443, certPath = '/etc/ssl/stacks', redirectHttp = true } = options
 
   return `
 // HTTPS Server with Let's Encrypt certificates
@@ -571,8 +564,9 @@ if (hasCerts) {
   })
   console.log(\`HTTPS server running on port \${HTTPS_PORT}\`)
 
-  ${redirectHttp
-? `
+  ${
+    redirectHttp
+      ? `
   // Start HTTP server for redirect
   const httpServer = Bun.serve({
     port: HTTP_PORT,
@@ -593,7 +587,8 @@ if (hasCerts) {
   })
   console.log(\`HTTP redirect server running on port \${HTTP_PORT}\`)
   `
-: ''}
+      : ''
+  }
 }
 else {
   // No certificates yet, run HTTP only
@@ -667,15 +662,17 @@ export async function setupDns01Challenge(options: Dns01ChallengeConfig): Promis
       HostedZoneId: hostedZoneId,
       ChangeBatch: {
         Comment: 'ACME DNS-01 challenge',
-        Changes: [{
-          Action: 'UPSERT',
-          ResourceRecordSet: {
-            Name: `_acme-challenge.${domain}`,
-            Type: 'TXT',
-            TTL: 60,
-            ResourceRecords: [{ Value: `"${challengeValue}"` }],
+        Changes: [
+          {
+            Action: 'UPSERT',
+            ResourceRecordSet: {
+              Name: `_acme-challenge.${domain}`,
+              Type: 'TXT',
+              TTL: 60,
+              ResourceRecords: [{ Value: `"${challengeValue}"` }],
+            },
           },
-        }],
+        ],
       },
     })
     return
@@ -713,15 +710,17 @@ export async function cleanupDns01Challenge(options: Dns01ChallengeConfig): Prom
       HostedZoneId: hostedZoneId,
       ChangeBatch: {
         Comment: 'Remove ACME DNS-01 challenge',
-        Changes: [{
-          Action: 'DELETE',
-          ResourceRecordSet: {
-            Name: `_acme-challenge.${domain}`,
-            Type: 'TXT',
-            TTL: 60,
-            ResourceRecords: [{ Value: `"${challengeValue}"` }],
+        Changes: [
+          {
+            Action: 'DELETE',
+            ResourceRecordSet: {
+              Name: `_acme-challenge.${domain}`,
+              Type: 'TXT',
+              TTL: 60,
+              ResourceRecords: [{ Value: `"${challengeValue}"` }],
+            },
           },
-        }],
+        ],
       },
     })
     return
@@ -736,13 +735,12 @@ export async function cleanupDns01Challenge(options: Dns01ChallengeConfig): Prom
 export function needsRenewal(certPath: string): boolean {
   try {
     const { execSync } = require('node:child_process')
-    const _result = execSync(
-      `openssl x509 -checkend 2592000 -noout -in ${certPath}/cert.pem`,
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
-    )
+    const _result = execSync(`openssl x509 -checkend 2592000 -noout -in ${certPath}/cert.pem`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
     return false // Certificate is still valid for > 30 days
-  }
-  catch {
+  } catch {
     return true // Certificate expires within 30 days or doesn't exist
   }
 }

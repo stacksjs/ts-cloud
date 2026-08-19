@@ -6,14 +6,22 @@ import { isBoxMode, LocalBoxDriver } from '../../src/drivers/local-box/driver'
 // `TS_CLOUD_DASHBOARD_BOX` is process-global. Clear it BEFORE and after each test
 // so a value leaked by another test file (order varies across CI runs) can never
 // flip the box-mode gate under us.
-beforeEach(() => { delete process.env.TS_CLOUD_DASHBOARD_BOX })
-afterEach(() => { delete process.env.TS_CLOUD_DASHBOARD_BOX })
+beforeEach(() => {
+  delete process.env.TS_CLOUD_DASHBOARD_BOX
+})
+afterEach(() => {
+  delete process.env.TS_CLOUD_DASHBOARD_BOX
+})
 
 // `hetzner.apiToken` is required by HetznerDriver's constructor. Set it here
 // rather than relying on an ambient HCLOUD_TOKEN/HETZNER_API_TOKEN env var,
 // which isn't present in CI and made this config unusable for constructing a
 // real provider driver.
-const config = { project: { name: 'a', slug: 'acme', region: 'us-east-1' }, cloud: { provider: 'hetzner' }, hetzner: { apiToken: 'test-token' } } as unknown as CloudConfig
+const config = {
+  project: { name: 'a', slug: 'acme', region: 'us-east-1' },
+  cloud: { provider: 'hetzner' },
+  hetzner: { apiToken: 'test-token' },
+} as unknown as CloudConfig
 
 describe('LocalBoxDriver', () => {
   const driver = new LocalBoxDriver()
@@ -28,9 +36,13 @@ describe('LocalBoxDriver', () => {
   it('answers only app-role target queries — a local box has no separate lb/services box', async () => {
     // The rpx fleet-LB reload first probes for 'lb' targets; localhost must not
     // pose as one, or the gateway reload would take the fleet path on a plain box.
-    expect(await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'app' })).toHaveLength(1)
+    expect(
+      await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'app' }),
+    ).toHaveLength(1)
     expect(await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'lb' })).toEqual([])
-    expect(await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'services' })).toEqual([])
+    expect(
+      await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'services' }),
+    ).toEqual([])
   })
 
   it('runs commands on the local machine and captures stdout + success', async () => {

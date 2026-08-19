@@ -1,5 +1,6 @@
 async function build() {
   const result = await Bun.build({
+    minify: true,
     entrypoints: ['./src/index.ts'],
     outdir: './dist',
     target: 'node',
@@ -11,20 +12,13 @@ async function build() {
     process.exit(1)
   }
 
-  const declarations = Bun.spawn([
-    'bunx',
-    'tsc',
-    '-p',
-    'tsconfig.json',
-    '--emitDeclarationOnly',
-    '--noEmit',
-    'false',
-    '--declarationMap',
-    'false',
-  ], {
-    stdout: 'inherit',
-    stderr: 'inherit',
-  })
+  const declarations = Bun.spawn(
+    ['bunx', 'tsc', '-p', 'tsconfig.json', '--emitDeclarationOnly', '--noEmit', 'false', '--declarationMap', 'false'],
+    {
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  )
 
   const exitCode = await declarations.exited
   if (exitCode !== 0) process.exit(exitCode)

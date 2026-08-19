@@ -5,6 +5,9 @@
 // Core types
 export * from './types'
 
+// Where machine-local state lives (`.ts-cloud/` by default, configurable)
+export * from './state-dir'
+
 // Deployment-mode detection (server vs serverless, mutually exclusive)
 export * from './deployment-mode'
 
@@ -96,13 +99,7 @@ export * from './validators/quotas'
 // Utilities (Phase 6)
 // utils exports Cache (in-memory utility), but we prefer Cache from modules (ElastiCache)
 // So we need to exclude Cache from utils
-export {
-  FileCache,
-  TemplateCache,
-  templateCache,
-  type CacheOptions,
-  type CacheEntry,
-} from './utils/cache'
+export { FileCache, TemplateCache, templateCache, type CacheOptions, type CacheEntry } from './utils/cache'
 export * from './utils/hash'
 export * from './utils/parallel'
 export * from './utils/diff'

@@ -2,7 +2,6 @@
  * AWS RDS Proxy Types
  * CloudFormation resource types for RDS Proxy (connection pooling)
  */
-
 import type { Tag } from './common'
 
 export interface DBProxy {
@@ -12,7 +11,8 @@ export interface DBProxy {
     EngineFamily: 'MYSQL' | 'POSTGRESQL' | 'SQLSERVER'
     Auth: Array<{
       AuthScheme?: 'SECRETS'
-      ClientPasswordAuthType?: 'MYSQL_NATIVE_PASSWORD' | 'POSTGRES_SCRAM_SHA_256' | 'POSTGRES_MD5' | 'SQL_SERVER_AUTHENTICATION'
+      ClientPasswordAuthType?:
+        'MYSQL_NATIVE_PASSWORD' | 'POSTGRES_SCRAM_SHA_256' | 'POSTGRES_MD5' | 'SQL_SERVER_AUTHENTICATION'
       Description?: string
       IAMAuth?: 'DISABLED' | 'REQUIRED' | 'ENABLED'
       SecretArn?: string | { Ref: string }

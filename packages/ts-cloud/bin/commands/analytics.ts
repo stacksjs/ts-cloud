@@ -32,11 +32,11 @@ export function registerAnalyticsCommands(app: CLI): void {
           return
         }
 
-        const sites = result.Items.map(item => DynamoDBClient.unmarshal(item))
+        const sites = result.Items.map((item) => DynamoDBClient.unmarshal(item))
 
         cli.table(
           ['ID', 'Name', 'Domains', 'Active', 'Created'],
-          sites.map(site => [
+          sites.map((site) => [
             site.siteId || 'N/A',
             site.name || 'Unnamed',
             (site.domains || []).join(', ') || '-',
@@ -44,8 +44,7 @@ export function registerAnalyticsCommands(app: CLI): void {
             site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list sites: ${error.message}`)
         process.exit(1)
       }
@@ -64,16 +63,18 @@ export function registerAnalyticsCommands(app: CLI): void {
         const dynamodb = new DynamoDBClient(options.region)
 
         // Get site name
-        const name = options.name || await cli.prompt('Site name', 'My Site')
+        const name = options.name || (await cli.prompt('Site name', 'My Site'))
 
         // Get domains
         let domains: string[] = []
         if (options.domain) {
           domains = Array.isArray(options.domain) ? options.domain : [options.domain]
-        }
-        else {
+        } else {
           const domainInput = await cli.prompt('Site domains (comma-separated)', 'example.com')
-          domains = domainInput.split(',').map(d => d.trim()).filter(Boolean)
+          domains = domainInput
+            .split(',')
+            .map((d) => d.trim())
+            .filter(Boolean)
         }
 
         cli.info(`\nCreating site: ${name}`)
@@ -100,7 +101,7 @@ export function registerAnalyticsCommands(app: CLI): void {
             sk: { S: `SITE#${siteId}` },
             siteId: { S: siteId },
             name: { S: name },
-            domains: { L: domains.map(d => ({ S: d })) },
+            domains: { L: domains.map((d) => ({ S: d })) },
             isActive: { BOOL: true },
             createdAt: { S: now },
             updatedAt: { S: now },
@@ -112,8 +113,7 @@ export function registerAnalyticsCommands(app: CLI): void {
         cli.success(`\nSite ID: ${siteId}`)
         cli.info('\nAdd the tracking script to your website:')
         cli.info(`  <script src="https://analytics.stacksjs.com/track.js" data-site-id="${siteId}"></script>`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to create site: ${error.message}`)
         process.exit(1)
       }
@@ -126,84 +126,88 @@ export function registerAnalyticsCommands(app: CLI): void {
     .option('--name <name>', 'New site name')
     .option('--domain <domain>', 'Set domains (replaces existing)')
     .option('--active <boolean>', 'Set site active/inactive status')
-    .action(async (siteId: string, options: { table: string; region: string; name?: string; domain?: string | string[]; active?: string }) => {
-      cli.header('Update Analytics Site')
+    .action(
+      async (
+        siteId: string,
+        options: { table: string; region: string; name?: string; domain?: string | string[]; active?: string },
+      ) => {
+        cli.header('Update Analytics Site')
 
-      try {
-        const dynamodb = new DynamoDBClient(options.region)
+        try {
+          const dynamodb = new DynamoDBClient(options.region)
 
-        // First, verify the site exists
-        const result = await dynamodb.getItem({
-          TableName: options.table,
-          Key: {
-            pk: { S: `SITE#${siteId}` },
-            sk: { S: `SITE#${siteId}` },
-          },
-        })
+          // First, verify the site exists
+          const result = await dynamodb.getItem({
+            TableName: options.table,
+            Key: {
+              pk: { S: `SITE#${siteId}` },
+              sk: { S: `SITE#${siteId}` },
+            },
+          })
 
-        if (!result.Item) {
-          cli.error(`Site not found: ${siteId}`)
+          if (!result.Item) {
+            cli.error(`Site not found: ${siteId}`)
+            process.exit(1)
+          }
+
+          const site = DynamoDBClient.unmarshal(result.Item)
+          cli.info(`Updating site: ${site.name || 'Unnamed'} (${siteId})`)
+          cli.info('')
+
+          // Build update expression
+          const updates: string[] = []
+          const expressionNames: Record<string, string> = {}
+          const expressionValues: Record<string, any> = {}
+
+          if (options.name) {
+            updates.push('#n = :name')
+            expressionNames['#n'] = 'name'
+            expressionValues[':name'] = { S: options.name }
+            cli.info(`  Name: ${site.name} -> ${options.name}`)
+          }
+
+          if (options.domain !== undefined) {
+            const domains = Array.isArray(options.domain) ? options.domain : [options.domain]
+            updates.push('domains = :domains')
+            expressionValues[':domains'] = { L: domains.map((d) => ({ S: d })) }
+            cli.info(`  Domains: ${JSON.stringify(site.domains || [])} -> ${JSON.stringify(domains)}`)
+          }
+
+          if (options.active !== undefined) {
+            const isActive = options.active === 'true' || options.active === '1'
+            updates.push('isActive = :active')
+            expressionValues[':active'] = { BOOL: isActive }
+            cli.info(`  Active: ${site.isActive} -> ${isActive}`)
+          }
+
+          if (updates.length === 0) {
+            cli.warn('No updates specified. Use --name, --domain, or --active options.')
+            return
+          }
+
+          // Always update updatedAt
+          updates.push('updatedAt = :updatedAt')
+          expressionValues[':updatedAt'] = { S: new Date().toISOString() }
+
+          await dynamodb.updateItem({
+            TableName: options.table,
+            Key: {
+              pk: { S: `SITE#${siteId}` },
+              sk: { S: `SITE#${siteId}` },
+            },
+            UpdateExpression: `SET ${updates.join(', ')}`,
+            ExpressionAttributeNames: Object.keys(expressionNames).length > 0 ? expressionNames : undefined,
+            ExpressionAttributeValues: expressionValues,
+          })
+
+          cli.info('')
+          cli.success('Site updated successfully')
+        } catch (error: any) {
+          cli.error(`Failed to update site: ${error.message}`)
           process.exit(1)
         }
-
-        const site = DynamoDBClient.unmarshal(result.Item)
-        cli.info(`Updating site: ${site.name || 'Unnamed'} (${siteId})`)
-        cli.info('')
-
-        // Build update expression
-        const updates: string[] = []
-        const expressionNames: Record<string, string> = {}
-        const expressionValues: Record<string, any> = {}
-
-        if (options.name) {
-          updates.push('#n = :name')
-          expressionNames['#n'] = 'name'
-          expressionValues[':name'] = { S: options.name }
-          cli.info(`  Name: ${site.name} -> ${options.name}`)
-        }
-
-        if (options.domain !== undefined) {
-          const domains = Array.isArray(options.domain) ? options.domain : [options.domain]
-          updates.push('domains = :domains')
-          expressionValues[':domains'] = { L: domains.map(d => ({ S: d })) }
-          cli.info(`  Domains: ${JSON.stringify(site.domains || [])} -> ${JSON.stringify(domains)}`)
-        }
-
-        if (options.active !== undefined) {
-          const isActive = options.active === 'true' || options.active === '1'
-          updates.push('isActive = :active')
-          expressionValues[':active'] = { BOOL: isActive }
-          cli.info(`  Active: ${site.isActive} -> ${isActive}`)
-        }
-
-        if (updates.length === 0) {
-          cli.warn('No updates specified. Use --name, --domain, or --active options.')
-          return
-        }
-
-        // Always update updatedAt
-        updates.push('updatedAt = :updatedAt')
-        expressionValues[':updatedAt'] = { S: new Date().toISOString() }
-
-        await dynamodb.updateItem({
-          TableName: options.table,
-          Key: {
-            pk: { S: `SITE#${siteId}` },
-            sk: { S: `SITE#${siteId}` },
-          },
-          UpdateExpression: `SET ${updates.join(', ')}`,
-          ExpressionAttributeNames: Object.keys(expressionNames).length > 0 ? expressionNames : undefined,
-          ExpressionAttributeValues: expressionValues,
-        })
-
-        cli.info('')
-        cli.success('Site updated successfully')
-      }
-      catch (error: any) {
-        cli.error(`Failed to update site: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('analytics:query <siteId>', 'Query analytics data for a site')
@@ -237,7 +241,7 @@ export function registerAnalyticsCommands(app: CLI): void {
           return
         }
 
-        const items = result.Items.map(item => DynamoDBClient.unmarshal(item))
+        const items = result.Items.map((item) => DynamoDBClient.unmarshal(item))
 
         for (const item of items) {
           cli.info('')
@@ -248,8 +252,7 @@ export function registerAnalyticsCommands(app: CLI): void {
           if (item.browser) cli.info(`  Browser: ${item.browser}`)
           if (item.country) cli.info(`  Country: ${item.country}`)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to query data: ${error.message}`)
         process.exit(1)
       }
@@ -295,8 +298,8 @@ export function registerAnalyticsCommands(app: CLI): void {
           return
         }
 
-        const items = result.Items.map(item => DynamoDBClient.unmarshal(item))
-        const uniqueVisitors = new Set(items.map(i => i.visitorId)).size
+        const items = result.Items.map((item) => DynamoDBClient.unmarshal(item))
+        const uniqueVisitors = new Set(items.map((i) => i.visitorId)).size
 
         cli.info('')
         cli.success(`${uniqueVisitors} unique visitor(s) online`)
@@ -310,7 +313,9 @@ export function registerAnalyticsCommands(app: CLI): void {
         }
 
         cli.info('Active pages:')
-        for (const [path, count] of Object.entries(byPath).sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+        for (const [path, count] of Object.entries(byPath)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)) {
           cli.info(`  ${path}: ${count} view(s)`)
         }
 
@@ -319,8 +324,7 @@ export function registerAnalyticsCommands(app: CLI): void {
         for (const item of items.slice(0, 5)) {
           cli.info(`  ${item.timestamp} - ${item.path} (${item.browser || 'Unknown'})`)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to check realtime: ${error.message}`)
         process.exit(1)
       }

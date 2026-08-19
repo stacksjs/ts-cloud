@@ -10,7 +10,6 @@
  * (host metrics, services, SSH keys, firewall, backups) outright — none of it
  * is theirs, and some of it (open ports, auth events) is a map of the box.
  */
-
 import type { DashboardUser } from './dashboard-auth'
 import { visibleSites } from './dashboard-auth'
 
@@ -23,7 +22,7 @@ function siteLogSources(slug: string, site: string): string[] {
 }
 
 function isVisibleLogSource(source: string, slug: string, sites: string[]): boolean {
-  return sites.some(site => siteLogSources(slug, site).includes(source))
+  return sites.some((site) => siteLogSources(slug, site).includes(source))
 }
 
 export interface ScopeOptions {
@@ -38,8 +37,7 @@ export interface ScopeOptions {
 export function scopeDashboardData(data: Record<string, any>, options: ScopeOptions): Record<string, any> {
   const { user, slug } = options
 
-  if (user.role === 'admin')
-    return data
+  if (user.role === 'admin') return data
 
   const allSites: string[] = (data.sites ?? []).map((s: any) => s.name).filter(Boolean)
   const allowed = visibleSites(user, allSites)
@@ -49,8 +47,9 @@ export function scopeDashboardData(data: Record<string, any>, options: ScopeOpti
   const sitesDetail = (data.sitesDetail ?? []).filter((s: any) => allowedSet.has(s.name))
   const domains = new Set(sitesDetail.map((s: any) => s.domain).filter(Boolean))
 
-  const deployments = (data.serverDeploymentsDetail ?? data.serverDeployments ?? [])
-    .filter((d: any) => allowedSet.has(d.site))
+  const deployments = (data.serverDeploymentsDetail ?? data.serverDeployments ?? []).filter((d: any) =>
+    allowedSet.has(d.site),
+  )
 
   const logs = (data.serverLogs ?? []).filter((log: any) => isVisibleLogSource(log.source, slug, allowed))
 
@@ -59,10 +58,8 @@ export function scopeDashboardData(data: Record<string, any>, options: ScopeOpti
   const tlsCertificates = (data.security?.tlsCertificates ?? []).filter((cert: any) => domains.has(cert.domain))
 
   const activity = (data.activity ?? []).filter((entry: any) => {
-    if (entry.type === 'deploy')
-      return allowed.some(site => String(entry.title ?? '').startsWith(`${site} `))
-    if (entry.type === 'log')
-      return isVisibleLogSource(String(entry.title ?? '').split(' ')[0], slug, allowed)
+    if (entry.type === 'deploy') return allowed.some((site) => String(entry.title ?? '').startsWith(`${site} `))
+    if (entry.type === 'log') return isVisibleLogSource(String(entry.title ?? '').split(' ')[0], slug, allowed)
     // SSH key events are box-level.
     return false
   })
@@ -86,9 +83,7 @@ export function scopeDashboardData(data: Record<string, any>, options: ScopeOpti
 
     serverDeployments: deployments.slice(0, 5),
     serverDeploymentsDetail: deployments.slice(0, 50),
-    deploymentsEmptyReason: deployments.length
-      ? undefined
-      : 'No deployments have been recorded for your sites yet.',
+    deploymentsEmptyReason: deployments.length ? undefined : 'No deployments have been recorded for your sites yet.',
 
     serverLogs: logs,
     serverLogsEmptyReason: logs.length ? undefined : 'No recent log entries for your sites.',
@@ -103,16 +98,19 @@ export function scopeDashboardData(data: Record<string, any>, options: ScopeOpti
     },
 
     diagnostics: (data.diagnostics ?? []).filter((check: any) =>
-      ['Route conflicts', 'TLS certificates'].includes(check.name)),
+      ['Route conflicts', 'TLS certificates'].includes(check.name),
+    ),
 
     activity,
   }
 }
 
 /** Narrow the sanitized cloud config the same way. */
-export function scopeCloudConfig(config: Record<string, any>, user: Pick<DashboardUser, 'role' | 'sites'>): Record<string, any> {
-  if (user.role === 'admin')
-    return config
+export function scopeCloudConfig(
+  config: Record<string, any>,
+  user: Pick<DashboardUser, 'role' | 'sites'>,
+): Record<string, any> {
+  if (user.role === 'admin') return config
 
   const allowed = new Set(visibleSites(user, Object.keys(config.sites ?? {})))
   return {

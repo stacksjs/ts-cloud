@@ -129,7 +129,7 @@ export class DLQMonitoringManager {
    * Check for alerts
    */
   private checkForAlerts(queueUrl: string, metrics: DLQMetrics): void {
-    const monitor = Array.from(this.monitors.values()).find(m => m.queueUrl === queueUrl)
+    const monitor = Array.from(this.monitors.values()).find((m) => m.queueUrl === queueUrl)
 
     if (!monitor) {
       return
@@ -193,10 +193,7 @@ export class DLQMonitoringManager {
   /**
    * Create reprocess job
    */
-  createReprocessJob(options: {
-    queueUrl: string
-    messageId: string
-  }): ReprocessJob {
+  createReprocessJob(options: { queueUrl: string; messageId: string }): ReprocessJob {
     const id = `reprocess-${Date.now()}-${this.jobCounter++}`
 
     const job: ReprocessJob = {
@@ -227,7 +224,7 @@ export class DLQMonitoringManager {
     job.attempts++
 
     // Simulate reprocessing
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
 
     // Random success/failure
     const success = Math.random() > 0.3
@@ -245,10 +242,7 @@ export class DLQMonitoringManager {
   /**
    * Batch reprocess DLQ messages
    */
-  async batchReprocess(options: {
-    queueUrl: string
-    maxMessages: number
-  }): Promise<ReprocessJob[]> {
+  async batchReprocess(options: { queueUrl: string; maxMessages: number }): Promise<ReprocessJob[]> {
     const jobs: ReprocessJob[] = []
 
     for (let i = 0; i < options.maxMessages; i++) {
@@ -267,7 +261,10 @@ export class DLQMonitoringManager {
   /**
    * Get DLQ statistics
    */
-  getDLQStatistics(queueUrl: string, hours: number = 24): {
+  getDLQStatistics(
+    queueUrl: string,
+    hours: number = 24,
+  ): {
     totalMessages: number
     avgAge: number
     messagesReceived: number
@@ -276,8 +273,7 @@ export class DLQMonitoringManager {
     successRate: number
   } {
     const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000)
-    const metricsHistory = (this.metrics.get(queueUrl) || [])
-      .filter(m => m.timestamp >= cutoff)
+    const metricsHistory = (this.metrics.get(queueUrl) || []).filter((m) => m.timestamp >= cutoff)
 
     if (metricsHistory.length === 0) {
       return {
@@ -329,11 +325,11 @@ export class DLQMonitoringManager {
     let alerts = Array.from(this.alerts.values())
 
     if (monitorId) {
-      alerts = alerts.filter(a => a.monitorId === monitorId)
+      alerts = alerts.filter((a) => a.monitorId === monitorId)
     }
 
     if (acknowledged !== undefined) {
-      alerts = alerts.filter(a => a.acknowledged === acknowledged)
+      alerts = alerts.filter((a) => a.acknowledged === acknowledged)
     }
 
     return alerts.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
@@ -346,7 +342,7 @@ export class DLQMonitoringManager {
     let jobs = Array.from(this.reprocessJobs.values())
 
     if (queueUrl) {
-      jobs = jobs.filter(j => j.queueUrl === queueUrl)
+      jobs = jobs.filter((j) => j.queueUrl === queueUrl)
     }
 
     return jobs

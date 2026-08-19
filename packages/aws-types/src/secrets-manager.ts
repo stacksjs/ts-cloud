@@ -2,7 +2,6 @@
  * AWS Secrets Manager Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_SecretsManager.html
  */
-
 import type { Tag } from './common'
 
 /**
@@ -45,7 +44,12 @@ export interface SecretsManagerSecretTargetAttachment {
   Properties: {
     SecretId: string | { Ref: string }
     TargetId: string | { Ref: string }
-    TargetType: 'AWS::RDS::DBInstance' | 'AWS::RDS::DBCluster' | 'AWS::Redshift::Cluster' | 'AWS::DocDB::DBInstance' | 'AWS::DocDB::DBCluster'
+    TargetType:
+      | 'AWS::RDS::DBInstance'
+      | 'AWS::RDS::DBCluster'
+      | 'AWS::Redshift::Cluster'
+      | 'AWS::DocDB::DBInstance'
+      | 'AWS::DocDB::DBCluster'
   }
 }
 

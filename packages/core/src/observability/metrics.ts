@@ -66,7 +66,8 @@ export interface MetricAlarm {
   id: string
   name: string
   description?: string
-  comparisonOperator: 'GreaterThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
+  comparisonOperator:
+    'GreaterThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
   evaluationPeriods: number
   threshold: number
   period: number // seconds
@@ -163,11 +164,7 @@ export class MetricsManager {
   /**
    * Create performance metric
    */
-  createPerformanceMetric(options: {
-    name: string
-    namespace: string
-    operation: string
-  }): CustomMetric {
+  createPerformanceMetric(options: { name: string; namespace: string; operation: string }): CustomMetric {
     return this.createMetric({
       name: options.name,
       namespace: options.namespace,
@@ -182,11 +179,7 @@ export class MetricsManager {
   /**
    * Create error metric
    */
-  createErrorMetric(options: {
-    name: string
-    namespace: string
-    errorType: string
-  }): CustomMetric {
+  createErrorMetric(options: { name: string; namespace: string; errorType: string }): CustomMetric {
     return this.createMetric({
       name: options.name,
       namespace: options.namespace,
@@ -364,7 +357,7 @@ export class MetricsManager {
           InsufficientDataActions: alarm.insufficientDataActions,
         }),
         ...(metric.dimensions && {
-          Dimensions: metric.dimensions.map(d => ({
+          Dimensions: metric.dimensions.map((d) => ({
             Name: d.name,
             Value: d.value,
           })),
@@ -396,13 +389,7 @@ export class MetricsManager {
     return {
       type: 'metric',
       properties: {
-        metrics: [
-          [
-            metric.namespace,
-            metric.name,
-            ...(metric.dimensions?.flatMap(d => [d.name, d.value]) || []),
-          ],
-        ],
+        metrics: [[metric.namespace, metric.name, ...(metric.dimensions?.flatMap((d) => [d.name, d.value]) || [])]],
         period: 300,
         stat: 'Average',
         region: 'us-east-1',
@@ -419,7 +406,7 @@ export class MetricsManager {
     name: string,
     value: number,
     dimensions: Record<string, string> = {},
-    unit: string = 'Count'
+    unit: string = 'Count',
   ): {
     id: string
     namespace: string

@@ -41,11 +41,9 @@ for (const path of paths) {
     const buf = await view.screenshot({ encoding: 'buffer', format: 'png' })
     await Bun.write(out, buf as Uint8Array)
     console.log(`captured ${url} -> ${out}`)
-  }
-  catch (error: any) {
+  } catch (error: any) {
     console.error(`failed ${url}: ${error?.message ?? error}`)
-  }
-  finally {
+  } finally {
     view.close()
   }
 }

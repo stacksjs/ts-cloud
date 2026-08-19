@@ -28,7 +28,7 @@ const phpConfig: CloudConfig = {
 describe('awsComputeIngressRules', () => {
   it('opens SSH/HTTP/HTTPS plus app ports', () => {
     const rules = awsComputeIngressRules(phpConfig)
-    const ports = rules.map(r => r.port).sort((a, b) => a - b)
+    const ports = rules.map((r) => r.port).sort((a, b) => a - b)
     expect(ports).toContain(22)
     expect(ports).toContain(80)
     expect(ports).toContain(443)
@@ -53,6 +53,36 @@ describe('buildAwsUserData', () => {
     const ud = buildAwsUserData(baked)
     expect(ud).not.toContain('php.net@8.3')
     expect(ud).toContain('mkdir -p /var/www')
+  })
+
+  it('honors the provider-neutral swap setting', () => {
+    const configured: CloudConfig = {
+      ...phpConfig,
+      infrastructure: { compute: { ...phpConfig.infrastructure!.compute, swapGb: 4 } },
+    }
+    expect(buildAwsUserData(configured)).toContain('fallocate -l 4G /swapfile')
+
+    const disabled: CloudConfig = {
+      ...phpConfig,
+      infrastructure: { compute: { ...phpConfig.infrastructure!.compute, swapGb: 0 } },
+    }
+    expect(buildAwsUserData(disabled)).not.toContain('swapon /swapfile')
+  })
+
+  it('applies the shared rpx resource limits on AWS too', () => {
+    const configured: CloudConfig = {
+      ...phpConfig,
+      infrastructure: {
+        compute: {
+          ...phpConfig.infrastructure!.compute,
+          proxy: { engine: 'rpx', memoryHigh: '640M', memoryMax: '896M' },
+        },
+      },
+    }
+    const ud = buildAwsUserData(configured)
+    expect(ud).toContain('rpx-gateway.service')
+    expect(ud).toContain('MemoryHigh=640M')
+    expect(ud).toContain('MemoryMax=896M')
   })
 })
 
@@ -80,14 +110,16 @@ describe('readPinnedInstanceId', () => {
     try {
       process.chdir(dir)
       expect(readPinnedInstanceId('acme-production')).toBeNull()
-      await writeFile('storage/cloud/state/acme-production.json', JSON.stringify({ provider: 'aws', instanceId: 'i-0abc123' }))
+      await writeFile(
+        'storage/cloud/state/acme-production.json',
+        JSON.stringify({ provider: 'aws', instanceId: 'i-0abc123' }),
+      )
       expect(readPinnedInstanceId('acme-production')).toBe('i-0abc123')
       await writeFile('storage/cloud/state/acme-production.json', JSON.stringify({ instanceId: 42 }))
       expect(readPinnedInstanceId('acme-production')).toBeNull()
       await writeFile('storage/cloud/state/acme-production.json', 'not json')
       expect(readPinnedInstanceId('acme-production')).toBeNull()
-    }
-    finally {
+    } finally {
       process.chdir(cwd)
       await rm(dir, { recursive: true, force: true })
     }

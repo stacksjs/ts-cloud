@@ -26,7 +26,10 @@ const POOL_PORT_SPAN = 400
  * 32-char limit (the `web_` prefix takes 4).
  */
 function siteToken(siteName: string): string {
-  const base = siteName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const base = siteName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
   return (base || 'site').slice(0, 28)
 }
 
@@ -44,8 +47,7 @@ export function phpFpmPoolPort(siteName: string): number {
   // to the same user/conf also resolve to the same port — no dead fastcgi_pass.
   const token = siteToken(siteName)
   let h = 0
-  for (let i = 0; i < token.length; i++)
-    h = (h * 31 + token.charCodeAt(i)) >>> 0
+  for (let i = 0; i < token.length; i++) h = (h * 31 + token.charCodeAt(i)) >>> 0
   return POOL_PORT_BASE + (h % POOL_PORT_SPAN)
 }
 

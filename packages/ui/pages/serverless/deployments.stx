@@ -11,27 +11,14 @@ const deployments = __d?.deploymentsDetail ?? [
 function tone(s) { return s === 'success' ? 'ok' : (s === 'rolled-back' ? 'warn' : 'bad') }
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Rollback + redeploy run live against AWS through /api/serverless/operations/run.
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
-  try {
-    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm }) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
-  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.apiConfirm }) })
+  const body = await res.json()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : '')
+})
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -48,15 +35,16 @@ async function runOp() {
         <p>Every deploy publishes an immutable artifact; activation is atomic and rollback flips back instantly.</p>
       </div>
       <div class="header-actions">
-        <button class="btn danger sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back</button>
-        <button class="btn sm" type="button" @click="askOp('redeploy', 'redeploy', 'redeploy the current build')">Redeploy</button>
+        <button class="btn danger sm" type="button" @click="askOp('rollback', '{{ app.name }}', 'roll back {{ app.name }} to the previous build', 'rollback')">Roll back</button>
+        <button class="btn sm" type="button" @click="askOp('redeploy', '{{ app.name }}', 'redeploy {{ app.name }}', 'redeploy')">Redeploy</button>
       </div>
     </header>
 
     <div class="section">
       <div class="panel">
+        @if (deployments.length)
         <table>
-          <thead><tr><th>Build</th><th>Status</th><th>Version</th><th>Deploy hooks</th><th>By</th><th>Took</th><th>When</th></tr></thead>
+          <thead><tr><th scope="col">Build</th><th scope="col">Status</th><th scope="col">Version</th><th scope="col">Deploy hooks</th><th scope="col">By</th><th scope="col">Took</th><th scope="col">When</th></tr></thead>
           <tbody>
             @foreach (deployments as d)
               <tr>
@@ -71,6 +59,9 @@ async function runOp() {
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No deployments yet</strong><span>Deploy the application once to create immutable release history.</span></div>
+        @endif
         @include('../partials/op-confirm')
         <p class="note">Rollback restores the previous build's code and env and flips the live alias back instantly. Redeploy re-activates the current build without rebuilding.</p>
       </div>

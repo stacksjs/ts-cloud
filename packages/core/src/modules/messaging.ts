@@ -1,8 +1,4 @@
-import type {
-  SNSSubscription,
-  SNSTopic,
-  SNSTopicPolicy,
-} from '@ts-cloud/aws-types'
+import type { SNSSubscription, SNSTopic, SNSTopicPolicy } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -45,20 +41,15 @@ export class Messaging {
     topic: SNSTopic
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      topicName,
-      displayName,
-      encrypted = false,
-      kmsKeyId,
-    } = options
+    const { slug, environment, topicName, displayName, encrypted = false, kmsKeyId } = options
 
-    const resourceName = topicName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'topic',
-    })
+    const resourceName =
+      topicName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'topic',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -88,17 +79,10 @@ export class Messaging {
     topicLogicalId: string,
     options: SubscriptionOptions,
   ): {
-      subscription: SNSSubscription
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      protocol,
-      endpoint,
-      filterPolicy,
-      rawMessageDelivery = false,
-    } = options
+    subscription: SNSSubscription
+    logicalId: string
+  } {
+    const { slug, environment, protocol, endpoint, filterPolicy, rawMessageDelivery = false } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -141,9 +125,9 @@ export class Messaging {
       filterPolicy?: Record<string, unknown>
     },
   ): {
-      subscription: SNSSubscription
-      logicalId: string
-    } {
+    subscription: SNSSubscription
+    logicalId: string
+  } {
     return Messaging.subscribe(topicLogicalId, {
       ...options,
       protocol: 'email',
@@ -163,9 +147,9 @@ export class Messaging {
       filterPolicy?: Record<string, unknown>
     },
   ): {
-      subscription: SNSSubscription
-      logicalId: string
-    } {
+    subscription: SNSSubscription
+    logicalId: string
+  } {
     return Messaging.subscribe(topicLogicalId, {
       ...options,
       protocol: 'lambda',
@@ -187,9 +171,9 @@ export class Messaging {
       rawMessageDelivery?: boolean
     },
   ): {
-      subscription: SNSSubscription
-      logicalId: string
-    } {
+    subscription: SNSSubscription
+    logicalId: string
+  } {
     return Messaging.subscribe(topicLogicalId, {
       ...options,
       protocol: 'sqs',
@@ -209,9 +193,9 @@ export class Messaging {
       filterPolicy?: Record<string, unknown>
     },
   ): {
-      subscription: SNSSubscription
-      logicalId: string
-    } {
+    subscription: SNSSubscription
+    logicalId: string
+  } {
     const protocol = url.startsWith('https://') ? 'https' : 'http'
 
     return Messaging.subscribe(topicLogicalId, {
@@ -232,9 +216,9 @@ export class Messaging {
       environment: EnvironmentType
     },
   ): {
-      subscription: SNSSubscription
-      logicalId: string
-    } {
+    subscription: SNSSubscription
+    logicalId: string
+  } {
     return Messaging.subscribe(topicLogicalId, {
       ...options,
       protocol: 'sms',
@@ -249,16 +233,10 @@ export class Messaging {
     topicLogicalId: string,
     options: TopicPolicyOptions,
   ): {
-      policy: SNSTopicPolicy
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      allowedPrincipals,
-      allowedServices,
-      actions = 'SNS:Publish',
-    } = options
+    policy: SNSTopicPolicy
+    logicalId: string
+  } {
+    const { slug, environment, allowedPrincipals, allowedServices, actions = 'SNS:Publish' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -309,9 +287,9 @@ export class Messaging {
       environment: EnvironmentType
     },
   ): {
-      policy: SNSTopicPolicy
-      logicalId: string
-    } {
+    policy: SNSTopicPolicy
+    logicalId: string
+  } {
     return Messaging.setTopicPolicy(topicLogicalId, {
       ...options,
       allowedServices: 'cloudwatch.amazonaws.com',
@@ -329,9 +307,9 @@ export class Messaging {
       environment: EnvironmentType
     },
   ): {
-      policy: SNSTopicPolicy
-      logicalId: string
-    } {
+    policy: SNSTopicPolicy
+    logicalId: string
+  } {
     return Messaging.setTopicPolicy(topicLogicalId, {
       ...options,
       allowedServices: 'events.amazonaws.com',
@@ -349,9 +327,9 @@ export class Messaging {
       environment: EnvironmentType
     },
   ): {
-      policy: SNSTopicPolicy
-      logicalId: string
-    } {
+    policy: SNSTopicPolicy
+    logicalId: string
+  } {
     return Messaging.setTopicPolicy(topicLogicalId, {
       ...options,
       allowedServices: 's3.amazonaws.com',
@@ -362,10 +340,7 @@ export class Messaging {
   /**
    * Enable encryption on topic
    */
-  static enableEncryption(
-    topic: SNSTopic,
-    kmsKeyId: string,
-  ): SNSTopic {
+  static enableEncryption(topic: SNSTopic, kmsKeyId: string): SNSTopic {
     if (!topic.Properties) {
       topic.Properties = {}
     }
@@ -378,11 +353,7 @@ export class Messaging {
   /**
    * Add inline subscription to topic
    */
-  static addInlineSubscription(
-    topic: SNSTopic,
-    protocol: SubscriptionOptions['protocol'],
-    endpoint: string,
-  ): SNSTopic {
+  static addInlineSubscription(topic: SNSTopic, protocol: SubscriptionOptions['protocol'], endpoint: string): SNSTopic {
     if (!topic.Properties) {
       topic.Properties = {}
     }
@@ -420,7 +391,11 @@ export class Messaging {
     /**
      * Filter by numeric range
      */
-    numericRange: (attribute: string, min: number, max: number): Record<string, Array<{ numeric: (string | number)[] }>> => ({
+    numericRange: (
+      attribute: string,
+      min: number,
+      max: number,
+    ): Record<string, Array<{ numeric: (string | number)[] }>> => ({
       [attribute]: [{ numeric: ['>=', min, '<=', max] }],
     }),
 

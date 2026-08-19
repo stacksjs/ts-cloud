@@ -13,17 +13,17 @@ import { generateUbuntuAppCloudInit } from '../../src/drivers/hetzner/cloud-init
 describe('buildPhpProvisionScript (pantry)', () => {
   it('installs php + composer + nginx via pantry and starts php-fpm', () => {
     const script = buildPhpProvisionScript().join('\n')
-    expect(script).toContain('pantry install \'php.net@8.3\' \'getcomposer.org\' \'nginx.org\'')
-    expect(script).toContain('pantry enable \'php-fpm\'')
-    expect(script).toContain('pantry start \'php-fpm\'')
+    expect(script).toContain("pantry install 'php.net@8.3' 'getcomposer.org' 'nginx.org'")
+    expect(script).toContain("pantry enable 'php-fpm'")
+    expect(script).toContain("pantry start 'php-fpm'")
     // No apt/ppa anymore.
     expect(script).not.toContain('apt-get')
     expect(script).not.toContain('ppa:ondrej/php')
   })
 
   it('pins the requested default php version', () => {
-    expect(buildPhpProvisionScript({ versions: ['8.4'] }).join('\n')).toContain('\'php.net@8.4\'')
-    expect(buildPhpProvisionScript({ versions: ['8.3', '8.2'], default: '8.2' }).join('\n')).toContain('\'php.net@8.2\'')
+    expect(buildPhpProvisionScript({ versions: ['8.4'] }).join('\n')).toContain("'php.net@8.4'")
+    expect(buildPhpProvisionScript({ versions: ['8.3', '8.2'], default: '8.2' }).join('\n')).toContain("'php.net@8.2'")
     expect(resolveDefaultPhpVersion({ versions: ['8.3', '8.2'], default: '8.2' })).toBe('8.2')
   })
 
@@ -31,7 +31,7 @@ describe('buildPhpProvisionScript (pantry)', () => {
     const script = buildPhpProvisionScript({ installNginx: false, installComposer: false }).join('\n')
     expect(script).not.toContain('nginx.org')
     expect(script).not.toContain('getcomposer.org')
-    expect(script).toContain('\'php.net@8.3\'')
+    expect(script).toContain("'php.net@8.3'")
   })
 
   it('php-fpm listens on TCP for nginx fastcgi_pass', () => {
@@ -91,7 +91,7 @@ describe('generateUbuntuAppCloudInit with phpProvision', () => {
       phpProvision: buildPhpProvisionScript({ versions: ['8.3'] }),
     })
     expect(bootstrap).toContain('php.net@8.3')
-    expect(bootstrap).toContain('pantry start \'php-fpm\'')
+    expect(bootstrap).toContain("pantry start 'php-fpm'")
     // A php runtime must not pull in the bun installer.
     expect(bootstrap).not.toContain('bun.sh/install')
   })

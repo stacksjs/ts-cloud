@@ -86,10 +86,7 @@ export class QueueManagementManager {
   /**
    * Create standard queue
    */
-  createStandardQueue(options: {
-    queueName: string
-    messageRetentionDays?: number
-  }): QueueManagement {
+  createStandardQueue(options: { queueName: string; messageRetentionDays?: number }): QueueManagement {
     return this.createQueue({
       queueUrl: `https://sqs.us-east-1.amazonaws.com/123456789012/${options.queueName}`,
       queueName: options.queueName,
@@ -103,10 +100,7 @@ export class QueueManagementManager {
   /**
    * Create long polling queue
    */
-  createLongPollingQueue(options: {
-    queueName: string
-    waitTimeSeconds?: number
-  }): QueueManagement {
+  createLongPollingQueue(options: { queueName: string; waitTimeSeconds?: number }): QueueManagement {
     return this.createQueue({
       queueUrl: `https://sqs.us-east-1.amazonaws.com/123456789012/${options.queueName}`,
       queueName: options.queueName,
@@ -142,10 +136,7 @@ export class QueueManagementManager {
   /**
    * Create short retention policy
    */
-  createShortRetentionPolicy(options: {
-    queueId: string
-    retentionHours: number
-  }): RetentionPolicy {
+  createShortRetentionPolicy(options: { queueId: string; retentionHours: number }): RetentionPolicy {
     return this.createRetentionPolicy({
       queueId: options.queueId,
       retentionPeriod: options.retentionHours * 60 * 60,
@@ -186,7 +177,7 @@ export class QueueManagementManager {
     this.delayQueues.set(id, delayQueue)
 
     // Update queue delay
-    const queue = Array.from(this.queues.values()).find(q => q.queueUrl === delay.queueUrl)
+    const queue = Array.from(this.queues.values()).find((q) => q.queueUrl === delay.queueUrl)
     if (queue) {
       queue.delaySeconds = delay.defaultDelay
     }
@@ -197,10 +188,7 @@ export class QueueManagementManager {
   /**
    * Create scheduled delay queue
    */
-  createScheduledDelayQueue(options: {
-    queueUrl: string
-    delayMinutes: number
-  }): DelayQueue {
+  createScheduledDelayQueue(options: { queueUrl: string; delayMinutes: number }): DelayQueue {
     return this.createDelayQueue({
       queueUrl: options.queueUrl,
       defaultDelay: options.delayMinutes * 60,
@@ -297,8 +285,7 @@ export class QueueManagementManager {
       status = 'critical'
       issues.push('Large message backlog detected')
       recommendations.push('Increase consumer capacity')
-    }
-else if (latest.approximateNumberOfMessages > 1000) {
+    } else if (latest.approximateNumberOfMessages > 1000) {
       status = 'warning'
       issues.push('Growing message backlog')
       recommendations.push('Monitor consumer performance')
@@ -359,7 +346,7 @@ else if (latest.approximateNumberOfMessages > 1000) {
     let operations = Array.from(this.purgeOperations.values())
 
     if (queueUrl) {
-      operations = operations.filter(op => op.queueUrl === queueUrl)
+      operations = operations.filter((op) => op.queueUrl === queueUrl)
     }
 
     return operations

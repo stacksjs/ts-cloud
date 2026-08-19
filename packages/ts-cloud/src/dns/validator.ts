@@ -2,9 +2,8 @@
  * Unified DNS Validator for ACM Certificates
  * Works with any DNS provider (Route53, Porkbun, GoDaddy, etc.)
  */
-
-import { ACMClient } from '../aws/acm'
 import type { DnsProvider, DnsProviderConfig } from './types'
+import { ACMClient } from '../aws/acm'
 import { createDnsProvider } from './index'
 
 export interface ValidationRecord {
@@ -29,16 +28,12 @@ export class UnifiedDnsValidator {
   private acm: ACMClient
   private dnsProvider: DnsProvider
 
-  constructor(
-    dnsProvider: DnsProvider | DnsProviderConfig,
-    acmRegion: string = 'us-east-1',
-  ) {
+  constructor(dnsProvider: DnsProvider | DnsProviderConfig, acmRegion: string = 'us-east-1') {
     this.acm = new ACMClient(acmRegion)
 
     if ('provider' in dnsProvider) {
       this.dnsProvider = createDnsProvider(dnsProvider)
-    }
-    else {
+    } else {
       this.dnsProvider = dnsProvider
     }
   }
@@ -59,19 +54,13 @@ export class UnifiedDnsValidator {
     waitForValidation?: boolean
     maxWaitMinutes?: number
   }): Promise<CertificateValidationResult> {
-    const {
-      domainName,
-      subjectAlternativeNames = [],
-      waitForValidation = false,
-      maxWaitMinutes = 30,
-    } = params
+    const { domainName, subjectAlternativeNames = [], waitForValidation = false, maxWaitMinutes = 30 } = params
 
     // Request certificate from ACM
     const { CertificateArn } = await this.acm.requestCertificate({
       DomainName: domainName,
-      SubjectAlternativeNames: subjectAlternativeNames.length > 0
-        ? [domainName, ...subjectAlternativeNames]
-        : undefined,
+      SubjectAlternativeNames:
+        subjectAlternativeNames.length > 0 ? [domainName, ...subjectAlternativeNames] : undefined,
       ValidationMethod: 'DNS',
     })
 
@@ -99,18 +88,14 @@ export class UnifiedDnsValidator {
     let status: 'pending' | 'issued' | 'failed' = 'pending'
 
     if (waitForValidation) {
-      const cert = await this.acm.waitForCertificateValidation(
-        CertificateArn,
-        maxWaitMinutes * 2,
-        30000,
-      )
+      const cert = await this.acm.waitForCertificateValidation(CertificateArn, maxWaitMinutes * 2, 30000)
 
       status = cert?.Status === 'ISSUED' ? 'issued' : 'failed'
     }
 
     return {
       certificateArn: CertificateArn,
-      validationRecords: validationRecords.map(r => ({
+      validationRecords: validationRecords.map((r) => ({
         domainName: r.domainName,
         recordName: r.recordName,
         recordType: r.recordType,
@@ -124,10 +109,7 @@ export class UnifiedDnsValidator {
   /**
    * Create validation records for an existing certificate
    */
-  async createValidationRecords(params: {
-    certificateArn: string
-    domain: string
-  }): Promise<{
+  async createValidationRecords(params: { certificateArn: string; domain: string }): Promise<{
     success: boolean
     records: ValidationRecord[]
     errors: string[]
@@ -154,7 +136,7 @@ export class UnifiedDnsValidator {
 
     return {
       success: errors.length === 0,
-      records: validationRecords.map(r => ({
+      records: validationRecords.map((r) => ({
         domainName: r.domainName,
         recordName: r.recordName,
         recordType: r.recordType,
@@ -167,10 +149,7 @@ export class UnifiedDnsValidator {
   /**
    * Delete validation records (cleanup after certificate is issued)
    */
-  async deleteValidationRecords(params: {
-    certificateArn: string
-    domain: string
-  }): Promise<{
+  async deleteValidationRecords(params: { certificateArn: string; domain: string }): Promise<{
     success: boolean
     errors: string[]
   }> {
@@ -216,10 +195,8 @@ export class UnifiedDnsValidator {
     if (existing && existing.Status === 'ISSUED') {
       // Check if the existing certificate covers all required SANs
       const existingSans = existing.SubjectAlternativeNames || [existing.DomainName]
-      const hasWildcard = existingSans.some(san => san === `*.${domainName}`)
-      const allSansCovered = subjectAlternativeNames.every(san =>
-        existingSans.includes(san) || hasWildcard,
-      )
+      const hasWildcard = existingSans.some((san) => san === `*.${domainName}`)
+      const allSansCovered = subjectAlternativeNames.every((san) => existingSans.includes(san) || hasWildcard)
 
       if (allSansCovered) {
         return {
@@ -282,22 +259,19 @@ export class UnifiedDnsValidator {
   /**
    * Wait for validation options to become available
    */
-  private async waitForValidationOptions(
-    certificateArn: string,
-    maxAttempts = 30,
-  ): Promise<void> {
+  private async waitForValidationOptions(certificateArn: string, maxAttempts = 30): Promise<void> {
     for (let i = 0; i < maxAttempts; i++) {
       const cert = await this.acm.describeCertificate({ CertificateArn: certificateArn })
 
       if (
-        cert.DomainValidationOptions
-        && cert.DomainValidationOptions.length > 0
-        && cert.DomainValidationOptions[0].ResourceRecord
+        cert.DomainValidationOptions &&
+        cert.DomainValidationOptions.length > 0 &&
+        cert.DomainValidationOptions[0].ResourceRecord
       ) {
         return
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 2000))
     }
 
     throw new Error('Timeout waiting for DNS validation options')
@@ -317,7 +291,7 @@ export class UnifiedDnsValidator {
 
     return {
       status: cert.Status,
-      domainValidations: (cert.DomainValidationOptions || []).map(opt => ({
+      domainValidations: (cert.DomainValidationOptions || []).map((opt) => ({
         domain: opt.DomainName,
         status: opt.ValidationStatus || 'UNKNOWN',
       })),
@@ -328,15 +302,8 @@ export class UnifiedDnsValidator {
 /**
  * Helper function to create a validator with Porkbun
  */
-export function createPorkbunValidator(
-  apiKey: string,
-  secretKey: string,
-  acmRegion?: string,
-): UnifiedDnsValidator {
-  return new UnifiedDnsValidator(
-    { provider: 'porkbun', apiKey, secretKey },
-    acmRegion,
-  )
+export function createPorkbunValidator(apiKey: string, secretKey: string, acmRegion?: string): UnifiedDnsValidator {
+  return new UnifiedDnsValidator({ provider: 'porkbun', apiKey, secretKey }, acmRegion)
 }
 
 /**
@@ -348,10 +315,7 @@ export function createGoDaddyValidator(
   acmRegion?: string,
   environment?: 'production' | 'ote',
 ): UnifiedDnsValidator {
-  return new UnifiedDnsValidator(
-    { provider: 'godaddy', apiKey, apiSecret, environment },
-    acmRegion,
-  )
+  return new UnifiedDnsValidator({ provider: 'godaddy', apiKey, apiSecret, environment }, acmRegion)
 }
 
 /**
@@ -362,8 +326,5 @@ export function createRoute53Validator(
   hostedZoneId?: string,
   acmRegion?: string,
 ): UnifiedDnsValidator {
-  return new UnifiedDnsValidator(
-    { provider: 'route53', region, hostedZoneId },
-    acmRegion || region,
-  )
+  return new UnifiedDnsValidator({ provider: 'route53', region, hostedZoneId }, acmRegion || region)
 }

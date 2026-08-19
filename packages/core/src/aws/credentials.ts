@@ -8,8 +8,7 @@
  * - ECS task metadata
  * - Web identity token (for Kubernetes/IRSA)
  */
-
-import { readFileSync, existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -65,8 +64,7 @@ export function fromSharedCredentials(options?: CredentialProviderOptions): AWSC
   try {
     const content = readFileSync(credentialsPath, 'utf-8')
     return parseCredentialsFile(content, profile)
-  }
-catch {
+  } catch {
     return null
   }
 }
@@ -178,7 +176,7 @@ export async function fromEC2Metadata(options?: CredentialProviderOptions): Prom
       return null
     }
 
-    const data = await credentialsResponse.json() as {
+    const data = (await credentialsResponse.json()) as {
       AccessKeyId: string
       SecretAccessKey: string
       Token: string
@@ -191,8 +189,7 @@ export async function fromEC2Metadata(options?: CredentialProviderOptions): Prom
       sessionToken: data.Token,
       expiration: new Date(data.Expiration),
     }
-  }
-catch {
+  } catch {
     return null
   }
 }
@@ -211,8 +208,7 @@ export async function fromECSMetadata(options?: CredentialProviderOptions): Prom
 
   if (relativeUri) {
     credentialsUrl = `http://169.254.170.2${relativeUri}`
-  }
-else if (fullUri) {
+  } else if (fullUri) {
     credentialsUrl = fullUri
   }
 
@@ -235,7 +231,7 @@ else if (fullUri) {
       return null
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       AccessKeyId: string
       SecretAccessKey: string
       Token: string
@@ -248,8 +244,7 @@ else if (fullUri) {
       sessionToken: data.Token,
       expiration: new Date(data.Expiration),
     }
-  }
-catch {
+  } catch {
     return null
   }
 }
@@ -289,11 +284,7 @@ export async function fromWebIdentity(options?: CredentialProviderOptions): Prom
       WebIdentityToken: token,
     })
 
-    const response = await fetchWithTimeout(
-      `${stsEndpoint}/?${params.toString()}`,
-      { method: 'POST' },
-      timeout,
-    )
+    const response = await fetchWithTimeout(`${stsEndpoint}/?${params.toString()}`, { method: 'POST' }, timeout)
 
     if (!response.ok) {
       return null
@@ -317,8 +308,7 @@ export async function fromWebIdentity(options?: CredentialProviderOptions): Prom
       sessionToken: sessionToken ?? undefined,
       expiration: expiration ? new Date(expiration) : undefined,
     }
-  }
-catch {
+  } catch {
     return null
   }
 }
@@ -360,8 +350,8 @@ export async function getCredentials(options?: CredentialProviderOptions): Promi
 
   throw new Error(
     'Could not find AWS credentials. ' +
-    'Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, ' +
-    'or configure ~/.aws/credentials, or run on an EC2 instance with an IAM role.',
+      'Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, ' +
+      'or configure ~/.aws/credentials, or run on an EC2 instance with an IAM role.',
   )
 }
 
@@ -407,11 +397,7 @@ export function createCredentialProvider(options?: CredentialProviderOptions): (
 /**
  * Helper to fetch with timeout
  */
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -419,8 +405,7 @@ async function fetchWithTimeout(
     const response = await fetch(url, { ...options, signal: controller.signal })
     clearTimeout(timeoutId)
     return response
-  }
-catch (error) {
+  } catch (error) {
     clearTimeout(timeoutId)
     throw error
   }
@@ -491,8 +476,7 @@ export function resolveRegion(profile?: string): string {
           }
         }
       }
-    }
-catch {
+    } catch {
       // Ignore errors
     }
   }
@@ -505,7 +489,7 @@ catch {
  * Get AWS account ID using STS GetCallerIdentity
  */
 export async function getAccountId(credentials?: AWSCredentials): Promise<string> {
-  const creds = credentials || await getCredentials()
+  const creds = credentials || (await getCredentials())
   const region = resolveRegion()
 
   // Import signRequest dynamically to avoid circular dependency

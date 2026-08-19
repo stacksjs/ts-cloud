@@ -4,16 +4,27 @@
  * and derives sites/SSH/workers from the cloud config. Everything is best-effort:
  * if no box is reachable it returns config-derived data marked unavailable.
  */
-
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCloudDriver } from '../drivers'
 import { resolveHetznerLocation } from '../drivers/hetzner/config'
+import { buildServerTopology } from './dashboard-topology'
 import { resolveSiteKind, siteInstallBase } from './site-target'
 import { describeSshKeys } from './ssh-config-editor'
 
-const PROBED_SERVICES = ['rpx-gateway', 'nginx', 'php8.3-fpm', 'php8.2-fpm', 'mysql', 'mariadb', 'postgresql', 'redis', 'redis-server', 'meilisearch']
+const PROBED_SERVICES = [
+  'rpx-gateway',
+  'nginx',
+  'php8.3-fpm',
+  'php8.2-fpm',
+  'mysql',
+  'mariadb',
+  'postgresql',
+  'redis',
+  'redis-server',
+  'meilisearch',
+]
 const UNKNOWN = '-'
 
 interface LocalState {
@@ -31,30 +42,251 @@ interface ProbedService {
   since?: string
 }
 
-/** Shell script that emits a parseable metrics block (no jq/printf-JSON needed). */
-function metricsScript(): string[] {
-  return [
-    'set +e',
-    'echo "CPUS=$(nproc 2>/dev/null || echo 1)"',
-    'echo "LOAD=$(cut -d\' \' -f1 /proc/loadavg 2>/dev/null || echo 0)"',
-    'echo "MEMTOTAL=$(free -m 2>/dev/null | awk \'/^Mem:/{print $2}\')"',
-    'echo "MEMUSED=$(free -m 2>/dev/null | awk \'/^Mem:/{print $3}\')"',
-    'echo "DISKPCT=$(df -P / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
-    'echo "DISKUSEDG=$(df -BG / 2>/dev/null | awk \'NR==2{gsub("G","",$3);print $3}\')"',
-    'echo "DISKTOTG=$(df -BG / 2>/dev/null | awk \'NR==2{gsub("G","",$2);print $2}\')"',
-    'echo "UPTIME=$(uptime -p 2>/dev/null | sed \'s/^up //\' || echo unknown)"',
-    'echo "OS=$(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME")"',
-    `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); if [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ]; then mem=$(systemctl show "$s" -p MemoryCurrent --value 2>/dev/null); en=$(systemctl is-enabled "$s" 2>/dev/null); since=$(systemctl show "$s" -p ActiveEnterTimestamp --value 2>/dev/null); echo "SVC=$s=$st=$mem=$en=$since"; fi; done`,
-    'true',
-  ]
+export interface DiscoveredSite {
+  name: string
+  project: string
+  route: string
+  href: string
+  domain: string
+  path: string
+  kind: 'app' | 'static' | 'redirect'
+  runtime: string
+  deploy: string
+  tls: 'https'
+  root: string
+  branch: string
+  status: 'live' | 'degraded' | 'failed'
+  managedBy?: 'owner' | 'attached'
+  httpStatus: number
+  responseMs: number
+  tlsDaysRemaining?: number
+  checkedAt: string
+  release?: string
+  deployedAt?: string
 }
 
-export function parseBlock(output: string): Record<string, string> & { services: ProbedService[] } {
-  const kv: any = { services: [] }
+export function sharedBoxProbeScript(projectFilter?: string): string {
+  const source = String.raw`
+import { X509Certificate } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs'
+import { basename, join } from 'node:path'
+
+const fragmentsRoot = '/etc/rpx/sites.d'
+const certsRoot = '/etc/rpx/certs'
+const projectFilter = ${JSON.stringify(projectFilter ?? '')}
+const configuredRoutes = []
+if (existsSync(fragmentsRoot)) {
+  for (const file of readdirSync(fragmentsRoot).filter(name => name.endsWith('.json')).sort()) {
+    try {
+      const fragment = JSON.parse(readFileSync(join(fragmentsRoot, file), 'utf8'))
+      const project = String(fragment.slug || basename(file, '.json'))
+      if (projectFilter && project !== projectFilter) continue
+      for (const route of Array.isArray(fragment.proxies) ? fragment.proxies : []) {
+        if (!route || !route.to) continue
+        const path = route.path || '/'
+        const staticRoot = typeof route.static === 'string' ? route.static : route.static?.dir
+        const kind = route.redirect ? 'redirect' : staticRoot ? 'static' : 'app'
+        const install = staticRoot || ''
+        const installName = install.match(/^\/var\/www\/(.+?)\/current(?:\/|$)/)?.[1]
+        const siteName = installName?.startsWith(project + '-') ? installName.slice(project.length + 1) : String(route.id || route.to)
+        const href = 'https://' + route.to + (path === '/' ? '' : path)
+        configuredRoutes.push({
+          name: siteName,
+          project,
+          route: path === '/' ? route.to : route.to + path,
+          href,
+          domain: route.to,
+          path,
+          kind,
+          runtime: kind === 'app' ? 'service' : kind,
+          deploy: kind === 'app' ? 'service' : kind === 'static' ? 'server static' : 'redirect',
+          tls: 'https',
+          root: install || (Array.isArray(route.from) ? route.from.join(', ') : route.from || 'gateway'),
+          branch: kind === 'static' ? 'build artifact' : 'main',
+          install,
+        })
+      }
+    }
+    catch {}
+  }
+}
+
+async function mapWithConcurrency(values, limit, mapper) {
+  const results = new Array(values.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, values.length) }, async () => {
+    while (next < values.length) {
+      const index = next++
+      results[index] = await mapper(values[index])
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
+const routes = await mapWithConcurrency(configuredRoutes, 8, async route => {
+  const started = performance.now()
+  let httpStatus = 0
+  const probe = async (href) => {
+    const response = await fetch(href, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: { 'user-agent': 'ts-cloud-monitor/1.0' },
+      signal: AbortSignal.timeout(6000),
+    })
+    const status = response.status
+    await response.arrayBuffer()
+    return status
+  }
+  try {
+    httpStatus = await probe(route.href)
+    if (httpStatus === 404 && route.kind === 'app') {
+      const healthHref = route.href.replace(/\/$/, '') + '/health'
+      httpStatus = await probe(healthHref)
+    }
+  }
+  catch {}
+  const responseMs = Math.max(0, Math.round(performance.now() - started))
+  let tlsDaysRemaining
+  const cert = join(certsRoot, route.domain + '.crt')
+  if (existsSync(cert)) {
+    try {
+      const expiresAt = Date.parse(new X509Certificate(readFileSync(cert)).validTo)
+      if (Number.isFinite(expiresAt)) tlsDaysRemaining = Math.floor((expiresAt - Date.now()) / 86400000)
+    }
+    catch {}
+  }
+  let release
+  let deployedAt
+  if (route.install) {
+    try {
+      release = basename(readlinkSync(route.install))
+      deployedAt = statSync(route.install).mtime.toISOString()
+    }
+    catch {}
+  }
+  const status = httpStatus === 0 || httpStatus >= 500 ? 'failed' : httpStatus === 404 ? 'degraded' : 'live'
+  const { install, ...site } = route
+  return {
+    ...site,
+    status,
+    httpStatus,
+    responseMs,
+    tlsDaysRemaining,
+    checkedAt: new Date().toISOString(),
+    release,
+    deployedAt,
+  }
+})
+for (const route of routes) console.log('DISCOVERED_SITE=' + Buffer.from(JSON.stringify(route)).toString('base64'))
+
+const serviceOutput = Bun.spawnSync([
+  'systemctl', 'list-units', '--type=service', '--state=running', '--no-legend', '--plain',
+]).stdout.toString()
+const runningUnits = serviceOutput
+  .split('\n')
+  .map(line => line.trim().split(/\s+/)[0])
+  .filter(Boolean)
+if (runningUnits.length > 0) {
+  const propertiesOutput = Bun.spawnSync([
+    'systemctl',
+    'show',
+    ...runningUnits,
+    '--property=Id,WorkingDirectory,ExecStart,MemoryCurrent,UnitFileState,ActiveEnterTimestamp',
+  ]).stdout.toString()
+  for (const properties of propertiesOutput.split(/\n\n+/)) {
+    const values = Object.fromEntries(properties.split('\n').filter(Boolean).map(value => {
+      const separator = value.indexOf('=')
+      return separator < 0 ? [value, ''] : [value.slice(0, separator), value.slice(separator + 1)]
+    }))
+    const unit = values.Id
+    if (!unit) continue
+    if (!/^\/var\/www\/|^\/opt\/ts-cloud\//.test(values.WorkingDirectory || '') && !/\/var\/www\/|\/opt\/ts-cloud\//.test(values.ExecStart || '')) continue
+    console.log([
+      'SVC',
+      unit,
+      'active',
+      values.MemoryCurrent || '0',
+      values.UnitFileState || '-',
+      values.ActiveEnterTimestamp || '-',
+    ].join('='))
+  }
+}
+`
+  return `echo '${Buffer.from(source).toString('base64')}' | base64 -d | bun -`
+}
+
+/** Shell script that emits a parseable metrics block (no jq/printf-JSON needed). */
+export function metricsScript(
+  options: { includeServices?: boolean; includeSites?: boolean; projectFilter?: string } = {},
+): string[] {
+  const commands = [
+    'set +e',
+    'echo "CPUS=$(nproc 2>/dev/null || echo 1)"',
+    'read TS_TOTAL_1 TS_IDLE_1 <<EOF\n$(awk \'/^cpu /{idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle; exit}\' /proc/stat 2>/dev/null)\nEOF',
+    'sleep 0.2',
+    'read TS_TOTAL_2 TS_IDLE_2 <<EOF\n$(awk \'/^cpu /{idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle; exit}\' /proc/stat 2>/dev/null)\nEOF',
+    'echo "CPUUSED=$(awk -v t1="$TS_TOTAL_1" -v i1="$TS_IDLE_1" -v t2="$TS_TOTAL_2" -v i2="$TS_IDLE_2" \'BEGIN { dt=t2-t1; di=i2-i1; if (dt>0) printf "%.1f", 100*(dt-di)/dt; else print 0 }\')"',
+    'echo "LOAD=$(cut -d\' \' -f1 /proc/loadavg 2>/dev/null || echo 0)"',
+    'echo "LOAD5=$(cut -d\' \' -f2 /proc/loadavg 2>/dev/null || echo 0)"',
+    'echo "LOAD15=$(cut -d\' \' -f3 /proc/loadavg 2>/dev/null || echo 0)"',
+    'read MEMTOTAL MEMUSED MEMAVAILABLE MEMCACHE SWAPTOTAL SWAPUSED <<EOF\n$(free -m 2>/dev/null | awk \'/^Mem:/{total=$2; used=$3; available=$7; cache=$6} /^Swap:/{print total, used, available, cache, $2, $3}\')\nEOF',
+    'echo "MEMTOTAL=${MEMTOTAL:-0}"',
+    'echo "MEMUSED=${MEMUSED:-0}"',
+    'echo "MEMAVAILABLE=${MEMAVAILABLE:-0}"',
+    'echo "MEMCACHE=${MEMCACHE:-0}"',
+    'echo "SWAPTOTAL=${SWAPTOTAL:-0}"',
+    'echo "SWAPUSED=${SWAPUSED:-0}"',
+    'read DISKTOTG DISKUSEDG DISKPCT <<EOF\n$(df -BG -P / 2>/dev/null | awk \'NR==2{gsub("G","",$2); gsub("G","",$3); gsub("%","",$5); print $2, $3, $5}\')\nEOF',
+    'echo "DISKPCT=${DISKPCT:-0}"',
+    'echo "DISKUSEDG=${DISKUSEDG:-0}"',
+    'echo "DISKTOTG=${DISKTOTG:-0}"',
+    'echo "INODEPCT=$(df -Pi / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
+    'echo "NETRX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$3} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
+    'echo "NETTX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$11} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
+    // Rates and period totals come from the metrics collector's bandwidth state,
+    // not from /proc: the counters there are since-boot only, so this probe can
+    // report throughput and month-to-date usage without keeping its own history.
+    // Absent (collector disabled or first minute) ⇒ zeros, same as any other
+    // unavailable reading.
+    '. /var/lib/ts-cloud/bandwidth-state 2>/dev/null || true',
+    'echo "NETRXRATE=${RX_RATE:-0}"',
+    'echo "NETTXRATE=${TX_RATE:-0}"',
+    'echo "NETRXTODAY=${DAY_RX:-0}"',
+    'echo "NETTXTODAY=${DAY_TX:-0}"',
+    'echo "NETRXMONTH=${MONTH_RX:-0}"',
+    'echo "NETTXMONTH=${MONTH_TX:-0}"',
+    'echo "NETMONTHKEY=${MONTH_KEY:-}"',
+    'echo "PROCESSES=$(ps -e --no-headers 2>/dev/null | awk \'END{print NR+0}\')"',
+    'echo "UPTIME=$(uptime -p 2>/dev/null | sed \'s/^up //\' || echo unknown)"',
+    'echo "UPTIME_SECONDS=$(cut -d\' \' -f1 /proc/uptime 2>/dev/null || echo 0)"',
+    'echo "OS=$(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME")"',
+  ]
+  if (options.includeServices !== false)
+    commands.push(
+      `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); if [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ]; then mem=$(systemctl show "$s" -p MemoryCurrent --value 2>/dev/null); en=$(systemctl is-enabled "$s" 2>/dev/null); since=$(systemctl show "$s" -p ActiveEnterTimestamp --value 2>/dev/null); echo "SVC=$s=$st=$mem=$en=$since"; fi; done`,
+    )
+  if (options.includeSites !== false) commands.push(sharedBoxProbeScript(options.projectFilter))
+  commands.push('true')
+  return commands
+}
+
+export function parseBlock(
+  output: string,
+): Record<string, string> & { services: ProbedService[]; discoveredSites: DiscoveredSite[] } {
+  const kv: any = { services: [], discoveredSites: [] }
   for (const line of output.split('\n')) {
     const l = line.trim()
-    if (l.startsWith('SVC=')) {
-      const [, name, status, memBytes, enabled, since] = /^SVC=([^=]+)=([^=]+)(?:=([^=]*)(?:=([^=]*)(?:=(.*))?)?)?$/.exec(l) ?? []
+    if (l.startsWith('DISCOVERED_SITE=')) {
+      try {
+        const site = JSON.parse(Buffer.from(l.slice('DISCOVERED_SITE='.length), 'base64').toString('utf8'))
+        if (site?.domain && site?.route) kv.discoveredSites.push(site)
+      } catch {
+        // A malformed fragment must not hide otherwise valid host metrics.
+      }
+    } else if (l.startsWith('SVC=')) {
+      const [, name, status, memBytes, enabled, since] =
+        /^SVC=([^=]+)=([^=]+)(?:=([^=]*)(?:=([^=]*)(?:=(.*))?)?)?$/.exec(l) ?? []
       if (name) {
         kv.services.push({
           name,
@@ -64,8 +296,7 @@ export function parseBlock(output: string): Record<string, string> & { services:
           since: since || UNKNOWN,
         })
       }
-    }
-    else {
+    } else {
       const eq = l.indexOf('=')
       if (eq > 0) kv[l.slice(0, eq)] = l.slice(eq + 1)
     }
@@ -73,9 +304,9 @@ export function parseBlock(output: string): Record<string, string> & { services:
   return kv
 }
 
-function configuredServices(config: CloudConfig): Array<{ name: string, status: string }> {
+function configuredServices(config: CloudConfig): Array<{ name: string; status: string }> {
   const compute = config.infrastructure?.compute as any
-  const services: Array<{ name: string, status: string }> = []
+  const services: Array<{ name: string; status: string }> = []
 
   if (compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx')
     services.push({ name: 'rpx-gateway', status: 'configured' })
@@ -83,8 +314,7 @@ function configuredServices(config: CloudConfig): Array<{ name: string, status: 
     services.push({ name: 'ts-cloud-nginx', status: 'configured' })
 
   const phpVersions = compute?.php?.versions ?? (compute?.runtime === 'php' ? ['8.3'] : [])
-  for (const version of phpVersions)
-    services.push({ name: `php${version}-fpm`, status: 'configured' })
+  for (const version of phpVersions) services.push({ name: `php${version}-fpm`, status: 'configured' })
 
   const managed = compute?.managedServices ?? {}
   const serviceNames: Array<[string, string]> = [
@@ -96,8 +326,7 @@ function configuredServices(config: CloudConfig): Array<{ name: string, status: 
     ['meilisearch', 'meilisearch'],
   ]
   for (const [key, name] of serviceNames) {
-    if (managed[key])
-      services.push({ name, status: 'configured' })
+    if (managed[key]) services.push({ name, status: 'configured' })
   }
 
   return services
@@ -118,37 +347,52 @@ function configuredBackup(config: CloudConfig): Record<string, any> {
 }
 
 function configuredProvider(config: CloudConfig): string {
-  return (config.infrastructure?.compute as any)?.provider
-    ?? (config.cloud as any)?.provider
-    ?? (config as any).provider
-    ?? 'aws'
+  return (
+    (config.infrastructure?.compute as any)?.provider ??
+    (config.cloud as any)?.provider ??
+    (config as any).provider ??
+    'aws'
+  )
 }
 
 function configuredRegion(config: CloudConfig): string {
   // Resolve through the same chain the Hetzner driver uses, so the cockpit
   // cannot report a location the box is not actually in.
-  if (configuredProvider(config) === 'hetzner')
-    return resolveHetznerLocation(config)
+  if (configuredProvider(config) === 'hetzner') return resolveHetznerLocation(config)
 
   return config.project.region ?? 'us-east-1'
 }
 
+/**
+ * The configured monthly bandwidth allowance, in bytes, or 0 when unset.
+ *
+ * Providers quote allowances in decimal TB (Hetzner's "5.0 TB included") and
+ * bill overage per decimal TB, so this converts with 1000^4 rather than 1024^4 —
+ * using binary units here would understate usage against the allowance by ~10%,
+ * which is exactly the margin in which a surprise invoice lives.
+ */
+function configuredBandwidthBudgetBytes(config: CloudConfig): number {
+  const monitoring = (config.infrastructure?.compute as any)?.monitoring
+  const tb = Number(typeof monitoring === 'object' ? monitoring?.alerts?.bandwidthTb ?? 0 : 0)
+  return Number.isFinite(tb) && tb > 0 ? Math.round(tb * 1000 ** 4) : 0
+}
+
 function loadLocalState(config: CloudConfig, environment: EnvironmentType): LocalState | null {
   const statePath = join(process.cwd(), 'storage', 'cloud', 'state', `${config.project.slug}-${environment}.json`)
-  if (!existsSync(statePath))
-    return null
+  if (!existsSync(statePath)) return null
 
   try {
     return JSON.parse(readFileSync(statePath, 'utf8')) as LocalState
-  }
-  catch {
+  } catch {
     return null
   }
 }
 
-function configuredWorkers(config: CloudConfig): Array<{ name: string, site: string, processes: number, status: string }> {
+function configuredWorkers(
+  config: CloudConfig,
+): Array<{ name: string; site: string; processes: number; status: string }> {
   const sites = config.sites ?? {}
-  const workers: Array<{ name: string, site: string, processes: number, status: string }> = []
+  const workers: Array<{ name: string; site: string; processes: number; status: string }> = []
   for (const [siteName, site] of Object.entries(sites) as Array<[string, any]>) {
     const queues = site.queues ?? site.workers
     if (Array.isArray(queues)) {
@@ -156,7 +400,12 @@ function configuredWorkers(config: CloudConfig): Array<{ name: string, site: str
         if (typeof queue === 'string')
           workers.push({ name: `${siteName}:${queue}`, site: siteName, processes: 1, status: 'configured' })
         else if (queue?.name)
-          workers.push({ name: `${siteName}:${queue.name}`, site: siteName, processes: queue.processes ?? 1, status: 'configured' })
+          workers.push({
+            name: `${siteName}:${queue.name}`,
+            site: siteName,
+            processes: queue.processes ?? 1,
+            status: 'configured',
+          })
       }
     }
   }
@@ -164,15 +413,13 @@ function configuredWorkers(config: CloudConfig): Array<{ name: string, site: str
 }
 
 function normalizeSitePath(path: string | undefined): string {
-  if (!path || path === '')
-    return '/'
+  if (!path || path === '') return '/'
   return path.startsWith('/') ? path : `/${path}`
 }
 
-function siteRoute(site: any): { route: string, href?: string } {
+function siteRoute(site: any): { route: string; href?: string } {
   const path = normalizeSitePath(site.path)
-  if (!site.domain)
-    return { route: 'internal' }
+  if (!site.domain) return { route: 'internal' }
   return {
     route: path === '/' ? site.domain : `${site.domain}${path}`,
     href: `https://${site.domain}${path === '/' ? '' : path}`,
@@ -183,53 +430,43 @@ function siteKindLabel(name: string, site: any): string {
   const kind = resolveSiteKind(site)
   // A redirect ships nothing — label it as such rather than falling through to
   // the 'bucket' default below (resolveSiteKind returns 'redirect' for these).
-  if (kind === 'redirect')
-    return 'redirect'
+  if (kind === 'redirect') return 'redirect'
+  // Same for a proxy: ts-cloud ships nothing, so none of the build/start
+  // sniffing below can say anything true about it.
+  if (kind === 'proxy') return 'proxy'
   const build = String(site.build ?? '').toLowerCase()
   const start = String(site.start ?? '').toLowerCase()
-  if (name === 'main' || start.includes('buddy/src/cli.ts serve'))
-    return 'stacks'
-  if (name === 'api' || start.includes('/serve/api'))
-    return 'api'
-  if (build.includes('buildblog'))
-    return 'bunpress blog'
-  if (build.includes('bunpress'))
-    return 'bunpress'
-  if (build.includes('site:build') || build.includes('stx'))
-    return 'stx static'
-  if (kind === 'server-static')
-    return site.spa ? 'spa' : 'static'
-  if (kind === 'server-app')
-    return 'app'
-  if (kind === 'server-php')
-    return site.type ?? 'php'
+  if (name === 'main' || start.includes('buddy/src/cli.ts serve')) return 'stacks'
+  if (name === 'api' || start.includes('/serve/api')) return 'api'
+  if (build.includes('buildblog')) return 'bunpress blog'
+  if (build.includes('bunpress')) return 'bunpress'
+  if (build.includes('site:build') || build.includes('stx')) return 'stx static'
+  if (kind === 'server-static') return site.spa ? 'spa' : 'static'
+  if (kind === 'server-app') return 'app'
+  if (kind === 'server-php') return site.type ?? 'php'
   return 'bucket'
 }
 
 function siteRuntime(site: any): string {
   const kind = resolveSiteKind(site)
-  if (kind === 'redirect')
-    return '—'
+  if (kind === 'redirect' || kind === 'proxy') return '—'
   const command = `${site.start ?? ''} ${site.build ?? ''}`.toLowerCase()
   if (kind === 'server-static')
-    return command.includes('bunpress') || command.includes('bun ') || command.includes('bunx ') ? 'static/bun' : 'static'
-  if (kind === 'server-app')
-    return command.includes('bun') ? 'bun' : 'node'
-  if (kind === 'server-php')
-    return `php ${site.php ?? site.phpVersion ?? '8.3'}`
+    return command.includes('bunpress') || command.includes('bun ') || command.includes('bunx ')
+      ? 'static/bun'
+      : 'static'
+  if (kind === 'server-app') return command.includes('bun') ? 'bun' : 'node'
+  if (kind === 'server-php') return `php ${site.php ?? site.phpVersion ?? '8.3'}`
   return 'static'
 }
 
 function siteDeployLabel(site: any): string {
   const kind = resolveSiteKind(site)
-  if (kind === 'redirect')
-    return 'redirect'
-  if (kind === 'server-app')
-    return 'service'
-  if (kind === 'server-static')
-    return 'server static'
-  if (kind === 'server-php')
-    return 'php release'
+  if (kind === 'redirect') return 'redirect'
+  if (kind === 'proxy') return 'proxy'
+  if (kind === 'server-app') return 'service'
+  if (kind === 'server-static') return 'server static'
+  if (kind === 'server-php') return 'php release'
   return 'bucket'
 }
 
@@ -240,8 +477,7 @@ function configuredSites(config: CloudConfig): Array<Record<string, any>> {
     const { route, href } = siteRoute(site)
     const routeKey = site.domain ? `${site.domain}${path}` : ''
     const shadowedBy = routeKey ? seenRoutes.get(routeKey) : undefined
-    if (routeKey && !shadowedBy)
-      seenRoutes.set(routeKey, name)
+    if (routeKey && !shadowedBy) seenRoutes.set(routeKey, name)
 
     return {
       name,
@@ -262,8 +498,38 @@ function configuredSites(config: CloudConfig): Array<Record<string, any>> {
   })
 }
 
+export function mergeDiscoveredSites(
+  configured: Array<Record<string, any>>,
+  discovered: DiscoveredSite[],
+  ownerSlug: string,
+): Array<Record<string, any>> {
+  const routes = new Map<string, Record<string, any>>(
+    configured.map((site) => [String(site.route), { ...site, project: ownerSlug, managedBy: 'owner' }]),
+  )
+  for (const site of discovered) {
+    const current = routes.get(site.route)
+    const name = current?.name ?? `${site.project}:${site.name}`
+    routes.set(site.route, {
+      ...current,
+      ...site,
+      name,
+      kind: current?.kind ?? site.kind,
+      type: current?.type ?? site.kind,
+      runtime: current?.runtime ?? site.runtime,
+      deploy: current?.deploy ?? site.deploy,
+      root: current?.root ?? site.root,
+      branch: current?.branch ?? site.branch,
+      managedBy: site.project === ownerSlug ? 'owner' : 'attached',
+    })
+  }
+  return [...routes.values()].sort((a, b) => {
+    if (a.managedBy !== b.managedBy) return a.managedBy === 'owner' ? -1 : 1
+    return String(a.route).localeCompare(String(b.route))
+  })
+}
+
 function shellSingleQuote(value: string): string {
-  return `'${value.replaceAll('\'', '\'\\\'\'')}'`
+  return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 function sedReplacement(value: string): string {
@@ -271,8 +537,7 @@ function sedReplacement(value: string): string {
 }
 
 function deployHistoryScript(siteNames: string[], slug: string): string[] {
-  if (siteNames.length === 0)
-    return ['true']
+  if (siteNames.length === 0) return ['true']
 
   return [
     'set +e',
@@ -286,9 +551,13 @@ function deployHistoryScript(siteNames: string[], slug: string): string[] {
 }
 
 function siteDomains(config: CloudConfig): string[] {
-  return [...new Set(Object.values(config.sites ?? {})
-    .map((site: any) => site.domain)
-    .filter((domain): domain is string => typeof domain === 'string' && domain.length > 0))]
+  return [
+    ...new Set(
+      Object.values(config.sites ?? {})
+        .map((site: any) => site.domain)
+        .filter((domain): domain is string => typeof domain === 'string' && domain.length > 0),
+    ),
+  ]
 }
 
 function securityScript(config: CloudConfig): string[] {
@@ -322,23 +591,18 @@ interface ServerLogSource {
 export function serverLogSources(config: CloudConfig): ServerLogSource[] {
   const byLabel = new Map<string, ServerLogSource>()
   const add = (pattern: string, label: string): void => {
-    if (pattern && label && !byLabel.has(label))
-      byLabel.set(label, { pattern, label })
+    if (pattern && label && !byLabel.has(label)) byLabel.set(label, { pattern, label })
   }
   const compute = config.infrastructure?.compute as any
   const slug = config.project.slug
 
-  if (compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx')
-    add('rpx-gateway', 'rpx-gateway')
-  else
-    add('nginx', 'nginx')
+  if (compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx') add('rpx-gateway', 'rpx-gateway')
+  else add('nginx', 'nginx')
 
-  for (const svc of configuredServices(config))
-    add(svc.name, svc.name)
+  for (const svc of configuredServices(config)) add(svc.name, svc.name)
 
   for (const [siteName, site] of Object.entries(config.sites ?? {}) as Array<[string, any]>) {
-    if (resolveSiteKind(site) !== 'server-app')
-      continue
+    if (resolveSiteKind(site) !== 'server-app') continue
     add(`${slug}-${siteName}`, `${slug}-${siteName}`)
     if (Array.isArray(site.queues ?? site.workers) && (site.queues ?? site.workers).length)
       add(`${slug}-${siteName}-queue-*`, `${slug}-${siteName}-queues`)
@@ -351,8 +615,7 @@ export function serverLogSources(config: CloudConfig): ServerLogSource[] {
 
 function serverLogsScript(config: CloudConfig): string[] {
   const sources = serverLogSources(config)
-  if (sources.length === 0)
-    return ['true']
+  if (sources.length === 0) return ['true']
 
   return [
     'set +e',
@@ -370,26 +633,20 @@ function serverLogsScript(config: CloudConfig): string[] {
 
 function relativeTime(iso: string): string {
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime()))
-    return iso || UNKNOWN
+  if (Number.isNaN(date.getTime())) return iso || UNKNOWN
   const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000))
-  if (seconds < 60)
-    return `${seconds}s ago`
+  if (seconds < 60) return `${seconds}s ago`
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60)
-    return `${minutes}m ago`
+  if (minutes < 60) return `${minutes}m ago`
   const hours = Math.round(minutes / 60)
-  if (hours < 48)
-    return `${hours}h ago`
+  if (hours < 48) return `${hours}h ago`
   const days = Math.round(hours / 24)
   return `${days}d ago`
 }
 
 function inferLogLevel(message: string): 'error' | 'warn' | 'info' {
-  if (/(?:error|failed|panic|fatal|exception|denied|unhealthy)/i.test(message))
-    return 'error'
-  if (/(?:warn|warning|retry|restart|deprecated|timeout)/i.test(message))
-    return 'warn'
+  if (/(?:error|failed|panic|fatal|exception|denied|unhealthy)/i.test(message)) return 'error'
+  if (/(?:warn|warning|retry|restart|deprecated|timeout)/i.test(message)) return 'warn'
   return 'info'
 }
 
@@ -398,12 +655,10 @@ export function parseServerLogs(output: string): Array<Record<string, any>> {
 
   for (const rawLine of output.split('\n')) {
     const line = rawLine.trim()
-    if (!line.startsWith('LOG='))
-      continue
+    if (!line.startsWith('LOG=')) continue
 
     const tab = line.indexOf('\t')
-    if (tab < 0)
-      continue
+    if (tab < 0) continue
 
     const source = line.slice(4, tab)
     const raw = line.slice(tab + 1)
@@ -411,8 +666,7 @@ export function parseServerLogs(output: string): Array<Record<string, any>> {
     const timestamp = match?.[1] ?? ''
     const host = match?.[2] ?? ''
     const message = (match?.[3] ?? raw).trim()
-    if (!message)
-      continue
+    if (!message) continue
 
     records.push({
       source,
@@ -428,29 +682,22 @@ export function parseServerLogs(output: string): Array<Record<string, any>> {
 }
 
 function listenerExposure(listen: string): 'loopback' | 'private' | 'public' {
-  if (/^(?:127\.|localhost:|\[?::1\]?)/.test(listen))
-    return 'loopback'
-  if (/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?f[cd][0-9a-f:])/i.test(listen))
-    return 'private'
+  if (/^(?:127\.|localhost:|\[?::1\]?)/.test(listen)) return 'loopback'
+  if (/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?f[cd][0-9a-f:])/i.test(listen)) return 'private'
   return 'public'
 }
 
 function portTone(listen: string): 'ok' | 'warn' | 'bad' {
   const exposure = listenerExposure(listen)
-  if (exposure !== 'public')
-    return 'ok'
-  if (/:(?:22|80|443)$/.test(listen) || /^\*:(?:22|80|443)$/.test(listen))
-    return 'ok'
+  if (exposure !== 'public') return 'ok'
+  if (/:(?:22|80|443)$/.test(listen) || /^\*:(?:22|80|443)$/.test(listen)) return 'ok'
   return 'warn'
 }
 
 function certStatus(daysRemaining: number | null): 'ok' | 'warn' | 'bad' {
-  if (daysRemaining == null)
-    return 'warn'
-  if (daysRemaining < 8)
-    return 'bad'
-  if (daysRemaining < 30)
-    return 'warn'
+  if (daysRemaining == null) return 'warn'
+  if (daysRemaining < 8) return 'bad'
+  if (daysRemaining < 30) return 'warn'
   return 'ok'
 }
 
@@ -473,13 +720,10 @@ export function parseServerSecurity(output: string): Record<string, any> {
           tone: portTone(listen),
         })
       }
-    }
-    else if (line.startsWith('FIREWALL=')) {
+    } else if (line.startsWith('FIREWALL=')) {
       const value = line.slice(9).trim()
-      if (value)
-        firewallLines.push(value)
-    }
-    else if (line.startsWith('AUTH=')) {
+      if (value) firewallLines.push(value)
+    } else if (line.startsWith('AUTH=')) {
       const raw = line.slice(5)
       const match = /^(\d{4}-\d{2}-\d{2}T[^\s]+)\s+(\S+)\s+(.*)$/.exec(raw)
       const message = (match?.[3] ?? raw).trim()
@@ -492,11 +736,9 @@ export function parseServerSecurity(output: string): Record<string, any> {
           level: inferLogLevel(message),
         })
       }
-    }
-    else if (line.startsWith('CERT=')) {
+    } else if (line.startsWith('CERT=')) {
       const [domain = '', expiresRaw = ''] = line.slice(5).split('\t')
-      if (!domain)
-        continue
+      if (!domain) continue
       const expiresAt = new Date(expiresRaw)
       const daysRemaining = Number.isNaN(expiresAt.getTime())
         ? null
@@ -510,14 +752,18 @@ export function parseServerSecurity(output: string): Record<string, any> {
     }
   }
 
-  const firewallEnabled = firewallLines.some(line => /Status:\s*active/i.test(line))
-  const firewallUnavailable = firewallLines.some(line => /unavailable/i.test(line))
+  const firewallEnabled = firewallLines.some((line) => /Status:\s*active/i.test(line))
+  const firewallUnavailable = firewallLines.some((line) => /unavailable/i.test(line))
   return {
     ports: ports.slice(0, 80),
     firewall: {
-      status: firewallEnabled ? 'active' : (firewallUnavailable ? 'unavailable' : 'inactive'),
-      summary: firewallEnabled ? 'ufw active' : (firewallUnavailable ? 'ufw unavailable' : 'ufw inactive or not configured'),
-      rules: firewallLines.filter(line => line && !/^Status:/i.test(line)).slice(0, 60),
+      status: firewallEnabled ? 'active' : firewallUnavailable ? 'unavailable' : 'inactive',
+      summary: firewallEnabled
+        ? 'ufw active'
+        : firewallUnavailable
+          ? 'ufw unavailable'
+          : 'ufw inactive or not configured',
+      rules: firewallLines.filter((line) => line && !/^Status:/i.test(line)).slice(0, 60),
     },
     tlsCertificates,
     authEvents: authEvents.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 30),
@@ -530,7 +776,7 @@ function configuredSecurity(config: CloudConfig): Record<string, any> {
   const allowedPorts = [...new Set([22, 80, 443, ...(firewall.allowedPorts ?? [])])]
   const domains = siteDomains(config)
   return {
-    ports: allowedPorts.map(port => ({
+    ports: allowedPorts.map((port) => ({
       proto: 'tcp',
       listen: `0.0.0.0:${port}`,
       processName: 'configured firewall',
@@ -539,10 +785,11 @@ function configuredSecurity(config: CloudConfig): Record<string, any> {
     })),
     firewall: {
       status: firewall.enabled === false ? 'disabled' : 'configured',
-      summary: firewall.enabled === false ? 'host firewall disabled in config' : 'host firewall configured declaratively',
-      rules: allowedPorts.map(port => `ALLOW ${port}/tcp`),
+      summary:
+        firewall.enabled === false ? 'host firewall disabled in config' : 'host firewall configured declaratively',
+      rules: allowedPorts.map((port) => `ALLOW ${port}/tcp`),
     },
-    tlsCertificates: domains.map(domain => ({
+    tlsCertificates: domains.map((domain) => ({
       domain,
       expires: UNKNOWN,
       daysRemaining: null,
@@ -565,22 +812,30 @@ function diagnosticChecks(config: CloudConfig, data: Record<string, any>): Array
     {
       name: 'Live server probe',
       status: live ? 'pass' : 'warn',
-      detail: live ? 'Metrics and remote checks are coming from the compute box.' : 'The dashboard is rendering config/state data until the box probe succeeds.',
+      detail: live
+        ? 'Metrics and remote checks are coming from the compute box.'
+        : 'The dashboard is rendering config/state data until the box probe succeeds.',
     },
     {
       name: 'Managed services',
       status: failedServices.length ? 'fail' : 'pass',
-      detail: failedServices.length ? `${failedServices.length} service(s) need attention.` : `${(data.services ?? []).length} service(s) reported healthy or configured.`,
+      detail: failedServices.length
+        ? `${failedServices.length} service(s) need attention.`
+        : `${(data.services ?? []).length} service(s) reported healthy or configured.`,
     },
     {
       name: 'Route conflicts',
       status: shadowed.length ? 'warn' : 'pass',
-      detail: shadowed.length ? `${shadowed.map((site: any) => site.name).join(', ')} is shadowed by an earlier route.` : `${sites.length} site route(s) are unshadowed.`,
+      detail: shadowed.length
+        ? `${shadowed.map((site: any) => site.name).join(', ')} is shadowed by an earlier route.`
+        : `${sites.length} site route(s) are unshadowed.`,
     },
     {
       name: 'SSH access',
       status: sshKeys.length ? 'pass' : 'warn',
-      detail: sshKeys.length ? `${sshKeys.length} declarative authorized key(s) configured.` : 'No declarative SSH keys are configured.',
+      detail: sshKeys.length
+        ? `${sshKeys.length} declarative authorized key(s) configured.`
+        : 'No declarative SSH keys are configured.',
     },
     {
       name: 'Firewall',
@@ -590,7 +845,9 @@ function diagnosticChecks(config: CloudConfig, data: Record<string, any>): Array
     {
       name: 'TLS certificates',
       status: expiringCerts.length ? 'warn' : 'pass',
-      detail: expiringCerts.length ? `${expiringCerts.length} certificate(s) need renewal visibility.` : `${(security.tlsCertificates ?? []).length} certificate(s) look healthy.`,
+      detail: expiringCerts.length
+        ? `${expiringCerts.length} certificate(s) need renewal visibility.`
+        : `${(security.tlsCertificates ?? []).length} certificate(s) look healthy.`,
     },
   ]
 }
@@ -629,9 +886,7 @@ function activityFeed(data: Record<string, any>): Array<Record<string, any>> {
       timestamp: '',
     })
   }
-  return activity
-    .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
-    .slice(0, 80)
+  return activity.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 80)
 }
 
 export function parseDeployHistory(output: string, sites: Record<string, any> = {}): Array<Record<string, any>> {
@@ -639,14 +894,12 @@ export function parseDeployHistory(output: string, sites: Record<string, any> = 
 
   for (const rawLine of output.split('\n')) {
     const line = rawLine.trim()
-    if (!line.startsWith('DEPLOY='))
-      continue
+    if (!line.startsWith('DEPLOY=')) continue
 
     const parts = line.split('\t')
     const site = parts[0]?.replace(/^DEPLOY=/, '') ?? ''
     const [timestamp, releaseId, commit, status, rcPart] = parts.slice(1)
-    if (!site || !timestamp || !releaseId)
-      continue
+    if (!site || !timestamp || !releaseId) continue
 
     const siteConfig = sites[site] ?? {}
     const kind = resolveSiteKind(siteConfig)
@@ -663,16 +916,18 @@ export function parseDeployHistory(output: string, sites: Record<string, any> = 
       took: '-',
       by: 'ts-cloud',
       rc: rcPart?.replace(/^rc=/, '') ?? '',
-      steps: kind === 'server-static'
-        ? ['upload artifact', 'publish static files']
-        : ['upload artifact', 'restart service'],
+      steps:
+        kind === 'server-static' ? ['upload artifact', 'publish static files'] : ['upload artifact', 'restart service'],
     })
   }
 
   return records.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
 }
 
-export function resolveConfigOnlyServerDashboardData(config: CloudConfig, environment: EnvironmentType): Record<string, any> {
+export function resolveConfigOnlyServerDashboardData(
+  config: CloudConfig,
+  environment: EnvironmentType,
+): Record<string, any> {
   const state = loadLocalState(config, environment)
   const services = configuredServices(config)
   const sites = configuredSites(config)
@@ -689,23 +944,47 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
     },
     systemMetrics: {
       load: 0,
+      load5: 0,
+      load15: 0,
+      cpuUsedPct: 0,
       cpus: Math.max(1, Number((config.infrastructure?.compute as any)?.instances ?? 1)),
       memUsedMb: 0,
       memTotalMb: 0,
+      memAvailableMb: 0,
+      memCacheMb: 0,
+      swapUsedMb: 0,
+      swapTotalMb: 0,
       diskUsedPct: 0,
       diskUsedGb: 0,
       diskTotalGb: diskSize,
+      inodeUsedPct: 0,
+      networkRxBytes: 0,
+      networkTxBytes: 0,
+      networkRxBytesPerSec: 0,
+      networkTxBytesPerSec: 0,
+      networkRxBytesToday: 0,
+      networkTxBytesToday: 0,
+      networkRxBytesMonth: 0,
+      networkTxBytesMonth: 0,
+      networkMonthKey: '',
+      processes: 0,
+      uptimeSeconds: 0,
     },
     metricsUnavailable: true,
+    // The configured monthly allowance, so the dashboard can express usage as a
+    // share of it rather than as a raw number nobody can judge. Zero ⇒ no
+    // allowance configured, and the UI falls back to a plain projection.
+    bandwidthBudgetBytes: configuredBandwidthBudgetBytes(config),
     services,
-    servicesDetail: services.map(s => ({ ...s, since: UNKNOWN, memMb: 0, auto: true })),
+    servicesDetail: services.map((s) => ({ ...s, since: UNKNOWN, memMb: 0, auto: true })),
     backup: configuredBackup(config),
     backupHistory: [],
     workers: configuredWorkers(config),
     serverScheduler: { enabled: false, lastRun: 'not configured' },
     serverDeployments: [],
     serverDeploymentsDetail: [],
-    deploymentsEmptyReason: 'No deployment history has been recorded yet. Future server deploys will write /var/www/<site>/.ts-cloud/deploy-history.log.',
+    deploymentsEmptyReason:
+      'No deployment history has been recorded yet. Future server deploys will write /var/www/<site>/.ts-cloud/deploy-history.log.',
     serverLogs: [],
     serverLogsEmptyReason: 'Live server logs are unavailable until the dashboard can reach the compute box.',
     security: configuredSecurity(config),
@@ -716,7 +995,10 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
       const kind = resolveSiteKind(site)
       return {
         ...s,
-        root: kind === 'server-static' ? siteInstallBase(config.project.slug, s.name) : `${siteInstallBase(config.project.slug, s.name)}/current`,
+        root:
+          kind === 'server-static'
+            ? siteInstallBase(config.project.slug, s.name)
+            : `${siteInstallBase(config.project.slug, s.name)}/current`,
         branch: kind === 'server-static' ? 'build artifact' : 'main',
         build: site.build,
         php: site.php ?? site.phpVersion,
@@ -725,48 +1007,60 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
         envKeys: Object.keys(site.env ?? site.environment ?? {}),
       }
     }),
+    siteHealth: [],
     sshKeys: describeSshKeys((config.infrastructure?.compute as any)?.sshKeys ?? []),
     _serverReachable: false,
     _metricsStatus: 'unavailable',
   }
   out.diagnostics = diagnosticChecks(config, out)
   out.activity = activityFeed(out)
+  out.topology = buildServerTopology(out, { project: config.project.name, environment })
   return out
 }
 
-export async function resolveServerDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any> | null> {
+export async function resolveServerDashboardData(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  options: { includeSiteHealth?: boolean; telemetryOnly?: boolean } = {},
+): Promise<Record<string, any> | null> {
   if (!config.infrastructure?.compute) return null
   let driver: ReturnType<typeof createCloudDriver> | null = null
   try {
     driver = createCloudDriver({ config })
-  }
-  catch {
+  } catch {
     driver = null
   }
 
   let parsed: ReturnType<typeof parseBlock> | null = null
   let instanceCount = 0
   let targets: any[] = []
-  if (driver) try {
-    targets = await driver.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
-    instanceCount = targets.length
-    if (targets.length) {
-      const result = await driver.runRemoteDeploy({
-        targets: [targets[0]],
-        commands: metricsScript(),
-        comment: `ts-cloud dashboard:build ${config.project.slug}`,
-        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-      })
-      const output = result.perInstance?.[0]?.output
-      if (output) parsed = parseBlock(output)
+  if (driver)
+    try {
+      targets = await driver.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
+      instanceCount = targets.length
+      if (targets.length) {
+        const result = await driver.runRemoteDeploy({
+          targets: [targets[0]],
+          commands: metricsScript({
+            includeServices: !options.telemetryOnly,
+            includeSites: options.includeSiteHealth !== false,
+            projectFilter: config.cloud?.attachTo ? config.project.slug : undefined,
+          }),
+          comment: `ts-cloud dashboard:build ${config.project.slug}`,
+          tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+        })
+        const output = result.perInstance?.[0]?.output
+        if (output) parsed = parseBlock(output)
+      }
+    } catch {
+      /* box unreachable — fall through to config-only data */
     }
-  }
-  catch {
-    /* box unreachable — fall through to config-only data */
-  }
 
   const out: Record<string, any> = resolveConfigOnlyServerDashboardData(config, environment)
-  const num = (v: string | undefined, d = 0): number => { const n = Number(v); return Number.isFinite(n) ? n : d }
+  const num = (v: string | undefined, d = 0): number => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : d
+  }
 
   out.server.os = parsed?.OS || out.server.os
   out.server.uptime = parsed?.UPTIME || out.server.uptime
@@ -775,13 +1069,40 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
     out.metricsUnavailable = false
     out._metricsStatus = 'live'
     out.systemMetrics = {
-      load: num(parsed.LOAD), cpus: num(parsed.CPUS, 1),
-      memUsedMb: num(parsed.MEMUSED), memTotalMb: num(parsed.MEMTOTAL, 1),
-      diskUsedPct: num(parsed.DISKPCT), diskUsedGb: num(parsed.DISKUSEDG), diskTotalGb: num(parsed.DISKTOTG, 1),
+      load: num(parsed.LOAD),
+      load5: num(parsed.LOAD5),
+      load15: num(parsed.LOAD15),
+      cpuUsedPct: num(parsed.CPUUSED),
+      cpus: num(parsed.CPUS, 1),
+      memUsedMb: num(parsed.MEMUSED),
+      memTotalMb: num(parsed.MEMTOTAL, 1),
+      memAvailableMb: num(parsed.MEMAVAILABLE),
+      memCacheMb: num(parsed.MEMCACHE),
+      swapUsedMb: num(parsed.SWAPUSED),
+      swapTotalMb: num(parsed.SWAPTOTAL),
+      diskUsedPct: num(parsed.DISKPCT),
+      diskUsedGb: num(parsed.DISKUSEDG),
+      diskTotalGb: num(parsed.DISKTOTG, 1),
+      inodeUsedPct: num(parsed.INODEPCT),
+      networkRxBytes: num(parsed.NETRX),
+      networkTxBytes: num(parsed.NETTX),
+      networkRxBytesPerSec: num(parsed.NETRXRATE),
+      networkTxBytesPerSec: num(parsed.NETTXRATE),
+      networkRxBytesToday: num(parsed.NETRXTODAY),
+      networkTxBytesToday: num(parsed.NETTXTODAY),
+      networkRxBytesMonth: num(parsed.NETRXMONTH),
+      networkTxBytesMonth: num(parsed.NETTXMONTH),
+      networkMonthKey: parsed.NETMONTHKEY || '',
+      processes: num(parsed.PROCESSES),
+      uptimeSeconds: num(parsed.UPTIME_SECONDS),
     }
     if (parsed.services.length) {
-      out.services = parsed.services.map(s => ({ name: s.name, status: s.status === 'active' ? 'running' : s.status }))
-      out.servicesDetail = parsed.services.map(s => ({
+      const services = [...new Map(parsed.services.map((service) => [service.name, service])).values()]
+      out.services = services.map((s) => ({
+        name: s.name,
+        status: s.status === 'active' ? 'running' : s.status,
+      }))
+      out.servicesDetail = services.map((s) => ({
         name: s.name,
         status: s.status === 'active' ? 'running' : s.status,
         since: s.since && s.since !== UNKNOWN ? s.since : out.server.uptime,
@@ -789,78 +1110,109 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
         auto: s.enabled ? !['disabled', 'static', 'masked'].includes(s.enabled) : true,
       }))
     }
+    if (parsed.discoveredSites.length) {
+      out.sitesDetail = mergeDiscoveredSites(out.sitesDetail, parsed.discoveredSites, config.project.slug)
+      out.sites = out.sitesDetail.map((site: Record<string, any>) => ({
+        name: site.name,
+        project: site.project,
+        managedBy: site.managedBy,
+        route: site.route,
+        href: site.href,
+        domain: site.domain,
+        path: site.path,
+        kind: site.kind,
+        type: site.type,
+        runtime: site.runtime,
+        deploy: site.deploy,
+        tls: site.tls,
+        status: site.status,
+        httpStatus: site.httpStatus,
+        responseMs: site.responseMs,
+        tlsDaysRemaining: site.tlsDaysRemaining,
+        checkedAt: site.checkedAt,
+      }))
+      out.siteHealth = out.sitesDetail.map((site: Record<string, any>) => ({
+        name: site.name,
+        project: site.project,
+        route: site.route,
+        status: site.status,
+        httpStatus: site.httpStatus,
+        responseMs: site.responseMs,
+        tlsDaysRemaining: site.tlsDaysRemaining,
+        checkedAt: site.checkedAt,
+      }))
+    }
   }
 
-  if (driver && targets.length) {
-    try {
-      const siteNames = Object.keys(config.sites ?? {})
-      const historyResult = await driver.runRemoteDeploy({
-        targets: [targets[0]],
-        commands: deployHistoryScript(siteNames, config.project.slug),
-        comment: `ts-cloud dashboard:deploy-history ${config.project.slug}`,
-        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-      })
-      const historyOutput = historyResult.perInstance?.[0]?.output ?? ''
-      const records = parseDeployHistory(historyOutput, config.sites as any)
-      out.serverDeployments = records.slice(0, 5)
-      out.serverDeploymentsDetail = records.slice(0, 50)
-      out.deploymentsEmptyReason = records.length
-        ? undefined
-        : 'No deployment history was found on the server yet. Deploy again to populate this timeline.'
-    }
-    catch {
-      out.deploymentsEmptyReason = 'Deployment history could not be read from the server.'
-    }
-  }
-  else if (driver && instanceCount === 0) {
+  if (driver && targets.length && !options.telemetryOnly) {
+    await Promise.all([
+      (async () => {
+        try {
+          const siteNames = Object.keys(config.sites ?? {})
+          const historyResult = await driver.runRemoteDeploy({
+            targets: [targets[0]],
+            commands: deployHistoryScript(siteNames, config.project.slug),
+            comment: `ts-cloud dashboard:deploy-history ${config.project.slug}`,
+            tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+          })
+          const historyOutput = historyResult.perInstance?.[0]?.output ?? ''
+          const records = parseDeployHistory(historyOutput, config.sites as any)
+          out.serverDeployments = records.slice(0, 5)
+          out.serverDeploymentsDetail = records.slice(0, 50)
+          out.deploymentsEmptyReason = records.length
+            ? undefined
+            : 'No deployment history was found on the server yet. Deploy again to populate this timeline.'
+        } catch {
+          out.deploymentsEmptyReason = 'Deployment history could not be read from the server.'
+        }
+      })(),
+      (async () => {
+        try {
+          const logsResult = await driver.runRemoteDeploy({
+            targets: [targets[0]],
+            commands: serverLogsScript(config),
+            comment: `ts-cloud dashboard:server-logs ${config.project.slug}`,
+            tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+          })
+          const logsOutput = logsResult.perInstance?.[0]?.output ?? ''
+          const records = parseServerLogs(logsOutput)
+          out.serverLogs = records
+          out.serverLogsEmptyReason = records.length
+            ? undefined
+            : 'No recent journal entries were found for the managed server units.'
+        } catch {
+          out.serverLogsEmptyReason = 'Server logs could not be read from the box.'
+        }
+      })(),
+      (async () => {
+        try {
+          const securityResult = await driver.runRemoteDeploy({
+            targets: [targets[0]],
+            commands: securityScript(config),
+            comment: `ts-cloud dashboard:security ${config.project.slug}`,
+            tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+          })
+          const securityOutput = securityResult.perInstance?.[0]?.output ?? ''
+          const liveSecurity = parseServerSecurity(securityOutput)
+          const declaredSecurity = configuredSecurity(config)
+          if (!liveSecurity.ports.length) liveSecurity.ports = declaredSecurity.ports
+          if (!liveSecurity.tlsCertificates.length) liveSecurity.tlsCertificates = declaredSecurity.tlsCertificates
+          out.security = liveSecurity
+          out.securityEmptyReason = undefined
+        } catch {
+          out.securityEmptyReason = 'Server security checks could not be read from the box.'
+        }
+      })(),
+    ])
+  } else if (driver && instanceCount === 0) {
     out.deploymentsEmptyReason = 'No app server target was found for this environment.'
   }
 
-  if (driver && targets.length) {
-    try {
-      const logsResult = await driver.runRemoteDeploy({
-        targets: [targets[0]],
-        commands: serverLogsScript(config),
-        comment: `ts-cloud dashboard:server-logs ${config.project.slug}`,
-        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-      })
-      const logsOutput = logsResult.perInstance?.[0]?.output ?? ''
-      const records = parseServerLogs(logsOutput)
-      out.serverLogs = records
-      out.serverLogsEmptyReason = records.length
-        ? undefined
-        : 'No recent journal entries were found for the managed server units.'
-    }
-    catch {
-      out.serverLogsEmptyReason = 'Server logs could not be read from the box.'
-    }
-  }
-
-  if (driver && targets.length) {
-    try {
-      const securityResult = await driver.runRemoteDeploy({
-        targets: [targets[0]],
-        commands: securityScript(config),
-        comment: `ts-cloud dashboard:security ${config.project.slug}`,
-        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-      })
-      const securityOutput = securityResult.perInstance?.[0]?.output ?? ''
-      const liveSecurity = parseServerSecurity(securityOutput)
-      const declaredSecurity = configuredSecurity(config)
-      if (!liveSecurity.ports.length)
-        liveSecurity.ports = declaredSecurity.ports
-      if (!liveSecurity.tlsCertificates.length)
-        liveSecurity.tlsCertificates = declaredSecurity.tlsCertificates
-      out.security = liveSecurity
-      out.securityEmptyReason = undefined
-    }
-    catch {
-      out.securityEmptyReason = 'Server security checks could not be read from the box.'
-    }
-  }
-
   // Sites + SSH keys are declarative — derive from config (no box needed).
-  const sshKeys = (config.infrastructure?.compute as any)?.sshKeys ?? (config.infrastructure as any)?.ssh?.keys ?? (config.infrastructure as any)?.sshKeys
+  const sshKeys =
+    (config.infrastructure?.compute as any)?.sshKeys ??
+    (config.infrastructure as any)?.ssh?.keys ??
+    (config.infrastructure as any)?.sshKeys
   if (Array.isArray(sshKeys) && sshKeys.length) {
     out.sshKeys = describeSshKeys(sshKeys)
   }
@@ -868,5 +1220,8 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
   out._serverReachable = instanceCount > 0 && !!parsed
   out.diagnostics = diagnosticChecks(config, out)
   out.activity = activityFeed(out)
+  // Rebuilt from the probed data — the config-only topology set earlier knows
+  // nothing about which units are actually running.
+  out.topology = buildServerTopology(out, { project: config.project.name, environment })
   return out
 }

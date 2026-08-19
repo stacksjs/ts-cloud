@@ -42,18 +42,14 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
   const branch = repository.branch || DEFAULT_DEPLOY_BRANCH
   const url = repository.url
 
-  const lines: string[] = [
-    `rm -rf ${releaseDir}`,
-    `mkdir -p ${releaseDir}`,
-  ]
+  const lines: string[] = [`rm -rf ${releaseDir}`, `mkdir -p ${releaseDir}`]
 
   if (repository.strategy === 'tag') {
     if (repository.tag) {
       // git clone --branch accepts a tag name as well as a branch.
       lines.push(`git clone -q --depth 1 --branch ${shellQuote(repository.tag)} ${shellQuote(url)} ${releaseDir}`)
       lines.push(`printf '%s' ${shellQuote(repository.tag)} > ${releaseDir}/.ts-cloud-tag`)
-    }
-    else {
+    } else {
       const pattern = repository.tagPattern || DEFAULT_TAG_PATTERN
       // Resolve the highest version tag matching the pattern on the remote, then
       // shallow-clone exactly that tag. `-v:refname` sorts semver-ish names.
@@ -64,8 +60,7 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
         `printf '%s' "$TS_CLOUD_TAG" > ${releaseDir}/.ts-cloud-tag`,
       )
     }
-  }
-  else if (commit) {
+  } else if (commit) {
     // Reproducible deploy of an exact commit: init + fetch just that commit.
     lines.push(
       `git -C ${releaseDir} init -q`,
@@ -73,23 +68,18 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
       `git -C ${releaseDir} fetch -q --depth 1 origin ${shellQuote(commit)}`,
       `git -C ${releaseDir} checkout -q FETCH_HEAD`,
     )
-  }
-  else {
-    lines.push(
-      `git clone -q --depth 1 --branch ${shellQuote(branch)} ${shellQuote(url)} ${releaseDir}`,
-    )
+  } else {
+    lines.push(`git clone -q --depth 1 --branch ${shellQuote(branch)} ${shellQuote(url)} ${releaseDir}`)
   }
 
   // Record the deployed SHA for traceability / rollback.
-  lines.push(
-    `git -C ${releaseDir} rev-parse HEAD > ${releaseDir}/.ts-cloud-sha`,
-  )
+  lines.push(`git -C ${releaseDir} rev-parse HEAD > ${releaseDir}/.ts-cloud-sha`)
 
   return lines
 }
 
 /** Single-quote a value for safe embedding in the generated shell. */
 function shellQuote(value: string): string {
-  const escaped = value.split('\'').join('\'\\\'\'')
+  const escaped = value.split("'").join("'\\''")
   return `'${escaped}'`
 }

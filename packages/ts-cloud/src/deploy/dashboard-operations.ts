@@ -72,8 +72,7 @@ export function buildDashboardOperations(config: CloudConfig, data: Record<strin
   const services = data.servicesDetail ?? data.services ?? []
   for (const service of services) {
     const name = String(service?.name ?? '')
-    if (!name || !isSafeSystemdUnit(name))
-      continue
+    if (!name || !isSafeSystemdUnit(name)) continue
     for (const verb of SERVICE_VERBS) {
       ops.push({
         id: `${verb}:${name}`,
@@ -89,29 +88,41 @@ export function buildDashboardOperations(config: CloudConfig, data: Record<strin
 
   // Rollback for release-based sites (server-app / server-php keep releases/).
   for (const [name, site] of Object.entries(config.sites ?? {})) {
-    if (!site || !isSafeSiteName(name))
-      continue
+    if (!site || !isSafeSiteName(name)) continue
     const kind = resolveSiteKind(site)
     if (kind === 'server-app' || kind === 'server-php')
-      ops.push({ id: `rollback:${name}`, label: `Rollback ${name}`, group: 'deploy', target: name, mutates: true, confirm: name, danger: true })
+      ops.push({
+        id: `rollback:${name}`,
+        label: `Rollback ${name}`,
+        group: 'deploy',
+        target: name,
+        mutates: true,
+        confirm: name,
+        danger: true,
+      })
   }
 
   // Worker restart (graceful queue:restart) per site that runs workers.
   const workerSites = new Set<string>()
   for (const worker of data.workers ?? []) {
     const site = String(worker?.name ?? '').split(':')[0]
-    if (site && isSafeSiteName(site))
-      workerSites.add(site)
+    if (site && isSafeSiteName(site)) workerSites.add(site)
   }
   for (const site of workerSites)
-    ops.push({ id: `worker:restart:${site}`, label: `Restart workers (${site})`, group: 'worker', target: site, mutates: true, confirm: site })
+    ops.push({
+      id: `worker:restart:${site}`,
+      label: `Restart workers (${site})`,
+      group: 'worker',
+      target: site,
+      mutates: true,
+      confirm: site,
+    })
 
   // Scheduler: Laravel runs `schedule:run` as a one-shot (so "run now" fires due
   // tasks immediately); Stacks runs it as an always-on daemon (so the meaningful
   // action is cycling the unit). The label reflects which one this site gets.
   for (const [name, site] of Object.entries(config.sites ?? {})) {
-    if (!site || !isSafeSiteName(name))
-      continue
+    if (!site || !isSafeSiteName(name)) continue
     if ((site as any).scheduler || (site as any).schedule) {
       const laravel = resolveSiteFramework(site as any) === 'laravel'
       ops.push({
@@ -129,22 +140,42 @@ export function buildDashboardOperations(config: CloudConfig, data: Record<strin
   // when there is an app database to restore into.
   const backups = (config.infrastructure?.compute as any)?.backups
   if (backups?.enabled) {
-    ops.push({ id: 'backup:run', label: 'Run backup now', group: 'backup', target: 'backup', mutates: true, confirm: 'backup' })
+    ops.push({
+      id: 'backup:run',
+      label: 'Run backup now',
+      group: 'backup',
+      target: 'backup',
+      mutates: true,
+      confirm: 'backup',
+    })
     if (resolveAppDatabase(config))
-      ops.push({ id: 'backup:restore', label: 'Restore latest DB backup', group: 'backup', target: 'database', mutates: true, confirm: 'restore', danger: true })
+      ops.push({
+        id: 'backup:restore',
+        label: 'Restore latest DB backup',
+        group: 'backup',
+        target: 'database',
+        mutates: true,
+        confirm: 'restore',
+        danger: true,
+      })
   }
 
   return ops
 }
 
-export function resolveDashboardOperation(id: string, config: CloudConfig, data: Record<string, any>): DashboardOperation | undefined {
-  return buildDashboardOperations(config, data).find(op => op.id === id)
+export function resolveDashboardOperation(
+  id: string,
+  config: CloudConfig,
+  data: Record<string, any>,
+): DashboardOperation | undefined {
+  return buildDashboardOperations(config, data).find((op) => op.id === id)
 }
 
 function serviceCommand(verb: ServiceVerb, target: string): string[] {
-  const check = verb === 'enable' || verb === 'disable'
-    ? `systemctl is-enabled ${target} 2>/dev/null || true`
-    : `systemctl is-active ${target} 2>/dev/null || true`
+  const check =
+    verb === 'enable' || verb === 'disable'
+      ? `systemctl is-enabled ${target} 2>/dev/null || true`
+      : `systemctl is-active ${target} 2>/dev/null || true`
   return ['set -o pipefail', `systemctl ${verb} ${target}`, check]
 }
 
@@ -169,8 +200,7 @@ function siteArtisanCommand(slug: string, site: string, artisan: string): string
  *    so restart those units (systemctl expands the glob over loaded units).
  */
 function workerRestartCommand(framework: 'stacks' | 'laravel', slug: string, site: string): string[] {
-  if (framework === 'laravel')
-    return siteArtisanCommand(slug, site, 'queue:restart')
+  if (framework === 'laravel') return siteArtisanCommand(slug, site, 'queue:restart')
   const pattern = `${slug}-${site}-queue-*.service`
   return [
     'set -uo pipefail',
@@ -188,14 +218,9 @@ function workerRestartCommand(framework: 'stacks' | 'laravel', slug: string, sit
  *    so cycle the unit to pick up the live release and reset its timers.
  */
 function schedulerRunCommand(framework: 'stacks' | 'laravel', slug: string, site: string): string[] {
-  if (framework === 'laravel')
-    return siteArtisanCommand(slug, site, 'schedule:run')
+  if (framework === 'laravel') return siteArtisanCommand(slug, site, 'schedule:run')
   const unit = `${slug}-${site}-scheduler.service`
-  return [
-    'set -uo pipefail',
-    `systemctl restart ${unit}`,
-    `systemctl is-active ${unit} 2>/dev/null || true`,
-  ]
+  return ['set -uo pipefail', `systemctl restart ${unit}`, `systemctl is-active ${unit} 2>/dev/null || true`]
 }
 
 function backupRunCommand(): string[] {
@@ -206,7 +231,11 @@ function backupRunCommand(): string[] {
   ]
 }
 
-function fromComputeOps(id: string, command: string, r: { success: boolean, error?: string, perInstance?: Array<{ output?: string, error?: string }> }): DashboardOperationResult {
+function fromComputeOps(
+  id: string,
+  command: string,
+  r: { success: boolean; error?: string; perInstance?: Array<{ output?: string; error?: string }> },
+): DashboardOperationResult {
   return {
     operation: id,
     command,
@@ -236,9 +265,12 @@ export async function runDashboardOperation(
   let driver: ReturnType<typeof createCloudDriver>
   try {
     driver = createCloudDriver({ config })
-  }
-  catch (error: any) {
-    return { operation: operation.id, ok: false, error: `Could not initialize the cloud driver: ${error?.message ?? error}` }
+  } catch (error: any) {
+    return {
+      operation: operation.id,
+      ok: false,
+      error: `Could not initialize the cloud driver: ${error?.message ?? error}`,
+    }
   }
 
   const ctx = { driver, slug, environment, role: 'app' as const }
@@ -263,22 +295,19 @@ export async function runDashboardOperation(
     const [verb, ...rest] = operation.id.split(':')
     commands = serviceCommand(verb as ServiceVerb, rest.join(':'))
     command = `systemctl ${verb} ${operation.target}`
-  }
-  else if (operation.group === 'worker') {
+  } else if (operation.group === 'worker') {
     const framework = resolveSiteFramework((config.sites?.[operation.target] ?? {}) as any)
     commands = workerRestartCommand(framework, slug, operation.target)
-    command = framework === 'laravel' ? `queue:restart (${operation.target})` : `restart queue units (${operation.target})`
-  }
-  else if (operation.group === 'scheduler') {
+    command =
+      framework === 'laravel' ? `queue:restart (${operation.target})` : `restart queue units (${operation.target})`
+  } else if (operation.group === 'scheduler') {
     const framework = resolveSiteFramework((config.sites?.[operation.target] ?? {}) as any)
     commands = schedulerRunCommand(framework, slug, operation.target)
     command = framework === 'laravel' ? `schedule:run (${operation.target})` : `restart scheduler (${operation.target})`
-  }
-  else if (operation.id === 'backup:run') {
+  } else if (operation.id === 'backup:run') {
     commands = backupRunCommand()
     command = 'ts-cloud backup'
-  }
-  else {
+  } else {
     return { operation: operation.id, ok: false, error: 'Unknown operation.' }
   }
 
@@ -309,15 +338,17 @@ export async function runServerShellCommand(
   command: string,
 ): Promise<DashboardOperationResult> {
   const trimmed = command.trim()
-  if (!trimmed)
-    return { operation: 'command', ok: false, error: 'A command is required.' }
+  if (!trimmed) return { operation: 'command', ok: false, error: 'A command is required.' }
 
   let driver: ReturnType<typeof createCloudDriver>
   try {
     driver = createCloudDriver({ config })
-  }
-  catch (error: any) {
-    return { operation: 'command', ok: false, error: `Could not initialize the cloud driver: ${error?.message ?? error}` }
+  } catch (error: any) {
+    return {
+      operation: 'command',
+      ok: false,
+      error: `Could not initialize the cloud driver: ${error?.message ?? error}`,
+    }
   }
 
   const slug = config.project.slug

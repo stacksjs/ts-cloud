@@ -8,7 +8,6 @@
  * content-hash. The hash is the artifact identity used for skip-by-hash uploads,
  * redeploys, and rollbacks.
  */
-
 import type { ServerlessAppConfig } from '../types'
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -19,9 +18,18 @@ import { fileURLToPath } from 'node:url'
 import { generateBootstrap } from './bootstrap'
 import { createZip } from './zip'
 
-/** Absolute path to the bundled runtime adapter source shipped with this package. */
-function adapterSourcePath(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), 'runtime', 'adapter.ts')
+/**
+ * Runtime sources copied into the staging directory.
+ *
+ * The adapter imports its siblings by relative path, so staging the adapter
+ * alone leaves those imports unresolvable. Listing them here keeps the bundle
+ * self-contained; a new sibling import must be added or the build fails loudly
+ * at package time rather than silently at invocation time.
+ */
+const RUNTIME_SOURCES = ['adapter.ts', 'recursion.ts', 'auto-recursion.ts'] as const
+
+function runtimeSourceDir(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), 'runtime')
 }
 
 export interface PackageOptions {
@@ -45,7 +53,7 @@ export interface PackagedArtifact {
   /** Handler file basename inside the artifact (no extension), e.g. `index`. */
   handlerFile: string
   /** Lambda handler strings for each function. */
-  handlers: { http: string, queue: string, cli: string }
+  handlers: { http: string; queue: string; cli: string }
   /** Size of the bundled JS before zipping. */
   bundleBytes: number
 }
@@ -72,19 +80,17 @@ export async function packageServerlessApp(opts: PackageOptions): Promise<Packag
   const projectRoot = resolve(opts.projectRoot ?? process.cwd())
   const { app } = opts
 
-  if (!opts.skipBuild)
-    runBuildHooks(app.build, projectRoot, opts.onStep)
+  if (!opts.skipBuild) runBuildHooks(app.build, projectRoot, opts.onStep)
 
   const entry = app.entry
-  if (!entry)
-    throw new Error('serverless app: `entry` is required to package a Node/Bun application')
+  if (!entry) throw new Error('serverless app: `entry` is required to package a Node/Bun application')
   const entryPath = isAbsolute(entry) ? entry : join(projectRoot, entry)
 
   // Stage a temp build dir: copy the adapter beside a generated bootstrap, then
   // bundle the bootstrap (which imports the user entry by absolute path).
   const stage = mkdtempSync(join(tmpdir(), 'tscloud-pkg-'))
   try {
-    cpSync(adapterSourcePath(), join(stage, 'adapter.ts'))
+    for (const source of RUNTIME_SOURCES) cpSync(join(runtimeSourceDir(), source), join(stage, source))
     const bootstrapPath = join(stage, 'bootstrap.ts')
     writeFileSync(bootstrapPath, generateBootstrap({ entryImport: entryPath, adapterImport: './adapter' }))
 
@@ -99,7 +105,7 @@ export async function packageServerlessApp(opts: PackageOptions): Promise<Packag
       sourcemap: 'none',
     })
     if (!result.success) {
-      const logs = result.logs.map(l => String(l)).join('\n')
+      const logs = result.logs.map((l) => String(l)).join('\n')
       throw new Error(`serverless app bundle failed:\n${logs}`)
     }
 
@@ -122,8 +128,7 @@ export async function packageServerlessApp(opts: PackageOptions): Promise<Packag
       },
       bundleBytes: bundle.length,
     }
-  }
-  finally {
+  } finally {
     rmSync(stage, { recursive: true, force: true })
   }
 }

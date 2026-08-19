@@ -273,12 +273,8 @@ catch (error) {
         Properties: {
           TableName: `${config.slug}-call-metrics`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'period', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'period', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'period', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'period', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -324,10 +320,7 @@ catch (error) {
   /**
    * Create EventBridge rule for hourly metrics
    */
-  static createMetricsSchedule(config: {
-    slug: string
-    lambdaArn: string
-  }): Record<string, any> {
+  static createMetricsSchedule(config: { slug: string; lambdaArn: string }): Record<string, any> {
     return {
       [`${config.slug}CallMetricsSchedule`]: {
         Type: 'AWS::Events::Rule',

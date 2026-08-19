@@ -11,9 +11,6 @@ import type { CloudConfig, DatabaseConfig } from './types'
  * `infrastructure.compute.database`. That alias is still honored when the
  * canonical key is absent; `appDatabase` wins when both are set.
  */
-export function resolveAppDatabase(
-  config: Pick<CloudConfig, 'infrastructure'>,
-): DatabaseConfig | undefined {
-  return config.infrastructure?.appDatabase
-    ?? config.infrastructure?.compute?.database
+export function resolveAppDatabase(config: Pick<CloudConfig, 'infrastructure'>): DatabaseConfig | undefined {
+  return config.infrastructure?.appDatabase ?? config.infrastructure?.compute?.database
 }

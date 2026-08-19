@@ -2,7 +2,6 @@
  * AWS Transcribe Client
  * Direct API calls for Transcribe operations
  */
-
 import { AWSClient } from './client'
 
 export interface TranscriptionJob {
@@ -75,9 +74,7 @@ export class TranscribeClient {
   /**
    * Get transcription job details
    */
-  async getTranscriptionJob(params: {
-    TranscriptionJobName: string
-  }): Promise<{ TranscriptionJob: TranscriptionJob }> {
+  async getTranscriptionJob(params: { TranscriptionJobName: string }): Promise<{ TranscriptionJob: TranscriptionJob }> {
     return this.request('GetTranscriptionJob', params)
   }
 
@@ -100,9 +97,7 @@ export class TranscribeClient {
   /**
    * Delete a transcription job
    */
-  async deleteTranscriptionJob(params: {
-    TranscriptionJobName: string
-  }): Promise<void> {
+  async deleteTranscriptionJob(params: { TranscriptionJobName: string }): Promise<void> {
     return this.request('DeleteTranscriptionJob', params)
   }
 }

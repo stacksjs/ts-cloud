@@ -24,9 +24,8 @@
  * })
  * ```
  */
-
-import { createSign } from 'node:crypto'
 import * as http2 from 'node:http2'
+import { createSign } from 'node:crypto'
 
 export interface APNsConfig {
   /** APNs Key ID from Apple Developer Portal */
@@ -118,7 +117,7 @@ export class APNsClient {
     const now = Math.floor(Date.now() / 1000)
 
     // Check if current token is still valid
-    if (this.token && (Date.now() - this.tokenGeneratedAt) < TOKEN_EXPIRY_MS) {
+    if (this.token && Date.now() - this.tokenGeneratedAt < TOKEN_EXPIRY_MS) {
       return this.token
     }
 
@@ -293,7 +292,7 @@ export class APNsClient {
       const headers: http2.OutgoingHttpHeaders = {
         ':method': 'POST',
         ':path': `/3/device/${notification.deviceToken}`,
-        'authorization': `bearer ${token}`,
+        authorization: `bearer ${token}`,
         'apns-topic': this.config.bundleId,
         'apns-push-type': notification.pushType || 'alert',
         'apns-priority': String(notification.priority || 10),
@@ -331,8 +330,7 @@ export class APNsClient {
               apnsId,
               statusCode,
             })
-          }
-else {
+          } else {
             let error = 'Unknown error'
             let reason: string | undefined
             let timestamp: number | undefined
@@ -343,8 +341,7 @@ else {
                 reason = parsed.reason
                 timestamp = parsed.timestamp
                 error = reason || error
-              }
-catch {
+              } catch {
                 error = responseData
               }
             }
@@ -372,8 +369,7 @@ catch {
         req.write(payload)
         req.end()
       })
-    }
-catch (error: any) {
+    } catch (error: any) {
       return {
         success: false,
         deviceToken: notification.deviceToken,
@@ -385,23 +381,20 @@ catch (error: any) {
   /**
    * Send push notifications to multiple devices
    */
-  async sendBatch(
-    notifications: APNsNotification[],
-    options?: { concurrency?: number }
-  ): Promise<APNsBatchResult> {
+  async sendBatch(notifications: APNsNotification[], options?: { concurrency?: number }): Promise<APNsBatchResult> {
     const concurrency = options?.concurrency || 10
     const results: APNsSendResult[] = []
 
     // Process in batches
     for (let i = 0; i < notifications.length; i += concurrency) {
       const batch = notifications.slice(i, i + concurrency)
-      const batchResults = await Promise.all(batch.map(n => this.send(n)))
+      const batchResults = await Promise.all(batch.map((n) => this.send(n)))
       results.push(...batchResults)
     }
 
     return {
-      sent: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length,
+      sent: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
       results,
     }
   }
@@ -413,7 +406,7 @@ catch (error: any) {
     deviceToken: string,
     title: string,
     body: string,
-    data?: Record<string, any>
+    data?: Record<string, any>,
   ): Promise<APNsSendResult> {
     return this.send({
       deviceToken,
@@ -426,10 +419,7 @@ catch (error: any) {
   /**
    * Send a silent/background notification
    */
-  async sendSilent(
-    deviceToken: string,
-    data?: Record<string, any>
-  ): Promise<APNsSendResult> {
+  async sendSilent(deviceToken: string, data?: Record<string, any>): Promise<APNsSendResult> {
     return this.send({
       deviceToken,
       contentAvailable: true,

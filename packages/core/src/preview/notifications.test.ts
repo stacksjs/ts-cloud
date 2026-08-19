@@ -299,7 +299,7 @@ describe('PreviewNotificationService', () => {
       expect(body.avatar_url).toBe('https://example.com/avatar.png')
       expect(body.embeds).toHaveLength(1)
       expect(body.embeds[0].title).toContain('Preview Environment Created')
-      expect(body.embeds[0].color).toBe(0x36A64F)
+      expect(body.embeds[0].color).toBe(0x36a64f)
     })
 
     it('should include environment details in Discord message', async () => {

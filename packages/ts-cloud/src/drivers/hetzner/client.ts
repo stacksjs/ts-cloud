@@ -2,7 +2,6 @@
  * Hetzner Cloud API client
  * @see https://docs.hetzner.cloud/
  */
-
 import type { CloudConfig } from '@ts-cloud/core'
 import { resolveHetznerApiToken as resolveToken } from './config'
 
@@ -16,18 +15,79 @@ export interface HetznerApiErrorBody {
   }
 }
 
+export class HetznerApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly details?: unknown,
+  ) {
+    super(message)
+    this.name = 'HetznerApiError'
+  }
+}
+
+export class HetznerActionError extends Error {
+  constructor(
+    message: string,
+    readonly action: HetznerAction,
+  ) {
+    super(message)
+    this.name = 'HetznerActionError'
+  }
+}
+
+export interface HetznerServerTypeLocation {
+  id: number
+  name: string
+  available: boolean
+  recommended: boolean
+  deprecation?: unknown
+}
+
+export interface HetznerServerTypePrice {
+  location: string
+  price_hourly: { net: string; gross: string }
+  price_monthly: { net: string; gross: string }
+  included_traffic?: number
+  price_per_tb_traffic?: { net: string; gross: string }
+}
+
+export interface HetznerServerType {
+  id?: number
+  name: string
+  architecture?: string
+  cores?: number
+  cpu_type?: string
+  category?: string
+  deprecated?: boolean
+  description?: string
+  disk?: number
+  memory?: number
+  prices?: HetznerServerTypePrice[]
+  storage_type?: string
+  locations?: HetznerServerTypeLocation[]
+}
+
 export interface HetznerServer {
   id: number
   name: string
   status: string
   public_net: {
-    ipv4?: { ip: string }
-    ipv6?: { ip: string }
+    // The id is what primary-IP assignment works in terms of; the address
+    // itself cannot be moved between servers by value.
+    ipv4?: { ip: string; id?: number }
+    ipv6?: { ip: string; id?: number }
   }
   private_net?: Array<{ ip: string }>
   labels?: Record<string, string>
-  server_type: { name: string }
-  datacenter: { name: string, location: { name: string } }
+  server_type: HetznerServerType
+  /** Current API shape. */
+  location?: { id?: number; name: string; description?: string; city?: string; country?: string }
+  /** Legacy API shape retained for compatibility with recorded fixtures. */
+  datacenter?: { name: string; location: { name: string } }
+  primary_disk_size?: number
+  locked?: boolean
 }
 
 export interface HetznerFirewall {
@@ -53,11 +113,47 @@ export interface HetznerSshKey {
   labels?: Record<string, string>
 }
 
+export interface HetznerImage {
+  id: number
+  type: string
+  status: string
+  name?: string | null
+  description?: string
+  /** Size of the disk the image was taken from, in GB. */
+  disk_size?: number
+  /** Size of the image itself once stored, in GB. */
+  image_size?: number | null
+  architecture?: string
+  created_from?: { id: number; name: string }
+  labels?: Record<string, string>
+}
+
+export interface HetznerPrimaryIp {
+  id: number
+  ip: string
+  type: 'ipv4' | 'ipv6'
+  name?: string
+  assignee_id?: number | null
+  assignee_type?: string
+  auto_delete?: boolean
+  /** Current API shape omits this; retained for recorded fixtures. */
+  datacenter?: { name: string; location?: { name: string } }
+}
+
 export interface HetznerAction {
   id: number
   status: 'running' | 'success' | 'error'
   progress?: number
-  error?: { code: string, message: string }
+  error?: { code: string; message: string }
+}
+
+export type HetznerServerMetricType = 'cpu' | 'disk' | 'network'
+
+export interface HetznerServerMetrics {
+  start: string
+  end: string
+  step: number
+  time_series: Record<string, { values: Array<[number, string]> }>
 }
 
 export interface CreateServerOptions {
@@ -101,7 +197,7 @@ export interface CreateLoadBalancerOptions {
   network?: number
   labels?: Record<string, string>
   /** Listener services (e.g. 80→80, 443→443). */
-  services: Array<{ listenPort: number, destinationPort: number, protocol?: 'tcp' | 'http' }>
+  services: Array<{ listenPort: number; destinationPort: number; protocol?: 'tcp' | 'http' }>
   /** Target app servers by label selector (e.g. `ts-cloud/role=app`). */
   labelSelector: string
 }
@@ -110,7 +206,7 @@ export interface CreateFirewallOptions {
   name: string
   rules: HetznerFirewallRule[]
   labels?: Record<string, string>
-  applyTo?: Array<{ type: 'server', server: number }>
+  applyTo?: Array<{ type: 'server'; server: number }>
 }
 
 export interface CreateSshKeyOptions {
@@ -140,11 +236,7 @@ export class HetznerClient {
     this.fetchImpl = options.fetchImpl ?? fetch
   }
 
-  private async request<T>(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -158,8 +250,7 @@ export class HetznerClient {
     let data: T & HetznerApiErrorBody
     try {
       data = (text ? JSON.parse(text) : {}) as T & HetznerApiErrorBody
-    }
-    catch {
+    } catch {
       // Non-JSON body (e.g. an HTML 502/503 from an upstream gateway). Surface
       // the raw text so the error is actionable instead of an opaque parse fail.
       if (!response.ok) {
@@ -172,7 +263,12 @@ export class HetznerClient {
     if (!response.ok) {
       const message = data.error?.message || response.statusText || 'Hetzner API error'
       const code = data.error?.code ? ` [${data.error.code}]` : ''
-      throw new Error(`Hetzner API ${method} ${path} (${response.status})${code}: ${message}`)
+      throw new HetznerApiError(
+        `Hetzner API ${method} ${path} (${response.status})${code}: ${message}`,
+        response.status,
+        data.error?.code,
+        data.error?.details,
+      )
     }
 
     return data as T
@@ -188,15 +284,16 @@ export class HetznerClient {
   private async requestAll<K extends string, T>(path: string, key: K): Promise<T[]> {
     const items: T[] = []
     let page = 1
-    for (;;) {
+    for (;; ) {
       const sep = path.includes('?') ? '&' : '?'
-      const data = await this.request<Record<K, T[]> & {
-        meta?: { pagination?: { next_page?: number | null } }
-      }>('GET', `${path}${sep}per_page=50&page=${page}`)
+      const data = await this.request<
+        Record<K, T[]> & {
+          meta?: { pagination?: { next_page?: number | null } }
+        }
+      >('GET', `${path}${sep}per_page=50&page=${page}`)
       items.push(...(data[key] ?? []))
       const next = data.meta?.pagination?.next_page
-      if (!next)
-        return items
+      if (!next) return items
       page = next
     }
   }
@@ -210,20 +307,52 @@ export class HetznerClient {
     return data.server
   }
 
-  async createServer(options: CreateServerOptions): Promise<{ server: HetznerServer, action: HetznerAction }> {
-    const data = await this.request<{ server: HetznerServer, root_password?: string, action: HetznerAction }>('POST', '/servers', {
-      name: options.name,
-      server_type: options.serverType,
-      image: options.image,
-      location: options.location,
-      datacenter: options.datacenter,
-      ssh_keys: options.sshKeys,
-      user_data: options.userData,
-      labels: options.labels,
-      firewalls: options.firewalls,
-      networks: options.networks,
-      start_after_create: true,
+  async getServerMetrics(
+    id: number,
+    options: {
+      types: HetznerServerMetricType[]
+      start: Date
+      end: Date
+      step?: number
+    },
+  ): Promise<HetznerServerMetrics> {
+    const query = new URLSearchParams({
+      type: options.types.join(','),
+      start: options.start.toISOString(),
+      end: options.end.toISOString(),
+      step: String(Math.max(60, Math.floor(options.step ?? 60))),
     })
+    const data = await this.request<{ metrics: HetznerServerMetrics }>('GET', `/servers/${id}/metrics?${query}`)
+    return data.metrics
+  }
+
+  async listServerTypes(name?: string): Promise<HetznerServerType[]> {
+    const query = name ? `?name=${encodeURIComponent(name)}` : ''
+    return this.requestAll<'server_types', HetznerServerType>(`/server_types${query}`, 'server_types')
+  }
+
+  async getServerType(name: string): Promise<HetznerServerType | null> {
+    return (await this.listServerTypes(name)).find((item) => item.name === name) ?? null
+  }
+
+  async createServer(options: CreateServerOptions): Promise<{ server: HetznerServer; action: HetznerAction }> {
+    const data = await this.request<{ server: HetznerServer; root_password?: string; action: HetznerAction }>(
+      'POST',
+      '/servers',
+      {
+        name: options.name,
+        server_type: options.serverType,
+        image: options.image,
+        location: options.location,
+        datacenter: options.datacenter,
+        ssh_keys: options.sshKeys,
+        user_data: options.userData,
+        labels: options.labels,
+        firewalls: options.firewalls,
+        networks: options.networks,
+        start_after_create: true,
+      },
+    )
     return { server: data.server, action: data.action }
   }
 
@@ -262,8 +391,14 @@ export class HetznerClient {
       network: options.network,
       labels: options.labels,
       // Route to app servers selected by label over the private network.
-      targets: [{ type: 'label_selector', label_selector: { selector: options.labelSelector }, use_private_ip: !!options.network }],
-      services: options.services.map(s => ({
+      targets: [
+        {
+          type: 'label_selector',
+          label_selector: { selector: options.labelSelector },
+          use_private_ip: !!options.network,
+        },
+      ],
+      services: options.services.map((s) => ({
         protocol: s.protocol ?? 'tcp',
         listen_port: s.listenPort,
         destination_port: s.destinationPort,
@@ -297,8 +432,10 @@ export class HetznerClient {
     return this.requestAll<'firewalls', HetznerFirewall>('/firewalls', 'firewalls')
   }
 
-  async createFirewall(options: CreateFirewallOptions): Promise<{ firewall: HetznerFirewall, actions: HetznerAction[] }> {
-    const data = await this.request<{ firewall: HetznerFirewall, actions: HetznerAction[] }>('POST', '/firewalls', {
+  async createFirewall(
+    options: CreateFirewallOptions,
+  ): Promise<{ firewall: HetznerFirewall; actions: HetznerAction[] }> {
+    const data = await this.request<{ firewall: HetznerFirewall; actions: HetznerAction[] }>('POST', '/firewalls', {
       name: options.name,
       rules: options.rules,
       labels: options.labels,
@@ -312,9 +449,13 @@ export class HetznerClient {
    * firewall's rules in sync with the desired config without recreating it.
    */
   async setFirewallRules(firewallId: number, rules: HetznerFirewallRule[]): Promise<HetznerAction[]> {
-    const data = await this.request<{ actions: HetznerAction[] }>('POST', `/firewalls/${firewallId}/actions/set_rules`, {
-      rules,
-    })
+    const data = await this.request<{ actions: HetznerAction[] }>(
+      'POST',
+      `/firewalls/${firewallId}/actions/set_rules`,
+      {
+        rules,
+      },
+    )
     return data.actions ?? []
   }
 
@@ -323,10 +464,17 @@ export class HetznerClient {
     await this.request('DELETE', `/firewalls/${firewallId}`)
   }
 
-  async applyFirewallToResources(firewallId: number, applyTo: Array<{ type: 'server', server: number }>): Promise<HetznerAction[]> {
-    const data = await this.request<{ actions: HetznerAction[] }>('POST', `/firewalls/${firewallId}/actions/apply_to_resources`, {
-      apply_to: applyTo,
-    })
+  async applyFirewallToResources(
+    firewallId: number,
+    applyTo: Array<{ type: 'server'; server: number }>,
+  ): Promise<HetznerAction[]> {
+    const data = await this.request<{ actions: HetznerAction[] }>(
+      'POST',
+      `/firewalls/${firewallId}/actions/apply_to_resources`,
+      {
+        apply_to: applyTo,
+      },
+    )
     return data.actions
   }
 
@@ -343,24 +491,180 @@ export class HetznerClient {
     return data.ssh_key
   }
 
-  async waitForAction(actionId: number, options?: { pollIntervalMs?: number, maxWaitMs?: number }): Promise<HetznerAction> {
+  /**
+   * Delete an SSH key. Running servers are unaffected — the key is only read
+   * when a server is created, and lives in the box's authorized_keys after.
+   */
+  async deleteSshKey(id: number): Promise<void> {
+    await this.request<void>('DELETE', `/ssh_keys/${id}`)
+  }
+
+  async getAction(actionId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('GET', `/actions/${actionId}`)
+    return data.action
+  }
+
+  async shutdownServer(serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/shutdown`, {})
+    return data.action
+  }
+
+  async powerOnServer(serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/poweron`, {})
+    return data.action
+  }
+
+  async changeServerType(serverId: number, serverType: string, upgradeDisk: boolean): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/change_type`, {
+      server_type: serverType,
+      upgrade_disk: upgradeDisk,
+    })
+    return data.action
+  }
+
+  /**
+   * Power a server off at the virtual power button.
+   *
+   * Distinct from {@link shutdownServer}, which asks the guest to shut down
+   * cleanly via ACPI and does nothing at all when the guest ignores it. Every
+   * operation that requires a stopped server — rebuild, primary-IP moves —
+   * needs the server to actually reach `off`, so callers shut down first and
+   * fall back to this.
+   */
+  async powerOffServer(serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/poweroff`, {})
+    return data.action
+  }
+
+  /**
+   * Stop a server, preferring a clean guest shutdown.
+   *
+   * A guest that has not stopped within the grace period is powered off at the
+   * button: waiting forever on an unresponsive box is worse than a hard stop
+   * on a machine whose disk is about to be replaced anyway.
+   */
+  async stopServer(
+    serverId: number,
+    options?: { gracefulWaitMs?: number; pollIntervalMs?: number },
+  ): Promise<void> {
+    const server = await this.getServer(serverId)
+    if (server.status === 'off') return
+
+    await this.shutdownServer(serverId)
+
+    const grace = options?.gracefulWaitMs ?? 120000
+    const poll = options?.pollIntervalMs ?? 3000
+    const start = Date.now()
+    while (Date.now() - start < grace) {
+      if ((await this.getServer(serverId)).status === 'off') return
+      await new Promise(resolve => setTimeout(resolve, poll))
+    }
+
+    const action = await this.powerOffServer(serverId)
+    await this.waitForAction(action.id)
+    await this.waitForServerStatus(serverId, 'off')
+  }
+
+  async renameServer(serverId: number, name: string): Promise<HetznerServer> {
+    const data = await this.request<{ server: HetznerServer }>('PUT', `/servers/${serverId}`, { name })
+    return data.server
+  }
+
+  async listImages(options?: { type?: string }): Promise<HetznerImage[]> {
+    const query = options?.type ? `?type=${encodeURIComponent(options.type)}` : ''
+    return this.requestAll<'images', HetznerImage>(`/images${query}`, 'images')
+  }
+
+  async getImage(id: number): Promise<HetznerImage> {
+    const data = await this.request<{ image: HetznerImage }>('GET', `/images/${id}`)
+    return data.image
+  }
+
+  /**
+   * Snapshot a server's disk into a reusable image.
+   *
+   * Hetzner will snapshot a running server, but the result is a crash-consistent
+   * copy: whatever was mid-write is captured mid-write. For anything holding a
+   * database open that is a restore-time problem rather than a snapshot-time
+   * one, so callers that care stop the server first.
+   */
+  async createImage(
+    serverId: number,
+    options: { description: string; type?: 'snapshot' | 'backup'; labels?: Record<string, string> },
+  ): Promise<{ image: HetznerImage; action: HetznerAction }> {
+    return this.request<{ image: HetznerImage; action: HetznerAction }>(
+      'POST',
+      `/servers/${serverId}/actions/create_image`,
+      { description: options.description, type: options.type ?? 'snapshot', labels: options.labels },
+    )
+  }
+
+  async deleteImage(imageId: number): Promise<void> {
+    await this.request('DELETE', `/images/${imageId}`)
+  }
+
+  /**
+   * Replace a server's disk with an image.
+   *
+   * Destructive and not undoable: everything on the target's disk is gone the
+   * moment this succeeds. The image's `disk_size` must be no larger than the
+   * target server type's disk, which is the asymmetry that decides which way a
+   * migration between two differently sized servers can run.
+   */
+  async rebuildServer(serverId: number, image: number | string): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/rebuild`, {
+      image,
+    })
+    return data.action
+  }
+
+  async listPrimaryIps(): Promise<HetznerPrimaryIp[]> {
+    return this.requestAll<'primary_ips', HetznerPrimaryIp>('/primary_ips', 'primary_ips')
+  }
+
+  /**
+   * Detach a primary IP from whatever server currently holds it.
+   *
+   * The server has to be off. Hetzner rejects this outright on a running
+   * server rather than dropping its address underneath it.
+   */
+  async unassignPrimaryIp(ipId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/primary_ips/${ipId}/actions/unassign`, {})
+    return data.action
+  }
+
+  async assignPrimaryIp(ipId: number, serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/primary_ips/${ipId}/actions/assign`, {
+      assignee_id: serverId,
+      assignee_type: 'server',
+    })
+    return data.action
+  }
+
+  async waitForAction(
+    actionId: number,
+    options?: { pollIntervalMs?: number; maxWaitMs?: number },
+  ): Promise<HetznerAction> {
     const pollInterval = options?.pollIntervalMs ?? 2000
     const maxWait = options?.maxWaitMs ?? 300000
     const start = Date.now()
 
     while (Date.now() - start < maxWait) {
-      const data = await this.request<{ action: HetznerAction }>('GET', `/actions/${actionId}`)
-      if (data.action.status === 'success') return data.action
-      if (data.action.status === 'error') {
-        throw new Error(data.action.error?.message || 'Hetzner action failed')
+      const action = await this.getAction(actionId)
+      if (action.status === 'success') return action
+      if (action.status === 'error') {
+        throw new HetznerActionError(action.error?.message || 'Hetzner action failed', action)
       }
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
     throw new Error(`Timed out waiting for Hetzner action ${actionId}`)
   }
 
-  async waitForServerRunning(serverId: number, options?: { pollIntervalMs?: number, maxWaitMs?: number }): Promise<HetznerServer> {
+  async waitForServerRunning(
+    serverId: number,
+    options?: { pollIntervalMs?: number; maxWaitMs?: number },
+  ): Promise<HetznerServer> {
     const pollInterval = options?.pollIntervalMs ?? 3000
     const maxWait = options?.maxWaitMs ?? 600000
     const start = Date.now()
@@ -368,10 +672,28 @@ export class HetznerClient {
     while (Date.now() - start < maxWait) {
       const server = await this.getServer(serverId)
       if (server.status === 'running') return server
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
     throw new Error(`Timed out waiting for server ${serverId} to reach running state`)
+  }
+
+  async waitForServerStatus(
+    serverId: number,
+    status: string,
+    options?: { pollIntervalMs?: number; maxWaitMs?: number },
+  ): Promise<HetznerServer> {
+    const pollInterval = options?.pollIntervalMs ?? 3000
+    const maxWait = options?.maxWaitMs ?? 600000
+    const start = Date.now()
+
+    while (Date.now() - start < maxWait) {
+      const server = await this.getServer(serverId)
+      if (server.status === status) return server
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+    }
+
+    throw new Error(`Timed out waiting for server ${serverId} to reach ${status} state`)
   }
 }
 
@@ -385,7 +707,9 @@ export class HetznerClient {
 export function resolveHetznerApiToken(configToken?: string, config?: CloudConfig): string {
   const token = resolveToken(configToken, config)
   if (!token) {
-    throw new Error('Hetzner API token required. Set hetzner.apiToken in cloud.config.ts or HCLOUD_TOKEN / HETZNER_API_TOKEN.')
+    throw new Error(
+      'Hetzner API token required. Set hetzner.apiToken in cloud.config.ts or HCLOUD_TOKEN / HETZNER_API_TOKEN.',
+    )
   }
   return token
 }

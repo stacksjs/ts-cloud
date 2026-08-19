@@ -2,7 +2,6 @@
  * ACM (AWS Certificate Manager) Client
  * For requesting and managing SSL/TLS certificates
  */
-
 import { AWSClient } from './client'
 
 export interface CertificateDetail {
@@ -76,9 +75,7 @@ export class ACMClient {
   /**
    * Describe a certificate to get its details and validation options
    */
-  async describeCertificate(params: {
-    CertificateArn: string
-  }): Promise<CertificateDetail> {
+  async describeCertificate(params: { CertificateArn: string }): Promise<CertificateDetail> {
     const result = await this.client.request({
       service: 'acm',
       region: this.region,
@@ -104,11 +101,13 @@ export class ACMClient {
         DomainName: opt.DomainName,
         ValidationDomain: opt.ValidationDomain,
         ValidationStatus: opt.ValidationStatus,
-        ResourceRecord: opt.ResourceRecord ? {
-          Name: opt.ResourceRecord.Name,
-          Type: opt.ResourceRecord.Type,
-          Value: opt.ResourceRecord.Value,
-        } : undefined,
+        ResourceRecord: opt.ResourceRecord
+          ? {
+              Name: opt.ResourceRecord.Name,
+              Type: opt.ResourceRecord.Type,
+              Value: opt.ResourceRecord.Value,
+            }
+          : undefined,
         ValidationMethod: opt.ValidationMethod,
       })),
       CreatedAt: cert.CreatedAt,
@@ -122,11 +121,13 @@ export class ACMClient {
    * List certificates
    */
   async listCertificates(params?: {
-    CertificateStatuses?: ('PENDING_VALIDATION' | 'ISSUED' | 'INACTIVE' | 'EXPIRED' | 'VALIDATION_TIMED_OUT' | 'REVOKED' | 'FAILED')[]
+    CertificateStatuses?: (
+      'PENDING_VALIDATION' | 'ISSUED' | 'INACTIVE' | 'EXPIRED' | 'VALIDATION_TIMED_OUT' | 'REVOKED' | 'FAILED'
+    )[]
     MaxItems?: number
     NextToken?: string
   }): Promise<{
-    CertificateSummaryList: { CertificateArn: string, DomainName: string }[]
+    CertificateSummaryList: { CertificateArn: string; DomainName: string }[]
     NextToken?: string
   }> {
     const requestBody: Record<string, any> = {}
@@ -165,9 +166,7 @@ export class ACMClient {
   /**
    * Delete a certificate
    */
-  async deleteCertificate(params: {
-    CertificateArn: string
-  }): Promise<void> {
+  async deleteCertificate(params: { CertificateArn: string }): Promise<void> {
     await this.client.request({
       service: 'acm',
       region: this.region,
@@ -188,7 +187,7 @@ export class ACMClient {
    */
   async listTagsForCertificate(params: {
     CertificateArn: string
-  }): Promise<{ Tags: Array<{ Key: string, Value?: string }> }> {
+  }): Promise<{ Tags: Array<{ Key: string; Value?: string }> }> {
     const result = await this.client.request({
       service: 'acm',
       region: this.region,
@@ -213,7 +212,7 @@ export class ACMClient {
    */
   async addTagsToCertificate(params: {
     CertificateArn: string
-    Tags: Array<{ Key: string, Value?: string }>
+    Tags: Array<{ Key: string; Value?: string }>
   }): Promise<void> {
     await this.client.request({
       service: 'acm',
@@ -268,9 +267,8 @@ export class ACMClient {
     })
 
     // Find certificate matching domain
-    const summary = result.CertificateSummaryList.find(c =>
-      c.DomainName === domainName ||
-      c.DomainName === `*.${domainName.split('.').slice(1).join('.')}`,
+    const summary = result.CertificateSummaryList.find(
+      (c) => c.DomainName === domainName || c.DomainName === `*.${domainName.split('.').slice(1).join('.')}`,
     )
 
     if (!summary) {
@@ -300,7 +298,7 @@ export class ACMClient {
         return null
       }
 
-      await new Promise(resolve => setTimeout(resolve, delayMs))
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
 
     return null
@@ -309,26 +307,28 @@ export class ACMClient {
   /**
    * Get DNS validation records for a certificate
    */
-  async getDnsValidationRecords(certificateArn: string): Promise<Array<{
-    domainName: string
-    recordName: string
-    recordType: string
-    recordValue: string
-  }>> {
+  async getDnsValidationRecords(certificateArn: string): Promise<
+    Array<{
+      domainName: string
+      recordName: string
+      recordType: string
+      recordValue: string
+    }>
+  > {
     const cert = await this.describeCertificate({ CertificateArn: certificateArn })
 
     if (!cert.DomainValidationOptions) {
       return []
     }
 
-    return cert.DomainValidationOptions
-      .filter(opt => opt.ResourceRecord && opt.ValidationMethod === 'DNS')
-      .map(opt => ({
+    return cert.DomainValidationOptions.filter((opt) => opt.ResourceRecord && opt.ValidationMethod === 'DNS').map(
+      (opt) => ({
         domainName: opt.DomainName,
         recordName: opt.ResourceRecord!.Name,
         recordType: opt.ResourceRecord!.Type,
         recordValue: opt.ResourceRecord!.Value,
-      }))
+      }),
+    )
   }
 
   /**
@@ -373,10 +373,7 @@ export class ACMClient {
   /**
    * Check if certificate is valid for a given domain
    */
-  async isCertificateValidForDomain(
-    certificateArn: string,
-    domainName: string,
-  ): Promise<boolean> {
+  async isCertificateValidForDomain(certificateArn: string, domainName: string): Promise<boolean> {
     const cert = await this.describeCertificate({ CertificateArn: certificateArn })
 
     if (cert.Status !== 'ISSUED') {
@@ -488,9 +485,8 @@ export class ACMDnsValidator {
     // Request certificate
     const { CertificateArn } = await this.acm.requestCertificate({
       DomainName: domainName,
-      SubjectAlternativeNames: subjectAlternativeNames.length > 0
-        ? [domainName, ...subjectAlternativeNames]
-        : undefined,
+      SubjectAlternativeNames:
+        subjectAlternativeNames.length > 0 ? [domainName, ...subjectAlternativeNames] : undefined,
       ValidationMethod: 'DNS',
     })
 
@@ -515,23 +511,24 @@ export class ACMDnsValidator {
           console.warn(`Failed to create validation record for ${record.domainName}: ${result.message}`)
         }
       }
-    }
-    else if (hostedZoneId) {
+    } else if (hostedZoneId) {
       // Use Route53
       for (const record of validationRecords) {
         await this.route53.changeResourceRecordSets({
           HostedZoneId: hostedZoneId,
           ChangeBatch: {
             Comment: `ACM DNS validation for ${record.domainName}`,
-            Changes: [{
-              Action: 'UPSERT',
-              ResourceRecordSet: {
-                Name: record.recordName,
-                Type: record.recordType as any,
-                TTL: 300,
-                ResourceRecords: [{ Value: record.recordValue }],
+            Changes: [
+              {
+                Action: 'UPSERT',
+                ResourceRecordSet: {
+                  Name: record.recordName,
+                  Type: record.recordType as any,
+                  TTL: 300,
+                  ResourceRecords: [{ Value: record.recordValue }],
+                },
               },
-            }],
+            ],
           },
         })
       }
@@ -563,13 +560,15 @@ export class ACMDnsValidator {
     for (let i = 0; i < maxAttempts; i++) {
       const cert = await this.acm.describeCertificate({ CertificateArn: certificateArn })
 
-      if (cert.DomainValidationOptions &&
-          cert.DomainValidationOptions.length > 0 &&
-          cert.DomainValidationOptions[0].ResourceRecord) {
+      if (
+        cert.DomainValidationOptions &&
+        cert.DomainValidationOptions.length > 0 &&
+        cert.DomainValidationOptions[0].ResourceRecord
+      ) {
         return
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 2000))
     }
 
     throw new Error('Timeout waiting for DNS validation options')
@@ -579,16 +578,14 @@ export class ACMDnsValidator {
    * Create validation records for an existing certificate
    * Uses external DNS provider if configured, otherwise Route53
    */
-  async createValidationRecords(params: {
-    certificateArn: string
-    hostedZoneId?: string
-    domain?: string
-  }): Promise<Array<{
-    domainName: string
-    recordName: string
-    recordValue: string
-    changeId?: string
-  }>> {
+  async createValidationRecords(params: { certificateArn: string; hostedZoneId?: string; domain?: string }): Promise<
+    Array<{
+      domainName: string
+      recordName: string
+      recordValue: string
+      changeId?: string
+    }>
+  > {
     const { certificateArn, hostedZoneId, domain } = params
 
     // Validate DNS provider availability
@@ -621,23 +618,24 @@ export class ACMDnsValidator {
           changeId: result.success ? result.id : undefined,
         })
       }
-    }
-    else if (hostedZoneId) {
+    } else if (hostedZoneId) {
       // Use Route53
       for (const record of validationRecords) {
         const result = await this.route53.changeResourceRecordSets({
           HostedZoneId: hostedZoneId,
           ChangeBatch: {
             Comment: `ACM DNS validation for ${record.domainName}`,
-            Changes: [{
-              Action: 'UPSERT',
-              ResourceRecordSet: {
-                Name: record.recordName,
-                Type: record.recordType as any,
-                TTL: 300,
-                ResourceRecords: [{ Value: record.recordValue }],
+            Changes: [
+              {
+                Action: 'UPSERT',
+                ResourceRecordSet: {
+                  Name: record.recordName,
+                  Type: record.recordType as any,
+                  TTL: 300,
+                  ResourceRecords: [{ Value: record.recordValue }],
+                },
               },
-            }],
+            ],
           },
         })
 
@@ -675,13 +673,11 @@ export class ACMDnsValidator {
             type: record.recordType as any,
             content: record.recordValue,
           })
-        }
-        catch {
+        } catch {
           // Ignore errors if record doesn't exist
         }
       }
-    }
-    else if (hostedZoneId) {
+    } else if (hostedZoneId) {
       // Use Route53
       for (const record of validationRecords) {
         try {
@@ -689,19 +685,20 @@ export class ACMDnsValidator {
             HostedZoneId: hostedZoneId,
             ChangeBatch: {
               Comment: `Cleanup ACM DNS validation for ${record.domainName}`,
-              Changes: [{
-                Action: 'DELETE',
-                ResourceRecordSet: {
-                  Name: record.recordName,
-                  Type: record.recordType as any,
-                  TTL: 300,
-                  ResourceRecords: [{ Value: record.recordValue }],
+              Changes: [
+                {
+                  Action: 'DELETE',
+                  ResourceRecordSet: {
+                    Name: record.recordName,
+                    Type: record.recordType as any,
+                    TTL: 300,
+                    ResourceRecords: [{ Value: record.recordValue }],
+                  },
                 },
-              }],
+              ],
             },
           })
-        }
-        catch {
+        } catch {
           // Ignore errors if record doesn't exist
         }
       }

@@ -1,6 +1,7 @@
 import type { CLI } from '@stacksjs/clapp'
+import type { Schedule, ScheduleGroup } from '../../src/aws/scheduler'
 import * as cli from '../../src/utils/cli'
-import { SchedulerClient, type Schedule, type ScheduleGroup } from '../../src/aws/scheduler'
+import { SchedulerClient } from '../../src/aws/scheduler'
 import { loadValidatedConfig } from './shared'
 
 export function registerSchedulerCommands(app: CLI): void {
@@ -39,8 +40,7 @@ export function registerSchedulerCommands(app: CLI): void {
             s.GroupName || 'default',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list schedules: ${error.message}`)
         process.exit(1)
       }
@@ -58,86 +58,90 @@ export function registerSchedulerCommands(app: CLI): void {
     .option('--description <text>', 'Schedule description')
     .option('--start <datetime>', 'Start date/time (ISO 8601)')
     .option('--end <datetime>', 'End date/time (ISO 8601)')
-    .action(async (name: string, options: {
-      region: string
-      schedule?: string
-      targetArn?: string
-      roleArn?: string
-      input?: string
-      group: string
-      timezone: string
-      description?: string
-      start?: string
-      end?: string
-    }) => {
-      cli.header('Create EventBridge Schedule')
+    .action(
+      async (
+        name: string,
+        options: {
+          region: string
+          schedule?: string
+          targetArn?: string
+          roleArn?: string
+          input?: string
+          group: string
+          timezone: string
+          description?: string
+          start?: string
+          end?: string
+        },
+      ) => {
+        cli.header('Create EventBridge Schedule')
 
-      try {
-        if (!options.schedule) {
-          cli.error('--schedule is required')
-          cli.info('Examples:')
-          cli.info('  Rate: rate(5 minutes), rate(1 hour), rate(1 day)')
-          cli.info('  Cron: cron(0 12 * * ? *) - every day at 12:00 UTC')
-          return
+        try {
+          if (!options.schedule) {
+            cli.error('--schedule is required')
+            cli.info('Examples:')
+            cli.info('  Rate: rate(5 minutes), rate(1 hour), rate(1 day)')
+            cli.info('  Cron: cron(0 12 * * ? *) - every day at 12:00 UTC')
+            return
+          }
+
+          if (!options.targetArn) {
+            cli.error('--target-arn is required')
+            return
+          }
+
+          if (!options.roleArn) {
+            cli.error('--role-arn is required')
+            cli.info('The role must have permissions to invoke the target.')
+            return
+          }
+
+          const scheduler = new SchedulerClient(options.region)
+
+          cli.info(`Name: ${name}`)
+          cli.info(`Schedule: ${options.schedule}`)
+          cli.info(`Target: ${options.targetArn}`)
+          cli.info(`Group: ${options.group}`)
+          cli.info(`Timezone: ${options.timezone}`)
+
+          const confirmed = await cli.confirm('\nCreate this schedule?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Creating schedule...')
+          spinner.start()
+
+          await scheduler.createSchedule({
+            Name: name,
+            GroupName: options.group,
+            ScheduleExpression: options.schedule,
+            ScheduleExpressionTimezone: options.timezone,
+            Description: options.description,
+            State: 'ENABLED',
+            FlexibleTimeWindow: {
+              Mode: 'OFF',
+            },
+            Target: {
+              Arn: options.targetArn,
+              RoleArn: options.roleArn,
+              Input: options.input,
+            },
+            StartDate: options.start ? new Date(options.start) : undefined,
+            EndDate: options.end ? new Date(options.end) : undefined,
+          })
+
+          spinner.succeed('Schedule created')
+
+          cli.success(`\nSchedule: ${name}`)
+          cli.info(`Expression: ${options.schedule}`)
+        } catch (error: any) {
+          cli.error(`Failed to create schedule: ${error.message}`)
+          process.exit(1)
         }
-
-        if (!options.targetArn) {
-          cli.error('--target-arn is required')
-          return
-        }
-
-        if (!options.roleArn) {
-          cli.error('--role-arn is required')
-          cli.info('The role must have permissions to invoke the target.')
-          return
-        }
-
-        const scheduler = new SchedulerClient(options.region)
-
-        cli.info(`Name: ${name}`)
-        cli.info(`Schedule: ${options.schedule}`)
-        cli.info(`Target: ${options.targetArn}`)
-        cli.info(`Group: ${options.group}`)
-        cli.info(`Timezone: ${options.timezone}`)
-
-        const confirmed = await cli.confirm('\nCreate this schedule?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Creating schedule...')
-        spinner.start()
-
-        await scheduler.createSchedule({
-          Name: name,
-          GroupName: options.group,
-          ScheduleExpression: options.schedule,
-          ScheduleExpressionTimezone: options.timezone,
-          Description: options.description,
-          State: 'ENABLED',
-          FlexibleTimeWindow: {
-            Mode: 'OFF',
-          },
-          Target: {
-            Arn: options.targetArn,
-            RoleArn: options.roleArn,
-            Input: options.input,
-          },
-          StartDate: options.start ? new Date(options.start) : undefined,
-          EndDate: options.end ? new Date(options.end) : undefined,
-        })
-
-        spinner.succeed('Schedule created')
-
-        cli.success(`\nSchedule: ${name}`)
-        cli.info(`Expression: ${options.schedule}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to create schedule: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('scheduler:delete <name>', 'Delete an EventBridge schedule')
@@ -166,8 +170,7 @@ export function registerSchedulerCommands(app: CLI): void {
         })
 
         spinner.succeed('Schedule deleted')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete schedule: ${error.message}`)
         process.exit(1)
       }
@@ -210,8 +213,7 @@ export function registerSchedulerCommands(app: CLI): void {
         })
 
         spinner.succeed('Schedule enabled')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to enable schedule: ${error.message}`)
         process.exit(1)
       }
@@ -254,8 +256,7 @@ export function registerSchedulerCommands(app: CLI): void {
         })
 
         spinner.succeed('Schedule disabled')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to disable schedule: ${error.message}`)
         process.exit(1)
       }
@@ -322,8 +323,7 @@ export function registerSchedulerCommands(app: CLI): void {
 
         cli.info(`\nCreated: ${schedule.CreationDate || 'N/A'}`)
         cli.info(`Last Modified: ${schedule.LastModificationDate || 'N/A'}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get schedule: ${error.message}`)
         process.exit(1)
       }
@@ -361,8 +361,7 @@ export function registerSchedulerCommands(app: CLI): void {
             g.CreationDate ? new Date(g.CreationDate).toLocaleString() : 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list groups: ${error.message}`)
         process.exit(1)
       }

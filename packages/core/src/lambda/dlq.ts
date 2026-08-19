@@ -94,10 +94,7 @@ export class LambdaDLQManager {
   /**
    * Configure SNS DLQ
    */
-  configureSNSDLQ(options: {
-    functionName: string
-    topicArn: string
-  }): DLQConfig {
+  configureSNSDLQ(options: { functionName: string; topicArn: string }): DLQConfig {
     return this.configureDLQ({
       functionName: options.functionName,
       targetArn: options.topicArn,
@@ -175,11 +172,7 @@ export class LambdaDLQManager {
   /**
    * Create age alarm
    */
-  createAgeAlarm(options: {
-    dlqConfigId: string
-    maxAgeSeconds: number
-    notificationTopicArn: string
-  }): DLQAlarm {
+  createAgeAlarm(options: { dlqConfigId: string; maxAgeSeconds: number; notificationTopicArn: string }): DLQAlarm {
     const config = this.dlqConfigs.get(options.dlqConfigId)
 
     if (!config) {
@@ -206,9 +199,7 @@ export class LambdaDLQManager {
       throw new Error(`Message not found: ${messageId}`)
     }
 
-    const config = Array.from(this.dlqConfigs.values()).find(
-      c => c.functionName === message.functionName
-    )
+    const config = Array.from(this.dlqConfigs.values()).find((c) => c.functionName === message.functionName)
 
     if (!config) {
       throw new Error(`DLQ config not found for function: ${message.functionName}`)
@@ -239,8 +230,7 @@ export class LambdaDLQManager {
 
         if (!success) {
           reprocessing.error = 'Reprocessing failed - same error occurred'
-        }
-else {
+        } else {
           // Remove message from DLQ if successful
           this.messages.delete(messageId)
         }
@@ -253,10 +243,7 @@ else {
   /**
    * Batch reprocess messages
    */
-  async batchReprocess(options: {
-    dlqConfigId: string
-    maxMessages?: number
-  }): Promise<DLQReprocessing[]> {
+  async batchReprocess(options: { dlqConfigId: string; maxMessages?: number }): Promise<DLQReprocessing[]> {
     const config = this.dlqConfigs.get(options.dlqConfigId)
 
     if (!config) {
@@ -264,10 +251,10 @@ else {
     }
 
     const messages = Array.from(this.messages.values())
-      .filter(m => m.functionName === config.functionName)
+      .filter((m) => m.functionName === config.functionName)
       .slice(0, options.maxMessages || 10)
 
-    const reprocessingPromises = messages.map(m => this.reprocessMessage(m.id))
+    const reprocessingPromises = messages.map((m) => this.reprocessMessage(m.id))
 
     return Promise.all(reprocessingPromises)
   }
@@ -288,9 +275,7 @@ else {
       throw new Error(`DLQ config not found: ${dlqConfigId}`)
     }
 
-    const messages = Array.from(this.messages.values()).filter(
-      m => m.functionName === config.functionName
-    )
+    const messages = Array.from(this.messages.values()).filter((m) => m.functionName === config.functionName)
 
     const errorTypes: Record<string, number> = {}
     let totalAttempts = 0
@@ -300,12 +285,12 @@ else {
       totalAttempts += message.attemptCount
     }
 
-    const timestamps = messages.map(m => m.timestamp)
+    const timestamps = messages.map((m) => m.timestamp)
 
     return {
       totalMessages: messages.length,
-      oldestMessage: timestamps.length > 0 ? new Date(Math.min(...timestamps.map(t => t.getTime()))) : undefined,
-      newestMessage: timestamps.length > 0 ? new Date(Math.max(...timestamps.map(t => t.getTime()))) : undefined,
+      oldestMessage: timestamps.length > 0 ? new Date(Math.min(...timestamps.map((t) => t.getTime()))) : undefined,
+      newestMessage: timestamps.length > 0 ? new Date(Math.max(...timestamps.map((t) => t.getTime()))) : undefined,
       averageAttempts: messages.length > 0 ? totalAttempts / messages.length : 0,
       errorTypes,
     }
@@ -335,9 +320,7 @@ else {
       return []
     }
 
-    return Array.from(this.messages.values()).filter(
-      m => m.functionName === config.functionName
-    )
+    return Array.from(this.messages.values()).filter((m) => m.functionName === config.functionName)
   }
 
   /**

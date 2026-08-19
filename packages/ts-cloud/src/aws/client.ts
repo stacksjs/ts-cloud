@@ -2,7 +2,6 @@
  * AWS API Client - Direct API calls without AWS CLI
  * Implements AWS Signature Version 4 for authentication
  */
-
 import * as crypto from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -65,8 +64,8 @@ export interface AWSClientConfig {
  *
  * Supports AWS S3 plus S3-compatible providers (Backblaze B2, Hetzner Object
  * Storage) by allowing an endpoint override and path- vs virtual-hosted-style
- * addressing. With no `endpoint` and no `forcePathStyle` the result is byte-for-byte
- * identical to the previous AWS-only behavior, so existing callers are unaffected.
+ * addressing. With no `endpoint` and no `forcePathStyle` the AWS host and path
+ * are preserved while the default HTTPS transport is made explicit.
  *
  * The returned `path` is used for BOTH the request URL and the SigV4 canonical
  * URI, so the signature always matches the wire request.
@@ -81,21 +80,34 @@ export function resolveS3Endpoint(options: {
   endpoint?: string
   /** Force path-style addressing (bucket in path) instead of virtual-hosted. */
   forcePathStyle?: boolean
-}): { host: string, path: string } {
-  const base = options.endpoint || `s3.${options.region}.amazonaws.com`
+}): { protocol: 'http' | 'https'; host: string; path: string } {
+  const rawEndpoint = options.endpoint || `s3.${options.region}.amazonaws.com`
+  const parsed = new URL(/^https?:\/\//i.test(rawEndpoint) ? rawEndpoint : `https://${rawEndpoint}`)
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    (parsed.pathname !== '/' && parsed.pathname !== '') ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error('S3 endpoint must be an HTTP(S) origin without a path')
+  }
+  const protocol = parsed.protocol.slice(0, -1) as 'http' | 'https'
+  const base = parsed.host
 
   // No bucket scope: ListBuckets, or the bucket is already encoded in the path.
   if (!options.bucket) {
-    return { host: base, path: options.path }
+    return { protocol, host: base, path: options.path }
   }
 
   if (options.forcePathStyle) {
     const path = options.path === '/' ? `/${options.bucket}` : `/${options.bucket}${options.path}`
-    return { host: base, path }
+    return { protocol, host: base, path }
   }
 
   // Virtual-hosted style — the AWS default, also supported by B2 and Hetzner.
-  return { host: `${options.bucket}.${base}`, path: options.path }
+  return { protocol, host: `${options.bucket}.${base}`, path: options.path }
 }
 
 export interface AWSError extends Error {
@@ -188,8 +200,7 @@ export class AWSClient {
       if (credentials.accessKeyId && credentials.secretAccessKey) {
         return credentials
       }
-    }
-    catch {
+    } catch {
       // Failed to read or parse credentials file
     }
 
@@ -228,11 +239,9 @@ export class AWSClient {
 
         if (key.trim() === 'aws_access_key_id') {
           accessKeyId = value
-        }
-        else if (key.trim() === 'aws_secret_access_key') {
+        } else if (key.trim() === 'aws_secret_access_key') {
           secretAccessKey = value
-        }
-        else if (key.trim() === 'aws_session_token') {
+        } else if (key.trim() === 'aws_session_token') {
           sessionToken = value
         }
       }
@@ -297,10 +306,13 @@ export class AWSClient {
       const roleName = await roleResponse.text()
 
       // Get credentials for the role
-      const credsResponse = await fetch(`http://169.254.169.254/latest/meta-data/iam/security-credentials/${roleName}`, {
-        headers: { 'X-aws-ec2-metadata-token': token },
-      })
-      const credsData = await credsResponse.json() as {
+      const credsResponse = await fetch(
+        `http://169.254.169.254/latest/meta-data/iam/security-credentials/${roleName}`,
+        {
+          headers: { 'X-aws-ec2-metadata-token': token },
+        },
+      )
+      const credsData = (await credsResponse.json()) as {
         AccessKeyId: string
         SecretAccessKey: string
         Token: string
@@ -320,9 +332,10 @@ export class AWSClient {
       }
 
       return credentials
-    }
-    catch (error) {
-      throw new Error('AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, or run on an EC2 instance with an IAM role.')
+    } catch (error) {
+      throw new Error(
+        'AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, or run on an EC2 instance with an IAM role.',
+      )
     }
   }
 
@@ -347,16 +360,11 @@ export class AWSClient {
 
         // Cache successful GET requests
         if (options.method === 'GET' && this.config.cacheEnabled && options.cacheKey) {
-          this.setInCache(
-            options.cacheKey,
-            result,
-            options.cacheTTL ?? this.config.defaultCacheTTL ?? 60000,
-          )
+          this.setInCache(options.cacheKey, result, options.cacheTTL ?? this.config.defaultCacheTTL ?? 60000)
         }
 
         return result
-      }
-      catch (error: any) {
+      } catch (error: any) {
         lastError = error
 
         // Check if error is retryable
@@ -385,7 +393,8 @@ export class AWSClient {
    * Make the actual HTTP request
    */
   private async makeRequest(options: AWSRequestOptions): Promise<any> {
-    const credentials = options.credentials || (this.credentials?.accessKeyId ? this.credentials : await this.getCredentials())
+    const credentials =
+      options.credentials || (this.credentials?.accessKeyId ? this.credentials : await this.getCredentials())
     if (!credentials || !credentials.accessKeyId || !credentials.secretAccessKey) {
       throw new Error('AWS credentials not provided')
     }
@@ -425,12 +434,10 @@ export class AWSClient {
     let body: any
     if (responseText.startsWith('<')) {
       body = this.parseXmlResponse(responseText)
-    }
-    else {
+    } else {
       try {
         body = JSON.parse(responseText)
-      }
-      catch {
+      } catch {
         body = responseText
       }
     }
@@ -462,6 +469,7 @@ export class AWSClient {
     let { path } = options
 
     let host: string
+    let protocol: 'http' | 'https' = 'https'
     if (service === 's3') {
       // Virtual-hosted style by default; endpoint override + path-style for
       // S3-compatible providers (Backblaze B2, Hetzner). Reassigns `path` so the
@@ -473,41 +481,35 @@ export class AWSClient {
         endpoint: this.config.endpoint,
         forcePathStyle: this.config.forcePathStyle,
       })
+      protocol = resolved.protocol
       host = resolved.host
       path = resolved.path
-    }
-    else if (service === 'cloudfront') {
+    } else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'
-    }
-    else if (service === 'iam') {
+    } else if (service === 'iam') {
       // IAM is a global service - no region in the endpoint
       host = 'iam.amazonaws.com'
-    }
-    else if (service === 'route53') {
+    } else if (service === 'route53') {
       // Route53 is a global service
       host = 'route53.amazonaws.com'
-    }
-    else if (service === 'route53domains') {
+    } else if (service === 'route53domains') {
       // Route53 Domains is only available in us-east-1
       host = 'route53domains.us-east-1.amazonaws.com'
-    }
-    else if (service === 'ecr') {
+    } else if (service === 'ecr') {
       // ECR uses api.ecr subdomain for the JSON API
       host = `api.ecr.${region}.amazonaws.com`
-    }
-    else if (service === 'ses') {
+    } else if (service === 'ses') {
       // SES v1 API uses email subdomain
       host = `email.${region}.amazonaws.com`
-    }
-    else {
+    } else {
       host = `${service}.${region}.amazonaws.com`
     }
 
-    let url = `https://${host}${path}`
+    let url = `${protocol}://${host}${path}`
 
     if (queryParams && Object.keys(queryParams).length > 0) {
       const queryString = Object.keys(queryParams)
-        .map(k => `${this.uriEncode(k)}=${this.uriEncode(queryParams[k])}`)
+        .map((k) => `${this.uriEncode(k)}=${this.uriEncode(queryParams[k])}`)
         .join('&')
       url += `?${queryString}`
     }
@@ -539,37 +541,30 @@ export class AWSClient {
       })
       host = resolved.host
       path = resolved.path
-    }
-    else if (service === 'cloudfront') {
+    } else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'
-    }
-    else if (service === 'iam') {
+    } else if (service === 'iam') {
       // IAM is a global service - no region in the endpoint
       host = 'iam.amazonaws.com'
-    }
-    else if (service === 'route53') {
+    } else if (service === 'route53') {
       // Route53 is a global service
       host = 'route53.amazonaws.com'
-    }
-    else if (service === 'route53domains') {
+    } else if (service === 'route53domains') {
       // Route53 Domains is only available in us-east-1
       host = 'route53domains.us-east-1.amazonaws.com'
-    }
-    else if (service === 'ecr') {
+    } else if (service === 'ecr') {
       // ECR uses api.ecr subdomain for the JSON API
       host = `api.ecr.${region}.amazonaws.com`
-    }
-    else if (service === 'ses') {
+    } else if (service === 'ses') {
       // SES v1 API uses email subdomain
       host = `email.${region}.amazonaws.com`
-    }
-    else {
+    } else {
       host = `${service}.${region}.amazonaws.com`
     }
 
     // Build canonical headers
     const headers: Record<string, string> = {
-      'host': host,
+      host: host,
       'x-amz-date': amzDate,
       ...(options.headers || {}),
     }
@@ -580,9 +575,7 @@ export class AWSClient {
 
     if (body) {
       // Don't override content-type if already set (case-insensitive check)
-      const hasContentType = Object.keys(headers).some(
-        k => k.toLowerCase() === 'content-type'
-      )
+      const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')
       if (!hasContentType) {
         headers['content-type'] = 'application/x-www-form-urlencoded'
       }
@@ -595,23 +588,18 @@ export class AWSClient {
 
     const canonicalUri = path
     const canonicalQueryString = queryParams
-      ? Object.keys(queryParams).sort().map(k =>
-          `${this.uriEncode(k)}=${this.uriEncode(queryParams[k])}`
-        ).join('&')
+      ? Object.keys(queryParams)
+          .sort()
+          .map((k) => `${this.uriEncode(k)}=${this.uriEncode(queryParams[k])}`)
+          .join('&')
       : ''
 
     // Sort headers by lowercase key name (AWS SigV4 requirement)
-    const sortedHeaderKeys = Object.keys(headers).sort((a, b) =>
-      a.toLowerCase().localeCompare(b.toLowerCase())
-    )
+    const sortedHeaderKeys = Object.keys(headers).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
 
-    const canonicalHeaders = sortedHeaderKeys
-      .map(key => `${key.toLowerCase()}:${headers[key].trim()}\n`)
-      .join('')
+    const canonicalHeaders = sortedHeaderKeys.map((key) => `${key.toLowerCase()}:${headers[key].trim()}\n`).join('')
 
-    const signedHeaders = sortedHeaderKeys
-      .map(key => key.toLowerCase())
-      .join(';')
+    const signedHeaders = sortedHeaderKeys.map((key) => key.toLowerCase()).join(';')
 
     const canonicalRequest = [
       method,
@@ -629,12 +617,7 @@ export class AWSClient {
     let signingService = service
     if (service === 'email') signingService = 'ses'
     const credentialScope = `${dateStamp}/${region}/${signingService}/aws4_request`
-    const stringToSign = [
-      algorithm,
-      amzDate,
-      credentialScope,
-      this.sha256(canonicalRequest),
-    ].join('\n')
+    const stringToSign = [algorithm, amzDate, credentialScope, this.sha256(canonicalRequest)].join('\n')
 
     // Calculate signature
     const signingKey = this.getSignatureKey(credentials.secretAccessKey, dateStamp, region, signingService)
@@ -645,7 +628,7 @@ export class AWSClient {
 
     return {
       ...headers,
-      'Authorization': authorizationHeader,
+      Authorization: authorizationHeader,
     }
   }
 
@@ -667,9 +650,7 @@ export class AWSClient {
    * URI-encode a string per RFC 3986
    */
   private uriEncode(str: string): string {
-    return encodeURIComponent(str).replace(/[!'()*]/g, c =>
-      `%${c.charCodeAt(0).toString(16).toUpperCase()}`
-    )
+    return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
   }
 
   /**
@@ -716,8 +697,7 @@ export class AWSClient {
       }
 
       return parsed
-    }
-    catch (error: any) {
+    } catch (error: any) {
       // If parsing fails, return empty object
       if (error.code || error.statusCode) {
         throw error
@@ -752,8 +732,7 @@ export class AWSClient {
           error.message = `AWS Error [${parsed.Error.Code}]: ${parsed.Error.Message || 'Unknown error'}`
           return error
         }
-      }
-      catch {
+      } catch {
         // Fall through to generic error
       }
     }
@@ -766,8 +745,7 @@ export class AWSClient {
         error.message = `AWS Error [${error.code}]: ${json.message || json.Message || 'Unknown error'}`
         return error
       }
-    }
-    catch {
+    } catch {
       // Fall through to generic error
     }
 
@@ -873,7 +851,7 @@ export class AWSClient {
   private calculateRetryDelay(attempt: number): number {
     const baseDelay = this.config.retryDelay ?? 1000
     const maxDelay = 30000 // 30 seconds max
-    const delay = Math.min(baseDelay * (2 ** attempt), maxDelay)
+    const delay = Math.min(baseDelay * 2 ** attempt, maxDelay)
     // Add jitter to avoid thundering herd
     const jitter = Math.random() * 0.3 * delay
     return delay + jitter
@@ -883,7 +861,7 @@ export class AWSClient {
    * Sleep for specified milliseconds
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms))
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   /**
@@ -949,13 +927,11 @@ export function buildQueryParams(params: Record<string, any>): Record<string, st
       value.forEach((item, index) => {
         result[`${key}.${index + 1}`] = String(item)
       })
-    }
-    else if (typeof value === 'object') {
+    } else if (typeof value === 'object') {
       for (const [subKey, subValue] of Object.entries(value)) {
         result[`${key}.${subKey}`] = String(subValue)
       }
-    }
-    else {
+    } else {
       result[key] = String(value)
     }
   }

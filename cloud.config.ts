@@ -81,19 +81,19 @@ const config: CloudConfig = {
      * S3 buckets for files, backups, etc.
      */
     storage: {
-      'frontend': {
+      frontend: {
         public: true,
         website: true,
         encryption: true,
         versioning: false,
       },
-      'assets': {
+      assets: {
         public: true,
         website: false,
         encryption: true,
         versioning: false,
       },
-      'uploads': {
+      uploads: {
         public: false,
         website: false,
         encryption: true,
@@ -154,7 +154,7 @@ const config: CloudConfig = {
      * CloudFront distribution for global content delivery
      */
     cdn: {
-      'frontend': {
+      frontend: {
         origin: 'ts-cloud-production-frontend.s3.us-east-1.amazonaws.com',
         customDomain: 'ts-cloud.example.com',
       },

@@ -34,12 +34,13 @@ const hasLivePayload = !!__d
 const metricsLive = hasLivePayload ? !!__d?._serverReachable && !__d?.metricsUnavailable : true
 const memPct = metricsLive ? Math.round((metrics.memUsedMb / Math.max(1, metrics.memTotalMb)) * 100) : null
 const loadPct = metricsLive ? Math.min(100, Math.round((metrics.load / Math.max(1, metrics.cpus || 1)) * 100)) : null
+const cpuPct = metricsLive ? Math.min(100, Math.round(metrics.cpuUsedPct ?? loadPct)) : null
 const diskPct = metricsLive ? Math.min(100, Math.round(metrics.diskUsedPct)) : null
 // Threshold tone: green < 70%, amber 70-90%, red >= 90% - shared with the
 // server health view (/server/metrics).
 function healthTone(p) { return p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok' }
 const ranks = { ok: 0, warn: 1, bad: 2 }
-const overallTone = metricsLive ? [healthTone(loadPct), healthTone(memPct), healthTone(diskPct)].sort((a, b) => ranks[b] - ranks[a])[0] : 'warn'
+const overallTone = metricsLive ? [healthTone(cpuPct), healthTone(memPct), healthTone(diskPct)].sort((a, b) => ranks[b] - ranks[a])[0] : 'warn'
 const overallWord = metricsLive ? { ok: 'healthy', warn: 'elevated', bad: 'critical' }[overallTone] : 'probe unavailable'
 const gb = mb => (mb / 1024).toFixed(1)
 const metricStat = (pct, detail) => metricsLive ? `${pct}%` : 'Unavailable'
@@ -90,7 +91,7 @@ function statusTone(status) {
 }
 
 const resourceChart = renderResourceBars([
-  { label: 'CPU', value: loadPct ?? 0, detail: metricsLive ? `${metrics.load} load / ${metrics.cpus} vCPU` : 'Server probe unavailable' },
+  { label: 'CPU', value: cpuPct ?? 0, detail: metricsLive ? `${cpuPct}% busy · ${metrics.load} load / ${metrics.cpus} vCPU` : 'Server probe unavailable' },
   { label: 'Memory', value: memPct ?? 0, detail: metricsLive ? `${gb(metrics.memUsedMb)} / ${gb(metrics.memTotalMb)} GB` : 'Server probe unavailable' },
   { label: 'Disk', value: diskPct ?? 0, detail: metricsLive ? `${metrics.diskUsedGb ?? 0} / ${metrics.diskTotalGb ?? 0} GB` : 'Server probe unavailable' },
 ], { disabled: !metricsLive })
@@ -100,6 +101,8 @@ const resourceChart = renderResourceBars([
 const initialData = __d ?? null
 </script>
 <script client>
+import { usePolling } from '../functions/usePolling.ts'
+
 // Live at-a-glance metrics: seeded from build-time data (stx server→client
 // bridge) so the cards render real numbers on first paint, then polled from
 // /api/dashboard-data - bind cards, health pill, indicator, and service
@@ -116,6 +119,7 @@ function pctOf(which) {
   return Math.min(100, Math.round(n(m.diskUsedPct)))
 }
 const loadP = derived(() => pctOf('load'))
+const cpuP = derived(() => { const d = data(); const m = (d && d.systemMetrics) || {}; return liveData() ? Math.min(100, Math.round(n(m.cpuUsedPct, pctOf('load')))) : null })
 const memP = derived(() => pctOf('mem'))
 const diskP = derived(() => pctOf('disk'))
 function pTone(p) { return p == null ? 'warn' : (p >= 90 ? 'bad' : (p >= 70 ? 'warn' : 'ok')) }
@@ -124,13 +128,16 @@ function barCss(p) { return 'bar ' + pTone(p) }
 function barStyle(p) { return 'width: ' + (p == null ? 0 : p) + '%' }
 const cpuSub = derived(() => { const m = (data() && data().systemMetrics) || {}; return liveData() ? ' · ' + n(m.load) + '/' + n(m.cpus, 1) : 'probe unavailable' })
 const memSub = derived(() => { const m = (data() && data().systemMetrics) || {}; return liveData() ? ' · ' + gbVal(m.memUsedMb) + '/' + gbVal(m.memTotalMb) + ' GB' : 'probe unavailable' })
-const overallC = derived(() => { if (!liveData()) return 'warn'; const r = { ok: 0, warn: 1, bad: 2 }; return [pTone(loadP()), pTone(memP()), pTone(diskP())].sort((a, b) => r[b] - r[a])[0] })
+const overallC = derived(() => { if (!liveData()) return 'warn'; const r = { ok: 0, warn: 1, bad: 2 }; return [pTone(cpuP()), pTone(memP()), pTone(diskP())].sort((a, b) => r[b] - r[a])[0] })
 const overallWordC = derived(() => liveData() ? ({ ok: 'healthy', warn: 'elevated', bad: 'critical' }[overallC()]) : 'probe unavailable')
-const indicator = derived(() => liveData() ? 'live' : 'snapshot')
 const servicesC = derived(() => (data() && data().services) || [])
 function svcTone(s) { return (s === 'running' || s === 'active') ? 'ok' : ((s === 'failed' || s === 'stopped') ? 'bad' : 'warn') }
-async function refresh() { try { const res = await fetch('/api/dashboard-data'); if (!res.ok) return; data.set(await res.json()) } catch {} }
-onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => clearInterval(id) })
+const { pollingState, pollingError } = usePolling(async () => {
+  const response = await fetch('/api/dashboard-data')
+  if (!response.ok) throw new Error('Dashboard refresh failed with HTTP ' + response.status + '.')
+  data.set(await response.json())
+}, 10000)
+const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData() ? 'live' : 'snapshot')
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -153,14 +160,14 @@ onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => 
           <span class="pill" :class="overallC()">{{ overallWordC() }}</span>
         </div>
       </div>
-      <div class="header-actions"><span class="env" title="Auto-refreshing every 10s">{{ indicator() }}</span><a class="btn ghost" href="/server/actions">Operations</a></div>
+      <div class="header-actions"><span class="env" :class="{ bad: pollingState() === 'stale' }" :title="pollingState() === 'stale' ? pollingError() : 'Auto-refreshing every 10s'">{{ indicator() }}</span><a class="btn ghost" href="/server/actions">Operations</a></div>
     </header>
 
     <div class="grid cards">
       <a class="panel" href="/server/metrics">
-        <h3>CPU Load</h3>
-        <div class="stat">{{ pDisp(loadP()) }}<small>{{ cpuSub() }}</small></div>
-        <div :class="barCss(loadP())"><i :style="barStyle(loadP())"></i></div>
+        <h3>CPU utilization</h3>
+        <div class="stat">{{ pDisp(cpuP()) }}<small>{{ cpuSub() }}</small></div>
+        <div :class="barCss(cpuP())"><i :style="barStyle(cpuP())"></i></div>
       </a>
       <a class="panel" href="/server/metrics">
         <h3>Memory</h3>
@@ -172,7 +179,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => 
         <div class="stat">{{ pDisp(diskP()) }}<small></small></div>
         <div :class="barCss(diskP())"><i :style="barStyle(diskP())"></i></div>
       </a>
-      <a class="panel" href="/server/backups">
+      <a class="panel" href="/data/backups">
         <h3>Backups</h3>
         <div class="stat">{{ backup.size }}</div>
         <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">Last {{ backup.last }}</p>
@@ -215,6 +222,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => 
             <div class="item">{{ svc.name }} <span class="pill" :class="svcTone(svc.status)">{{ svc.status }}</span></div>
           </template>
         </div>
+        <div class="compact empty" @show="servicesC().length === 0"><strong>No managed services</strong><span>Configured services will appear after the next successful server probe.</span></div>
       </div>
     </div>
 
@@ -240,14 +248,16 @@ onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => 
     <div class="section">
       <h2>Sites <a class="more" href="/server/sites">View all →</a></h2>
       <div class="panel">
+        @if (sites.length)
         <table>
           <thead>
-            <tr><th>Site</th><th>Route</th><th>Kind</th><th>Runtime</th><th>TLS</th><th>Deploy</th><th>Status</th></tr>
+            <tr><th scope="col">Site</th><th scope="col">Project</th><th scope="col">Route</th><th scope="col">Response</th><th scope="col">TLS</th><th scope="col">Deploy</th><th scope="col">Status</th></tr>
           </thead>
           <tbody>
             @foreach (sites as site)
               <tr>
                 <td><b>{{ site.name }}</b></td>
+                <td><span class="tag">{{ site.project ?? 'stacks' }}</span></td>
                 <td>
                   @if (site.href)
                     <a href="{{ site.href }}" class="mono">{{ site.route }}</a>
@@ -255,15 +265,17 @@ onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => 
                     <span class="mono">{{ site.route }}</span>
                   @endif
                 </td>
-                <td><span class="tag">{{ site.kind ?? site.type }}</span></td>
-                <td class="mono">{{ site.runtime }}</td>
-                <td><span class="{{ site.tls === 'https' ? 'ok' : 'warn' }} pill">{{ site.tls }}</span></td>
+                <td class="mono">{{ site.responseMs != null ? site.responseMs + ' ms' : 'pending' }}</td>
+                <td><span class="{{ site.tlsDaysRemaining == null ? 'warn' : site.tlsDaysRemaining < 7 ? 'bad' : site.tlsDaysRemaining < 30 ? 'warn' : 'ok' }} pill">{{ site.tlsDaysRemaining != null ? site.tlsDaysRemaining + 'd' : site.tls }}</span></td>
                 <td style="color: var(--txt2)">{{ site.deploy }}</td>
                 <td><span class="pill {{ statusTone(site.status) }}">{{ site.status }}</span></td>
               </tr>
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No sites configured</strong><span>Add a site to expose an application or static build from this server.</span></div>
+        @endif
       </div>
     </div>
 
@@ -289,13 +301,17 @@ onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => 
       <div>
         <h2>Queues &amp; Scheduler <a class="more" href="/server/workers">Details →</a></h2>
         <div class="panel">
-          @foreach (workers as w)
-            <div class="kv"><span>queue:{{ w.name }} ×{{ w.processes }}</span> <span class="pill {{ statusTone(w.status) }}">{{ w.status }}</span></div>
-          @endforeach
+          @if (workers.length)
+            @foreach (workers as w)
+              <div class="kv"><span>queue:{{ w.name }} ×{{ w.processes }}</span> <span class="pill {{ statusTone(w.status) }}">{{ w.status }}</span></div>
+            @endforeach
+          @else
+            <div class="compact empty"><strong>No queue workers</strong><span>Add worker definitions to a site to process background jobs.</span></div>
+          @endif
           <div class="kv"><span>scheduler</span> @if (scheduler.enabled)<span class="ok pill">on · {{ scheduler.lastRun }}</span>@else<span class="pill warn">off</span>@endif</div>
         </div>
         <div style="height: 16px"></div>
-        <h2>Backups <a class="more" href="/server/backups">Details →</a></h2>
+        <h2>Backups <a class="more" href="/data/backups">Details →</a></h2>
         <div class="panel">
           <div class="kv"><span>destination</span> <span class="mono">{{ backup.destination }}</span></div>
           <div class="kv"><span>retention</span> <span>{{ backup.retention }} copies</span></div>

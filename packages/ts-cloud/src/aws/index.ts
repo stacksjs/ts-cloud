@@ -4,6 +4,7 @@
  */
 
 export * from './client'
+export * from './backup'
 // Multi-provider object storage factory (AWS S3 / Backblaze B2 / Hetzner),
 // re-exported here for convenience since the S3Client it builds lives in this module.
 export * from '../object-storage'
@@ -36,12 +37,7 @@ export * from './bedrock'
 export * from './comprehend'
 
 // Rekognition - export class and functions
-export {
-  RekognitionClient,
-  detectLabelsFromS3,
-  countFacesInS3Image,
-  isContentSafe,
-} from './rekognition'
+export { RekognitionClient, detectLabelsFromS3, countFacesInS3Image, isContentSafe } from './rekognition'
 
 // Rekognition - export types with prefixed names to avoid conflicts
 export type {
@@ -103,12 +99,7 @@ export type {
 } from './rekognition'
 
 // Textract - export class and functions
-export {
-  TextractClient,
-  extractTextFromS3,
-  extractFormsFromS3,
-  extractTablesFromS3,
-} from './textract'
+export { TextractClient, extractTextFromS3, extractFormsFromS3, extractTablesFromS3 } from './textract'
 
 // Textract - export types with prefixed names to avoid conflicts
 export type {
@@ -158,11 +149,7 @@ export * from './translate'
 export * from './personalize'
 
 // Kendra - export class and functions
-export {
-  KendraClient,
-  search,
-  retrieveForRag,
-} from './kendra'
+export { KendraClient, search, retrieveForRag } from './kendra'
 
 // Kendra - export types with prefixed names to avoid conflicts with Bedrock
 export type {

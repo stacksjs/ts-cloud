@@ -48,12 +48,8 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
   it('provisions a deploy staging bucket with the conventional name + 7-day lifecycle', () => {
     const template = generate(baseConfig)
 
-    const buckets = Object.entries(template.Resources).filter(
-      ([, r]: [string, any]) => r.Type === 'AWS::S3::Bucket',
-    )
-    const deployBucket = buckets.find(
-      ([, r]: [string, any]) => r.Properties?.BucketName === 'my-app-production-deploy',
-    )
+    const buckets = Object.entries(template.Resources).filter(([, r]: [string, any]) => r.Type === 'AWS::S3::Bucket')
+    const deployBucket = buckets.find(([, r]: [string, any]) => r.Properties?.BucketName === 'my-app-production-deploy')
 
     expect(deployBucket).toBeDefined()
     const props = (deployBucket![1] as any).Properties
@@ -85,8 +81,8 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     )
     expect(instances.length).toBeGreaterThan(0)
 
-    const tags: Array<{ Key: string, Value: string }> = (instances[0][1] as any).Properties.Tags || []
-    const tagMap = Object.fromEntries(tags.map(t => [t.Key, t.Value]))
+    const tags: Array<{ Key: string; Value: string }> = (instances[0][1] as any).Properties.Tags || []
+    const tagMap = Object.fromEntries(tags.map((t) => [t.Key, t.Value]))
 
     expect(tagMap.Project).toBe('my-app')
     expect(tagMap.Environment).toBe('production')
@@ -96,9 +92,7 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
 
   it('grants the instance IAM role s3:GetObject on the deploy bucket only', () => {
     const template = generate(baseConfig)
-    const role = Object.values(template.Resources).find(
-      (r: any) => r.Type === 'AWS::IAM::Role',
-    ) as any
+    const role = Object.values(template.Resources).find((r: any) => r.Type === 'AWS::IAM::Role') as any
 
     expect(role).toBeDefined()
     const policies = role.Properties.Policies || []
@@ -107,10 +101,7 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
 
     const stmt = deployPolicy.PolicyDocument.Statement[0]
     expect(stmt.Action).toEqual(['s3:GetObject', 's3:ListBucket'])
-    expect(stmt.Resource).toEqual([
-      'arn:aws:s3:::my-app-production-deploy',
-      'arn:aws:s3:::my-app-production-deploy/*',
-    ])
+    expect(stmt.Resource).toEqual(['arn:aws:s3:::my-app-production-deploy', 'arn:aws:s3:::my-app-production-deploy/*'])
   })
 
   it('opens 80/443 plus the API and SSR site ports in the security group, but NOT 22', () => {
@@ -126,10 +117,8 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
       },
     })
 
-    const sg = Object.values(template.Resources).find(
-      (r: any) => r.Type === 'AWS::EC2::SecurityGroup',
-    ) as any
-    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map(i => i.FromPort)
+    const sg = Object.values(template.Resources).find((r: any) => r.Type === 'AWS::EC2::SecurityGroup') as any
+    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map((i) => i.FromPort)
 
     // SSH is closed by default — shell access is via SSM Session Manager,
     // deploys go through SSM Run Command. No port 22 needed.
@@ -216,8 +205,9 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     })
 
     const distribution = Object.values(template.Resources).find(
-      (r: any) => r.Type === 'AWS::CloudFront::Distribution'
-        && r.Properties.DistributionConfig.Aliases?.includes('my-app.example.com'),
+      (r: any) =>
+        r.Type === 'AWS::CloudFront::Distribution' &&
+        r.Properties.DistributionConfig.Aliases?.includes('my-app.example.com'),
     ) as any
     const pathPatterns = distribution.Properties.DistributionConfig.CacheBehaviors.map(
       (behavior: any) => behavior.PathPattern,
@@ -257,6 +247,137 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     expect(pathPatterns).toContain('/api/*')
   })
 
+  it('configures Origin Shield for standalone CDN origins', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        cdn: {
+          main: {
+            origin: 'my-app-production-site.s3.us-east-1.amazonaws.com',
+            originShield: true,
+            originShieldRegion: 'us-west-2',
+          },
+        },
+      },
+    })
+
+    const distribution = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::CloudFront::Distribution',
+    ) as any
+
+    expect(distribution.Properties.DistributionConfig.Origins[0].OriginShield).toEqual({
+      Enabled: true,
+      OriginShieldRegion: 'us-west-2',
+    })
+  })
+
+  it('provisions an S3-backed Transfer Family SFTP server', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        sftp: {
+          bucket: 'my-app-production-uploads',
+          users: {
+            deploy: { sshPublicKeys: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest'] },
+          },
+        },
+      },
+    })
+
+    const server = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::Transfer::Server',
+    ) as any
+    const user = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::Transfer::User',
+    ) as any
+
+    expect(server.Properties.Protocols).toEqual(['SFTP'])
+    expect(server.Properties.IdentityProviderType).toBe('SERVICE_MANAGED')
+    expect(user.Properties.HomeDirectory).toBe('/my-app-production-uploads/deploy')
+    expect(template.Outputs.SftpEndpoint).toBeDefined()
+  })
+
+  it('provisions an EFS-backed SFTP server on a file system from the same stack', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        fileSystem: {
+          uploads: { encrypted: true },
+        },
+        sftp: {
+          storage: {
+            type: 'efs',
+            fileSystem: 'uploads',
+            posixProfile: { uid: 1000, gid: 1000 },
+          },
+          users: {
+            deploy: { sshPublicKeys: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest'] },
+          },
+        },
+      },
+    })
+
+    const server = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::Transfer::Server',
+    ) as any
+    const user = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::Transfer::User',
+    ) as any
+
+    expect(server.Properties.Domain).toBe('EFS')
+    expect(user.Properties.PosixProfile).toEqual({ Uid: 1000, Gid: 1000 })
+    expect(user.Properties.HomeDirectory).toEqual({
+      'Fn::Sub': ['/${FileSystemId}/deploy', { FileSystemId: { Ref: 'MyAppUploadsProductionEfs' } }],
+    })
+    // The referenced file system is generated by this stack, not assumed to exist.
+    expect(template.Resources.MyAppUploadsProductionEfs?.Type).toBe('AWS::EFS::FileSystem')
+    expect(template.Outputs.SftpStorageDomain.Value).toBe('EFS')
+  })
+
+  it('points an SFTP server at a bucket generated from infrastructure.storage', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        storage: {
+          uploads: {},
+        },
+        sftp: {
+          storage: { type: 's3', storageBucket: 'uploads' },
+          users: {
+            deploy: { sshPublicKeys: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest'] },
+          },
+        },
+      },
+    })
+
+    const user = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::Transfer::User',
+    ) as any
+
+    expect(user.Properties.HomeDirectory).toBe('/my-app-production-uploads/deploy')
+    expect(template.Outputs.uploadsBucketName).toBeDefined()
+    expect(template.Outputs.SftpStorageDomain.Value).toBe('S3')
+  })
+
+  it('rejects SFTP storage references that name no configured resource', () => {
+    expect(() =>
+      generate({
+        ...baseConfig,
+        infrastructure: {
+          ...baseConfig.infrastructure!,
+          sftp: {
+            storage: { type: 'efs', fileSystem: 'missing' },
+            users: { deploy: { sshPublicKeys: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest'] } },
+          },
+        },
+      }),
+    ).toThrow(/infrastructure\.fileSystem/)
+  })
+
   it('honors infrastructure.api.port for the public API CloudFront origin', () => {
     const template = generate({
       ...baseConfig,
@@ -284,14 +405,14 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
       },
     })
 
-    const sg = Object.values(template.Resources).find(
-      (r: any) => r.Type === 'AWS::EC2::SecurityGroup',
-    ) as any
+    const sg = Object.values(template.Resources).find((r: any) => r.Type === 'AWS::EC2::SecurityGroup') as any
     const distribution = Object.values(template.Resources).find(
       (r: any) => r.Type === 'AWS::CloudFront::Distribution',
     ) as any
-    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map(i => i.FromPort)
-    const apiOrigin = distribution.Properties.DistributionConfig.Origins.find((origin: any) => String(origin.Id).includes('-api'))
+    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map((i) => i.FromPort)
+    const apiOrigin = distribution.Properties.DistributionConfig.Origins.find((origin: any) =>
+      String(origin.Id).includes('-api'),
+    )
 
     expect(ingressPorts).toContain(4010)
     expect(apiOrigin.CustomOriginConfig.HTTPPort).toBe(4010)
@@ -362,14 +483,20 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     const functions = Object.values(template.Resources).filter(
       (r: any) => r.Type === 'AWS::CloudFront::Function',
     ) as any[]
-    expect(functions.some((fn: any) =>
-      fn.Properties.FunctionCode.includes('var rewriteStyle = "flat"')
-      && fn.Properties.FunctionCode.includes(`uri + '.html'`),
-    )).toBe(true)
-    expect(functions.some((fn: any) =>
-      fn.Properties.FunctionCode.includes('var rewriteStyle = "directory"')
-      && fn.Properties.FunctionCode.includes(`uri + '/index.html'`),
-    )).toBe(true)
+    expect(
+      functions.some(
+        (fn: any) =>
+          fn.Properties.FunctionCode.includes('var rewriteStyle = "flat"') &&
+          fn.Properties.FunctionCode.includes(`uri + '.html'`),
+      ),
+    ).toBe(true)
+    expect(
+      functions.some(
+        (fn: any) =>
+          fn.Properties.FunctionCode.includes('var rewriteStyle = "directory"') &&
+          fn.Properties.FunctionCode.includes(`uri + '/index.html'`),
+      ),
+    ).toBe(true)
 
     const recordNames = Object.values(template.Resources)
       .filter((r: any) => r.Type === 'AWS::Route53::RecordSet')
@@ -391,10 +518,8 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
       },
     })
 
-    const sg = Object.values(template.Resources).find(
-      (r: any) => r.Type === 'AWS::EC2::SecurityGroup',
-    ) as any
-    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map(i => i.FromPort)
+    const sg = Object.values(template.Resources).find((r: any) => r.Type === 'AWS::EC2::SecurityGroup') as any
+    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map((i) => i.FromPort)
 
     expect(ingressPorts).toContain(22)
     expect(ingressPorts).toContain(80)
@@ -411,12 +536,9 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     }
     const template = generate(staticConfig)
 
-    const ec2 = Object.values(template.Resources).find(
-      (r: any) => r.Type === 'AWS::EC2::Instance',
-    )
+    const ec2 = Object.values(template.Resources).find((r: any) => r.Type === 'AWS::EC2::Instance')
     const deployBucket = Object.values(template.Resources).find(
-      (r: any) => r.Type === 'AWS::S3::Bucket'
-        && r.Properties?.BucketName === 'my-app-production-deploy',
+      (r: any) => r.Type === 'AWS::S3::Bucket' && r.Properties?.BucketName === 'my-app-production-deploy',
     )
     expect(ec2).toBeUndefined()
     expect(deployBucket).toBeUndefined()
@@ -461,9 +583,7 @@ describe('InfrastructureGenerator: per-environment compute deep-merge', () => {
     // Production override changes size; runtime + systemPackages should be inherited
     // from the top-level defaults (no replacement).
     const prodTemplate = generate(config, 'production')
-    const prodInstance = Object.values(prodTemplate.Resources).find(
-      (r: any) => r.Type === 'AWS::EC2::Instance',
-    ) as any
+    const prodInstance = Object.values(prodTemplate.Resources).find((r: any) => r.Type === 'AWS::EC2::Instance') as any
 
     // 'large' resolves to a different instance type than 'small'
     expect(prodInstance.Properties.InstanceType).not.toBe('t3.small')

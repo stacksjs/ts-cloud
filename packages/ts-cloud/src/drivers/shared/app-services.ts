@@ -37,19 +37,29 @@ function reEscape(value: string): string {
 
 /** Single-quote a value for safe embedding in a cron command (e.g. a URL). */
 function cronQuote(value: string): string {
-  return `'${value.split('\'').join('\'\\\'\'')}'`
+  return `'${value.split("'").join("'\\''")}'`
 }
 
 /** Lowercase-kebab slug for embedding a free-form name in a unit filename. */
 function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unnamed'
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'unnamed'
+  )
 }
 
 export function queueUnitName(slug: string, siteName: string, index: number): string {
   return `${slug}-${siteName}-queue-${index}`
 }
 
-export function daemonUnitName(slug: string, siteName: string, daemon: { name?: string, command: string }, index: number): string {
+export function daemonUnitName(
+  slug: string,
+  siteName: string,
+  daemon: { name?: string; command: string },
+  index: number,
+): string {
   return `${slug}-${siteName}-daemon-${daemon.name ? slugify(daemon.name) : slugify(daemon.command).slice(0, 32) || String(index)}`
 }
 
@@ -62,6 +72,18 @@ function systemdUnit(opts: {
   stopWaitSecs?: number
   user?: string
   environment?: Record<string, string>
+  /**
+   * Soft memory ceiling. Defaults to the same 2G an app unit gets, because
+   * these are the processes with the least reason to be unbounded: a queue
+   * worker, a daemon and a scheduler all run forever, and nobody watches
+   * them the way a serving path gets watched.
+   *
+   * They were the only units ts-cloud wrote with no ceiling at all, which
+   * is how a scheduler on a shared host can grow until the kernel starts
+   * choosing victims among its neighbours.
+   */
+  memoryHigh?: string
+  memoryMax?: string
 }): string {
   const lines = [
     '[Unit]',
@@ -75,11 +97,12 @@ function systemdUnit(opts: {
     `ExecStart=${opts.execStart}`,
     `Restart=${opts.restart || 'always'}`,
     'RestartSec=5',
+    'MemoryAccounting=true',
+    `MemoryHigh=${opts.memoryHigh ?? '2G'}`,
+    ...(opts.memoryMax ? [`MemoryMax=${opts.memoryMax}`] : []),
   ]
-  if (opts.user)
-    lines.push(`User=${opts.user}`)
-  if (typeof opts.stopWaitSecs === 'number')
-    lines.push(`TimeoutStopSec=${opts.stopWaitSecs}`)
+  if (opts.user) lines.push(`User=${opts.user}`)
+  if (typeof opts.stopWaitSecs === 'number') lines.push(`TimeoutStopSec=${opts.stopWaitSecs}`)
   lines.push('', '[Install]', 'WantedBy=multi-user.target')
   return `${lines.join('\n')}\n`
 }
@@ -120,13 +143,18 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     for (let p = 0; p < processes; p++) {
       const name = queueUnitName(slug, siteName, desiredUnits.length)
       desiredUnits.push(name)
-      out.push(...writeUnitScript(name, systemdUnit({
-        description: `${siteName} queue worker ${qIndex}.${p} (managed by ts-cloud)`,
-        workingDir: current,
-        execStart: driver.wrapExec(driver.queueWorkerCommand(worker, ctx)),
-        environment: driver.execEnv,
-        stopWaitSecs: worker.stopWaitSecs ?? 90,
-      })))
+      out.push(
+        ...writeUnitScript(
+          name,
+          systemdUnit({
+            description: `${siteName} queue worker ${qIndex}.${p} (managed by ts-cloud)`,
+            workingDir: current,
+            execStart: driver.wrapExec(driver.queueWorkerCommand(worker, ctx)),
+            environment: driver.execEnv,
+            stopWaitSecs: worker.stopWaitSecs ?? 90,
+          }),
+        ),
+      )
     }
   })
 
@@ -137,14 +165,19 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     for (let p = 0; p < processes; p++) {
       const name = `${daemonUnitName(slug, siteName, daemon, dIndex)}-${p}`
       desiredUnits.push(name)
-      out.push(...writeUnitScript(name, systemdUnit({
-        description: `${siteName} daemon ${daemon.name || daemon.command} (managed by ts-cloud)`,
-        workingDir: daemon.directory || current,
-        execStart: driver.wrapExec(daemon.command),
-        environment: driver.execEnv,
-        restart: daemon.restart,
-        user: daemon.user,
-      })))
+      out.push(
+        ...writeUnitScript(
+          name,
+          systemdUnit({
+            description: `${siteName} daemon ${daemon.name || daemon.command} (managed by ts-cloud)`,
+            workingDir: daemon.directory || current,
+            execStart: driver.wrapExec(daemon.command),
+            environment: driver.execEnv,
+            restart: daemon.restart,
+            user: daemon.user,
+          }),
+        ),
+      )
     }
   })
 
@@ -157,17 +190,22 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   const schedulerUnit = `${slug}-${siteName}-scheduler`
   if (schedulerEnabled && driver.schedulerMode === 'daemon') {
     desiredUnits.push(schedulerUnit)
-    out.push(...writeUnitScript(schedulerUnit, systemdUnit({
-      description: `${siteName} scheduler (managed by ts-cloud)`,
-      workingDir: current,
-      execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
-      environment: driver.execEnv,
-    })))
+    out.push(
+      ...writeUnitScript(
+        schedulerUnit,
+        systemdUnit({
+          description: `${siteName} scheduler (managed by ts-cloud)`,
+          workingDir: current,
+          execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
+          environment: driver.execEnv,
+        }),
+      ),
+    )
   }
 
   // Prune systemd units for this site that are no longer desired, then reload
   // and (re)start the desired set.
-  const desiredList = desiredUnits.map(n => `${n}.service`).join(' ')
+  const desiredList = desiredUnits.map((n) => `${n}.service`).join(' ')
   out.push(
     'systemctl daemon-reload',
     `TS_CLOUD_DESIRED="${desiredList}"`,
@@ -208,8 +246,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
       'TS_CLOUD_CRON_EOF',
       `chmod 644 ${cronPath}`,
     )
-  }
-  else {
+  } else {
     out.push(`rm -f ${cronPath}`)
   }
 

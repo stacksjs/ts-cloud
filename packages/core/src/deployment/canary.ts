@@ -43,7 +43,8 @@ export interface CustomMetric {
   name: string
   namespace: string
   threshold: number
-  comparisonOperator: 'GreaterThanThreshold' | 'LessThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanOrEqualToThreshold'
+  comparisonOperator:
+    'GreaterThanThreshold' | 'LessThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanOrEqualToThreshold'
 }
 
 export interface CanaryMetrics {
@@ -152,7 +153,7 @@ export class CanaryManager {
     latencyThreshold?: number
   }): CanaryDeployment {
     const strategy = options.strategy || 'BALANCED'
-    const stages = CanaryManager.Strategies[strategy].map(stage => ({
+    const stages = CanaryManager.Strategies[strategy].map((stage) => ({
       ...stage,
       alarmThresholds: {
         errorRate: options.errorRateThreshold || 1,
@@ -297,11 +298,7 @@ export class CanaryManager {
   /**
    * Monitor canary stage
    */
-  private async monitorStage(
-    deployment: CanaryDeployment,
-    stage: CanaryStage,
-    dryRun: boolean,
-  ): Promise<boolean> {
+  private async monitorStage(deployment: CanaryDeployment, stage: CanaryStage, dryRun: boolean): Promise<boolean> {
     console.log(`  Monitoring metrics...`)
 
     if (dryRun) {
@@ -310,7 +307,7 @@ export class CanaryManager {
     }
 
     // Simulate metric collection
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
 
     // Simulate metrics (in real implementation, would query CloudWatch)
     const metrics: CanaryMetrics = {
@@ -319,13 +316,17 @@ export class CanaryManager {
       baselineLatencyP99: 200 + Math.random() * 100,
       canaryLatencyP99: 180 + Math.random() * 150,
       baselineRequestCount: Math.floor(Math.random() * 1000) + 500,
-      canaryRequestCount: Math.floor((Math.random() * 1000 + 500) * stage.trafficPercentage / 100),
+      canaryRequestCount: Math.floor(((Math.random() * 1000 + 500) * stage.trafficPercentage) / 100),
     }
 
     deployment.metrics = metrics
 
-    console.log(`    Baseline: ${metrics.baselineErrorRate.toFixed(2)}% errors, ${metrics.baselineLatencyP99.toFixed(0)}ms P99`)
-    console.log(`    Canary:   ${metrics.canaryErrorRate.toFixed(2)}% errors, ${metrics.canaryLatencyP99.toFixed(0)}ms P99`)
+    console.log(
+      `    Baseline: ${metrics.baselineErrorRate.toFixed(2)}% errors, ${metrics.baselineLatencyP99.toFixed(0)}ms P99`,
+    )
+    console.log(
+      `    Canary:   ${metrics.canaryErrorRate.toFixed(2)}% errors, ${metrics.canaryLatencyP99.toFixed(0)}ms P99`,
+    )
 
     // Check alarm thresholds
     if (stage.alarmThresholds) {

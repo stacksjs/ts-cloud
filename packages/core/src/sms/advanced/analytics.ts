@@ -261,12 +261,8 @@ catch (error) {
         Properties: {
           TableName: `${config.slug}-sms-analytics`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'period', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'period', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'period', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'period', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -286,12 +282,8 @@ catch (error) {
         Properties: {
           TableName: `${config.slug}-sms-delivery-reports`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'messageId', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'messageId', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'messageId', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'messageId', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,

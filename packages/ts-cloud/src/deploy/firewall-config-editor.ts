@@ -26,27 +26,30 @@ export interface FirewallPortsInput {
 
 /** Normalize a port list: integers in range, minus the always-open set, unique + sorted. */
 export function normalizePorts(ports: number[]): number[] {
-  return [...new Set(ports.filter(p => isValidPort(p) && !ALWAYS_OPEN.has(p)))].sort((a, b) => a - b)
+  return [...new Set(ports.filter((p) => isValidPort(p) && !ALWAYS_OPEN.has(p)))].sort((a, b) => a - b)
 }
 
 export function addFirewallPort(configText: string, port: number, existing: number[] = []): string {
-  if (!isValidPort(port))
-    throw new Error('Port must be an integer between 1 and 65535.')
-  if (ALWAYS_OPEN.has(port))
-    throw new Error(`Port ${port} (SSH/HTTP/HTTPS) is always open and is not managed here.`)
+  if (!isValidPort(port)) throw new Error('Port must be an integer between 1 and 65535.')
+  if (ALWAYS_OPEN.has(port)) throw new Error(`Port ${port} (SSH/HTTP/HTTPS) is always open and is not managed here.`)
   return setFirewallPorts({ configText, ports: normalizePorts([...existing, port]) })
 }
 
 export function removeFirewallPort(configText: string, port: number, existing: number[] = []): string {
-  return setFirewallPorts({ configText, ports: normalizePorts(existing.filter(p => p !== port)) })
+  return setFirewallPorts({ configText, ports: normalizePorts(existing.filter((p) => p !== port)) })
 }
 
 /** Find `keyword: {` or `keyword: [` within [start,end); return its bracket span. */
-function findBlock(text: string, start: number, end: number, keyword: string, open: '{' | '['): { propStart: number, open: number, close: number } | null {
+function findBlock(
+  text: string,
+  start: number,
+  end: number,
+  keyword: string,
+  open: '{' | '[',
+): { propStart: number; open: number; close: number } | null {
   const body = text.slice(start, end)
   const match = new RegExp(`\\b${keyword}\\s*:\\s*\\${open}`).exec(body)
-  if (!match)
-    return null
+  if (!match) return null
   const propStart = start + match.index
   const openIdx = text.indexOf(open, propStart)
   return { propStart, open: openIdx, close: findMatching(text, openIdx, open, open === '{' ? '}' : ']') }
@@ -65,8 +68,7 @@ export function setFirewallPorts(input: FirewallPortsInput): string {
   const ports = normalizePorts(input.ports)
 
   const computeMatch = /\bcompute\s*:\s*{/.exec(configText)
-  if (!computeMatch)
-    throw new Error('Could not find infrastructure.compute in the cloud config.')
+  if (!computeMatch) throw new Error('Could not find infrastructure.compute in the cloud config.')
   const computeOpen = configText.indexOf('{', computeMatch.index)
   const computeClose = findMatching(configText, computeOpen, '{', '}')
 
@@ -77,8 +79,7 @@ export function setFirewallPorts(input: FirewallPortsInput): string {
     if (portsArr) {
       // Replace the whole `allowedPorts: [...]` span (back up over leading indent).
       let lineStart = portsArr.propStart
-      while (lineStart > 0 && configText[lineStart - 1] !== '\n' && /\s/.test(configText[lineStart - 1]!))
-        lineStart--
+      while (lineStart > 0 && configText[lineStart - 1] !== '\n' && /\s/.test(configText[lineStart - 1]!)) lineStart--
       const indent = configText.slice(lineStart, portsArr.propStart)
       return `${configText.slice(0, lineStart)}${indent}${renderPortsArray(ports)}${configText.slice(portsArr.close + 1)}`
     }

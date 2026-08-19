@@ -15,7 +15,34 @@ export interface CloudProviderConfig {
    * this project's sites, and adds its own additive rpx `sites.d/<slug>.json`
    * fragment + DNS — never touching the owner's box lifecycle, firewall, or other
    * tenants. The owner provisions and manages the shared box; attachers only
-   * deploy onto it. Requires read access via the same `HCLOUD_TOKEN`.
+   * deploy onto it.
+   *
+   * ## This widens what your CI credential can reach
+   *
+   * Attaching resolves the host by listing the provider's servers with THIS
+   * project's own token, so the owner's box has to be visible to it, which means
+   * both projects live in the same provider project. On Hetzner that is the whole
+   * story: Cloud API tokens are scoped to a project with Read or Read & Write and
+   * offer no per-resource scoping, and a deploy needs write. So the moment this is
+   * set, this project's CI token can modify and delete EVERY server in that
+   * provider project, not just the box it deploys to.
+   *
+   * Concretely, three apps that each owned one box become three pipelines that
+   * each reach all three, plus anything else in the project. That is a real change
+   * in blast radius: a compromised CI run or a mistargeted teardown now reaches
+   * production systems belonging to unrelated apps.
+   *
+   * **Per-project isolation and attaching are mutually exclusive.** An app kept in
+   * its own provider project cannot be attached at all, because its token cannot
+   * see the owner's box. Choosing to co-host is choosing to trade credential
+   * isolation for a shared box; the reverse trade is equally available, and neither
+   * is a default worth stumbling into.
+   *
+   * `describeCredentialReach()` reports what a given token can actually reach, so
+   * the radius can be shown before an attach is approved rather than discovered
+   * afterwards.
+   *
+   * @see https://github.com/stacksjs/ts-cloud/issues/169
    */
   attachTo?: string
 }
@@ -172,6 +199,22 @@ export interface CloudConfig {
    * Tags applied to all resources
    */
   tags?: Record<string, string>
+
+  /**
+   * Where ts-cloud keeps its machine-local state: dashboard credentials and
+   * session secret, the auth encryption key, the control-plane database, the
+   * staged dashboard release, cached templates, restore scratch space.
+   *
+   * Defaults to `.ts-cloud` in the project root. Point it at an existing home
+   * for runtime state to keep the root clean - a Stacks application sets
+   * `storage/cloud`. Relative paths resolve against the project root; absolute
+   * paths are used as-is. `TS_CLOUD_STATE_DIR` overrides this.
+   *
+   * Not to be confused with `storage/cloud/state/`, where the drivers record
+   * the provisioned box per stack - that one is meant to be committed so CI can
+   * find an existing server instead of provisioning a duplicate.
+   */
+  stateDir?: string
 }
 
 export type CloudOptions = Partial<CloudConfig>
@@ -248,12 +291,14 @@ export interface ApiGatewayConfig {
   name?: string
   description?: string
   stageName?: string
-  cors?: boolean | {
-    allowOrigins?: string[]
-    allowMethods?: string[]
-    allowHeaders?: string[]
-    maxAge?: number
-  }
+  cors?:
+    | boolean
+    | {
+        allowOrigins?: string[]
+        allowMethods?: string[]
+        allowHeaders?: string[]
+        maxAge?: number
+      }
   authorization?: 'NONE' | 'IAM' | 'COGNITO' | 'LAMBDA'
   throttling?: {
     rateLimit?: number
@@ -262,37 +307,46 @@ export interface ApiGatewayConfig {
   customDomain?: {
     domain?: string
     certificateArn?: string
+    dnsProvider?: 'route53' | 'external'
   }
   authorizer?: {
     type?: string
     identitySource?: string
     audience?: string[]
   }
-  routes?: Array<{
-    path?: string
-    method?: string
-    integration?: string | { type?: string; service?: string }
-    authorizer?: string
-  }> | Record<string, {
-    path?: string
-    method?: string
-    integration?: string | { type?: string; service?: string }
-  }>
+  routes?:
+    | Array<{
+        path?: string
+        method?: string
+        integration?: string | { type?: string; service?: string }
+        authorizer?: string
+      }>
+    | Record<
+        string,
+        {
+          path?: string
+          method?: string
+          integration?: string | { type?: string; service?: string }
+        }
+      >
 }
 
 /**
  * Messaging (SNS) configuration
  */
 export interface MessagingConfig {
-  topics?: Record<string, {
-    name?: string
-    displayName?: string
-    subscriptions?: Array<{
-      protocol: 'email' | 'sqs' | 'lambda' | 'http' | 'https'
-      endpoint: string
-      filterPolicy?: Record<string, string[]>
-    }>
-  }>
+  topics?: Record<
+    string,
+    {
+      name?: string
+      displayName?: string
+      subscriptions?: Array<{
+        protocol: 'email' | 'sqs' | 'lambda' | 'http' | 'https'
+        endpoint: string
+        filterPolicy?: Record<string, string[]>
+      }>
+    }
+  >
 }
 
 export interface InfrastructureConfig {
@@ -379,6 +433,8 @@ export interface InfrastructureConfig {
   appDatabase?: DatabaseConfig
   cache?: CacheConfig
   cdn?: Record<string, CdnItemConfig & ResourceConditions> | CdnItemConfig
+  /** AWS Transfer Family SFTP server backed by S3. */
+  sftp?: SftpConfig
   /**
    * Elastic File System (EFS) configuration
    * For shared file storage across multiple instances
@@ -469,12 +525,15 @@ export interface InfrastructureConfig {
    * }
    */
   redirects?: RedirectsConfig
-  streaming?: Record<string, {
-    name?: string
-    shardCount?: number
-    retentionPeriod?: number
-    encryption?: boolean | string
-  }>
+  streaming?: Record<
+    string,
+    {
+      name?: string
+      shardCount?: number
+      retentionPeriod?: number
+      encryption?: boolean | string
+    }
+  >
   machineLearning?: {
     sagemakerEndpoint?: string
     modelBucket?: string
@@ -509,12 +568,15 @@ export interface InfrastructureConfig {
   }
   analytics?: {
     enabled?: boolean
-    firehose?: Record<string, {
-      name?: string
-      destination?: string
-      bufferSize?: number
-      bufferInterval?: number
-    }>
+    firehose?: Record<
+      string,
+      {
+        name?: string
+        destination?: string
+        bufferSize?: number
+        bufferInterval?: number
+      }
+    >
     athena?: {
       database?: string
       workgroup?: string
@@ -852,6 +914,37 @@ export interface SiteRedirectConfig {
   preservePath?: boolean
 }
 
+/**
+ * A shared path pointed at an explicit location instead of the site's own
+ * `shared/` directory.
+ *
+ * Every site installs under its own base (`/var/www/<slug>-<site>`), so two
+ * sites of one project that both list `database/app.sqlite` get two separate
+ * databases — each surviving its own deploys, and drifting apart forever.
+ * Naming one absolute `target` makes them the same file.
+ */
+export interface SharedPathSpec {
+  /** Release-relative path that receives the symlink, e.g. `database/app.sqlite`. */
+  path: string
+  /**
+   * Absolute path the symlink points at. Defaults to `<base>/shared/<path>`,
+   * which is what a plain string entry means.
+   */
+  target?: string
+  /**
+   * May this site CREATE the target — placehold it, and seed it from this
+   * site's own live release? Default `true`.
+   *
+   * Set `false` on every site but one when several share a target. Otherwise
+   * whichever site happens to deploy first creates the file, and the site that
+   * actually holds the data finds the target already there and never seeds it.
+   */
+  seed?: boolean
+}
+
+/** A shared path: a release-relative path, or {@link SharedPathSpec}. */
+export type SharedPathEntry = string | SharedPathSpec
+
 export interface SiteConfig {
   /**
    * Directory to deploy.
@@ -876,6 +969,35 @@ export interface SiteConfig {
    * path-preserving redirect.
    */
   redirect?: string | SiteRedirectConfig
+  /**
+   * Make this a **proxy-only site**: the gateway routes this site's `domain` to
+   * an upstream that ts-cloud does **not** manage. Nothing is built, packaged,
+   * shipped or supervised — no release directory, no systemd unit — but the
+   * domain still joins the gateway's TLS set, so it gets `certsDirServerNames`,
+   * `onDemandTls.allowedSuffixes` and the project's `rpx-cert-renew-<slug>`
+   * units like any other site.
+   *
+   * This is for a service that is provisioned by something else and must stay
+   * that way. The motivating case is a package registry whose systemd unit
+   * carries `Requires=clamav-daemon.service` and hard memory/task caps that
+   * ts-cloud's generated unit template cannot express: before this existed the
+   * only way to route it was `start` + `port`, which forces ts-cloud to own the
+   * unit and would have silently dropped that hardening.
+   *
+   * Give it a `host:port` (or an array of them, load-balanced with
+   * `proxy.loadBalancer`). `domain` is required; `root`, `start`, `port`,
+   * `build` and `preStart` are not used and are ignored.
+   *
+   * ```ts
+   * sites: {
+   *   registry: { domain: 'registry.example.com', proxyTo: 'localhost:3001' },
+   * }
+   * ```
+   *
+   * A {@link redirect} on the same site wins — that answers the domain itself
+   * rather than forwarding it.
+   */
+  proxyTo?: string | string[]
   /**
    * S3 bucket name. Default: `{slug}-{environment}-site` for `main`,
    * else `{slug}-{environment}-{siteKey}`.
@@ -982,6 +1104,76 @@ export interface SiteConfig {
   preStart?: string[]
 
   /**
+   * systemd `MemoryHigh` for this site's app unit — the soft limit at which
+   * the kernel starts reclaiming the service's own memory, throttling it
+   * rather than letting pressure build box-wide.
+   *
+   * This is the same containment the rpx gateway has carried for a while, and
+   * app units are where it was missing. On a shared box a single tenant that
+   * leaks takes down every other tenant: memory fills, swap fills, and the
+   * kernel's OOM killer starts picking arbitrary victims. Squeezing the
+   * offender's own cgroup first keeps the blast radius on the service that
+   * actually grew.
+   *
+   * Accepts systemd size values (`512M`, `2G`, …), or `'infinity'` to opt a
+   * site out. Applies to the app unit only; queue workers have their own
+   * `--memory` restart threshold. @default '2G'
+   */
+  memoryHigh?: string
+
+  /**
+   * systemd `MemoryMax` for this site's app unit — the hard limit. Crossing it
+   * invokes the OOM killer INSIDE this service's cgroup, so the unit's
+   * `Restart=always` brings it straight back rather than the kernel killing a
+   * co-tenant.
+   *
+   * Unset by default, deliberately: a hard cap turns a slow leak into a
+   * restart loop for an app that legitimately needs the memory, and the
+   * default has to be safe for workloads nobody has measured. Set it once you
+   * know a site's real ceiling. Should be higher than {@link memoryHigh}.
+   */
+  memoryMax?: string
+
+  /**
+   * systemd `CPUWeight` for this site's unit — its relative share of the CPU
+   * when the box is contended. Default weight is 100; higher wins.
+   *
+   * Worth setting on a shared box, where not everything deserves an equal
+   * slice: the gateway serving every tenant should outrank a nightly batch
+   * job, and a monitoring dashboard should outrank neither. Without it a
+   * background job that saturates the cores slows the serving path exactly as
+   * much as it slows itself.
+   *
+   * Unset by default — a box running one workload has nothing to rank.
+   */
+  cpuWeight?: number
+
+  /**
+   * systemd `IOWeight` for this site's unit — the same relative share, for
+   * disk bandwidth. Unset by default.
+   */
+  ioWeight?: number
+
+  /**
+   * systemd `TasksMax` for this site's unit — a ceiling on threads and
+   * processes. Catches a runaway spawn loop before it exhausts the box's PID
+   * space, which is a failure that takes down every tenant, not just the one
+   * that caused it. Unset by default.
+   */
+  tasksMax?: number
+
+  /**
+   * systemd `TimeoutStopSec` for this site's unit — how long it may take to
+   * shut down before SIGTERM is escalated to SIGKILL.
+   *
+   * Raise it for a worker that drains on SIGTERM. The default of 90s suits a
+   * server that can stop at once, and kills a long job mid-write: an ingest
+   * worker that finishes its current shard before exiting was SIGKILLed doing
+   * exactly that. Leave unset for anything that stops immediately.
+   */
+  stopTimeout?: string
+
+  /**
    * SSR only. tar `--exclude` patterns applied when packaging the release
    * tarball. Keep host-specific / heavy paths out of the artifact — most
    * importantly `node_modules` (host-built native binaries won't run on the
@@ -1051,10 +1243,16 @@ export interface SiteConfig {
    * A release is a fresh directory, so anything the app WRITES and must keep
    * has to be listed here or the next deploy silently starts it from empty.
    *
+   * An entry may instead be a {@link SharedPathSpec} naming an absolute
+   * `target`, which is how SEVERAL sites of one project point at ONE file —
+   * an app and its API sharing a single SQLite database, say. Each site
+   * installs under its own base, so a plain string can only ever give each of
+   * them a database of its own.
+   *
    * Honored by both PHP/Laravel sites and server-app sites (`start`).
    * @default ['storage', '.env'] for PHP sites; `['.env']` for server-app sites
    */
-  sharedPaths?: string[]
+  sharedPaths?: SharedPathEntry[]
 
   /**
    * Number of past releases to retain on the box for rollback.
@@ -1248,7 +1446,7 @@ export interface SiteSslConfig {
    * `true` uses a 1-year max-age with `includeSubDomains`; an object customizes
    * it. Only meaningful when the site serves TLS.
    */
-  hsts?: boolean | { maxAge?: number, includeSubDomains?: boolean, preload?: boolean }
+  hsts?: boolean | { maxAge?: number; includeSubDomains?: boolean; preload?: boolean }
   /**
    * `ssl_protocols` for the vhost (e.g. `['TLSv1.2', 'TLSv1.3']`). Applied to
    * the `custom`-cert :443 block; for Let's Encrypt the protocols are managed by
@@ -1366,11 +1564,11 @@ export interface NotificationsConfig {
   /** Discord webhook URL. */
   discord?: { webhookUrl: string }
   /** Telegram bot token + chat id. */
-  telegram?: { botToken: string, chatId: string }
+  telegram?: { botToken: string; chatId: string }
   /** Email recipients (sent via ts-cloud's email/SES client). */
-  email?: { to: string | string[], from?: string }
+  email?: { to: string | string[]; from?: string }
   /** Generic webhook — receives `{ event, message }` as JSON. */
-  webhook?: { url: string, method?: 'POST' | 'GET' }
+  webhook?: { url: string; method?: 'POST' | 'GET' }
   /**
    * Which events to notify on. @default all events
    */
@@ -1399,10 +1597,11 @@ export interface BucketConfig {
 
 export interface DatabaseConfig {
   type?: 'rds' | 'dynamodb'
-  // 'singlestore' is always an external managed cluster (SingleStore Helios) —
-  // there is no self-hosted pantry package, so ts-cloud only wires DB_* env for
-  // it (see buildManagedDbEnv), never installs/sets it up on-box.
-  engine?: 'postgres' | 'mysql' | 'mariadb' | 'singlestore'
+  // SingleStore is external. Vitess may be external or an on-box cluster
+  // provisioned through `compute.managedServices.vitess`; applications always
+  // reach it through vtgate on port 15306. Its `name` is a keyspace rather
+  // than a MySQL database.
+  engine?: 'postgres' | 'mysql' | 'mariadb' | 'singlestore' | 'vitess'
   instanceType?: string
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1420,7 +1619,7 @@ export interface DatabaseConfig {
   password?: string
   /** Hostname for a managed/external database (default `127.0.0.1` on-box). */
   host?: string
-  /** Port (defaults: mysql/mariadb/singlestore 3306, postgres 5432). */
+  /** Port (defaults: mysql/mariadb/singlestore 3306, vitess 15306, postgres 5432). */
   port?: number
   /**
    * Require TLS to the database. Defaults on for managed SingleStore (Helios),
@@ -1434,6 +1633,55 @@ export interface DatabaseConfig {
    * engine.
    */
   users?: DatabaseUserConfig[]
+
+  /** Control-plane settings, only meaningful when `engine` is `vitess`. */
+  vitess?: VitessControlPlaneConfig
+}
+
+/**
+ * How to reach a Vitess cluster's control plane.
+ *
+ * The application talks to vtgate over the MySQL protocol, which is enough
+ * for queries and for most observability (`SHOW VITESS_SHARDS`,
+ * `SHOW VITESS_MIGRATIONS`). It is NOT enough to create a keyspace or apply
+ * a VSchema: those are vtctld gRPC operations, so managing them needs the
+ * separate address below plus the `vtctldclient` binary on the box.
+ *
+ * Leaving this unset keeps everything read-only. The dashboard still shows
+ * topology and migrations through vtgate; it just cannot change anything,
+ * which is the right default for a cluster ts-cloud did not build.
+ */
+export interface VitessControlPlaneConfig {
+  /**
+   * vtctld's gRPC address, e.g. `vtctld.internal:15999`.
+   *
+   * Distinct from the vtgate address in {@link DatabaseConfig.host}: vtgate
+   * routes queries, vtctld administers the cluster. Pointing this at vtgate
+   * fails with a protocol error rather than doing anything useful.
+   */
+  vtctldAddr?: string
+  /**
+   * Default cell (failure domain) for operations that need one, e.g.
+   * `zone1`. Vitess clusters always have at least one.
+   */
+  cell?: string
+  /**
+   * `vtctldclient` release to install, e.g. `21.0.0`.
+   *
+   * Pinned rather than tracking latest: vtctldclient talks gRPC to vtctld
+   * and Vitess only supports a bounded version skew between them, so an
+   * unpinned client can start failing the day the cluster is upgraded.
+   */
+  clientVersion?: string
+  /**
+   * DDL strategy for schema changes applied through the dashboard.
+   *
+   * `vitess` (the default) runs Vitess's own online DDL, which applies
+   * shard by shard without locking the keyspace and is revertible.
+   * `direct` runs the DDL synchronously and WILL lock; it exists for
+   * unsharded keyspaces where that is acceptable and faster.
+   */
+  ddlStrategy?: 'vitess' | 'direct'
 }
 
 /**
@@ -1492,6 +1740,92 @@ export interface CdnConfig {
   certificateArn?: string
 }
 
+/**
+ * POSIX identity a user is mapped to on an EFS-backed server.
+ * Files the user writes are owned by this uid/gid.
+ */
+export interface SftpPosixProfile {
+  uid: number
+  gid: number
+  secondaryGids?: number[]
+}
+
+/** Files live in an S3 bucket. */
+export interface SftpS3Storage {
+  type: 's3'
+  /** Physical bucket name of an existing bucket. */
+  bucket?: string
+  /**
+   * Key from `infrastructure.storage`. ts-cloud points the server at the
+   * bucket it generates for that entry, so the bucket is created with the stack.
+   */
+  storageBucket?: string
+}
+
+/**
+ * Files live on an EFS file system attached to the server, so users get a real
+ * POSIX filesystem (directories, renames, symlinks) instead of object storage.
+ */
+export interface SftpEfsStorage {
+  type: 'efs'
+  /**
+   * Directory served on box providers (Hetzner, local), where storage on the
+   * server is a directory rather than an EFS file system.
+   * Defaults to `/var/sftp/<slug>`.
+   */
+  path?: string
+  /** File system ID (`fs-…`) of an existing EFS file system. */
+  fileSystemId?: string
+  /**
+   * Key from `infrastructure.fileSystem`. ts-cloud points the server at the
+   * file system it generates for that entry, so storage is created with the stack.
+   */
+  fileSystem?: string
+  /** Default POSIX identity for users that do not set their own. */
+  posixProfile?: SftpPosixProfile
+}
+
+export type SftpStorageConfig = SftpS3Storage | SftpEfsStorage
+
+export interface SftpUserConfig {
+  sshPublicKeys: string[]
+  homeDirectory?: string
+  roleArn?: string
+  /** POSIX identity for this user. Required on EFS-backed servers. */
+  posixProfile?: SftpPosixProfile
+}
+
+export interface SftpConfig {
+  /**
+   * Where uploaded files are stored: an EFS file system on the server
+   * (`{ type: 'efs' }`) or an S3 bucket (`{ type: 's3' }`).
+   */
+  storage?: SftpStorageConfig
+  /** Shorthand for `storage: { type: 's3', bucket }`. */
+  bucket?: string
+  users: Record<string, SftpUserConfig>
+  endpointType?: 'PUBLIC' | 'VPC'
+  endpointDetails?: {
+    vpcId: string
+    subnetIds: string[]
+    securityGroupIds?: string[]
+    addressAllocationIds?: string[]
+  }
+  securityPolicyName?: string
+  logging?: boolean
+  /**
+   * Port the server listens on. Box providers only — AWS Transfer Family is
+   * always reached on port 22. Defaults to 2222, since sshd owns 22 on a box.
+   */
+  port?: number
+  /** Reject every write. Box providers only. */
+  readOnly?: boolean
+  /** ts-sftp version installed on the box. Defaults to the latest release. */
+  version?: string
+  /** System account the box server runs as. Defaults to `ts-sftp`. */
+  serviceUser?: string
+}
+
 export interface DnsConfig {
   domain?: string
   hostedZoneId?: string
@@ -1501,11 +1835,99 @@ export interface DnsConfig {
    * instead of Route53
    */
   provider?: 'route53' | 'cloudflare' | 'porkbun' | 'godaddy'
+  /**
+   * Records to publish on every deploy, alongside the address records ts-cloud
+   * derives from `sites`.
+   *
+   * This is for the half of a zone a deploy cannot infer — mail (MX, SPF,
+   * DMARC, autodiscover), domain-verification TXT records, third-party CNAMEs.
+   * Those are exactly the records that go missing in a nameserver migration and
+   * are not noticed until someone reports that mail stopped, because nothing in
+   * a normal deploy touches or checks them. Declaring them here makes the zone
+   * reproducible from the repo instead of from someone's memory of a dashboard.
+   *
+   * Reconciliation is **upsert-only**: ts-cloud never deletes a record it was
+   * not asked to manage, because a zone routinely holds records owned by other
+   * tools and people. The one exception is a policy TXT record (SPF, DMARC),
+   * where a *second* record is not additive but a hard failure — see
+   * {@link DnsRecordConfig}.
+   */
+  records?: DnsRecordConfig[]
+}
+
+/**
+ * One record published by {@link DnsConfig.records}.
+ *
+ * How a record is matched against what already exists depends on its type,
+ * because "the same record" means different things:
+ *
+ *  - **A, AAAA, CNAME** — one value per name in practice, so an existing record
+ *    with this name and type is UPDATED.
+ *  - **MX, SRV, CAA, NS** — legitimately multi-valued, so a record is matched on
+ *    its content and only created when that exact value is absent. Undeclared
+ *    values at the same name are reported, never removed: a stray MX means split
+ *    mail delivery, which the operator must see, but deleting someone else's
+ *    record on a shared zone is worse.
+ *  - **TXT** — multi-valued in general (verification tokens sit beside each
+ *    other), EXCEPT for policy records. Two `v=spf1` records are not two
+ *    policies; they are a permerror, and receivers treat the domain as having no
+ *    usable SPF at all. Two `v=DMARC1` records are likewise ignored wholesale.
+ *    So a TXT whose value opens with a policy tag REPLACES the existing record
+ *    carrying that same tag, and any other TXT at that name is left untouched.
+ */
+export interface DnsRecordConfig {
+  type: 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA' | 'NS'
+  /**
+   * Record name: `'@'` (or omitted) for the zone apex, a bare label such as
+   * `'autodiscover'`, or a fully-qualified name. Bare labels are qualified with
+   * the zone.
+   */
+  name?: string
+  /** Record value. */
+  content: string
+  /** TTL in seconds. @default 3600 */
+  ttl?: number
+  /** Priority — required for MX, used by SRV. */
+  priority?: number
+  /**
+   * Cloudflare only: serve through the proxy. @default false
+   *
+   * Declared records default to DNS-only deliberately. Mail records cannot be
+   * proxied at all, and a proxied `autodiscover` CNAME resolves to Cloudflare
+   * rather than Microsoft and quietly breaks client auto-configuration.
+   */
+  proxied?: boolean
+  /** Free-text note stored with the record where the provider supports it. */
+  comment?: string
 }
 
 export interface SecurityConfig {
   waf?: WafConfig
   kms?: boolean
+  /**
+   * Pre-deployment secret scan.
+   *
+   * The scan walks the project directory before a deploy and blocks on secrets
+   * it finds. `scan.exclude` names directories to leave out of that walk, on
+   * top of the built-in list (`.git`, `node_modules`, `dist`, `build`,
+   * `vendor`, `pantry`, `coverage`, ...). Entries are matched on the directory
+   * NAME at any depth, not as globs or paths.
+   *
+   * Use it for trees this project does not own and does not ship — a vendored
+   * git submodule is the usual case. Third-party test fixtures are a rich
+   * source of strings that look like credentials (the TypeScript compiler's
+   * baselines trip the AWS-key heuristic on an identifier), and no amount of
+   * remediation in your own code makes them go away.
+   *
+   * Excluding a directory here means secrets inside it will NOT be caught, so
+   * only list trees you are confident never reach a server.
+   *
+   * @example
+   * security: { scan: { exclude: ['_submodules'] } }
+   */
+  scan?: {
+    exclude?: string[]
+  }
   /**
    * SSL/TLS Certificate configuration
    */
@@ -1517,20 +1939,23 @@ export interface SecurityConfig {
   /**
    * Security groups configuration
    */
-  securityGroups?: Record<string, {
-    ingress?: Array<{
-      port: number
-      protocol: string
-      cidr?: string
-      source?: string
-    }>
-    egress?: Array<{
-      port: number
-      protocol: string
-      cidr?: string
-      destination?: string
-    }>
-  }>
+  securityGroups?: Record<
+    string,
+    {
+      ingress?: Array<{
+        port: number
+        protocol: string
+        cidr?: string
+        source?: string
+      }>
+      egress?: Array<{
+        port: number
+        protocol: string
+        cidr?: string
+        destination?: string
+      }>
+    }
+  >
 }
 
 export interface WafConfig {
@@ -1555,10 +1980,12 @@ export interface MonitoringConfig {
     name?: string
     widgets?: Array<{
       type?: string
-      metrics?: string[] | Array<{
-        service?: string
-        metric?: string
-      }>
+      metrics?:
+        | string[]
+        | Array<{
+            service?: string
+            metric?: string
+          }>
     }>
   }
   /**
@@ -1615,10 +2042,12 @@ export interface StorageItemConfig {
   versioning?: boolean
   encryption?: boolean
   encrypted?: boolean // Alias for encryption (for EFS compatibility)
-  website?: boolean | {
-    indexDocument?: string
-    errorDocument?: string
-  }
+  website?:
+    | boolean
+    | {
+        indexDocument?: string
+        errorDocument?: string
+      }
   /**
    * Explicit CloudFront distribution aliases for this bucket.
    * Overrides the default alias logic based on bucket name.
@@ -1845,6 +2274,17 @@ export interface ServerlessAppConfig {
   provisionedConcurrency?: number
   /** CloudWatch log retention (days) for all function log groups. @default 14 */
   logRetention?: number
+  /**
+   * Enable CloudWatch Lambda Insights for every function in the app.
+   *
+   * AWS publishes architecture- and region-specific extension layers, so the
+   * layer ARN stays explicit instead of ts-cloud pinning a version that can go
+   * stale. Zip deployments attach the layer and the required AWS managed role
+   * policy. Container-image deployments must bake the extension into the image.
+   */
+  lambdaInsights?: {
+    layerArn: string
+  }
 
   // ── CLI function (scheduler + on-demand command/deploy hooks) ─────────────
   /** CLI function memory in MB. @default 1024 */
@@ -1942,12 +2382,14 @@ export interface ServerlessAppConfig {
    * otherwise attach an existing access point by ARN. The mount path defaults
    * to `/mnt/local`.
    */
-  efs?: boolean | {
-    /** Existing EFS Access Point ARN to attach (skips provisioning). */
-    accessPointArn?: string
-    /** Mount path inside the functions. @default '/mnt/local' */
-    mountPath?: string
-  }
+  efs?:
+    | boolean
+    | {
+        /** Existing EFS Access Point ARN to attach (skips provisioning). */
+        accessPointArn?: string
+        /** Mount path inside the functions. @default '/mnt/local' */
+        mountPath?: string
+      }
 
   /** Managed WAF in front of the HTTP API / CloudFront. */
   firewall?: WafConfig
@@ -2041,13 +2483,13 @@ export interface FileSystemItemConfig {
  * Provider-agnostic sizing that maps to appropriate instance types
  */
 export type InstanceSize =
-  | 'nano'      // ~0.5 vCPU, 0.5GB RAM
-  | 'micro'     // ~1 vCPU, 1GB RAM
-  | 'small'     // ~1 vCPU, 2GB RAM
-  | 'medium'    // ~2 vCPU, 4GB RAM
-  | 'large'     // ~2 vCPU, 8GB RAM
-  | 'xlarge'    // ~4 vCPU, 16GB RAM
-  | '2xlarge'   // ~8 vCPU, 32GB RAM
+  | 'nano' // ~0.5 vCPU, 0.5GB RAM
+  | 'micro' // ~1 vCPU, 1GB RAM
+  | 'small' // ~1 vCPU, 2GB RAM
+  | 'medium' // ~2 vCPU, 4GB RAM
+  | 'large' // ~2 vCPU, 8GB RAM
+  | 'xlarge' // ~4 vCPU, 16GB RAM
+  | '2xlarge' // ~8 vCPU, 32GB RAM
   | (string & {}) // Allow provider-specific types like 't3.micro'
 
 /**
@@ -2351,10 +2793,12 @@ export interface ComputeConfig {
         duration?: number
       }
     }
-    userData?: string | {
-      packages?: string[]
-      commands?: string[]
-    }
+    userData?:
+      | string
+      | {
+          packages?: string[]
+          commands?: string[]
+        }
   }
 
   /**
@@ -2409,6 +2853,11 @@ export interface ComputeConfig {
         domain?: string
         certificateArn?: string
       }
+      originVerifyHeader?: {
+        name?: string
+        value?: string
+      }
+      deletionProtection?: boolean
     }
   }
 
@@ -2478,6 +2927,18 @@ export interface ComputeConfig {
     /** Enable encryption @default true */
     encrypted?: boolean
   }
+
+  /**
+   * Swapfile size in GB, provisioned at first boot (cloud-init / UserData).
+   * Small shared boxes run several tenants + services with no swap at all, so
+   * a memory spike (deploy, `bun install`, on-box builds) leaves the kernel
+   * OOM killer picking victims box-wide. A modest swapfile — with a low
+   * `vm.swappiness` of 10 persisted via `/etc/sysctl.d` — gives the kernel
+   * headroom without trading responsiveness. The setup is idempotent and
+   * skipped when the box already has `/swapfile` active. Set `0` to disable
+   * (no swap provisioned). @default 2
+   */
+  swapGb?: number
 
   /**
    * SSH key name for instance access
@@ -2613,6 +3074,17 @@ export interface ComputeConfig {
    * primary firewall. @default { enabled: true } for PHP boxes
    */
   firewall?: ComputeFirewallConfig
+  /**
+   * Kernel-level flood mitigation (nftables + sysctl). On by default; `false`
+   * disables it. UFW decides which ports are open, this decides what happens to
+   * the traffic arriving on them.
+   */
+  ddos?: boolean | ComputeDdosConfig
+  /**
+   * Web application firewall (zig-waf). On by default in detection-only mode,
+   * so it scores and logs without refusing anything until you promote it.
+   */
+  waf?: boolean | ComputeWafConfig
 
   /**
    * Automatic unattended security/system updates (Forge's "maintenance"). When
@@ -2661,7 +3133,76 @@ export interface ComputeMonitoringConfig {
     memPercent?: number
     /** Alert when root-filesystem usage percentage is ≥ this. @default 90 */
     diskPercent?: number
+    /**
+     * Monthly bandwidth allowance in TB (decimal, as providers quote it).
+     *
+     * Set it and the collector accumulates month-to-date rx+tx and warns once
+     * {@link bandwidthPercent} of the allowance is used — before the provider's
+     * overage mail. Omit (or 0) to skip bandwidth alerting entirely; the
+     * accounting is still collected either way.
+     */
+    bandwidthTb?: number
+    /** Alert when month-to-date bandwidth is ≥ this share of the allowance. @default 80 */
+    bandwidthPercent?: number
   }
+  /**
+   * Endpoints reporting object-storage egress.
+   *
+   * Host network counters cannot see this. When an application redirects
+   * downloads to object storage (or to a CDN in front of it), the bytes never
+   * cross the host's NIC — the box can look idle while the bucket serves
+   * terabytes, and the first sign of an overrun is the provider's invoice. The
+   * only component that knows is the application doing the redirecting, so this
+   * polls it and records what it reports.
+   *
+   * Each endpoint must return an {@link EgressReport}.
+   */
+  egressEndpoints?: EgressEndpointConfig[]
+}
+
+/** An application endpoint reporting its own object-storage egress. */
+export interface EgressEndpointConfig {
+  /** Short slug identifying this source in metrics (e.g. "registry"). */
+  name: string
+  /** Absolute URL returning an {@link EgressReport} as JSON. */
+  url: string
+  /**
+   * Name of an environment variable holding a bearer token for the request.
+   *
+   * The variable name, never the token itself — config is committed, tokens are
+   * not. Omit for a public endpoint.
+   */
+  tokenEnv?: string
+}
+
+/**
+ * What an {@link EgressEndpointConfig} URL is expected to return.
+ *
+ * Every field is optional and validated on arrival: a partial or malformed
+ * report degrades to fewer recorded series rather than failing the whole
+ * telemetry collection, because losing host metrics to a bad egress endpoint
+ * would be a bad trade.
+ *
+ * `days` is the valuable part. Reporting a per-day history rather than a single
+ * running counter means the collector can replay it — any day missed while the
+ * collector was down still lands, and re-collecting the same day is idempotent
+ * rather than double-counted.
+ */
+export interface EgressReport {
+  /** UTC day key (YYYY-MM-DD) the `today` figures describe. */
+  today?: string
+  todayBytes?: number
+  /** UTC month key (YYYY-MM) the month-to-date figures describe. */
+  month?: string
+  monthBytes?: number
+  /** Monthly allowance in bytes; 0 or absent when none is configured. */
+  budgetBytes?: number
+  /** Share of the allowance consumed, or null when there is no allowance. */
+  budgetUsedPercent?: number | null
+  /** Straight-line month-end projection in bytes. */
+  projectedMonthBytes?: number
+  /** Per-day totals, oldest first. */
+  days?: Array<{ date: string, bytes: number, downloads?: number }>
 }
 
 /** Host firewall (UFW) configuration. See {@link ComputeConfig.firewall}. */
@@ -2670,6 +3211,51 @@ export interface ComputeFirewallConfig {
   enabled?: boolean
   /** TCP ports to allow in addition to SSH/80/443 (always allowed). */
   allowedPorts?: number[]
+}
+
+/**
+ * Kernel-level flood mitigation (nftables + sysctl).
+ *
+ * On by default. UFW decides which ports are open; this decides what happens to
+ * the traffic arriving on them - SYN floods, connection exhaustion, slow-loris,
+ * and single-source hammering. Set `false` to skip it entirely.
+ */
+export interface ComputeDdosConfig {
+  enabled?: boolean
+  /** Ports the ruleset protects. @default [80, 443] */
+  ports?: number[]
+  /** CIDRs that bypass every limit: monitoring, office IPs, a load balancer. */
+  allowlist?: string[]
+  /** CIDRs dropped outright. */
+  blocklist?: string[]
+  /** Count what would be dropped without dropping it. */
+  monitorOnly?: boolean
+  thresholds?: {
+    newConnectionsPerSecond?: number
+    concurrentPerSource?: number
+    synPerSecond?: number
+    burst?: number
+    icmpPerSecond?: number
+    banSeconds?: number
+  }
+}
+
+/**
+ * Web application firewall (zig-waf), configured at provision time.
+ *
+ * Defaults to `detection`: rules evaluate and matches are logged and scored,
+ * nothing is blocked. Promote to `blocking` once you have read your own
+ * detection log - a ruleset nobody has checked against real traffic will refuse
+ * some of it.
+ */
+export interface ComputeWafConfig {
+  mode?: 'off' | 'detection' | 'blocking'
+  /** OWASP CRS paranoia level. 1 is the only level safe unattended. */
+  paranoiaLevel?: 1 | 2 | 3 | 4
+  /** Inbound anomaly score at which a request is blocked in `blocking` mode. */
+  inboundThreshold?: number
+  /** Paths never inspected. Each one is an unguarded route. */
+  bypassPaths?: string[]
 }
 
 /** Scheduled database backup configuration. See {@link ComputeConfig.backups}. */
@@ -2732,7 +3318,84 @@ export interface ComputePhpConfig {
  * Each entry is `true` (install with defaults) or an object pinning a version.
  * See {@link ComputeConfig.services}.
  */
+export interface VitessKeyspaceConfig {
+  /** Keyspace name. */
+  name: string
+  /**
+   * Whether the keyspace is sharded. An unsharded keyspace has one shard
+   * (`0`) and needs no VSchema to be routable, which makes it the right
+   * starting point for an application that has not yet decided how to shard.
+   */
+  sharded?: boolean
+}
+
+export interface VitessServiceConfig {
+  /**
+   * `combo` for a single-process development stack, `cluster` for real
+   * daemons. Defaults to `cluster`, because a config that provisions
+   * infrastructure should not quietly give you a non-durable one.
+   */
+  mode?: 'combo' | 'cluster'
+  /**
+   * Pantry version spec for `vitess.io`. Omit for the registry's latest.
+   *
+   * **Requires Vitess 20 or newer.** Vitess renamed every daemon flag from
+   * `snake_case` to `kebab-case` in v20 and removed the old spellings in a
+   * later release; the generated systemd units use the current names, so
+   * pinning an older version produces daemons that refuse to start.
+   */
+  version?: string
+  /** Cell (failure domain) name. Vitess requires at least one. */
+  cell?: string
+  /** Keyspaces to create at provision time. */
+  keyspaces?: VitessKeyspaceConfig[]
+  /** Override vtgate's MySQL port. Applications connect here. */
+  vtgatePort?: number
+  /**
+   * Username applications authenticate to vtgate with. Defaults to `vitess`.
+   *
+   * vtgate requires an auth server; there is no unauthenticated cluster mode
+   * worth offering, since its port would otherwise be an open database.
+   */
+  username?: string
+  /** Password for {@link username}. */
+  password?: string
+  /**
+   * Address vtgate binds its MySQL port to. Defaults to `127.0.0.1`.
+   *
+   * The single-box model puts the application on this same host, so the
+   * default keeps the database off the network entirely. Set `0.0.0.0` only
+   * when something off-box genuinely needs to connect, and pair it with a
+   * firewall rule.
+   */
+  bindAddress?: string
+  /**
+   * External topology store, e.g. `http://etcd-a.internal:2379`. When set,
+   * etcd is not installed on the box and the daemons point here instead.
+   */
+  etcdEndpoint?: string
+  /**
+   * MySQL port for the tablet's managed mysqld. Not something applications
+   * should connect to: writing directly to a tablet's mysqld bypasses Vitess.
+   */
+  mysqlPort?: number
+}
+
 export interface ComputeServicesConfig {
+  /**
+   * Provision Vitess on this box.
+   *
+   * `true` provisions a single-box cluster (etcd, vtctld, vttablet beside a
+   * managed mysqld, vtgate) with default ports. Pass an object for keyspaces,
+   * an external topology store, or `mode: 'combo'` - a single-process
+   * development stack that is NOT durable.
+   *
+   * Single-box by design: spreading tablets across machines needs per-shard
+   * placement and reparent policy, which are operator decisions rather than
+   * provisioner defaults. A sharded keyspace here gets Vitess's routing and
+   * online DDL, not fault tolerance.
+   */
+  vitess?: boolean | VitessServiceConfig
   mysql?: boolean | { version?: string }
   mariadb?: boolean | { version?: string }
   postgres?: boolean | { version?: string }
@@ -2785,6 +3448,24 @@ export interface ComputeProxyConfig {
    */
   maxUpstreamConns?: number
   /**
+   * systemd `MemoryHigh` for the `rpx-gateway.service` unit — the soft limit at
+   * which the kernel starts reclaiming the gateway's memory (throttling it
+   * before the hard limit trips). On a shared, swap-light box this matters: the
+   * gateway's own cgroup is squeezed first instead of memory pressure building
+   * until the box-wide OOM killer picks an arbitrary victim (a tenant app,
+   * postgres). Accepts systemd size values (`512M`, `1G`, …). @default '512M'
+   */
+  memoryHigh?: string
+  /**
+   * systemd `MemoryMax` for the `rpx-gateway.service` unit — the hard limit.
+   * Crossing it invokes the OOM killer INSIDE the gateway's cgroup, so the
+   * gateway itself is the deliberate victim and the unit's `Restart=always`
+   * brings it right back — a controlled blip instead of the kernel killing a
+   * random co-tenant. Pair with {@link memoryHigh} (should be higher).
+   * @default '768M'
+   */
+  memoryMax?: string
+  /**
    * Enable rpx on-demand TLS: lazily issue a real (Let's Encrypt) cert for an
    * approved host the first time it's needed. The site domains are used as the
    * allowlist. Off by default.
@@ -2792,6 +3473,21 @@ export interface ComputeProxyConfig {
   onDemandTls?: boolean
   /** Contact email for the ACME account when {@link onDemandTls} is enabled. */
   onDemandTlsEmail?: string
+  /**
+   * Issue on-demand certs from Let's Encrypt's **staging** directory instead of
+   * production. Untrusted by browsers, but effectively un-rate-limited — useful
+   * when bringing up many new hostnames at once and only checking wiring.
+   *
+   * Always emitted into the rpx fragment, including the `false` default, rather
+   * than left undefined: `obtainCertificate` selects the production directory
+   * only on an explicit `false`, so an absent flag silently yields staging
+   * certs that chain to an untrusted root while issuance reports success.
+   * Stating the intent here keeps the deploy correct regardless of the
+   * defaulting behaviour of whatever rpx version the box has installed.
+   *
+   * @default false
+   */
+  onDemandTlsStaging?: boolean
   /**
    * Webroot the gateway serves ACME http-01 challenge tokens from on `:80` (and
    * that the deploy-time issuance + renewal cron write tokens into). Only used
@@ -2860,16 +3556,156 @@ export interface RpxLoadBalancerConfig {
 /** CDN-in-front-of-gateway configuration (see {@link ComputeProxyConfig.cdn}). */
 export interface CdnFrontConfig {
   /**
+   * Which CDN sits in front of the gateway. @default 'cloudfront'
+   *
+   * The two work differently enough that it changes what this config means:
+   * CloudFront is a distribution you point at an origin hostname, while
+   * Cloudflare's proxy *is* the DNS record — see {@link originDomain}.
+   */
+  provider?: 'cloudfront' | 'cloudflare'
+  /**
    * Hostname the CDN connects to (e.g. `origin.example.com`). MUST resolve to
    * this box and MUST NOT be one of {@link frontedHosts} (else the CDN loops).
+   *
+   * Required for CloudFront. **Not used by Cloudflare**, and supplying one there
+   * is a mistake worth understanding: Cloudflare forwards to the address stored
+   * in the proxied record itself, so the apex fronts its own origin without
+   * looping, and a separate publicly-resolvable origin hostname would only serve
+   * as a documented way around the edge.
    */
-  originDomain: string
-  /** Public hosts served through the CDN (its aliases) — locked down when {@link secret} is set. */
-  frontedHosts: string[]
+  originDomain?: string
+  /**
+   * Public hosts served through the CDN (its aliases) — locked down when
+   * {@link secret} is set.
+   *
+   * Optional: defaults to every hostname the gateway answers for, which is the
+   * same set DNS publishes. List them explicitly only when some of the box's
+   * names should stay off the edge.
+   */
+  frontedHosts?: string[]
   /** Shared secret the CDN injects on the origin hop; the gateway enforces it on {@link frontedHosts}. */
   secret?: string
   /** Header name carrying {@link secret}. @default 'X-Origin-Verify' */
   secretHeader?: string
+  /** Enable CloudFront Origin Shield for the gateway origin. @default false */
+  originShield?: boolean
+  /** AWS region used by Origin Shield. Required when {@link originShield} is enabled. */
+  originShieldRegion?: string
+  /** Cloudflare-specific tuning. Ignored unless {@link provider} is `'cloudflare'`. */
+  cloudflare?: CloudflareCdnConfig
+}
+
+/**
+ * Cloudflare proxy-CDN configuration.
+ *
+ * Everything here is optional: with `provider: 'cloudflare'` and nothing else,
+ * ts-cloud proxies the fronted hosts, applies the static-site zone settings, and
+ * writes cache rules — which is the whole point of the integration.
+ */
+export interface CloudflareCdnConfig {
+  /**
+   * Zone id. Falls back to `CLOUDFLARE_ZONE_ID`.
+   *
+   * Supplying it is what allows a single-zone API token: zone lookup by name
+   * goes through an account-level listing that a zone-scoped token cannot read.
+   */
+  zoneId?: string
+  /** Account id. Falls back to `CLOUDFLARE_ACCOUNT_ID`. Only needed for account-scoped resources. */
+  accountId?: string
+  /**
+   * Serve the fronted hosts through the proxy (the "orange cloud"). @default true
+   *
+   * `false` keeps the records DNS-only — Cloudflare answers with the origin
+   * address and no edge is involved, which also disables every other option
+   * here, since they all configure the edge.
+   */
+  proxied?: boolean
+  /** Zone settings to reconcile. Defaults to ts-cloud's static-site profile. */
+  settings?: CloudflareZoneSettingsConfig
+  /** Cache-rule tuning for the fronted hosts. */
+  cache?: CloudflareCacheRulesConfig
+  /** Purge the edge cache at the end of a deploy. @default true */
+  purgeOnDeploy?: boolean
+  /**
+   * Skip the origin TLS probe and proxy the records immediately. @default false
+   *
+   * The probe exists because a box issues its certificate over ACME HTTP-01,
+   * which needs the hostname to reach the box directly — proxying before that
+   * happens can strand the name with no certificate. Skip it only when the
+   * origin certificate already exists.
+   */
+  skipOriginProbe?: boolean
+}
+
+/** HSTS settings for a Cloudflare zone. */
+export interface CloudflareHstsConfig {
+  enabled: boolean
+  /** Lifetime in seconds. @default 31536000 (1 year) */
+  maxAge?: number
+  /** Apply to every subdomain. @default false */
+  includeSubdomains?: boolean
+  /** Submit to browser preload lists — effectively irreversible. @default false */
+  preload?: boolean
+  /** Send `X-Content-Type-Options: nosniff`. @default true */
+  noSniff?: boolean
+}
+
+/**
+ * Zone-level Cloudflare settings ts-cloud reconciles. Anything left undefined is
+ * not touched, so a zone keeps settings this deploy has no opinion about.
+ */
+export interface CloudflareZoneSettingsConfig {
+  /**
+   * How Cloudflare reaches the origin. `strict` (Full (strict)) is the only mode
+   * that verifies the origin certificate, and the right answer for a ts-cloud
+   * box, which holds a real one. `flexible` sends plaintext to the origin and
+   * loops against a gateway that redirects HTTP to HTTPS.
+   */
+  ssl?: 'off' | 'flexible' | 'full' | 'strict'
+  /** Redirect HTTP to HTTPS at the edge. */
+  alwaysUseHttps?: boolean
+  /** Rewrite http:// references in HTML to https://. */
+  automaticHttpsRewrites?: boolean
+  /** Minimum TLS version accepted from visitors. */
+  minTlsVersion?: '1.0' | '1.1' | '1.2' | '1.3'
+  /** Offer TLS 1.3. */
+  tls13?: boolean
+  /** Brotli-compress responses. */
+  brotli?: boolean
+  /** Offer HTTP/3 (QUIC). */
+  http3?: boolean
+  /** TLS 1.3 0-RTT resumption. */
+  zeroRtt?: boolean
+  /** Send 103 Early Hints. */
+  earlyHints?: boolean
+  /** HSTS. */
+  hsts?: CloudflareHstsConfig
+  /** Default browser cache TTL in seconds; `0` respects the origin's headers. */
+  browserCacheTtl?: number
+  /** Serve a cached copy when the origin is unreachable. */
+  alwaysOnline?: boolean
+  /** Proxy WebSocket upgrades. */
+  websockets?: boolean
+  /** Raw Cloudflare setting ids, merged last. */
+  raw?: Record<string, unknown>
+}
+
+/** Cache-rule tuning for a Cloudflare-fronted static site. */
+export interface CloudflareCacheRulesConfig {
+  /** Generate cache rules at all. @default true */
+  enabled?: boolean
+  /** Extensions treated as immutable, fingerprinted build output. */
+  assetExtensions?: string[]
+  /** Edge TTL for those assets, in seconds. @default 2592000 (30 days) */
+  assetEdgeTtl?: number
+  /** Browser TTL for those assets, in seconds. @default 31536000 (1 year) */
+  assetBrowserTtl?: number
+  /** Edge TTL for HTML documents, in seconds. @default 3600 */
+  documentEdgeTtl?: number
+  /** Browser TTL for HTML documents, in seconds. @default 0 (revalidate) */
+  documentBrowserTtl?: number
+  /** Path prefixes that must never be cached, matched with `starts_with`. */
+  bypassPaths?: string[]
 }
 
 export interface DatabaseItemConfig {
@@ -2895,29 +3731,34 @@ export interface DatabaseItemConfig {
   databaseName?: string
   enablePerformanceInsights?: boolean
   performanceInsightsRetention?: number
-  tables?: Record<string, {
-    name?: string
-    partitionKey?: string | { name: string; type: string }
-    sortKey?: string | { name: string; type: string }
-    billing?: string
-    billingMode?: string
-    streamEnabled?: boolean
-    pointInTimeRecovery?: boolean
-    globalSecondaryIndexes?: Array<{
-      name: string
-      partitionKey: { name: string; type: string }
-      sortKey?: { name: string; type: string }
-      projection: string
-    }>
-  }>
+  tables?: Record<
+    string,
+    {
+      name?: string
+      partitionKey?: string | { name: string; type: string }
+      sortKey?: string | { name: string; type: string }
+      billing?: string
+      billingMode?: string
+      streamEnabled?: boolean
+      pointInTimeRecovery?: boolean
+      globalSecondaryIndexes?: Array<{
+        name: string
+        partitionKey: { name: string; type: string }
+        sortKey?: { name: string; type: string }
+        projection: string
+      }>
+    }
+  >
 }
 
 export interface CdnItemConfig {
   origin?: string
-  customDomain?: string | {
-    domain: string
-    certificateArn?: string
-  }
+  customDomain?:
+    | string
+    | {
+        domain: string
+        certificateArn?: string
+      }
   certificateArn?: string
   /**
    * Custom domain configuration
@@ -2927,6 +3768,10 @@ export interface CdnItemConfig {
    * Enable CDN
    */
   enabled?: boolean
+  /** Enable CloudFront Origin Shield for this origin. @default false */
+  originShield?: boolean
+  /** AWS region used by Origin Shield. Defaults to the deployment region. */
+  originShieldRegion?: string
   /**
    * Cache policy configuration
    */
@@ -3507,10 +4352,12 @@ export interface RealtimeServerConfig {
    * Prometheus metrics endpoint
    * @default false
    */
-  metrics?: boolean | {
-    enabled: boolean
-    path?: string
-  }
+  metrics?:
+    | boolean
+    | {
+        enabled: boolean
+        path?: string
+      }
 
   /**
    * Health check endpoint path

@@ -45,11 +45,13 @@ describe('HetznerBoxProvisioner', () => {
     }
     const routes: Record<string, (body: any) => unknown> = {
       'GET /ssh_keys': () => ({ ssh_keys: [] }),
-      'POST /ssh_keys': body => ({ ssh_key: { id: 1, name: body.name, fingerprint: 'ff', public_key: body.public_key } }),
+      'POST /ssh_keys': (body) => ({
+        ssh_key: { id: 1, name: body.name, fingerprint: 'ff', public_key: body.public_key },
+      }),
       'GET /firewalls': () => ({ firewalls: [] }),
-      'POST /firewalls': body => ({ firewall: { id: 2, name: body.name }, actions: [] }),
+      'POST /firewalls': (body) => ({ firewall: { id: 2, name: body.name }, actions: [] }),
       'GET /servers': () => ({ servers: [] }),
-      'POST /servers': body => ({ server: { ...running, name: body.name }, action: { id: 9, status: 'success' } }),
+      'POST /servers': (body) => ({ server: { ...running, name: body.name }, action: { id: 9, status: 'success' } }),
       'GET /servers/42': () => ({ server: running }),
     }
     return new HetznerClient({
@@ -62,7 +64,9 @@ describe('HetznerBoxProvisioner', () => {
         const handler = routes[`${method} ${path}`]
         if (!handler)
           return new Response(JSON.stringify({ error: { message: `no route ${method} ${path}` } }), { status: 404 })
-        return new Response(JSON.stringify(handler(init?.body ? JSON.parse(String(init.body)) : undefined)), { status: 200 })
+        return new Response(JSON.stringify(handler(init?.body ? JSON.parse(String(init.body)) : undefined)), {
+          status: 200,
+        })
       },
     })
   }
@@ -84,7 +88,11 @@ describe('HetznerBoxProvisioner', () => {
 })
 
 describe('AwsBoxProvisioner', () => {
-  function fakes(overrides: Partial<Record<string, any>> = {}): { ec2: BoxEc2Client, ssm: BoxSsmClient, calls: string[] } {
+  function fakes(overrides: Partial<Record<string, any>> = {}): {
+    ec2: BoxEc2Client
+    ssm: BoxSsmClient
+    calls: string[]
+  } {
     const calls: string[] = []
     const running = {
       InstanceId: 'i-0abc',
@@ -94,7 +102,7 @@ describe('AwsBoxProvisioner', () => {
     const ec2: BoxEc2Client = {
       describeInstances: async (options) => {
         calls.push('describeInstances')
-        const states = options?.Filters?.find(f => f.Name === 'instance-state-name')?.Values ?? []
+        const states = options?.Filters?.find((f) => f.Name === 'instance-state-name')?.Values ?? []
         if (overrides.existingInstance && states.includes('running'))
           return { Reservations: [{ Instances: [running] }] }
         return { Reservations: [] }
@@ -112,7 +120,7 @@ describe('AwsBoxProvisioner', () => {
         return { GroupId: 'sg-222' }
       },
       authorizeSecurityGroupIngress: async (options) => {
-        calls.push(`authorizeIngress:${options.IpPermissions.map(p => `${p.IpProtocol}/${p.FromPort}`).join(',')}`)
+        calls.push(`authorizeIngress:${options.IpPermissions.map((p) => `${p.IpProtocol}/${p.FromPort}`).join(',')}`)
       },
       runInstances: async (options) => {
         calls.push(`runInstances:${options.ImageId}:${options.InstanceType}`)
@@ -166,7 +174,7 @@ describe('AwsBoxProvisioner', () => {
     const provisioner = new AwsBoxProvisioner({ ec2, ssm })
     await provisioner.ensureBox({ name: 'demo-box', size: 't3.micro', image: 'ami-custom123', sshPublicKey: KEY })
     expect(calls).not.toContain('ssm:getParameter')
-    expect(calls.some(c => c === 'runInstances:ami-custom123:t3.micro')).toBe(true)
+    expect(calls.some((c) => c === 'runInstances:ami-custom123:t3.micro')).toBe(true)
   })
 })
 

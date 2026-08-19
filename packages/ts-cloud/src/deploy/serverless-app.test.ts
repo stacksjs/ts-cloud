@@ -23,7 +23,15 @@ describe('buildFunctionEnv', () => {
   })
 
   it('injects ASSET_URL and merges secrets (secrets win)', () => {
-    const env = buildFunctionEnv(ctx.app, ctx, 'production', 'http', { APP_KEY: 'sekret', APP_NAME: 'override' }, 'https://cdn/abc', undefined)
+    const env = buildFunctionEnv(
+      ctx.app,
+      ctx,
+      'production',
+      'http',
+      { APP_KEY: 'sekret', APP_NAME: 'override' },
+      'https://cdn/abc',
+      undefined,
+    )
     expect(env.ASSET_URL).toBe('https://cdn/abc')
     expect(env.APP_KEY).toBe('sekret')
     expect(env.APP_NAME).toBe('override')
@@ -70,7 +78,7 @@ describe('infraEnvFromOutputs', () => {
 })
 
 describe('assertEnvWithinLimit', () => {
-  it('accepts an env under AWS\'s 4KB limit', () => {
+  it("accepts an env under AWS's 4KB limit", () => {
     expect(() => assertEnvWithinLimit('demo-http', { FOO: 'bar', APP_ENV: 'production' })).not.toThrow()
   })
 
@@ -84,8 +92,9 @@ describe('assertEnvWithinLimit', () => {
 describe('resolveSecrets', () => {
   it('throws on a colliding array-form env name before hitting AWS', async () => {
     // `a/db` and `b/db` both derive env var `DB` → collision (no AWS call made).
-    await expect(resolveSecrets({ kind: 'node', entry: 'a.ts', secrets: ['a/db', 'b/db'] }, 'us-east-1'))
-      .rejects.toThrow(/same env var/)
+    await expect(
+      resolveSecrets({ kind: 'node', entry: 'a.ts', secrets: ['a/db', 'b/db'] }, 'us-east-1'),
+    ).rejects.toThrow(/same env var/)
   })
 
   it('returns an empty map when no secrets are configured', async () => {

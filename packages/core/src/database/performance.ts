@@ -231,13 +231,11 @@ export class PerformanceManager {
 
     // Get top queries by execution count
     const allMetrics = Array.from(this.queryMetrics.values())
-    const topQueries = allMetrics
-      .sort((a, b) => b.executionCount - a.executionCount)
-      .slice(0, 10)
+    const topQueries = allMetrics.sort((a, b) => b.executionCount - a.executionCount).slice(0, 10)
 
     // Get slow queries
     const slowQueries = allMetrics
-      .filter(m => m.avgExecutionTime > 1000)
+      .filter((m) => m.avgExecutionTime > 1000)
       .sort((a, b) => b.avgExecutionTime - a.avgExecutionTime)
       .slice(0, 10)
 
@@ -266,7 +264,7 @@ export class PerformanceManager {
    */
   private generateRecommendations(
     metrics: PerformanceMetrics,
-    slowQueries: QueryMetric[]
+    slowQueries: QueryMetric[],
   ): PerformanceRecommendation[] {
     const recommendations: PerformanceRecommendation[] = []
 
@@ -324,7 +322,8 @@ export class PerformanceManager {
         type: 'scaling',
         severity: 'high',
         title: 'High I/O Latency',
-        description: 'Read or write latency is high. Consider upgrading to Provisioned IOPS or moving to a larger instance.',
+        description:
+          'Read or write latency is high. Consider upgrading to Provisioned IOPS or moving to a larger instance.',
         impact: 'Slow query execution, application timeouts',
         effort: 'medium',
       })

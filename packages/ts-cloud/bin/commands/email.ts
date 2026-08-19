@@ -37,20 +37,20 @@ export function registerEmailCommands(app: CLI): void {
           try {
             const detail = await ses.getEmailIdentity(name)
             verificationStatus = detail.VerificationStatus || 'Unknown'
-          }
-          catch {
+          } catch {
             // If we can't fetch details, just show what we have
           }
-          const type = identity.IdentityType === 'EMAIL_ADDRESS' ? 'Email' : identity.IdentityType === 'DOMAIN' ? 'Domain' : (identity.IdentityType || 'Unknown')
+          const type =
+            identity.IdentityType === 'EMAIL_ADDRESS'
+              ? 'Email'
+              : identity.IdentityType === 'DOMAIN'
+                ? 'Domain'
+                : identity.IdentityType || 'Unknown'
           rows.push([name, type, verificationStatus])
         }
 
-        cli.table(
-          ['Identity', 'Type', 'Verification Status'],
-          rows,
-        )
-      }
-      catch (error: unknown) {
+        cli.table(['Identity', 'Type', 'Verification Status'], rows)
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
         cli.error(`Failed to list identities: ${message}`)
         process.exit(1)
@@ -86,8 +86,7 @@ export function registerEmailCommands(app: CLI): void {
 
           cli.info(`\nA verification email has been sent to ${identity}`)
           cli.info('Click the link in the email to complete verification.')
-        }
-        else {
+        } else {
           const result = await ses.verifyDomain(identity)
           spinner.succeed('Domain verification initiated')
 
@@ -104,8 +103,7 @@ export function registerEmailCommands(app: CLI): void {
 
           cli.info(`\nVerification Status: ${result.verificationStatus || 'PENDING'}`)
         }
-      }
-      catch (error: unknown) {
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
         cli.error(`Failed to verify identity: ${message}`)
         process.exit(1)
@@ -135,8 +133,7 @@ export function registerEmailCommands(app: CLI): void {
         await ses.deleteEmailIdentity(identity)
 
         spinner.succeed('Identity deleted')
-      }
-      catch (error: unknown) {
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
         cli.error(`Failed to delete identity: ${message}`)
         process.exit(1)
@@ -151,71 +148,72 @@ export function registerEmailCommands(app: CLI): void {
     .option('--subject <text>', 'Email subject')
     .option('--body <text>', 'Email body (text)')
     .option('--html <html>', 'Email body (HTML)')
-    .action(async (options: {
-      region: string
-      from?: string
-      to?: string
-      subject?: string
-      body?: string
-      html?: string
-    }) => {
-      cli.header('Send Email')
+    .action(
+      async (options: {
+        region: string
+        from?: string
+        to?: string
+        subject?: string
+        body?: string
+        html?: string
+      }) => {
+        cli.header('Send Email')
 
-      try {
-        const ses = new SESClient(options.region)
+        try {
+          const ses = new SESClient(options.region)
 
-        const from = options.from || await cli.prompt('From (verified email)')
-        const to = options.to || await cli.prompt('To')
-        const subject = options.subject || await cli.prompt('Subject', 'Test Email from ts-cloud')
-        const body = options.body || await cli.prompt('Body', 'This is a test email sent from ts-cloud CLI.')
+          const from = options.from || (await cli.prompt('From (verified email)'))
+          const to = options.to || (await cli.prompt('To'))
+          const subject = options.subject || (await cli.prompt('Subject', 'Test Email from ts-cloud'))
+          const body = options.body || (await cli.prompt('Body', 'This is a test email sent from ts-cloud CLI.'))
 
-        cli.info(`\nFrom: ${from}`)
-        cli.info(`To: ${to}`)
-        cli.info(`Subject: ${subject}`)
+          cli.info(`\nFrom: ${from}`)
+          cli.info(`To: ${to}`)
+          cli.info(`Subject: ${subject}`)
 
-        const confirmed = await cli.confirm('\nSend this email?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
+          const confirmed = await cli.confirm('\nSend this email?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
 
-        const spinner = new cli.Spinner('Sending email...')
-        spinner.start()
+          const spinner = new cli.Spinner('Sending email...')
+          spinner.start()
 
-        const result = await ses.sendEmail({
-          FromEmailAddress: from,
-          Destination: {
-            ToAddresses: [to],
-          },
-          Content: {
-            Simple: {
-              Subject: {
-                Data: subject,
-              },
-              Body: {
-                Text: {
-                  Data: body,
+          const result = await ses.sendEmail({
+            FromEmailAddress: from,
+            Destination: {
+              ToAddresses: [to],
+            },
+            Content: {
+              Simple: {
+                Subject: {
+                  Data: subject,
                 },
-                ...(options.html && {
-                  Html: {
-                    Data: options.html,
+                Body: {
+                  Text: {
+                    Data: body,
                   },
-                }),
+                  ...(options.html && {
+                    Html: {
+                      Data: options.html,
+                    },
+                  }),
+                },
               },
             },
-          },
-        })
+          })
 
-        spinner.succeed('Email sent')
+          spinner.succeed('Email sent')
 
-        cli.success(`\nMessage ID: ${result.MessageId}`)
-      }
-      catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error)
-        cli.error(`Failed to send email: ${message}`)
-        process.exit(1)
-      }
-    })
+          cli.success(`\nMessage ID: ${result.MessageId}`)
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error)
+          cli.error(`Failed to send email: ${message}`)
+          process.exit(1)
+        }
+      },
+    )
 
   app
     .command('email:templates', 'List email templates')
@@ -244,13 +242,12 @@ export function registerEmailCommands(app: CLI): void {
 
         cli.table(
           ['Name', 'Created'],
-          templates.map((t: { TemplateName?: string, CreatedTimestamp?: string }) => [
+          templates.map((t: { TemplateName?: string; CreatedTimestamp?: string }) => [
             t.TemplateName || 'N/A',
             t.CreatedTimestamp ? new Date(t.CreatedTimestamp).toLocaleString() : 'N/A',
           ]),
         )
-      }
-      catch (error: unknown) {
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
         cli.error(`Failed to list templates: ${message}`)
         process.exit(1)
@@ -264,59 +261,63 @@ export function registerEmailCommands(app: CLI): void {
     .option('--text <text>', 'Text body')
     .option('--html <html>', 'HTML body')
     .option('--html-file <path>', 'HTML body from file')
-    .action(async (name: string, options: {
-      region: string
-      subject?: string
-      text?: string
-      html?: string
-      htmlFile?: string
-    }) => {
-      cli.header('Create Email Template')
+    .action(
+      async (
+        name: string,
+        options: {
+          region: string
+          subject?: string
+          text?: string
+          html?: string
+          htmlFile?: string
+        },
+      ) => {
+        cli.header('Create Email Template')
 
-      try {
-        const ses = new SESClient(options.region)
+        try {
+          const ses = new SESClient(options.region)
 
-        const subject = options.subject || await cli.prompt('Subject template', 'Hello {{name}}')
-        const textBody = options.text || await cli.prompt('Text body', 'Hello {{name}}, this is a test.')
+          const subject = options.subject || (await cli.prompt('Subject template', 'Hello {{name}}'))
+          const textBody = options.text || (await cli.prompt('Text body', 'Hello {{name}}, this is a test.'))
 
-        let htmlBody = options.html
-        if (options.htmlFile) {
-          const file = Bun.file(options.htmlFile)
-          htmlBody = await file.text()
+          let htmlBody = options.html
+          if (options.htmlFile) {
+            const file = Bun.file(options.htmlFile)
+            htmlBody = await file.text()
+          }
+
+          cli.info(`\nTemplate Name: ${name}`)
+          cli.info(`Subject: ${subject}`)
+
+          const confirmed = await cli.confirm('\nCreate this template?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Creating template...')
+          spinner.start()
+
+          await ses.createEmailTemplate({
+            TemplateName: name,
+            TemplateContent: {
+              Subject: subject,
+              Text: textBody,
+              Html: htmlBody,
+            },
+          })
+
+          spinner.succeed('Template created')
+
+          cli.info('\nTo send using this template:')
+          cli.info(`  cloud email:send:template --template ${name} --to user@example.com --data '{"name":"John"}'`)
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error)
+          cli.error(`Failed to create template: ${message}`)
+          process.exit(1)
         }
-
-        cli.info(`\nTemplate Name: ${name}`)
-        cli.info(`Subject: ${subject}`)
-
-        const confirmed = await cli.confirm('\nCreate this template?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Creating template...')
-        spinner.start()
-
-        await ses.createEmailTemplate({
-          TemplateName: name,
-          TemplateContent: {
-            Subject: subject,
-            Text: textBody,
-            Html: htmlBody,
-          },
-        })
-
-        spinner.succeed('Template created')
-
-        cli.info('\nTo send using this template:')
-        cli.info(`  cloud email:send:template --template ${name} --to user@example.com --data '{"name":"John"}'`)
-      }
-      catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error)
-        cli.error(`Failed to create template: ${message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('email:template:delete <name>', 'Delete an email template')
@@ -341,8 +342,7 @@ export function registerEmailCommands(app: CLI): void {
         await ses.deleteEmailTemplate(name)
 
         spinner.succeed('Template deleted')
-      }
-      catch (error: unknown) {
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
         cli.error(`Failed to delete template: ${message}`)
         process.exit(1)
@@ -363,10 +363,7 @@ export function registerEmailCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching statistics...')
         spinner.start()
 
-        const [quota, stats] = await Promise.all([
-          ses.getSendQuota(),
-          ses.getSendStatistics(),
-        ])
+        const [quota, stats] = await Promise.all([ses.getSendQuota(), ses.getSendStatistics()])
 
         spinner.succeed('Statistics loaded')
 
@@ -413,8 +410,7 @@ export function registerEmailCommands(app: CLI): void {
             }
           }
         }
-      }
-      catch (error: unknown) {
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
         cli.error(`Failed to get statistics: ${message}`)
         process.exit(1)

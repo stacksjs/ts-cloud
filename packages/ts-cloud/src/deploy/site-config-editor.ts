@@ -33,9 +33,7 @@ export function addSiteToCloudConfig(input: AddSiteConfigInput): string {
   // Keep the object valid whether or not the preceding site ended with a comma:
   // empty block → newline only; comma-terminated → blank line; otherwise insert
   // the missing separating comma before the new entry.
-  const separator = before.endsWith('{')
-    ? '\n'
-    : before.endsWith(',') ? '\n\n' : ',\n\n'
+  const separator = before.endsWith('{') ? '\n' : before.endsWith(',') ? '\n\n' : ',\n\n'
 
   return `${before}${separator}${snippet}\n  ${after}`
 }
@@ -50,8 +48,7 @@ export function removeSiteFromCloudConfig(input: RemoveSiteInput): string {
   const name = normalizeSiteName(input.name)
   const sites = findSitesObject(input.configText)
   const span = findSiteSpan(input.configText, sites.start, sites.end, name)
-  if (!span)
-    throw new Error(`Site '${name}' does not exist in cloud.config.ts`)
+  if (!span) throw new Error(`Site '${name}' does not exist in cloud.config.ts`)
 
   const text = input.configText
   // Expand start back over the entry's leading indentation to the line start.
@@ -85,14 +82,17 @@ export function updateSiteInCloudConfig(input: UpdateSiteInput): string {
  * the safe path for editing `ssl`/`env` on a site that may also carry queues,
  * auth, etc. `valueText` is raw TS (use {@link renderSslValue}/{@link renderEnvValue}).
  */
-export function setSitePropertyInCloudConfig(input: { configText: string, siteName: string, key: string, valueText: string }): string {
+export function setSitePropertyInCloudConfig(input: {
+  configText: string
+  siteName: string
+  key: string
+  valueText: string
+}): string {
   const name = normalizeSiteName(input.siteName)
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(input.key))
-    throw new Error(`Invalid property key '${input.key}'`)
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(input.key)) throw new Error(`Invalid property key '${input.key}'`)
   const sites = findSitesObject(input.configText)
   const span = findSiteSpan(input.configText, sites.start, sites.end, name)
-  if (!span)
-    throw new Error(`Site '${name}' does not exist in cloud.config.ts`)
+  if (!span) throw new Error(`Site '${name}' does not exist in cloud.config.ts`)
 
   const text = input.configText
   const braceStart = text.indexOf('{', span.nameStart)
@@ -114,10 +114,8 @@ export function setSitePropertyInCloudConfig(input: { configText: string, siteNa
 }
 
 export function renderSslValue(ssl: boolean | { provider?: string }): string {
-  if (ssl === false)
-    return 'false'
-  if (ssl === true)
-    return 'true'
+  if (ssl === false) return 'false'
+  if (ssl === true) return 'true'
   return `{ provider: '${escapeSingle(ssl.provider || 'letsencrypt')}' }`
 }
 
@@ -127,8 +125,7 @@ export function renderStringValue(value: string): string {
 
 export function renderEnvValue(env: Record<string, string>): string {
   const entries = Object.entries(env).filter(([key]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
-  if (entries.length === 0)
-    return '{}'
+  if (entries.length === 0) return '{}'
   return `{\n${entries.map(([key, value]) => `        ${key}: '${escapeSingle(String(value))}',`).join('\n')}\n      }`
 }
 
@@ -139,14 +136,12 @@ export function isValidHostname(value: string): boolean {
 
 /** Render a site's `aliases` array (additional nginx `server_name` hostnames). */
 export function renderAliasesValue(aliases: string[]): string {
-  const list = [...new Set(aliases.map(a => a.trim().toLowerCase()).filter(Boolean))]
+  const list = [...new Set(aliases.map((a) => a.trim().toLowerCase()).filter(Boolean))]
   for (const host of list) {
-    if (!isValidHostname(host))
-      throw new Error(`Alias '${host}' is not a valid hostname.`)
+    if (!isValidHostname(host)) throw new Error(`Alias '${host}' is not a valid hostname.`)
   }
-  if (list.length === 0)
-    return '[]'
-  return `[${list.map(a => `'${escapeSingle(a)}'`).join(', ')}]`
+  if (list.length === 0) return '[]'
+  return `[${list.map((a) => `'${escapeSingle(a)}'`).join(', ')}]`
 }
 
 /** Render a site's `redirects` map (`from` path/host → `to` URL). Both are quoted strings. */
@@ -154,8 +149,7 @@ export function renderRedirectsValue(redirects: Record<string, string>): string 
   const entries = Object.entries(redirects)
     .map(([from, to]) => [from.trim(), String(to).trim()] as const)
     .filter(([from, to]) => from && to)
-  if (entries.length === 0)
-    return '{}'
+  if (entries.length === 0) return '{}'
   return `{\n${entries.map(([from, to]) => `        '${escapeSingle(from)}': '${escapeSingle(to)}',`).join('\n')}\n      }`
 }
 
@@ -173,13 +167,25 @@ function scanValueEnd(text: string, start: number, limit: number): number {
   for (; i < limit; i++) {
     const c = text[i]!
     if (quote) {
-      if (escaped) { escaped = false; continue }
-      if (c === '\\') { escaped = true; continue }
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (c === '\\') {
+        escaped = true
+        continue
+      }
       if (c === quote) quote = undefined
       continue
     }
-    if (c === '"' || c === '\'' || c === '`') { quote = c; continue }
-    if (c === '{' || c === '[' || c === '(') { depth++; continue }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c
+      continue
+    }
+    if (c === '{' || c === '[' || c === '(') {
+      depth++
+      continue
+    }
     if (c === '}' || c === ']' || c === ')') {
       if (depth === 0) return i
       depth--
@@ -191,11 +197,15 @@ function scanValueEnd(text: string, start: number, limit: number): number {
 }
 
 /** Locate a site's `name: { ... }` span within the sites object. */
-function findSiteSpan(configText: string, start: number, end: number, siteName: string): { nameStart: number, end: number } | null {
+function findSiteSpan(
+  configText: string,
+  start: number,
+  end: number,
+  siteName: string,
+): { nameStart: number; end: number } | null {
   const body = configText.slice(start + 1, end)
   const match = new RegExp(`(^|[\\s,{])(${escapeRegExp(siteName)})\\s*:\\s*\\{`, 'm').exec(body)
-  if (!match)
-    return null
+  if (!match) return null
   const nameStart = start + 1 + match.index + match[1].length
   const braceStart = configText.indexOf('{', nameStart)
   return { nameStart, end: findMatchingBrace(configText, braceStart) }
@@ -215,12 +225,9 @@ export function renderSiteSnippet(input: Omit<AddSiteConfigInput, 'configText'>)
   if (input.port !== undefined) lines.push(`      port: ${input.port},`)
   pushString(lines, 'pathRewriteStyle', input.pathRewriteStyle)
   if (input.ssl !== undefined) {
-    if (input.ssl === false)
-      lines.push('      ssl: false,')
-    else if (input.ssl === true)
-      lines.push('      ssl: true,')
-    else
-      lines.push(`      ssl: { provider: '${escapeSingle(input.ssl.provider || 'letsencrypt')}' },`)
+    if (input.ssl === false) lines.push('      ssl: false,')
+    else if (input.ssl === true) lines.push('      ssl: true,')
+    else lines.push(`      ssl: { provider: '${escapeSingle(input.ssl.provider || 'letsencrypt')}' },`)
   }
   if (input.env && Object.keys(input.env).length > 0) {
     lines.push('      env: {')
@@ -243,7 +250,7 @@ function escapeSingle(value: string): string {
   // delimiters in the deploy script) safe from values that span lines.
   return value
     .replace(/\\/g, '\\\\')
-    .replaceAll(String.fromCharCode(39), '\\\'')
+    .replaceAll(String.fromCharCode(39), "\\'")
     .replace(/\r/g, '\\r')
     .replace(/\n/g, '\\n')
 }
@@ -259,7 +266,7 @@ function normalizeSiteName(name: string): string {
 
 function pushString(lines: string[], key: string, value: string | undefined): void {
   if (value === undefined || value === '') return
-  const escaped = value.replace(/\\/g, '\\\\').replaceAll(String.fromCharCode(39), '\\\'')
+  const escaped = value.replace(/\\/g, '\\\\').replaceAll(String.fromCharCode(39), "\\'")
   lines.push(`      ${key}: '${escaped}',`)
 }
 
@@ -290,7 +297,7 @@ function escapeRegExp(value: string): string {
 
 function findMatchingBrace(text: string, start: number): number {
   let depth = 0
-  let quote: '"' | '\'' | '`' | undefined
+  let quote: '"' | "'" | '`' | undefined
   let escaped = false
   let lineComment = false
   let blockComment = false
@@ -337,7 +344,7 @@ function findMatchingBrace(text: string, start: number): number {
       continue
     }
 
-    if (char === '"' || char === '\'' || char === '`') {
+    if (char === '"' || char === "'" || char === '`') {
       quote = char
       continue
     }

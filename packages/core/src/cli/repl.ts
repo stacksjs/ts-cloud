@@ -73,8 +73,7 @@ export class REPL {
 
         // Parse and execute command
         await this.executeCommand(input)
-      }
-      catch (error) {
+      } catch (error) {
         if (error instanceof Error) {
           console.error(`Error: ${error.message}`)
         }
@@ -152,8 +151,7 @@ export class REPL {
     // Execute command handler
     try {
       await command.handler(args)
-    }
-    catch (error) {
+    } catch (error) {
       if (error instanceof Error) {
         console.error(`Command failed: ${error.message}`)
       }
@@ -309,10 +307,9 @@ export class REPL {
     try {
       const fs = await import('node:fs/promises')
       const data = await fs.readFile(this.options.historyFile, 'utf-8')
-      this.history.commands = data.split('\n').filter(line => line.trim())
+      this.history.commands = data.split('\n').filter((line) => line.trim())
       this.historyIndex = this.history.commands.length
-    }
-    catch {
+    } catch {
       // File doesn't exist or can't be read - that's ok
     }
   }
@@ -326,8 +323,7 @@ export class REPL {
     try {
       const fs = await import('node:fs/promises')
       await fs.writeFile(this.options.historyFile, this.history.commands.join('\n'))
-    }
-    catch (error) {
+    } catch (error) {
       console.error(`Failed to save history: ${error}`)
     }
   }
@@ -336,7 +332,7 @@ export class REPL {
    * Search history
    */
   searchHistory(query: string): string[] {
-    return this.history.commands.filter(cmd => cmd.includes(query))
+    return this.history.commands.filter((cmd) => cmd.includes(query))
   }
 
   /**

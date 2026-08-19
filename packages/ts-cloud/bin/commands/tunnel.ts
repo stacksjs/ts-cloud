@@ -32,8 +32,7 @@ export function registerTunnelCommands(app: CLI): void {
           // @ts-expect-error -- localtunnels is an optional dependency
           const localtunnels = await import('localtunnels')
           TunnelClient = localtunnels.TunnelClient
-        }
-        catch {
+        } catch {
           spinner.fail('localtunnels package not found')
           cli.info('\nTo use tunnels, install the localtunnels package:')
           cli.info('  bun add localtunnels')
@@ -43,7 +42,10 @@ export function registerTunnelCommands(app: CLI): void {
         }
 
         const serverHost = options.server.replace(/^(wss?|https?):\/\//, '')
-        const secure = options.server.startsWith('wss://') || options.server.startsWith('https://') || serverHost === 'localtunnel.dev'
+        const secure =
+          options.server.startsWith('wss://') ||
+          options.server.startsWith('https://') ||
+          serverHost === 'localtunnel.dev'
 
         const client = new TunnelClient({
           localPort: port,
@@ -101,8 +103,7 @@ export function registerTunnelCommands(app: CLI): void {
 
         // Keep the process running
         await new Promise(() => {})
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail('Failed to connect')
         cli.error(`Error: ${error.message}`)
         process.exit(1)
@@ -119,9 +120,7 @@ export function registerTunnelCommands(app: CLI): void {
       spinner.start()
 
       try {
-        const serverUrl = options.server.startsWith('http')
-          ? options.server
-          : `https://${options.server}`
+        const serverUrl = options.server.startsWith('http') ? options.server : `https://${options.server}`
 
         const response = await fetch(`${serverUrl}/status`, {
           method: 'GET',
@@ -129,7 +128,7 @@ export function registerTunnelCommands(app: CLI): void {
         })
 
         if (response.ok) {
-          const status = await response.json() as Record<string, any>
+          const status = (await response.json()) as Record<string, any>
           spinner.succeed('Server is online')
 
           cli.info(`\nServer: ${options.server}`)
@@ -150,46 +149,42 @@ export function registerTunnelCommands(app: CLI): void {
           if (status.activeSubdomains?.length) {
             cli.info(`Active subdomains: ${status.activeSubdomains.join(', ')}`)
           }
-        }
-        else {
+        } else {
           spinner.fail(`Server returned status ${response.status}`)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail('Failed to check server status')
         cli.error(`Error: ${error.message}`)
         cli.info('\nThe tunnel server may be offline or unreachable.')
       }
     })
 
-  app
-    .command('tunnel:info', 'Show tunnel configuration and setup info')
-    .action(async () => {
-      cli.header('Local Tunnel Information')
+  app.command('tunnel:info', 'Show tunnel configuration and setup info').action(async () => {
+    cli.header('Local Tunnel Information')
 
-      cli.info('ts-cloud uses localtunnels for secure tunnel connections.')
-      cli.info('')
-      cli.info('Default server: localtunnel.dev')
-      cli.info('')
-      cli.info('Usage:')
-      cli.info('  cloud tunnel --port 3000              # Expose port 3000')
-      cli.info('  cloud tunnel --port 8080 --subdomain myapp')
-      cli.info('')
-      cli.info('Features:')
-      cli.info('  - Secure WebSocket-based tunnels')
-      cli.info('  - Custom subdomains (when available)')
-      cli.info('  - Automatic reconnection')
-      cli.info('  - Request logging')
-      cli.info('  - Binary data support')
-      cli.info('')
-      cli.info('Self-hosted tunnel server:')
-      cli.info('  You can run your own tunnel server using localtunnels.')
-      cli.info('  See: https://github.com/stacksjs/localtunnels')
-      cli.info('')
-      cli.info('Environment variables:')
-      cli.info('  TUNNEL_SERVER - Custom tunnel server URL')
-      cli.info('  TUNNEL_SUBDOMAIN - Default subdomain to request')
-    })
+    cli.info('ts-cloud uses localtunnels for secure tunnel connections.')
+    cli.info('')
+    cli.info('Default server: localtunnel.dev')
+    cli.info('')
+    cli.info('Usage:')
+    cli.info('  cloud tunnel --port 3000              # Expose port 3000')
+    cli.info('  cloud tunnel --port 8080 --subdomain myapp')
+    cli.info('')
+    cli.info('Features:')
+    cli.info('  - Secure WebSocket-based tunnels')
+    cli.info('  - Custom subdomains (when available)')
+    cli.info('  - Automatic reconnection')
+    cli.info('  - Request logging')
+    cli.info('  - Binary data support')
+    cli.info('')
+    cli.info('Self-hosted tunnel server:')
+    cli.info('  You can run your own tunnel server using localtunnels.')
+    cli.info('  See: https://github.com/stacksjs/localtunnels')
+    cli.info('')
+    cli.info('Environment variables:')
+    cli.info('  TUNNEL_SERVER - Custom tunnel server URL')
+    cli.info('  TUNNEL_SUBDOMAIN - Default subdomain to request')
+  })
 
   app
     .command('tunnel:deploy', 'Deploy tunnel infrastructure to AWS')
@@ -226,8 +221,7 @@ export function registerTunnelCommands(app: CLI): void {
           // @ts-expect-error -- localtunnels is an optional dependency
           const cloudModule = await import('localtunnels/cloud')
           deployTunnelInfrastructure = cloudModule.deployTunnelInfrastructure
-        }
-        catch {
+        } catch {
           spinner.fail('localtunnels package not found')
           cli.info('\nTo deploy tunnel infrastructure, install localtunnels:')
           cli.info('  bun add localtunnels')
@@ -264,8 +258,7 @@ export function registerTunnelCommands(app: CLI): void {
             cli.info(`  WebSocket URL: ${result.wsUrl}`)
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail('Deployment failed')
         cli.error(`Error: ${error.message}`)
         if (options.verbose) {
@@ -309,8 +302,7 @@ export function registerTunnelCommands(app: CLI): void {
           // @ts-expect-error -- localtunnels is an optional dependency
           const cloudModule = await import('localtunnels/cloud')
           destroyTunnelInfrastructure = cloudModule.destroyTunnelInfrastructure
-        }
-        catch {
+        } catch {
           spinner.fail('localtunnels package not found')
           cli.info('\nTo destroy tunnel infrastructure, install localtunnels:')
           cli.info('  bun add localtunnels')
@@ -326,8 +318,7 @@ export function registerTunnelCommands(app: CLI): void {
         })
 
         spinner.succeed('Infrastructure destroyed!')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail('Destruction failed')
         cli.error(`Error: ${error.message}`)
         if (options.verbose) {
@@ -353,7 +344,9 @@ export function registerTunnelCommands(app: CLI): void {
       cli.info('')
 
       cli.info('To view logs:')
-      cli.info(`  aws logs tail /aws/lambda/${options.prefix}-http --region ${options.region}${options.tail ? ' --follow' : ''}`)
+      cli.info(
+        `  aws logs tail /aws/lambda/${options.prefix}-http --region ${options.region}${options.tail ? ' --follow' : ''}`,
+      )
       cli.info('')
 
       cli.info('Or use CloudWatch Insights:')
@@ -363,47 +356,44 @@ export function registerTunnelCommands(app: CLI): void {
       cli.info(`     fields @timestamp, @message | filter @message like /error/i`)
     })
 
-  app
-    .command('tunnel:test <url>', 'Test a tunnel connection')
-    .action(async (url: string) => {
-      cli.header('Test Tunnel Connection')
+  app.command('tunnel:test <url>', 'Test a tunnel connection').action(async (url: string) => {
+    cli.header('Test Tunnel Connection')
 
-      const spinner = new cli.Spinner(`Testing ${url}...`)
-      spinner.start()
+    const spinner = new cli.Spinner(`Testing ${url}...`)
+    spinner.start()
 
-      try {
-        const startTime = Date.now()
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'ts-cloud-tunnel-test',
-          },
-        })
+    try {
+      const startTime = Date.now()
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'ts-cloud-tunnel-test',
+        },
+      })
 
-        const elapsed = Date.now() - startTime
+      const elapsed = Date.now() - startTime
 
-        spinner.succeed(`Connected in ${elapsed}ms`)
+      spinner.succeed(`Connected in ${elapsed}ms`)
 
-        cli.info(`\nStatus: ${response.status} ${response.statusText}`)
-        cli.info('\nResponse headers:')
-        response.headers.forEach((value, key) => {
-          cli.info(`  ${key}: ${value}`)
-        })
+      cli.info(`\nStatus: ${response.status} ${response.statusText}`)
+      cli.info('\nResponse headers:')
+      response.headers.forEach((value, key) => {
+        cli.info(`  ${key}: ${value}`)
+      })
 
-        const body = await response.text()
-        if (body.length > 0) {
-          cli.info('\nResponse body (first 500 chars):')
-          console.log(body.substring(0, 500))
-          if (body.length > 500) {
-            cli.info(`... (${body.length - 500} more characters)`)
-          }
+      const body = await response.text()
+      if (body.length > 0) {
+        cli.info('\nResponse body (first 500 chars):')
+        console.log(body.substring(0, 500))
+        if (body.length > 500) {
+          cli.info(`... (${body.length - 500} more characters)`)
         }
       }
-      catch (error: any) {
-        spinner.fail('Connection failed')
-        cli.error(`Error: ${error.message}`)
-      }
-    })
+    } catch (error: any) {
+      spinner.fail('Connection failed')
+      cli.error(`Error: ${error.message}`)
+    }
+  })
 
   app
     .command('tunnel:server', 'Start a self-hosted tunnel server')
@@ -430,8 +420,7 @@ export function registerTunnelCommands(app: CLI): void {
           // @ts-expect-error -- localtunnels is an optional dependency
           const localtunnels = await import('localtunnels')
           TunnelServer = localtunnels.TunnelServer
-        }
-        catch {
+        } catch {
           spinner.fail('localtunnels package not found')
           cli.info('\nTo run a tunnel server, install localtunnels:')
           cli.info('  bun add localtunnels')
@@ -473,14 +462,15 @@ export function registerTunnelCommands(app: CLI): void {
         cli.info(`HTTP URL: http://${options.host === '0.0.0.0' ? 'localhost' : options.host}:${port}`)
         cli.info('')
         cli.info('Clients can connect with:')
-        cli.info(`  cloud tunnel --port 3000 --server ${options.host === '0.0.0.0' ? 'localhost' : options.host}:${port}`)
+        cli.info(
+          `  cloud tunnel --port 3000 --server ${options.host === '0.0.0.0' ? 'localhost' : options.host}:${port}`,
+        )
         cli.info('')
         cli.info('Press Ctrl+C to stop the server')
 
         // Keep the process running
         await new Promise(() => {})
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail('Failed to start server')
         cli.error(`Error: ${error.message}`)
         process.exit(1)

@@ -1,30 +1,39 @@
 import type { CLI } from '@stacksjs/clapp'
-import { existsSync, statSync, writeFileSync, copyFileSync, readFileSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import type { CloudConfig } from '@ts-cloud/core'
+import type { DnsProvider, DnsProviderConfig } from '../../src/dns/types'
+import type { ScanResult, SecurityFinding } from '../../src/security/pre-deploy-scanner'
+import { execFileSync, execSync } from 'node:child_process'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join as pathJoin, resolve as pathResolve } from 'node:path'
+import { deploymentCoexistenceError, resolveAppDatabase, resolveCloudProvider, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName } from '@ts-cloud/core'
 import * as cli from '../../src/utils/cli'
-import { InfrastructureGenerator } from '../../src/generators/infrastructure'
+import { detectCredentialSource } from '../../src/aws/client'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
-import { S3Client } from '../../src/aws/s3'
 import { CloudFrontClient } from '../../src/aws/cloudfront'
 import { ECRClient } from '../../src/aws/ecr'
 import { ECSClient } from '../../src/aws/ecs'
+import { S3Client } from '../../src/aws/s3'
 import { STSClient } from '../../src/aws/sts'
-import { detectCredentialSource } from '../../src/aws/client'
-import { execSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
-import { join as pathJoin } from 'node:path'
-import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../../src/validation/template'
-import { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
+import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
+import { checkReleaseContent } from '../../src/deploy/release-content'
+import { mergeControlsIntoConfig, ProtectionControlStore } from '../../src/protection'
+import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
+import { runConfigHook } from '../../src/deploy/hooks'
+import { collectServerDnsDomains, normalizePublicIpv6, reconcileAddressRecords } from '../../src/deploy/server-dns'
+import { deployShipsFiles, hasComputeConfigured, resolveSiteKind, shipsARelease, shipsToBucket, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
-import type { DnsProviderConfig } from '../../src/dns/types'
-import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
-import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
-import { deploymentCoexistenceError, resolveAppDatabase, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
+import { reconcileDeclaredRecords, resolveDeclaredRecords } from '../../src/dns/declared-records'
+import { CloudflareProvider } from '../../src/dns/cloudflare'
+import { reconcileCloudflareCdn, resolveCloudflareCdnPlan } from '../../src/cdn'
 import { createCloudDriver } from '../../src/drivers'
-import { deployAllComputeSites } from '../../src/drivers/shared/compute-deploy'
-import { runConfigHook } from '../../src/deploy/hooks'
-import { resolveSiteKind, validateDeploymentConfig } from '../../src/deploy/site-target'
+import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
+import { InfrastructureGenerator } from '../../src/generators/infrastructure'
+import { ensureDefaultSecurityPolicies, productionChangeReview, recordPreDeploySecretScan, recordSkippedSecretScan, secureContainerRelease, SecurityPostureStore, securityScope } from '../../src/security'
+import { PreDeployScanner } from '../../src/security/pre-deploy-scanner'
+import { validateResourceLimits, validateTemplate, validateTemplateSize } from '../../src/validation/template'
+import { loadValidatedConfig, resolveDnsProviderConfig } from './shared'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -37,7 +46,9 @@ async function reportAwsIdentity(region: string): Promise<void> {
 
   // Warn on set-but-empty env vars (almost always a misconfigured .env file)
   if (credSource.emptyEnvKey || credSource.emptyEnvSecret) {
-    cli.warn('Empty AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY env var detected — likely a misconfigured .env file. Remove the empty lines or fill them in.')
+    cli.warn(
+      'Empty AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY env var detected — likely a misconfigured .env file. Remove the empty lines or fill them in.',
+    )
   }
 
   cli.info(`AWS credentials: ${credSource.description}`)
@@ -48,8 +59,7 @@ async function reportAwsIdentity(region: string): Promise<void> {
     if (identity.Arn) {
       cli.info(`AWS identity: ${identity.Arn}`)
     }
-  }
-  catch (err: any) {
+  } catch (err: any) {
     cli.warn(`Could not verify AWS identity: ${err.message}`)
   }
 }
@@ -59,9 +69,10 @@ async function reportAwsIdentity(region: string): Promise<void> {
  */
 function resolveReleaseSha(): string {
   try {
-    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
-  }
-  catch {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  } catch {
     return Date.now().toString(36)
   }
 }
@@ -88,7 +99,9 @@ async function deployAppToCompute(
   const allSites = Object.entries<any>(sites)
 
   if (allSites.length === 0) {
-    cli.warn('infrastructure.compute is set but no sites are configured — nothing to deploy. Add sites to `cloud.config.ts`.')
+    cli.warn(
+      'infrastructure.compute is set but no sites are configured — nothing to deploy. Add sites to `cloud.config.ts`.',
+    )
     return true
   }
 
@@ -100,21 +113,28 @@ async function deployAppToCompute(
   }
 
   const deployable = allSites.filter(([name, s]) => {
-    if (!s)
-      return false
-    if (onlySite && name !== onlySite)
-      return false
-    const kind = resolveSiteKind(s)
-    if (kind === 'bucket') {
+    if (!s) return false
+    if (onlySite && name !== onlySite) return false
+    if (resolveSiteKind(s) === 'bucket') {
       cli.warn(`Site '${name}' targets a bucket — skipping compute deploy (handled by the static-site path).`)
       return false
     }
-    return true
+    // Redirect-only sites are dropped too: the preparation loop below reads
+    // `site.root` to build a tarball and a redirect site has none, which
+    // failed the whole deploy with "Build output not found at undefined".
+    // Their routes survive — the gateway regenerates from the full model.
+    return shipsARelease(s)
   })
-  if (deployable.length === 0) return true
+  // Deliberately NO early return on an empty list. The packaging loop below is
+  // already a no-op, and deployAllComputeSites still has to regenerate the
+  // gateway from the full sites model — a project whose sites are all routes
+  // (every one a `redirect` or a `proxyTo`) has no release to ship and yet is
+  // exactly the project that needs its fragment and cert units written.
 
   if (onlySite)
-    cli.info(`Deploying only '${onlySite}'. Other sites keep their current release; proxy routes are still regenerated in full.`)
+    cli.info(
+      `Deploying only '${onlySite}'. Other sites keep their current release; proxy routes are still regenerated in full.`,
+    )
 
   const slug = config.project.slug
   const compute = config.infrastructure?.compute || {}
@@ -122,11 +142,12 @@ async function deployAppToCompute(
   const driver = createCloudDriver({ config })
   const sha = resolveReleaseSha()
   const tarballs = new Map<string, string>()
+  const packagedRoots = new Map<string, string>()
   const hookLogger = { step: (m: string) => cli.step(m), error: (m: string) => cli.error(m) }
 
   // beforeDeploy / beforeBuild lifecycle hooks (run locally).
-  if (!await runConfigHook(config, 'beforeDeploy', hookLogger)) return true
-  if (!await runConfigHook(config, 'beforeBuild', hookLogger)) return true
+  if (!(await runConfigHook(config, 'beforeDeploy', hookLogger))) return false
+  if (!(await runConfigHook(config, 'beforeBuild', hookLogger))) return false
 
   for (const [siteName, site] of deployable) {
     const kind = resolveSiteKind(site)
@@ -143,16 +164,39 @@ async function deployAppToCompute(
       cli.step(`Running build: ${site.build}`)
       try {
         execSync(site.build, { stdio: 'inherit', cwd: process.cwd() })
-      }
-      catch (err: any) {
+      } catch (err: any) {
         cli.error(`Build failed for site '${siteName}': ${err.message}`)
-        return true
+        return false
       }
     }
 
-    if (!existsSync(site.root)) {
-      cli.error(`Build output not found at ${site.root} for site '${siteName}'`)
-      return true
+    // A directory existing is not the same as a directory holding a site. The
+    // expensive miss is a generator that renders into a subdirectory of its
+    // output dir: `root` exists, the tarball ships, and every URL 404s while
+    // the deploy reports success.
+    const contentIssues = checkReleaseContent({
+      root: site.root,
+      siteName,
+      expectIndex: kind === 'server-static',
+    })
+    for (const issue of contentIssues) {
+      if (issue.level === 'error') cli.error(issue.message)
+      else cli.warn(issue.message)
+    }
+    if (contentIssues.some((issue) => issue.level === 'error')) return false
+
+    // Multiple services often ship the same source root with the same exclude
+    // boundary. Package that immutable input once; the provider's
+    // content-addressed upload cache can then reuse it across every service.
+    // A per-site build may mutate the root, so those artifacts stay isolated.
+    const packageKey = site.build
+      ? undefined
+      : JSON.stringify([pathResolve(site.root), [...(site.exclude || [])].sort()])
+    const packaged = packageKey ? packagedRoots.get(packageKey) : undefined
+    if (packaged) {
+      cli.step(`Reusing package for ${site.root} → ${packaged}`)
+      tarballs.set(siteName, packaged)
+      continue
     }
 
     const tarballPath = pathJoin(tmpdir(), `${slug}-${siteName}-${sha}.tar.gz`)
@@ -160,21 +204,24 @@ async function deployAppToCompute(
     try {
       // Honor `site.exclude` so heavy/host-specific paths (node_modules with
       // native binaries, .git, dev caches) stay out of the release tarball.
-      const excludeFlags = (site.exclude || [])
-        .map((pattern: string) => `--exclude='${pattern}'`)
-        .join(' ')
-      execSync(`tar czf "${tarballPath}" -C "${site.root}" ${excludeFlags} .`, { stdio: 'inherit' })
-    }
-    catch (err: any) {
+      const excludeArgs = (site.exclude || []).map((pattern: string) => `--exclude=${pattern}`)
+      execFileSync('tar', ['czf', tarballPath, '-C', site.root, ...excludeArgs, '.'], {
+        stdio: 'inherit',
+        // macOS bsdtar otherwise stores com.apple.provenance xattrs as
+        // LIBARCHIVE headers, producing thousands of warnings on Linux.
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      })
+    } catch (err: any) {
       cli.error(`Failed to package '${siteName}': ${err.message}`)
-      return true
+      return false
     }
 
     tarballs.set(siteName, tarballPath)
+    if (packageKey) packagedRoots.set(packageKey, tarballPath)
   }
 
   // afterBuild hook (run locally once all sites are built/packaged).
-  if (!await runConfigHook(config, 'afterBuild', hookLogger)) return true
+  if (!(await runConfigHook(config, 'afterBuild', hookLogger))) return false
 
   const ok = await deployAllComputeSites({
     // Only the selected site is shipped...
@@ -186,23 +233,22 @@ async function deployAppToCompute(
     driver,
     sha,
     runtime,
-    tarballForSite: siteName => {
+    tarballForSite: (siteName) => {
       const path = tarballs.get(siteName)
       if (!path) throw new Error(`Missing tarball for site '${siteName}'`)
       return path
     },
     logger: {
-      info: message => cli.info(message),
-      warn: message => cli.warn(message),
-      error: message => cli.error(message),
-      step: message => cli.step(message),
-      success: message => cli.success(message),
+      info: (message) => cli.info(message),
+      warn: (message) => cli.warn(message),
+      error: (message) => cli.error(message),
+      step: (message) => cli.step(message),
+      success: (message) => cli.success(message),
     },
   })
 
   // afterDeploy hook (run locally once the deploy succeeded).
-  if (ok)
-    await runConfigHook(config, 'afterDeploy', hookLogger)
+  if (ok && !(await runConfigHook(config, 'afterDeploy', hookLogger))) return false
 
   return ok
 }
@@ -214,18 +260,37 @@ async function runSecurityScan(options: {
   sourceDir: string
   failOnSeverity?: 'critical' | 'high' | 'medium' | 'low'
   skipPatterns?: string[]
-}): Promise<{ passed: boolean, result: ScanResult }> {
+  exclude?: string[]
+}): Promise<{ passed: boolean; result: ScanResult }> {
   const scanner = new PreDeployScanner()
 
   cli.step('Running pre-deployment security scan...')
+  if (options.exclude?.length)
+    cli.info(`Excluding from the scan: ${options.exclude.join(', ')}`)
 
   const result = await scanner.scan({
     directory: options.sourceDir,
     failOnSeverity: options.failOnSeverity || 'critical',
     skipPatterns: options.skipPatterns,
+    exclude: options.exclude,
   })
 
   return { passed: result.passed, result }
+}
+
+/**
+ * An empty directory to scan when the deploy ships nothing.
+ *
+ * The scan still RUNS and is still recorded — it just has an empty artifact to
+ * look at, which is the truthful answer. Skipping it outright is not the same
+ * thing: the policy evaluates recorded scanner runs, so a missing one counts as
+ * degraded and `scannerFailMode: 'closed'` blocks the deploy. That is what
+ * `--skip-security-scan` runs into.
+ */
+function emptyScanScope(): string {
+  const dir = pathJoin(tmpdir(), `ts-cloud-empty-scan-${process.pid}`)
+  mkdirSync(dir, { recursive: true })
+  return dir
 }
 
 /**
@@ -239,15 +304,13 @@ function displaySecurityResults(result: ScanResult): void {
   // Display summary
   if (summary.critical > 0) {
     cli.error(`  Critical: ${summary.critical}`)
-  }
-  else {
+  } else {
     cli.info(`  Critical: ${summary.critical}`)
   }
 
   if (summary.high > 0) {
     cli.warn(`  High: ${summary.high}`)
-  }
-  else {
+  } else {
     cli.info(`  High: ${summary.high}`)
   }
 
@@ -259,15 +322,16 @@ function displaySecurityResults(result: ScanResult): void {
     cli.info('\nFindings:')
 
     // Group by severity
-    const criticalFindings = findings.filter(f => f.pattern.severity === 'critical')
-    const highFindings = findings.filter(f => f.pattern.severity === 'high')
-    const mediumFindings = findings.filter(f => f.pattern.severity === 'medium')
-    const lowFindings = findings.filter(f => f.pattern.severity === 'low')
+    const criticalFindings = findings.filter((f) => f.pattern.severity === 'critical')
+    const highFindings = findings.filter((f) => f.pattern.severity === 'high')
+    const mediumFindings = findings.filter((f) => f.pattern.severity === 'medium')
+    const lowFindings = findings.filter((f) => f.pattern.severity === 'low')
 
     const displayFindings = (list: SecurityFinding[], label: string, color: 'red' | 'yellow' | 'blue' | 'gray') => {
       if (list.length > 0) {
         console.log(`\n${cli.colorize(`[${label}]`, color)}`)
-        for (const finding of list.slice(0, 10)) { // Limit to first 10 per severity
+        for (const finding of list.slice(0, 10)) {
+          // Limit to first 10 per severity
           cli.info(`  ${finding.pattern.name}`)
           cli.info(`    File: ${finding.file}:${finding.line}`)
           cli.info(`    Match: ${finding.match}`)
@@ -285,6 +349,111 @@ function displaySecurityResults(result: ScanResult): void {
   }
 }
 
+function policyEnvironment(config: any, preferred?: string): string {
+  const configured = Object.keys(config.environments ?? {})
+  if (preferred && configured.includes(preferred)) return preferred
+  if (configured.includes('production')) return 'production'
+  if (configured[0]) return configured[0]
+  throw new Error('A configured environment is required for security policy evaluation')
+}
+
+function enforceSecurityPolicy(
+  config: any,
+  environmentValue: string | undefined,
+  scan?: ScanResult,
+): { allowed: boolean; explanation: string } {
+  const environment = policyEnvironment(config, environmentValue)
+  const controlPlane = initializeDashboardControlPlane(process.cwd(), config)
+  try {
+    const posture = new SecurityPostureStore(controlPlane.store)
+    ensureDefaultSecurityPolicies(controlPlane)
+    const scope = securityScope(controlPlane, environment)
+    if (scan) recordPreDeploySecretScan(posture, scope, scan)
+    else recordSkippedSecretScan(posture, scope)
+    const review = productionChangeReview(posture, { scope, desiredConfigHash: controlPlane.project.desiredConfigHash })
+    cli.info(
+      `Security policy: ${review.decision.policyId} v${review.decision.policyVersion} — ${review.decision.outcome.toUpperCase()}`,
+    )
+    cli.info(`Security decision: ${review.decision.explanation}`)
+    return { allowed: review.decision.outcome !== 'block', explanation: review.decision.explanation }
+  } finally {
+    controlPlane.store.close()
+  }
+}
+
+async function enforceContainerReleaseSecurity(
+  config: any,
+  input: {
+    imageRef: string
+    imageSha256?: string
+    artifactRoot: string
+    invocationId: string
+    startedAt: string
+  },
+): Promise<{ allowed: boolean; explanation: string }> {
+  const environment = policyEnvironment(config)
+  const controlPlane = initializeDashboardControlPlane(process.cwd(), config)
+  try {
+    const posture = new SecurityPostureStore(controlPlane.store)
+    ensureDefaultSecurityPolicies(controlPlane)
+    const scope = securityScope(controlPlane, environment)
+    const releaseId = input.imageSha256
+      ? `${input.imageRef}@sha256:${input.imageSha256.replace(/^sha256:/, '')}`
+      : input.imageRef
+    cli.step('Scanning the built image and producing release security artifacts...')
+    const result = await secureContainerRelease(posture, {
+      scope,
+      releaseId,
+      imageRef: input.imageRef,
+      imageSha256: input.imageSha256,
+      artifactRoot: input.artifactRoot,
+      invocationId: input.invocationId,
+      startedAt: input.startedAt,
+      externalParameters: { imageRef: input.imageRef, artifactRoot: input.artifactRoot },
+    })
+    cli.info(`Image scanner: ${result.scan.run.status} (${result.scan.findings.length} findings)`)
+    cli.info(
+      `Release SBOM: ${result.sbomSource === 'image' ? 'full image inventory' : result.sbomSource === 'manifest' ? 'package-manifest fallback' : 'unavailable'}`,
+    )
+    const review = productionChangeReview(posture, {
+      scope,
+      operationId: input.invocationId,
+      desiredConfigHash: controlPlane.project.desiredConfigHash,
+    })
+    cli.info(
+      `Release policy: ${review.decision.policyId} v${review.decision.policyVersion} — ${review.decision.outcome.toUpperCase()}`,
+    )
+    cli.info(`Release decision: ${review.decision.explanation}`)
+    return { allowed: review.decision.outcome !== 'block', explanation: review.decision.explanation }
+  } finally {
+    controlPlane.store.close()
+  }
+}
+
+
+/**
+ * Merge live protection controls into a config for a deploy.
+ *
+ * Best-effort: a project without a control plane yet, or with none of these
+ * controls set, deploys exactly as before. Protection must never be the reason
+ * a deploy cannot run.
+ */
+function applyProtectionControls<T extends CloudConfig>(config: T): T {
+  try {
+    const controlPlane = initializeDashboardControlPlane(process.cwd(), config)
+    const controls = new ProtectionControlStore(controlPlane.store).current()
+    if (!controls.attackMode && !controls.mitigationPause && controls.ipRules.allow.length === 0 && controls.ipRules.block.length === 0)
+      return config
+    const merged = mergeControlsIntoConfig(config, controls)
+    cli.info(
+      `Applying protection controls: ${controls.ipRules.allow.length} allow, ${controls.ipRules.block.length} block${controls.attackMode ? ', attack mode ON' : ''}${controls.mitigationPause ? ', mitigation PAUSED' : ''}`,
+    )
+    return merged
+  } catch {
+    return config
+  }
+}
+
 export function registerDeployCommands(app: CLI): void {
   // Security scan command
   app
@@ -292,52 +461,48 @@ export function registerDeployCommands(app: CLI): void {
     .option('--source <path>', 'Source directory to scan', { default: '.' })
     .option('--fail-on <severity>', 'Fail on severity level (critical, high, medium, low)', { default: 'critical' })
     .option('--skip-patterns <patterns>', 'Comma-separated list of pattern names to skip')
-    .action(async (options?: {
-      source?: string
-      failOn?: 'critical' | 'high' | 'medium' | 'low'
-      skipPatterns?: string
-    }) => {
-      cli.header('Pre-Deployment Security Scan')
+    .action(
+      async (options?: { source?: string; failOn?: 'critical' | 'high' | 'medium' | 'low'; skipPatterns?: string }) => {
+        cli.header('Pre-Deployment Security Scan')
 
-      try {
-        const sourceDir = options?.source || '.'
-        const failOnSeverity = options?.failOn || 'critical'
-        const skipPatterns = options?.skipPatterns?.split(',').map(p => p.trim()) || []
+        try {
+          const sourceDir = options?.source || '.'
+          const failOnSeverity = options?.failOn || 'critical'
+          const skipPatterns = options?.skipPatterns?.split(',').map((p) => p.trim()) || []
 
-        if (!existsSync(sourceDir)) {
-          cli.error(`Source directory not found: ${sourceDir}`)
-          return
-        }
+          if (!existsSync(sourceDir)) {
+            cli.error(`Source directory not found: ${sourceDir}`)
+            return
+          }
 
-        cli.info(`Source: ${sourceDir}`)
-        cli.info(`Fail on: ${failOnSeverity} or higher severity`)
+          cli.info(`Source: ${sourceDir}`)
+          cli.info(`Fail on: ${failOnSeverity} or higher severity`)
 
-        const { passed, result } = await runSecurityScan({
-          sourceDir,
-          failOnSeverity,
-          skipPatterns,
-        })
+          const { passed, result } = await runSecurityScan({
+            sourceDir,
+            failOnSeverity,
+            skipPatterns,
+          })
 
-        displaySecurityResults(result)
+          displaySecurityResults(result)
 
-        if (passed) {
-          cli.success('\n✓ Security scan passed - no blocking issues found')
-        }
-        else {
-          cli.error('\n✗ Security scan failed - blocking issues detected')
-          cli.info('\nRecommendations:')
-          cli.info('  1. Remove any hardcoded credentials from your code')
-          cli.info('  2. Use environment variables or AWS Secrets Manager')
-          cli.info('  3. Add sensitive files to .gitignore')
-          cli.info('  4. Use --skip-patterns to ignore false positives')
+          if (passed) {
+            cli.success('\n✓ Security scan passed - no blocking issues found')
+          } else {
+            cli.error('\n✗ Security scan failed - blocking issues detected')
+            cli.info('\nRecommendations:')
+            cli.info('  1. Remove any hardcoded credentials from your code')
+            cli.info('  2. Use environment variables or AWS Secrets Manager')
+            cli.info('  3. Add sensitive files to .gitignore')
+            cli.info('  4. Use --skip-patterns to ignore false positives')
+            process.exit(1)
+          }
+        } catch (error: any) {
+          cli.error(`Security scan failed: ${error.message}`)
           process.exit(1)
         }
-      }
-      catch (error: any) {
-        cli.error(`Security scan failed: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('deploy', 'Deploy infrastructure')
@@ -345,268 +510,378 @@ export function registerDeployCommands(app: CLI): void {
     .option('--env <environment>', 'Environment to deploy to')
     .option('--site <name>', 'Deploy specific site only (routes are still regenerated in full)')
     .option('--skip-security-scan', 'Skip pre-deployment security scan')
-    .option('--skip-dns-verification', 'Skip DNS provider verification and record creation (use when DNS is already configured)')
-    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
+    .option(
+      '--skip-dns-verification',
+      'Skip DNS provider verification and record creation (use when DNS is already configured)',
+    )
+    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', {
+      default: 'critical',
+    })
+    .option('--dry-run', 'Show the deployment plan without making changes')
     .option('--yes', 'Skip confirmation prompts (non-interactive / CI)')
-    .action(async (options?: {
-      stack?: string
-      env?: string
-      site?: string
-      skipSecurityScan?: boolean
-      skipDnsVerification?: boolean
-      securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
-      yes?: boolean
-    }) => {
-      cli.header('Deploying Infrastructure')
+    .action(
+      async (options?: {
+        stack?: string
+        env?: string
+        site?: string
+        skipSecurityScan?: boolean
+        skipDnsVerification?: boolean
+        securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
+        dryRun?: boolean
+        yes?: boolean
+      }) => {
+        cli.header('Deploying Infrastructure')
 
-      const autoConfirm = options?.yes === true || process.env.CI === 'true'
-      const environment = (options?.env || 'staging') as 'production' | 'staging' | 'development'
+        const autoConfirm = options?.yes === true || process.env.CI === 'true'
+        const environment = (options?.env || 'staging') as 'production' | 'staging' | 'development'
 
-      // Load environment-specific .env file BEFORE anything else.
-      // Bun auto-loads .env.local at process startup, so we must purge
-      // those values before config loading or any other env reads.
-      let restoreEnv: (() => Promise<void>) | null = null
-      restoreEnv = await loadEnvironmentFile(environment)
+        // Load environment-specific .env file BEFORE anything else.
+        // Bun auto-loads .env.local at process startup, so we must purge
+        // those values before config loading or any other env reads.
+        let restoreEnv: (() => Promise<void>) | null = null
+        restoreEnv = await loadEnvironmentFile(environment)
 
-      try {
-        // Load configuration after env is set up correctly
-        const config = await loadValidatedConfig()
+        try {
+          // Load configuration after env is set up correctly
+          const configFile = await loadValidatedConfig()
 
-        // Validate the per-site deployment model up front — turns silent runtime
-        // failures (e.g. a server-app site with no compute server) into an
-        // explicit, actionable contract. Errors abort; warnings continue.
-        const { errors: deployErrors, warnings: deployWarnings } = validateDeploymentConfig(config)
-        for (const w of deployWarnings)
-          cli.warn(w)
-        if (deployErrors.length > 0) {
-          cli.error('\n✗ Deployment configuration is invalid:')
-          for (const e of deployErrors)
-            cli.error(`  • ${e}`)
-          return
-        }
+          // Fold in the operator's live protection controls (IP allow/block
+          // lists, attack mode) before anything renders a ruleset. The
+          // provisioning builder takes a config and nothing else - deliberately,
+          // since it also builds reusable golden images - so the merge belongs
+          // here, at the one call site that has a control plane. Without it,
+          // `cloud protect:block` writes a rule the deploy silently drops.
+          const config = applyProtectionControls(configFile)
 
-        // Surface which AWS credentials and identity are about to be used
-        // (helps catch wrong-profile / wrong-account mistakes before any AWS calls)
-        const awsRegion = config.project?.region || 'us-east-1'
-        await reportAwsIdentity(awsRegion)
-
-        // Run security scan before deployment (unless skipped)
-        if (!options?.skipSecurityScan) {
-          const projectRoot = process.cwd()
-          const { passed, result } = await runSecurityScan({
-            sourceDir: projectRoot,
-            failOnSeverity: options?.securityFailOn || 'critical',
-          })
-
-          displaySecurityResults(result)
-
-          if (!passed) {
-            cli.error('\n✗ Security scan failed - deployment blocked')
-            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
-            cli.info('To change sensitivity, use --security-fail-on <severity>')
+          // Validate the per-site deployment model up front — turns silent runtime
+          // failures (e.g. a server-app site with no compute server) into an
+          // explicit, actionable contract. Errors abort; warnings continue.
+          const { errors: deployErrors, warnings: deployWarnings } = validateDeploymentConfig(config)
+          for (const w of deployWarnings) cli.warn(w)
+          if (deployErrors.length > 0) {
+            cli.error('\n✗ Deployment configuration is invalid:')
+            for (const e of deployErrors) cli.error(`  • ${e}`)
+            process.exitCode = 1
             return
           }
 
-          cli.success('✓ Security scan passed\n')
-        }
-        else {
-          cli.warn('Security scan skipped (--skip-security-scan)\n')
-        }
+          if (options?.dryRun) {
+            if (options.site && !config.sites?.[options.site]) {
+              cli.error(
+                `Site '${options.site}' was not found. Configured sites: ${Object.keys(config.sites || {}).join(', ') || 'none'}`,
+              )
+              process.exitCode = 1
+              return
+            }
+            const deploymentMode = resolveDeploymentMode(config)
+            const stackName = options.stack || resolveProjectStackName(config, environment)
+            const cloudProvider = resolveCloudProvider(config)
+            const region = config.project.region || 'us-east-1'
+            const sites = options.site ? [options.site] : Object.keys(config.sites || {})
+            cli.header('Deployment Plan')
+            cli.info(`Cloud provider: ${cloudProvider}`)
+            cli.info(`Mode: ${deploymentMode}`)
+            cli.info(`Stack: ${stackName}`)
+            cli.info(`Region: ${region}`)
+            cli.info(`Environment: ${environment}`)
+            cli.info(`Sites: ${sites.length > 0 ? sites.join(', ') : 'none'}`)
+            cli.success('Dry run complete. No infrastructure, DNS, certificates, or application files were changed.')
+            return
+          }
 
-        // Server and serverless are mutually exclusive. When the project is a
-        // serverless app (`environments.<env>.app`), `cloud deploy` routes to the
-        // Lambda pipeline automatically (the same work as `cloud deploy:serverless`)
-        // instead of the compute/infrastructure path below.
-        if (resolveDeploymentMode(config) === 'serverless') {
-          cli.step('Serverless project detected: deploying the Lambda application')
-          const { deployServerlessApp } = await import('../../src/deploy/serverless-app')
-          await deployServerlessApp(config, environment, {})
-          cli.success('Serverless deployment complete')
-          return
-        }
+          // Surface which AWS credentials and identity are about to be used, but
+          // only for AWS deployments. Hetzner must not require or probe AWS auth.
+          if (resolveCloudProvider(config) === 'aws') {
+            const awsRegion = config.project?.region || 'us-east-1'
+            await reportAwsIdentity(awsRegion)
+          }
 
-        const stackName = options?.stack || resolveProjectStackName(config, environment)
-        const region = config.project.region || 'us-east-1'
-        const deployInfrastructureStack = config.infrastructure?.deployStack !== false
-        const hasSites = config.sites && Object.keys(config.sites).length > 0
-        const dnsProvider = config.infrastructure?.dns?.provider
+          // Run security scan before deployment (unless skipped)
+          let policyScan: ScanResult | undefined
+          if (!options?.skipSecurityScan) {
+            // The scan exists to stop a secret in this directory reaching a
+            // server. When every site is a route, nothing from this directory
+            // goes anywhere, so the whole tree is out of scope — scanning it
+            // only reports findings in code that is not being deployed. A
+            // registry whose sites are all `proxyTo` was failing here on
+            // package-metadata strings in an unrelated workspace package.
+            const shipsFiles = deployShipsFiles(config, options?.site)
+            if (!shipsFiles) {
+              cli.info(
+                'This deploy ships no files — every site in scope is a redirect or proxy route, so only gateway routes and certificates change. Scanning an empty artifact.',
+              )
+            }
+            const { result } = await runSecurityScan({
+              sourceDir: shipsFiles ? process.cwd() : emptyScanScope(),
+              failOnSeverity: options?.securityFailOn || 'critical',
+              // Directories the project declared out of scope via
+              // infrastructure.security.scan — typically a vendored submodule it
+              // neither owns nor ships. Matched on directory name, on top of the
+              // scanner's built-in ignore list.
+              exclude: config.infrastructure?.security?.scan?.exclude,
+            })
 
-        // Site stacks (S3 + CloudFront) — run whenever sites + DNS are configured,
-        // including alongside compute (registry EC2 + pantry.dev CDN are separate concerns).
-        if (hasSites && dnsProvider) {
-          await deployStaticSitesWithExternalDns(
-            config,
-            options?.site,
-            dnsProvider,
-            region,
-            options?.skipDnsVerification,
-            environment,
-            autoConfirm,
-          )
+            displaySecurityResults(result)
+            policyScan = result
+          } else {
+            cli.warn('Security scan skipped (--skip-security-scan)\n')
+          }
+          const securityDecision = enforceSecurityPolicy(config, environment, policyScan)
+          if (!securityDecision.allowed) {
+            cli.error(`\n✗ Deployment blocked by security policy: ${securityDecision.explanation}`)
+            cli.info(
+              'Remediate the findings or create an authorized, time-limited waiver in the Security posture center.',
+            )
+            process.exitCode = 1
+            return
+          }
+          cli.success('✓ Security policy allows this deployment\n')
+
+          // Server and serverless are mutually exclusive. When the project is a
+          // serverless app (`environments.<env>.app`), `cloud deploy` routes to the
+          // Lambda pipeline automatically (the same work as `cloud deploy:serverless`)
+          // instead of the compute/infrastructure path below.
+          if (resolveDeploymentMode(config) === 'serverless') {
+            cli.step('Serverless project detected: deploying the Lambda application')
+            const { deployServerlessApp } = await import('../../src/deploy/serverless-app')
+            await deployServerlessApp(config, environment, {})
+            cli.success('Serverless deployment complete')
+            return
+          }
+
+          const stackName = options?.stack || resolveProjectStackName(config, environment)
+          const region = config.project.region || 'us-east-1'
+          const deployInfrastructureStack = config.infrastructure?.deployStack !== false
+          const hasSites = config.sites && Object.keys(config.sites).length > 0
+          const dnsProvider = config.infrastructure?.dns?.provider
+
+          // Site stacks (S3 + CloudFront) — run whenever sites + DNS are configured,
+          // including alongside compute (registry EC2 + pantry.dev CDN are separate concerns).
+          if (hasSites && dnsProvider) {
+            await deployStaticSitesWithExternalDns(
+              config,
+              options?.site,
+              dnsProvider,
+              region,
+              options?.skipDnsVerification,
+              environment,
+              autoConfirm,
+            )
+
+            if (!deployInfrastructureStack) {
+              if (config.infrastructure?.compute) {
+                const siteDomains = Object.values(config.sites!)
+                  .map((site) => site.domain)
+                  .filter((domain): domain is string => !!domain)
+                if (siteDomains.length > 0) {
+                  cli.step('Syncing CloudFront dynamic HTTP methods for app domains...')
+                  await ensureDynamicMethodsForDomains(siteDomains)
+                }
+              }
+              return
+            }
+          }
 
           if (!deployInfrastructureStack) {
-            if (config.infrastructure?.compute) {
-              const siteDomains = Object.values(config.sites!)
-                .map(site => site.domain)
-                .filter((domain): domain is string => !!domain)
-              if (siteDomains.length > 0) {
-                cli.step('Syncing CloudFront dynamic HTTP methods for app domains...')
-                await ensureDynamicMethodsForDomains(siteDomains)
+            cli.info('Infrastructure stack deployment disabled (infrastructure.deployStack: false)')
+            return
+          }
+
+          const cloudProvider = resolveCloudProvider(config)
+          cli.info(`Cloud provider: ${cloudProvider}`)
+          cli.info(`Stack: ${stackName}`)
+          cli.info(`Region: ${region}`)
+          cli.info(`Environment: ${environment}`)
+
+          // Lightweight single-server (Forge-style) path: provision one box via
+          // the driver and deploy onto it — no CloudFormation. Used for Hetzner,
+          // and for AWS when `compute.mode === 'server'` (boots an Ubuntu EC2).
+          const serverCompute = cloudProvider === 'hetzner' || config.infrastructure?.compute?.mode === 'server'
+          if (serverCompute && hasComputeConfigured(config)) {
+            cli.step(`Provisioning ${cloudProvider} compute infrastructure...`)
+            const driver = createCloudDriver({ config, provider: cloudProvider })
+            if (!driver.provisionComputeInfrastructure) {
+              cli.error(`${cloudProvider} driver does not support compute provisioning`)
+              process.exitCode = 1
+              return
+            }
+
+            const outputs = await driver.provisionComputeInfrastructure({ config, environment })
+            cli.success(`${cloudProvider} compute infrastructure ready`)
+            if (outputs.appPublicIp) cli.info(`App server: ${outputs.appPublicIp}`)
+            if (outputs.appInstanceId) cli.info(`Server ID: ${outputs.appInstanceId}`)
+
+            // Provision-then-deploy (no separate CloudFormation stack step). Always
+            // run the deploy step — even with no user sites — so the management
+            // dashboard is auto-deployed on every freshly started server.
+            const ok = await deployAppToCompute(config, environment, region, options?.site)
+            if (!ok) {
+              cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
+              process.exitCode = 1
+            } else {
+              cli.success(`App deployed to ${cloudProvider} compute`)
+              // Point each server-served site domain at the box. The S3 site path
+              // (deployStaticSitesWithExternalDns) skips deploy:'server' sites, so
+              // for a compute deploy DNS is reconciled here instead — additive
+              // UPSERTs only, opt-in via `infrastructure.dns.provider`.
+              if (options?.skipDnsVerification) {
+                cli.info('DNS verification and record reconciliation skipped (--skip-dns-verification)')
+              } else {
+                await reconcileServerDns(config, outputs.appPublicIp, dnsProvider, outputs.appPublicIpv6)
+                await reconcileConfiguredDnsRecords(config, dnsProvider)
               }
+              const tlsOk = await renewRpxCertificates({
+                config,
+                environment,
+                driver,
+                logger: { info: cli.info, warn: cli.warn, error: cli.error, step: cli.step, success: cli.success },
+              })
+              if (!tlsOk) cli.error('App deployed, but rpx TLS certificate reconciliation failed')
+              if (!tlsOk) process.exitCode = 1
+
+              // The Cloudflare CDN reconcile runs AFTER certificate renewal, and
+              // that order is load-bearing: it proxies a hostname only once the
+              // origin can prove it serves a trusted certificate for that name,
+              // and the origin gets that certificate from an ACME HTTP-01
+              // challenge which needs the name to reach it directly. Running it
+              // first would proxy the name, cut the challenge off from the box,
+              // and leave the site without a certificate to issue.
+              if (!options?.skipDnsVerification) await reconcileCloudflareCdnForDeploy(config, outputs.appPublicIp, outputs.appPublicIpv6)
             }
             return
           }
-        }
 
-        if (!deployInfrastructureStack) {
-          cli.info('Infrastructure stack deployment disabled (infrastructure.deployStack: false)')
-          return
-        }
+          // Generate CloudFormation template
+          cli.step('Generating CloudFormation template...')
+          const generator = new InfrastructureGenerator({
+            config,
+            environment,
+          })
 
-        const cloudProvider = resolveCloudProvider(config)
-        cli.info(`Cloud provider: ${cloudProvider}`)
-        cli.info(`Stack: ${stackName}`)
-        cli.info(`Region: ${region}`)
-        cli.info(`Environment: ${environment}`)
+          generator.generate()
+          const templateBody = generator.toJSON()
+          const template = JSON.parse(templateBody)
 
-        // Lightweight single-server (Forge-style) path: provision one box via
-        // the driver and deploy onto it — no CloudFormation. Used for Hetzner,
-        // and for AWS when `compute.mode === 'server'` (boots an Ubuntu EC2).
-        const serverCompute = cloudProvider === 'hetzner'
-          || config.infrastructure?.compute?.mode === 'server'
-        if (serverCompute && config.infrastructure?.compute) {
-          cli.step(`Provisioning ${cloudProvider} compute infrastructure...`)
-          const driver = createCloudDriver({ config, provider: cloudProvider })
-          if (!driver.provisionComputeInfrastructure) {
-            cli.error(`${cloudProvider} driver does not support compute provisioning`)
+          // A site-only project (sites + DNS, no compute/database/VPC/etc.) produces an
+          // environment stack with no resources. The sites were already deployed above, so
+          // there is genuinely nothing left to provision here. CloudFormation rejects empty
+          // stacks ("At least one resource is required") — skip gracefully instead of
+          // surfacing that as a deployment failure.
+          const envResourceCount = Object.keys(template.Resources || {}).length
+          if (envResourceCount === 0) {
+            cli.info(
+              `No infrastructure resources to deploy for environment '${environment}' — skipping stack ${stackName}.`,
+            )
             return
           }
 
-          const outputs = await driver.provisionComputeInfrastructure({ config, environment })
-          cli.success(`${cloudProvider} compute infrastructure ready`)
-          if (outputs.appPublicIp) cli.info(`App server: ${outputs.appPublicIp}`)
-          if (outputs.appInstanceId) cli.info(`Server ID: ${outputs.appInstanceId}`)
+          // Validate template
+          cli.step('Validating template...')
+          const validation = validateTemplate(template)
+          const sizeValidation = validateTemplateSize(templateBody)
+          const limitsValidation = validateResourceLimits(template)
 
-          // Provision-then-deploy (no separate CloudFormation stack step). Always
-          // run the deploy step — even with no user sites — so the management
-          // dashboard is auto-deployed on every freshly started server.
-          const ok = await deployAppToCompute(config, environment, region, options?.site)
-          if (!ok) {
-            cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
+          // Show errors
+          const allErrors = [...validation.errors, ...sizeValidation.errors, ...limitsValidation.errors]
+
+          if (allErrors.length > 0) {
+            cli.error('Template validation failed:')
+            for (const error of allErrors) {
+              cli.error(`  - ${error.path}: ${error.message}`)
+            }
+            return
           }
-          else {
-            cli.success(`App deployed to ${cloudProvider} compute`)
-            // Point each server-served site domain at the box. The S3 site path
-            // (deployStaticSitesWithExternalDns) skips deploy:'server' sites, so
-            // for a compute deploy DNS is reconciled here instead — additive
-            // UPSERTs only, opt-in via `infrastructure.dns.provider`.
-            await reconcileServerDns(config, outputs.appPublicIp, dnsProvider)
+
+          // Show warnings
+          const allWarnings = [...validation.warnings, ...sizeValidation.warnings, ...limitsValidation.warnings]
+
+          if (allWarnings.length > 0) {
+            for (const warning of allWarnings) {
+              cli.warn(`  - ${warning.path}: ${warning.message}`)
+            }
           }
-          return
-        }
 
-        // Generate CloudFormation template
-        cli.step('Generating CloudFormation template...')
-        const generator = new InfrastructureGenerator({
-          config,
-          environment,
-        })
+          cli.success('Template validated successfully')
 
-        generator.generate()
-        const templateBody = generator.toJSON()
-        const template = JSON.parse(templateBody)
+          // Show resource summary
+          const resourceCount = Object.keys(template.Resources).length
+          cli.info(`\nResources to deploy: ${resourceCount}`)
 
-        // A site-only project (sites + DNS, no compute/database/VPC/etc.) produces an
-        // environment stack with no resources. The sites were already deployed above, so
-        // there is genuinely nothing left to provision here. CloudFormation rejects empty
-        // stacks ("At least one resource is required") — skip gracefully instead of
-        // surfacing that as a deployment failure.
-        const envResourceCount = Object.keys(template.Resources || {}).length
-        if (envResourceCount === 0) {
-          cli.info(`No infrastructure resources to deploy for environment '${environment}' — skipping stack ${stackName}.`)
-          return
-        }
-
-        // Validate template
-        cli.step('Validating template...')
-        const validation = validateTemplate(template)
-        const sizeValidation = validateTemplateSize(templateBody)
-        const limitsValidation = validateResourceLimits(template)
-
-        // Show errors
-        const allErrors = [
-          ...validation.errors,
-          ...sizeValidation.errors,
-          ...limitsValidation.errors,
-        ]
-
-        if (allErrors.length > 0) {
-          cli.error('Template validation failed:')
-          for (const error of allErrors) {
-            cli.error(`  - ${error.path}: ${error.message}`)
+          // Count resource types
+          const typeCounts: Record<string, number> = {}
+          for (const resource of Object.values(template.Resources)) {
+            const type = (resource as any).Type
+            typeCounts[type] = (typeCounts[type] || 0) + 1
           }
-          return
-        }
 
-        // Show warnings
-        const allWarnings = [
-          ...validation.warnings,
-          ...sizeValidation.warnings,
-          ...limitsValidation.warnings,
-        ]
-
-        if (allWarnings.length > 0) {
-          for (const warning of allWarnings) {
-            cli.warn(`  - ${warning.path}: ${warning.message}`)
+          for (const [type, count] of Object.entries(typeCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)) {
+            cli.info(`  - ${type}: ${count}`)
           }
-        }
 
-        cli.success('Template validated successfully')
+          // Confirm deployment
+          const confirmed = autoConfirm || (await cli.confirm('\nDeploy now?', true))
+          if (!confirmed) {
+            cli.info('Deployment cancelled')
+            return
+          }
 
-        // Show resource summary
-        const resourceCount = Object.keys(template.Resources).length
-        cli.info(`\nResources to deploy: ${resourceCount}`)
+          // Initialize CloudFormation client
+          const cfn = new CloudFormationClient(region)
 
-        // Count resource types
-        const typeCounts: Record<string, number> = {}
-        for (const resource of Object.values(template.Resources)) {
-          const type = (resource as any).Type
-          typeCounts[type] = (typeCounts[type] || 0) + 1
-        }
-
-        for (const [type, count] of Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)) {
-          cli.info(`  - ${type}: ${count}`)
-        }
-
-        // Confirm deployment
-        const confirmed = autoConfirm || await cli.confirm('\nDeploy now?', true)
-        if (!confirmed) {
-          cli.info('Deployment cancelled')
-          return
-        }
-
-        // Initialize CloudFormation client
-        const cfn = new CloudFormationClient(region)
-
-        // Check if stack exists
-        cli.step('Checking stack status...')
-        let stackExists = false
-        try {
-          const result = await cfn.describeStacks({ stackName })
-          stackExists = result.Stacks && result.Stacks.length > 0
-        }
-        catch (error) {
-          // Stack doesn't exist, that's fine
-          stackExists = false
-        }
-
-        if (stackExists) {
-          cli.info('Stack exists, updating...')
-          const updateSpinner = new cli.Spinner('Updating CloudFormation stack...')
-          updateSpinner.start()
-
+          // Check if stack exists
+          cli.step('Checking stack status...')
+          let stackExists = false
           try {
-            await cfn.updateStack({
+            const result = await cfn.describeStacks({ stackName })
+            stackExists = result.Stacks && result.Stacks.length > 0
+          } catch (error) {
+            // Stack doesn't exist, that's fine
+            stackExists = false
+          }
+
+          if (stackExists) {
+            cli.info('Stack exists, updating...')
+            const updateSpinner = new cli.Spinner('Updating CloudFormation stack...')
+            updateSpinner.start()
+
+            try {
+              await cfn.updateStack({
+                stackName,
+                templateBody,
+                capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
+                tags: [
+                  { Key: 'Project', Value: config.project.name },
+                  { Key: 'Environment', Value: environment },
+                  { Key: 'ManagedBy', Value: 'ts-cloud' },
+                ],
+              })
+
+              updateSpinner.succeed('Update initiated')
+
+              // Wait for completion
+              cli.step('Waiting for stack update to complete...')
+              await cfn.waitForStack(stackName, 'stack-update-complete')
+
+              cli.success('Stack updated successfully!')
+            } catch (error: any) {
+              if (error.message.includes('No updates are to be performed')) {
+                updateSpinner.succeed('No changes detected')
+                cli.info('Stack is already up to date — continuing to app deploy')
+                // Do NOT return here: an unchanged stack still needs the code
+                // (sites) deployed/redeployed below. Returning early made code
+                // deploys impossible once the infra existed.
+              } else {
+                throw error
+              }
+            }
+          } else {
+            cli.info('Creating new stack...')
+            const createSpinner = new cli.Spinner('Creating CloudFormation stack...')
+            createSpinner.start()
+
+            await cfn.createStack({
               stackName,
               templateBody,
               capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
@@ -617,56 +892,20 @@ export function registerDeployCommands(app: CLI): void {
               ],
             })
 
-            updateSpinner.succeed('Update initiated')
+            createSpinner.succeed('Stack creation initiated')
 
             // Wait for completion
-            cli.step('Waiting for stack update to complete...')
-            await cfn.waitForStack(stackName, 'stack-update-complete')
+            cli.step('Waiting for stack creation to complete...')
+            await cfn.waitForStack(stackName, 'stack-create-complete')
 
-            cli.success('Stack updated successfully!')
+            cli.success('Stack created successfully!')
           }
-          catch (error: any) {
-            if (error.message.includes('No updates are to be performed')) {
-              updateSpinner.succeed('No changes detected')
-              cli.info('Stack is already up to date — continuing to app deploy')
-              // Do NOT return here: an unchanged stack still needs the code
-              // (sites) deployed/redeployed below. Returning early made code
-              // deploys impossible once the infra existed.
-            }
-            else {
-              throw error
-            }
-          }
-        }
-        else {
-          cli.info('Creating new stack...')
-          const createSpinner = new cli.Spinner('Creating CloudFormation stack...')
-          createSpinner.start()
 
-          await cfn.createStack({
-            stackName,
-            templateBody,
-            capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
-            tags: [
-              { Key: 'Project', Value: config.project.name },
-              { Key: 'Environment', Value: environment },
-              { Key: 'ManagedBy', Value: 'ts-cloud' },
-            ],
-          })
+          // Get stack outputs
+          const outputs = await cfn.getStackOutputs(stackName)
 
-          createSpinner.succeed('Stack creation initiated')
-
-          // Wait for completion
-          cli.step('Waiting for stack creation to complete...')
-          await cfn.waitForStack(stackName, 'stack-create-complete')
-
-          cli.success('Stack created successfully!')
-        }
-
-        // Get stack outputs
-        const outputs = await cfn.getStackOutputs(stackName)
-
-        cli.box(`Deployment Complete!
+          cli.box(
+            `Deployment Complete!
 
 Stack: ${stackName}
 Region: ${region}
@@ -674,99 +913,101 @@ Environment: ${environment}
 Resources: ${resourceCount}
 
 View in console:
-https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stackinfo?stackId=${encodeURIComponent(stackName)}`, 'green')
+https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stackinfo?stackId=${encodeURIComponent(stackName)}`,
+            'green',
+          )
 
-        if (Object.keys(outputs).length > 0) {
-          cli.info('\nStack Outputs:')
-          for (const [key, value] of Object.entries(outputs)) {
-            cli.info(`  - ${key}: ${value}`)
-          }
-        }
-
-        // Auto-upload files for website storage buckets that have a `root` configured
-        if (config.infrastructure?.storage) {
-          for (const [name, storageConfig] of Object.entries(config.infrastructure.storage)) {
-            if (!storageConfig.website || !storageConfig.root) continue
-
-            const bucketName = outputs[`${name}BucketName`] || outputs.FrontendBucketName
-            const distributionId = outputs[`${name}CloudFrontDistributionId`]
-
-            if (!bucketName) {
-              cli.warn(`Could not find bucket name for storage '${name}' — skipping file upload`)
-              continue
-            }
-
-            if (!existsSync(storageConfig.root)) {
-              cli.warn(`Source directory not found: ${storageConfig.root} — skipping file upload for '${name}'`)
-              continue
-            }
-
-            cli.step(`Uploading files from ${storageConfig.root} to s3://${bucketName}...`)
-            const { uploadStaticFiles, invalidateCache } = await import('../../src/deploy/static-site')
-            const uploadResult = await uploadStaticFiles({
-              sourceDir: storageConfig.root,
-              bucket: bucketName,
-              region,
-              onProgress: (uploaded, total, file) => {
-                if (uploaded % 10 === 0 || uploaded === total) {
-                  cli.info(`  ${uploaded}/${total}: ${file}`)
-                }
-              },
-            })
-
-            if (uploadResult.errors.length > 0) {
-              cli.warn(`Upload completed with errors: ${uploadResult.errors.join(', ')}`)
-            }
-            else {
-              const msg = uploadResult.skipped > 0
-                ? `Uploaded ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged)`
-                : `Uploaded ${uploadResult.uploaded} files`
-              cli.success(msg)
-            }
-
-            // Invalidate CloudFront cache
-            if (distributionId && uploadResult.uploaded > 0) {
-              cli.step('Invalidating CloudFront cache...')
-              const { invalidationId } = await invalidateCache(distributionId)
-              cli.success(`Cache invalidation created: ${invalidationId}`)
+          if (Object.keys(outputs).length > 0) {
+            cli.info('\nStack Outputs:')
+            for (const [key, value] of Object.entries(outputs)) {
+              cli.info(`  - ${key}: ${value}`)
             }
           }
-        }
 
-        // EC2 app deploy via SSM (Forge-style) — when `infrastructure.compute` is set,
-        // deploy every configured site as a systemd service on the EC2 instance.
-        if (config.infrastructure?.compute) {
-          await deployAppToCompute(config, environment, region, options?.site)
-        }
+          // Auto-upload files for website storage buckets that have a `root` configured
+          if (config.infrastructure?.storage) {
+            for (const [name, storageConfig] of Object.entries(config.infrastructure.storage)) {
+              if (!storageConfig.website || !storageConfig.root) continue
 
-        // When compute serves site domains via CloudFront, ensure POST/auth routes work
-        if (config.infrastructure?.compute && config.sites) {
-          const siteDomains = Object.values(config.sites)
-            .map((site: { domain?: string }) => site.domain)
-            .filter((domain): domain is string => !!domain)
-          if (siteDomains.length > 0) {
-            cli.step('Syncing CloudFront dynamic HTTP methods for app domains...')
-            await ensureDynamicMethodsForDomains(siteDomains)
+              const bucketName = outputs[`${name}BucketName`] || outputs.FrontendBucketName
+              const distributionId = outputs[`${name}CloudFrontDistributionId`]
+
+              if (!bucketName) {
+                cli.warn(`Could not find bucket name for storage '${name}' — skipping file upload`)
+                continue
+              }
+
+              if (!existsSync(storageConfig.root)) {
+                cli.warn(`Source directory not found: ${storageConfig.root} — skipping file upload for '${name}'`)
+                continue
+              }
+
+              cli.step(`Uploading files from ${storageConfig.root} to s3://${bucketName}...`)
+              const { uploadStaticFiles, invalidateCache } = await import('../../src/deploy/static-site')
+              const uploadResult = await uploadStaticFiles({
+                sourceDir: storageConfig.root,
+                bucket: bucketName,
+                region,
+                onProgress: (uploaded, total, file) => {
+                  if (uploaded % 10 === 0 || uploaded === total) {
+                    cli.info(`  ${uploaded}/${total}: ${file}`)
+                  }
+                },
+              })
+
+              if (uploadResult.errors.length > 0) {
+                cli.warn(`Upload completed with errors: ${uploadResult.errors.join(', ')}`)
+              } else {
+                const msg =
+                  uploadResult.skipped > 0
+                    ? `Uploaded ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged)`
+                    : `Uploaded ${uploadResult.uploaded} files`
+                cli.success(msg)
+              }
+
+              // Invalidate CloudFront cache
+              if (distributionId && uploadResult.uploaded > 0) {
+                cli.step('Invalidating CloudFront cache...')
+                const { invalidationId } = await invalidateCache(distributionId)
+                cli.success(`Cache invalidation created: ${invalidationId}`)
+              }
+            }
           }
+
+          // EC2 app deploy via SSM (Forge-style) — when `infrastructure.compute` is set,
+          // deploy every configured site as a systemd service on the EC2 instance.
+          if (config.infrastructure?.compute) {
+            await deployAppToCompute(config, environment, region, options?.site)
+          }
+
+          // When compute serves site domains via CloudFront, ensure POST/auth routes work
+          if (config.infrastructure?.compute && config.sites) {
+            const siteDomains = Object.values(config.sites)
+              .map((site: { domain?: string }) => site.domain)
+              .filter((domain): domain is string => !!domain)
+            if (siteDomains.length > 0) {
+              cli.step('Syncing CloudFront dynamic HTTP methods for app domains...')
+              await ensureDynamicMethodsForDomains(siteDomains)
+            }
+          }
+        } catch (error: any) {
+          cli.error(`Deployment failed: ${error.message}`)
+          process.exitCode = 1
+          if (error.stack) {
+            cli.info('\nStack trace:')
+            console.error(error.stack)
+          }
+        } finally {
+          if (restoreEnv) await restoreEnv()
         }
-      }
-      catch (error: any) {
-        cli.error(`Deployment failed: ${error.message}`)
-        if (error.stack) {
-          cli.info('\nStack trace:')
-          console.error(error.stack)
-        }
-      }
-      finally {
-        if (restoreEnv) await restoreEnv()
-      }
-    })
+      },
+    )
 
   app
     .command('deploy:server', 'Deploy EC2 infrastructure')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--site <name>', 'Deploy specific site only (routes are still regenerated in full)')
-    .action(async (options?: { env?: string, site?: string }) => {
+    .action(async (options?: { env?: string; site?: string }) => {
       cli.header('Deploying Server Infrastructure')
 
       try {
@@ -781,7 +1022,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           return
         }
 
-        if (!config.infrastructure?.compute) {
+        if (!hasComputeConfigured(config)) {
           cli.error('No `infrastructure.compute` configured — nothing to deploy as a server.')
           cli.info('Add an EC2 compute block to cloud.config, or use `cloud deploy:serverless` for Lambda apps.')
           process.exitCode = 1
@@ -808,8 +1049,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           }
         }
         cli.success('\nServer deployment complete!')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Deployment failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -821,7 +1061,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--skip-build', 'Skip local build hooks')
     .option('--skip-hooks', 'Skip remote deploy hooks (e.g. migrations)')
     .option('--redeploy', 'Re-activate the last build without rebuilding')
-    .action(async (options?: { env?: string, skipBuild?: boolean, skipHooks?: boolean, redeploy?: boolean }) => {
+    .action(async (options?: { env?: string; skipBuild?: boolean; skipHooks?: boolean; redeploy?: boolean }) => {
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
@@ -841,8 +1081,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           skipBuild: options?.skipBuild,
           skipDeployHooks: options?.skipHooks,
         })
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Deployment failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -857,8 +1096,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
         const { rollbackServerlessApp } = await import('../../src/deploy/serverless-app')
         await rollbackServerlessApp(config, environment)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Rollback failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -868,7 +1106,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .command('deploy:rollback [site]', 'Roll a compute site back to a previous release')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--to <release>', 'Release id to roll back to (default: the previous release)')
-    .action(async (site?: string, options?: { env?: string, to?: string }) => {
+    .action(async (site?: string, options?: { env?: string; to?: string }) => {
       cli.header('Rolling Back Release')
       try {
         const config = await loadValidatedConfig()
@@ -891,18 +1129,17 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         }
         for (const inst of result.perInstance || [])
           cli.info(`  ${inst.instanceId}: ${inst.output?.trim() || inst.status}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Rollback failed: ${error.message}`)
         process.exitCode = 1
       }
     })
 
   app
-    .command('deploy:history [site]', 'Show a compute site\'s deployment history')
+    .command('deploy:history [site]', "Show a compute site's deployment history")
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--limit <n>', 'Number of entries to show', { default: '20' })
-    .action(async (site?: string, options?: { env?: string, limit?: string }) => {
+    .action(async (site?: string, options?: { env?: string; limit?: string }) => {
       cli.header('Deployment History')
       try {
         const config = await loadValidatedConfig()
@@ -927,8 +1164,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           cli.info(`\n${inst.instanceId}:`)
           cli.info(inst.output?.trimEnd() || '(no output)')
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`History lookup failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -938,7 +1174,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .command('deploy:recipe <name> <script>', 'Run a reusable server recipe (a local bash file) across servers')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--user <user>', 'User to run the recipe as', { default: 'root' })
-    .action(async (name: string, script: string, options?: { env?: string, user?: string }) => {
+    .action(async (name: string, script: string, options?: { env?: string; user?: string }) => {
       cli.header(`Running Recipe: ${name}`)
       try {
         if (!existsSync(script)) {
@@ -958,17 +1194,18 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           cli.info(`\n${inst.instanceId}:`)
           cli.info(inst.output?.trimEnd() || '(no output)')
         }
-        if (!result.success)
-          process.exitCode = 1
-      }
-      catch (error: any) {
+        if (!result.success) process.exitCode = 1
+      } catch (error: any) {
         cli.error(`Recipe failed: ${error.message}`)
         process.exitCode = 1
       }
     })
 
   app
-    .command('db:restore-backup [from]', 'Restore the app database from an on-box ts-backups dump (latest, or a given file)')
+    .command(
+      'db:restore-backup [from]',
+      'Restore the app database from an on-box ts-backups dump (latest, or a given file)',
+    )
     .option('--env <environment>', 'Environment (production, staging, development)')
     .action(async (from?: string, options?: { env?: string }) => {
       cli.header('Database Restore')
@@ -986,8 +1223,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           cli.error(`Restore failed: ${result.error || 'unknown error'}`)
           process.exitCode = 1
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Restore failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -996,45 +1232,78 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
   app
     .command('quick-deploy', 'Generate a push-to-deploy CI pipeline for your git provider (Forge Quick Deploy)')
     .option('--env <environment>', 'Environment to deploy on push', { default: 'production' })
-    .option('--force', 'Overwrite an existing pipeline file')
-    .action(async (options?: { env?: string, force?: boolean }) => {
-      cli.header('Quick Deploy (push-to-deploy)')
-      try {
-        const config = await loadValidatedConfig()
-        const { buildQuickDeployCi } = await import('../../src/deploy/quick-deploy')
-        const ci = buildQuickDeployCi(config, options?.env || 'production')
-        if (!ci) {
-          cli.warn('No site has a github/gitlab/bitbucket repository — set `sites.<name>.repository.provider` to generate a pipeline.')
-          process.exitCode = 1
-          return
-        }
-        if (existsSync(ci.path) && !options?.force) {
-          cli.warn(`${ci.path} already exists — re-run with --force to overwrite.`)
-          return
-        }
-        mkdirSync(dirname(ci.path), { recursive: true })
-        writeFileSync(ci.path, ci.content)
-        cli.success(`Wrote ${ci.path} (${ci.provider}, deploys on push to '${ci.branch}').`)
-        cli.info('Next: commit it and add your provider credentials as CI secrets/variables.')
-      }
-      catch (error: any) {
-        cli.error(`Quick deploy setup failed: ${error.message}`)
-        process.exitCode = 1
-      }
+    .option('--provider <provider>', 'CI provider (github, gitlab, bitbucket); defaults to the origin remote')
+    .option('--site <site>', 'Deploy only this configured site')
+    .option('--skip-dns-verification', 'Generate a deploy that skips DNS verification and record creation')
+    .option('--ssh-key-secret <name>', 'CI secret/variable containing the Hetzner deployment SSH private key', {
+      default: 'SSH_PRIVATE_KEY',
     })
+    .option('--force', 'Overwrite an existing pipeline file')
+    .action(
+      async (options?: {
+        env?: string
+        provider?: string
+        site?: string
+        skipDnsVerification?: boolean
+        sshKeySecret?: string
+        force?: boolean
+      }) => {
+        cli.header('Quick Deploy (push-to-deploy)')
+        try {
+          const config = await loadValidatedConfig()
+          const { buildQuickDeployCi, inferQuickDeployProvider } = await import('../../src/deploy/quick-deploy')
+          const requestedProvider = options?.provider?.toLowerCase()
+          if (requestedProvider && !['github', 'gitlab', 'bitbucket'].includes(requestedProvider))
+            throw new Error(`Unsupported CI provider '${options?.provider}'. Use github, gitlab, or bitbucket.`)
+          let provider = requestedProvider as 'github' | 'gitlab' | 'bitbucket' | undefined
+          if (!provider) {
+            try {
+              const origin = execSync('git remote get-url origin', { stdio: ['ignore', 'pipe', 'ignore'] })
+                .toString()
+                .trim()
+              provider = inferQuickDeployProvider(origin)
+            } catch {}
+          }
+          const ci = buildQuickDeployCi(config, options?.env || 'production', {
+            provider,
+            site: options?.site,
+            skipDnsVerification: options?.skipDnsVerification,
+            setup: existsSync('pantry.lock') ? 'pantry' : 'bun',
+            sshPrivateKeySecret: options?.sshKeySecret,
+          })
+          if (!ci) {
+            cli.warn(
+              'Could not resolve a GitHub, GitLab, or Bitbucket provider from --provider, the origin remote, or a configured site repository.',
+            )
+            process.exitCode = 1
+            return
+          }
+          if (existsSync(ci.path) && !options?.force) {
+            cli.warn(`${ci.path} already exists — re-run with --force to overwrite.`)
+            return
+          }
+          mkdirSync(dirname(ci.path), { recursive: true })
+          writeFileSync(ci.path, ci.content)
+          cli.success(`Wrote ${ci.path} (${ci.provider}, deploys on push to '${ci.branch}').`)
+          cli.info('Next: commit it and add your provider credentials as CI secrets/variables.')
+        } catch (error: any) {
+          cli.error(`Quick deploy setup failed: ${error.message}`)
+          process.exitCode = 1
+        }
+      },
+    )
 
   app
     .command('down', 'Put the serverless app into maintenance mode (503)')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--secret <secret>', 'Bypass secret (send as x-maintenance-bypass header)')
-    .action(async (options?: { env?: string, secret?: string }) => {
+    .action(async (options?: { env?: string; secret?: string }) => {
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
         const { setMaintenance } = await import('../../src/deploy/serverless-app')
         await setMaintenance(config, environment, true, options?.secret)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to enable maintenance mode: ${error.message}`)
         process.exitCode = 1
       }
@@ -1049,8 +1318,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
         const { setMaintenance } = await import('../../src/deploy/serverless-app')
         await setMaintenance(config, environment, false)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to disable maintenance mode: ${error.message}`)
         process.exitCode = 1
       }
@@ -1067,8 +1335,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const { id, output } = await runAndRecordCommand(config, environment, cmd)
         cli.info(output)
         if (id > 0) cli.info(`\n(recorded as #${id} — re-run with \`cloud command:again ${id}\`)`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Command failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -1078,7 +1345,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .command('command:history', 'List recorded CLI-function command invocations')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--limit <n>', 'Show at most this many (most recent)', { default: '20' })
-    .action(async (options?: { env?: string, limit?: string }) => {
+    .action(async (options?: { env?: string; limit?: string }) => {
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
@@ -1092,10 +1359,12 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         cli.header(`Command history — ${config.project.slug} (${environment})`)
         cli.table(
           ['#', 'When', 'Status', 'Command'],
-          records.slice(-limit).reverse().map(r => [String(r.id), r.timestamp, r.status, r.command]),
+          records
+            .slice(-limit)
+            .reverse()
+            .map((r) => [String(r.id), r.timestamp, r.status, r.command]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to read history: ${error.message}`)
         process.exitCode = 1
       }
@@ -1119,15 +1388,17 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const res = await runAndRecordCommand(config, environment, record.command)
         cli.info(res.output)
         if (res.id > 0) cli.info(`\n(recorded as #${res.id})`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Command failed: ${error.message}`)
         process.exitCode = 1
       }
     })
 
   app
-    .command('serverless:db-shell <sql>', 'Run a SQL statement against a private serverless database (via the CLI function)')
+    .command(
+      'serverless:db-shell <sql>',
+      'Run a SQL statement against a private serverless database (via the CLI function)',
+    )
     .option('--env <environment>', 'Environment (production, staging, development)')
     .action(async (sql: string, options?: { env?: string }) => {
       try {
@@ -1136,8 +1407,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const { runDbQuery } = await import('../../src/deploy/serverless-app')
         const output = await runDbQuery(config, environment, sql)
         cli.info(output)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Query failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -1160,8 +1430,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         }
         const { scaleServerlessDatabase } = await import('../../src/deploy/serverless-app')
         await scaleServerlessDatabase(config, environment, minCapacity, maxCapacity)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Scale failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -1173,7 +1442,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--to <timestamp>', 'Restore to this ISO-8601 time (UTC)')
     .option('--latest', 'Restore to the latest restorable time')
     .option('--target <id>', 'New cluster identifier (defaults to <cluster>-restore-<stamp>)')
-    .action(async (options?: { env?: string, to?: string, latest?: boolean, target?: string }) => {
+    .action(async (options?: { env?: string; to?: string; latest?: boolean; target?: string }) => {
       cli.header('Restoring serverless database')
       try {
         const config = await loadValidatedConfig()
@@ -1188,9 +1457,12 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           }
         }
         const { restoreServerlessDatabase } = await import('../../src/deploy/serverless-app')
-        await restoreServerlessDatabase(config, environment, { toTime, latest: options?.latest, target: options?.target })
-      }
-      catch (error: any) {
+        await restoreServerlessDatabase(config, environment, {
+          toTime,
+          latest: options?.latest,
+          target: options?.target,
+        })
+      } catch (error: any) {
         cli.error(`Restore failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -1212,18 +1484,19 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         if (info.assetUrl) cli.info(`Assets:   ${info.assetUrl}`)
         cli.info(`Scheduler:${info.scheduler === 'off' ? ' off' : ` ${info.scheduler}`}`)
         cli.info(`Queues:   ${info.queues.length ? info.queues.join(', ') : 'none'}`)
-        cli.info(`Warming:  ${info.provisionedConcurrency > 0 ? `provisioned concurrency ×${info.provisionedConcurrency}` : 'none / ping-warm'}`)
+        cli.info(
+          `Warming:  ${info.provisionedConcurrency > 0 ? `provisioned concurrency ×${info.provisionedConcurrency}` : 'none / ping-warm'}`,
+        )
         if (info.lastRelease) cli.info(`Release:  ${info.lastRelease.sha.slice(0, 12)} @ ${info.lastRelease.timestamp}`)
         cli.table(
           ['Function', 'Version', 'Provisioned'],
-          info.functions.map(f => [
+          info.functions.map((f) => [
             f.name,
             f.version,
             f.provisioned ? `${f.provisioned.status} ${f.provisioned.allocated}/${f.provisioned.requested}` : '—',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to read info: ${error.message}`)
         process.exitCode = 1
       }
@@ -1233,7 +1506,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .command('dashboard:build', 'Build the management dashboard with live data baked in')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--ui <dir>', 'UI directory (default ./ui)', { default: 'ui' })
-    .action(async (options?: { env?: string, ui?: string }) => {
+    .action(async (options?: { env?: string; ui?: string }) => {
       cli.header('Building management dashboard (live data)')
       try {
         const { existsSync } = await import('node:fs')
@@ -1269,12 +1542,12 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           }
         }
         cli.step('Building dashboard')
+        const { encodeDashboardPayload } = await import('../../src/deploy/dashboard-payload')
         const { execSync } = await import('node:child_process')
         const { rmSync } = await import('node:fs')
         // stx caches built pages by source-content hash and is blind to env, so a
         // prior sample build would be served stale — bust the SSG cache first.
-        for (const c of ['.stx/ssg-cache', '.stx/cache'])
-          rmSync(`${uiDir}/${c}`, { recursive: true, force: true })
+        for (const c of ['.stx/ssg-cache', '.stx/cache']) rmSync(`${uiDir}/${c}`, { recursive: true, force: true })
         // Build only (no `bun install`): the dashboard's deps are already present
         // (hoisted at the repo root, or shipped prebuilt), and re-resolving can
         // fail on registry version drift. Run `bun install` in the ui dir yourself
@@ -1282,11 +1555,10 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         execSync('bun run build', {
           cwd: uiDir,
           stdio: 'inherit',
-          env: { ...process.env, ...(data ? { TSCLOUD_DASHBOARD_DATA: JSON.stringify(data) } : {}) },
+          env: { ...process.env, ...(data ? { TSCLOUD_DASHBOARD_DATA: encodeDashboardPayload(data) } : {}) },
         })
         cli.success(`Dashboard built → ${uiDir}/dist${data ? ' (live data)' : ' (sample data)'}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Dashboard build failed: ${error.message}`)
         process.exitCode = 1
       }
@@ -1299,115 +1571,138 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--name <name>', 'Layer name', { default: 'tscloud-php' })
     .option('--bucket <bucket>', 'S3 bucket to stage the layer zip (defaults to {slug}-layers)')
     .option('--region <region>', 'AWS region')
-    .action(async (options?: { arch?: 'x86_64' | 'arm64', php?: string, name?: string, bucket?: string, region?: string }) => {
-      cli.header('Building PHP runtime layer')
-      try {
-        const config = await loadValidatedConfig().catch(() => null)
-        const region = options?.region || config?.project.region || 'us-east-1'
-        const arch = options?.arch || 'x86_64'
-        const phpVersion = options?.php || '8.3'
-        const layerName = `${options?.name || 'tscloud-php'}-${phpVersion.replace('.', '')}-${arch}`
-        const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
+    .action(
+      async (options?: {
+        arch?: 'x86_64' | 'arm64'
+        php?: string
+        name?: string
+        bucket?: string
+        region?: string
+      }) => {
+        cli.header('Building PHP runtime layer')
+        try {
+          const config = await loadValidatedConfig().catch(() => null)
+          const region = options?.region || config?.project.region || 'us-east-1'
+          const arch = options?.arch || 'x86_64'
+          const phpVersion = options?.php || '8.3'
+          const layerName = `${options?.name || 'tscloud-php'}-${phpVersion.replace('.', '')}-${arch}`
+          const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
 
-        const { buildPhpRuntimeLayerZip } = await import('@ts-cloud/core')
-        const { S3Client } = await import('../../src/aws/s3')
-        const { LambdaClient } = await import('../../src/aws/lambda')
+          const { buildPhpRuntimeLayerZip } = await import('@ts-cloud/core')
+          const { S3Client } = await import('../../src/aws/s3')
+          const { LambdaClient } = await import('../../src/aws/lambda')
 
-        const artifact = buildPhpRuntimeLayerZip({ architecture: arch, phpVersion, onStep: m => cli.step(m) })
-        cli.info(`Layer: ${artifact.fileCount} files, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
+          const artifact = buildPhpRuntimeLayerZip({ architecture: arch, phpVersion, onStep: (m) => cli.step(m) })
+          cli.info(`Layer: ${artifact.fileCount} files, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
 
-        const s3 = new S3Client(region)
-        if (!(await s3.bucketExists(bucket))) {
-          cli.step(`Creating layer bucket ${bucket}`)
-          await s3.createBucket(bucket)
+          const s3 = new S3Client(region)
+          if (!(await s3.bucketExists(bucket))) {
+            cli.step(`Creating layer bucket ${bucket}`)
+            await s3.createBucket(bucket)
+          }
+          const key = `layers/${layerName}.zip`
+          cli.step('Uploading layer zip')
+          await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
+
+          cli.step('Publishing layer version')
+          const lambda = new LambdaClient(region)
+          const published = await lambda.publishLayerVersion({
+            LayerName: layerName,
+            Description: `ts-cloud PHP ${phpVersion} runtime (${arch})`,
+            Content: { S3Bucket: bucket, S3Key: key },
+            CompatibleRuntimes: ['provided.al2023'],
+            CompatibleArchitectures: [arch],
+          })
+
+          cli.box(
+            [
+              'PHP runtime layer published',
+              '',
+              `ARN: ${published.LayerVersionArn}`,
+              '',
+              'Reference it in your config:',
+              `  app: { kind: 'php', layers: ['${published.LayerVersionArn}'] }`,
+              'or set TSCLOUD_PHP_LAYER_ARN before deploying.',
+            ].join('\n'),
+            'green',
+          )
+        } catch (error: any) {
+          cli.error(`Layer build failed: ${error.message}`)
+          process.exitCode = 1
         }
-        const key = `layers/${layerName}.zip`
-        cli.step('Uploading layer zip')
-        await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
-
-        cli.step('Publishing layer version')
-        const lambda = new LambdaClient(region)
-        const published = await lambda.publishLayerVersion({
-          LayerName: layerName,
-          Description: `ts-cloud PHP ${phpVersion} runtime (${arch})`,
-          Content: { S3Bucket: bucket, S3Key: key },
-          CompatibleRuntimes: ['provided.al2023'],
-          CompatibleArchitectures: [arch],
-        })
-
-        cli.box([
-          'PHP runtime layer published',
-          '',
-          `ARN: ${published.LayerVersionArn}`,
-          '',
-          'Reference it in your config:',
-          `  app: { kind: 'php', layers: ['${published.LayerVersionArn}'] }`,
-          'or set TSCLOUD_PHP_LAYER_ARN before deploying.',
-        ].join('\n'), 'green')
-      }
-      catch (error: any) {
-        cli.error(`Layer build failed: ${error.message}`)
-        process.exitCode = 1
-      }
-    })
+      },
+    )
 
   app
-    .command('serverless:build-node-layer', 'Build + publish a ts-cloud Node custom runtime layer (any version, incl. 24)')
+    .command(
+      'serverless:build-node-layer',
+      'Build + publish a ts-cloud Node custom runtime layer (any version, incl. 24)',
+    )
     .option('--arch <architecture>', 'x86_64 or arm64', { default: 'x86_64' })
     .option('--node <version>', 'Node version (e.g. 24)', { default: '24' })
     .option('--name <name>', 'Layer name', { default: 'tscloud-node' })
     .option('--bucket <bucket>', 'S3 bucket to stage the layer zip (defaults to {slug}-layers)')
     .option('--region <region>', 'AWS region')
-    .action(async (options?: { arch?: 'x86_64' | 'arm64', node?: string, name?: string, bucket?: string, region?: string }) => {
-      cli.header('Building Node runtime layer')
-      try {
-        const config = await loadValidatedConfig().catch(() => null)
-        const region = options?.region || config?.project.region || 'us-east-1'
-        const arch = options?.arch || 'x86_64'
-        const version = options?.node || '24'
-        const { buildNodeRuntimeLayerZip } = await import('@ts-cloud/core')
-        const { S3Client } = await import('../../src/aws/s3')
-        const { LambdaClient } = await import('../../src/aws/lambda')
+    .action(
+      async (options?: {
+        arch?: 'x86_64' | 'arm64'
+        node?: string
+        name?: string
+        bucket?: string
+        region?: string
+      }) => {
+        cli.header('Building Node runtime layer')
+        try {
+          const config = await loadValidatedConfig().catch(() => null)
+          const region = options?.region || config?.project.region || 'us-east-1'
+          const arch = options?.arch || 'x86_64'
+          const version = options?.node || '24'
+          const { buildNodeRuntimeLayerZip } = await import('@ts-cloud/core')
+          const { S3Client } = await import('../../src/aws/s3')
+          const { LambdaClient } = await import('../../src/aws/lambda')
 
-        const artifact = buildNodeRuntimeLayerZip({ architecture: arch, version, onStep: m => cli.step(m) })
-        const layerName = `${options?.name || 'tscloud-node'}-${artifact.version.split('.')[0]}-${arch}`
-        const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
-        cli.info(`Layer: Node ${artifact.version}, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
+          const artifact = buildNodeRuntimeLayerZip({ architecture: arch, version, onStep: (m) => cli.step(m) })
+          const layerName = `${options?.name || 'tscloud-node'}-${artifact.version.split('.')[0]}-${arch}`
+          const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
+          cli.info(`Layer: Node ${artifact.version}, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
 
-        const s3 = new S3Client(region)
-        if (!(await s3.bucketExists(bucket))) {
-          cli.step(`Creating layer bucket ${bucket}`)
-          await s3.createBucket(bucket)
+          const s3 = new S3Client(region)
+          if (!(await s3.bucketExists(bucket))) {
+            cli.step(`Creating layer bucket ${bucket}`)
+            await s3.createBucket(bucket)
+          }
+          const key = `layers/${layerName}.zip`
+          cli.step('Uploading layer zip')
+          await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
+
+          cli.step('Publishing layer version')
+          const lambda = new LambdaClient(region)
+          const published = await lambda.publishLayerVersion({
+            LayerName: layerName,
+            Description: `ts-cloud Node ${artifact.version} runtime (${arch})`,
+            Content: { S3Bucket: bucket, S3Key: key },
+            CompatibleRuntimes: ['provided.al2023'],
+            CompatibleArchitectures: [arch],
+          })
+
+          cli.box(
+            [
+              'Node runtime layer published',
+              '',
+              `ARN: ${published.LayerVersionArn}`,
+              '',
+              'Reference it in your config:',
+              `  app: { kind: 'node', runtimeVersion: '${artifact.version.split('.')[0]}', layers: ['${published.LayerVersionArn}'] }`,
+              'or set TSCLOUD_NODE_LAYER_ARN before deploying.',
+            ].join('\n'),
+            'green',
+          )
+        } catch (error: any) {
+          cli.error(`Layer build failed: ${error.message}`)
+          process.exitCode = 1
         }
-        const key = `layers/${layerName}.zip`
-        cli.step('Uploading layer zip')
-        await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
-
-        cli.step('Publishing layer version')
-        const lambda = new LambdaClient(region)
-        const published = await lambda.publishLayerVersion({
-          LayerName: layerName,
-          Description: `ts-cloud Node ${artifact.version} runtime (${arch})`,
-          Content: { S3Bucket: bucket, S3Key: key },
-          CompatibleRuntimes: ['provided.al2023'],
-          CompatibleArchitectures: [arch],
-        })
-
-        cli.box([
-          'Node runtime layer published',
-          '',
-          `ARN: ${published.LayerVersionArn}`,
-          '',
-          'Reference it in your config:',
-          `  app: { kind: 'node', runtimeVersion: '${artifact.version.split('.')[0]}', layers: ['${published.LayerVersionArn}'] }`,
-          'or set TSCLOUD_NODE_LAYER_ARN before deploying.',
-        ].join('\n'), 'green')
-      }
-      catch (error: any) {
-        cli.error(`Layer build failed: ${error.message}`)
-        process.exitCode = 1
-      }
-    })
+      },
+    )
 
   app
     .command('serverless:build-bun-layer', 'Build + publish a ts-cloud Bun custom runtime layer')
@@ -1416,68 +1711,79 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--name <name>', 'Layer name', { default: 'tscloud-bun' })
     .option('--bucket <bucket>', 'S3 bucket to stage the layer zip (defaults to {slug}-layers)')
     .option('--region <region>', 'AWS region')
-    .action(async (options?: { arch?: 'x86_64' | 'arm64', bun?: string, name?: string, bucket?: string, region?: string }) => {
-      cli.header('Building Bun runtime layer')
-      try {
-        const config = await loadValidatedConfig().catch(() => null)
-        const region = options?.region || config?.project.region || 'us-east-1'
-        const arch = options?.arch || 'x86_64'
-        const version = options?.bun || 'latest'
-        const { buildBunRuntimeLayerZip } = await import('@ts-cloud/core')
-        const { S3Client } = await import('../../src/aws/s3')
-        const { LambdaClient } = await import('../../src/aws/lambda')
+    .action(
+      async (options?: {
+        arch?: 'x86_64' | 'arm64'
+        bun?: string
+        name?: string
+        bucket?: string
+        region?: string
+      }) => {
+        cli.header('Building Bun runtime layer')
+        try {
+          const config = await loadValidatedConfig().catch(() => null)
+          const region = options?.region || config?.project.region || 'us-east-1'
+          const arch = options?.arch || 'x86_64'
+          const version = options?.bun || 'latest'
+          const { buildBunRuntimeLayerZip } = await import('@ts-cloud/core')
+          const { S3Client } = await import('../../src/aws/s3')
+          const { LambdaClient } = await import('../../src/aws/lambda')
 
-        const artifact = buildBunRuntimeLayerZip({ architecture: arch, version, onStep: m => cli.step(m) })
-        const layerName = `${options?.name || 'tscloud-bun'}-${artifact.version.replace(/\./g, '')}-${arch}`
-        const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
-        cli.info(`Layer: Bun ${artifact.version}, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
+          const artifact = buildBunRuntimeLayerZip({ architecture: arch, version, onStep: (m) => cli.step(m) })
+          const layerName = `${options?.name || 'tscloud-bun'}-${artifact.version.replace(/\./g, '')}-${arch}`
+          const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
+          cli.info(`Layer: Bun ${artifact.version}, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
 
-        const s3 = new S3Client(region)
-        if (!(await s3.bucketExists(bucket))) {
-          cli.step(`Creating layer bucket ${bucket}`)
-          await s3.createBucket(bucket)
+          const s3 = new S3Client(region)
+          if (!(await s3.bucketExists(bucket))) {
+            cli.step(`Creating layer bucket ${bucket}`)
+            await s3.createBucket(bucket)
+          }
+          const key = `layers/${layerName}.zip`
+          cli.step('Uploading layer zip')
+          await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
+
+          cli.step('Publishing layer version')
+          const lambda = new LambdaClient(region)
+          const published = await lambda.publishLayerVersion({
+            LayerName: layerName,
+            Description: `ts-cloud Bun ${artifact.version} runtime (${arch})`,
+            Content: { S3Bucket: bucket, S3Key: key },
+            CompatibleRuntimes: ['provided.al2023'],
+            CompatibleArchitectures: [arch],
+          })
+
+          cli.box(
+            [
+              'Bun runtime layer published',
+              '',
+              `ARN: ${published.LayerVersionArn}`,
+              '',
+              'Reference it in your config:',
+              `  app: { kind: 'bun', layers: ['${published.LayerVersionArn}'] }`,
+              'or set TSCLOUD_BUN_LAYER_ARN before deploying.',
+            ].join('\n'),
+            'green',
+          )
+        } catch (error: any) {
+          cli.error(`Layer build failed: ${error.message}`)
+          process.exitCode = 1
         }
-        const key = `layers/${layerName}.zip`
-        cli.step('Uploading layer zip')
-        await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
-
-        cli.step('Publishing layer version')
-        const lambda = new LambdaClient(region)
-        const published = await lambda.publishLayerVersion({
-          LayerName: layerName,
-          Description: `ts-cloud Bun ${artifact.version} runtime (${arch})`,
-          Content: { S3Bucket: bucket, S3Key: key },
-          CompatibleRuntimes: ['provided.al2023'],
-          CompatibleArchitectures: [arch],
-        })
-
-        cli.box([
-          'Bun runtime layer published',
-          '',
-          `ARN: ${published.LayerVersionArn}`,
-          '',
-          'Reference it in your config:',
-          `  app: { kind: 'bun', layers: ['${published.LayerVersionArn}'] }`,
-          'or set TSCLOUD_BUN_LAYER_ARN before deploying.',
-        ].join('\n'), 'green')
-      }
-      catch (error: any) {
-        cli.error(`Layer build failed: ${error.message}`)
-        process.exitCode = 1
-      }
-    })
+      },
+    )
 
   app
     .command('deploy:status', 'Check deployment status')
     .option('--stack <name>', 'Stack name')
     .option('--env <environment>', 'Environment')
-    .action(async (options?: { stack?: string, env?: string }) => {
+    .action(async (options?: { stack?: string; env?: string }) => {
       cli.header('Deployment Status')
 
       try {
         const config = await loadValidatedConfig()
         const environment = options?.env || 'production'
-        const stackName = options?.stack || resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
+        const stackName =
+          options?.stack || resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
         const region = config.project.region || 'us-east-1'
 
         cli.info(`Stack: ${stackName}`)
@@ -1513,8 +1819,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
             cli.info(`  ${output.OutputKey}: ${output.OutputValue}`)
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get status: ${error.message}`)
       }
     })
@@ -1523,13 +1828,14 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .command('deploy:rollback', 'Rollback to previous version')
     .option('--stack <name>', 'Stack name')
     .option('--env <environment>', 'Environment')
-    .action(async (options?: { stack?: string, env?: string }) => {
+    .action(async (options?: { stack?: string; env?: string }) => {
       cli.header('Rolling Back Deployment')
 
       try {
         const config = await loadValidatedConfig()
         const environment = options?.env || 'production'
-        const stackName = options?.stack || resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
+        const stackName =
+          options?.stack || resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
         const region = config.project.region || 'us-east-1'
 
         cli.info(`Stack: ${stackName}`)
@@ -1556,8 +1862,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         await cfn.waitForStack(stackName, 'stack-delete-complete')
 
         cli.success('Stack rolled back successfully!')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Rollback failed: ${error.message}`)
       }
     })
@@ -1573,128 +1878,132 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--no-invalidate', 'Skip CloudFront invalidation')
     .option('--wait', 'Wait for invalidation to complete')
     .option('--skip-security-scan', 'Skip pre-deployment security scan')
-    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
-    .action(async (options?: {
-      source?: string
-      bucket?: string
-      distribution?: string
-      prefix?: string
-      delete?: boolean
-      cacheControl?: string
-      invalidate?: boolean
-      wait?: boolean
-      skipSecurityScan?: boolean
-      securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
-    }) => {
-      cli.header('Deploying Static Site')
+    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', {
+      default: 'critical',
+    })
+    .action(
+      async (options?: {
+        source?: string
+        bucket?: string
+        distribution?: string
+        prefix?: string
+        delete?: boolean
+        cacheControl?: string
+        invalidate?: boolean
+        wait?: boolean
+        skipSecurityScan?: boolean
+        securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
+      }) => {
+        cli.header('Deploying Static Site')
 
-      try {
-        const config = await loadValidatedConfig()
-        const region = config.project.region || 'us-east-1'
+        try {
+          const config = await loadValidatedConfig()
+          const region = config.project.region || 'us-east-1'
 
-        const source = options?.source || 'dist'
+          const source = options?.source || 'dist'
 
-        // Run security scan on the source directory before deployment
-        if (!options?.skipSecurityScan) {
-          cli.step('Scanning source directory for leaked secrets...')
+          // Run security scan on the source directory before deployment
+          let policyScan: ScanResult | undefined
+          if (!options?.skipSecurityScan) {
+            cli.step('Scanning source directory for leaked secrets...')
 
-          const { passed, result } = await runSecurityScan({
-            sourceDir: source,
-            failOnSeverity: options?.securityFailOn || 'critical',
-          })
+            const { result } = await runSecurityScan({
+              sourceDir: source,
+              failOnSeverity: options?.securityFailOn || 'critical',
+            })
 
-          displaySecurityResults(result)
+            displaySecurityResults(result)
+            policyScan = result
+          } else {
+            cli.warn('Security scan skipped (--skip-security-scan)\n')
+          }
+          const securityDecision = enforceSecurityPolicy(config, undefined, policyScan)
+          if (!securityDecision.allowed) {
+            cli.error(`\n✗ Static deployment blocked by security policy: ${securityDecision.explanation}`)
+            cli.info(
+              'Remediate the findings or create an authorized, time-limited waiver in the Security posture center.',
+            )
+            process.exitCode = 1
+            return
+          }
+          cli.success('✓ Security policy allows this deployment\n')
+          const bucket = options?.bucket
+          const distributionId = options?.distribution
+          const prefix = options?.prefix
+          const shouldDelete = options?.delete || false
+          const cacheControl = options?.cacheControl || 'public, max-age=31536000'
+          const shouldInvalidate = options?.invalidate !== false
+          const shouldWait = options?.wait || false
 
-          if (!passed) {
-            cli.error('\n✗ Security scan failed - deployment blocked')
-            cli.info('\nPotential secrets detected in frontend build:')
-            cli.info('  - API keys, tokens, or credentials may be bundled in your code')
-            cli.info('  - These would be publicly accessible once deployed')
-            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
+          if (!bucket) {
+            cli.error('--bucket is required')
             return
           }
 
-          cli.success('✓ Security scan passed\n')
-        }
-        else {
-          cli.warn('Security scan skipped (--skip-security-scan)\n')
-        }
-        const bucket = options?.bucket
-        const distributionId = options?.distribution
-        const prefix = options?.prefix
-        const shouldDelete = options?.delete || false
-        const cacheControl = options?.cacheControl || 'public, max-age=31536000'
-        const shouldInvalidate = options?.invalidate !== false
-        const shouldWait = options?.wait || false
-
-        if (!bucket) {
-          cli.error('--bucket is required')
-          return
-        }
-
-        // Check if source directory exists
-        if (!existsSync(source)) {
-          cli.error(`Source directory not found: ${source}`)
-          return
-        }
-
-        cli.info(`Source: ${source}`)
-        cli.info(`Bucket: s3://${bucket}${prefix ? `/${prefix}` : ''}`)
-        cli.info(`Cache-Control: ${cacheControl}`)
-        if (distributionId) {
-          cli.info(`CloudFront Distribution: ${distributionId}`)
-        }
-        if (shouldDelete) {
-          cli.warn('Delete mode enabled - files not in source will be removed')
-        }
-
-        const confirmed = await cli.confirm('\nDeploy static site now?', true)
-        if (!confirmed) {
-          cli.info('Deployment cancelled')
-          return
-        }
-
-        // Step 1: Upload to S3
-        const s3 = new S3Client(region)
-        const uploadSpinner = new cli.Spinner('Uploading files to S3...')
-        uploadSpinner.start()
-
-        await s3.sync({
-          source,
-          bucket,
-          prefix,
-          delete: shouldDelete,
-          cacheControl,
-          acl: 'public-read',
-        })
-
-        uploadSpinner.succeed('Files uploaded successfully!')
-
-        // Get bucket size
-        const size = await s3.getBucketSize(bucket, prefix)
-        const sizeInMB = (size / 1024 / 1024).toFixed(2)
-        cli.info(`Total size: ${sizeInMB} MB`)
-
-        // Step 2: Invalidate CloudFront (if distribution provided)
-        if (shouldInvalidate && distributionId) {
-          const cloudfront = new CloudFrontClient()
-          const invalidateSpinner = new cli.Spinner('Invalidating CloudFront cache...')
-          invalidateSpinner.start()
-
-          const invalidation = await cloudfront.invalidateAll(distributionId)
-          invalidateSpinner.succeed('Invalidation created')
-
-          cli.info(`Invalidation ID: ${invalidation.Id}`)
-
-          if (shouldWait) {
-            const waitSpinner = new cli.Spinner('Waiting for invalidation to complete...')
-            waitSpinner.start()
-            await cloudfront.waitForInvalidation(distributionId, invalidation.Id)
-            waitSpinner.succeed('Invalidation completed!')
+          // Check if source directory exists
+          if (!existsSync(source)) {
+            cli.error(`Source directory not found: ${source}`)
+            return
           }
-        }
 
-        cli.box(`Static Site Deployed!
+          cli.info(`Source: ${source}`)
+          cli.info(`Bucket: s3://${bucket}${prefix ? `/${prefix}` : ''}`)
+          cli.info(`Cache-Control: ${cacheControl}`)
+          if (distributionId) {
+            cli.info(`CloudFront Distribution: ${distributionId}`)
+          }
+          if (shouldDelete) {
+            cli.warn('Delete mode enabled - files not in source will be removed')
+          }
+
+          const confirmed = await cli.confirm('\nDeploy static site now?', true)
+          if (!confirmed) {
+            cli.info('Deployment cancelled')
+            return
+          }
+
+          // Step 1: Upload to S3
+          const s3 = new S3Client(region)
+          const uploadSpinner = new cli.Spinner('Uploading files to S3...')
+          uploadSpinner.start()
+
+          await s3.sync({
+            source,
+            bucket,
+            prefix,
+            delete: shouldDelete,
+            cacheControl,
+            acl: 'public-read',
+          })
+
+          uploadSpinner.succeed('Files uploaded successfully!')
+
+          // Get bucket size
+          const size = await s3.getBucketSize(bucket, prefix)
+          const sizeInMB = (size / 1024 / 1024).toFixed(2)
+          cli.info(`Total size: ${sizeInMB} MB`)
+
+          // Step 2: Invalidate CloudFront (if distribution provided)
+          if (shouldInvalidate && distributionId) {
+            const cloudfront = new CloudFrontClient()
+            const invalidateSpinner = new cli.Spinner('Invalidating CloudFront cache...')
+            invalidateSpinner.start()
+
+            const invalidation = await cloudfront.invalidateAll(distributionId)
+            invalidateSpinner.succeed('Invalidation created')
+
+            cli.info(`Invalidation ID: ${invalidation.Id}`)
+
+            if (shouldWait) {
+              const waitSpinner = new cli.Spinner('Waiting for invalidation to complete...')
+              waitSpinner.start()
+              await cloudfront.waitForInvalidation(distributionId, invalidation.Id)
+              waitSpinner.succeed('Invalidation completed!')
+            }
+          }
+
+          cli.box(
+            `Static Site Deployed!
 
 Source: ${source}
 Bucket: s3://${bucket}${prefix ? `/${prefix}` : ''}
@@ -1702,12 +2011,15 @@ Size: ${sizeInMB} MB
 ${distributionId ? `Distribution: ${distributionId}` : ''}
 
 View your site:
-https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.html`, 'green')
-      }
-      catch (error: any) {
-        cli.error(`Deployment failed: ${error.message}`)
-      }
-    })
+https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.html`,
+            'green',
+          )
+        } catch (error: any) {
+          cli.error(`Deployment failed: ${error.message}`)
+          process.exitCode = 1
+        }
+      },
+    )
 
   app
     .command('deploy:container', 'Deploy container (ECR push + ECS service update)')
@@ -1721,205 +2033,245 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
     .option('--force', 'Force new deployment even if no changes')
     .option('--wait', 'Wait for deployment to stabilize')
     .option('--skip-security-scan', 'Skip pre-deployment security scan')
-    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
-    .action(async (options?: {
-      cluster?: string
-      service?: string
-      repository?: string
-      image?: string
-      dockerfile?: string
-      context?: string
-      taskDefinition?: string
-      force?: boolean
-      wait?: boolean
-      skipSecurityScan?: boolean
-      securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
-    }) => {
-      cli.header('Deploying Container')
+    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', {
+      default: 'critical',
+    })
+    .action(
+      async (options?: {
+        cluster?: string
+        service?: string
+        repository?: string
+        image?: string
+        dockerfile?: string
+        context?: string
+        taskDefinition?: string
+        force?: boolean
+        wait?: boolean
+        skipSecurityScan?: boolean
+        securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
+      }) => {
+        cli.header('Deploying Container')
 
-      try {
-        const config = await loadValidatedConfig()
-        const region = config.project.region || 'us-east-1'
+        try {
+          const config = await loadValidatedConfig()
+          const region = config.project.region || 'us-east-1'
 
-        const cluster = options?.cluster
-        const service = options?.service
-        const repository = options?.repository
-        const imageTag = options?.image || 'latest'
-        const dockerfile = options?.dockerfile || 'Dockerfile'
-        const context = options?.context || '.'
-        const forceDeployment = options?.force || false
-        const shouldWait = options?.wait || false
+          const cluster = options?.cluster
+          const service = options?.service
+          const repository = options?.repository
+          const imageTag = options?.image || 'latest'
+          const dockerfile = options?.dockerfile || 'Dockerfile'
+          const context = options?.context || '.'
+          const forceDeployment = options?.force || false
+          const shouldWait = options?.wait || false
+          const releaseStartedAt = new Date().toISOString()
+          const releaseInvocationId = crypto.randomUUID()
 
-        if (!cluster || !service) {
-          cli.error('--cluster and --service are required')
-          return
-        }
-
-        if (!repository) {
-          cli.error('--repository is required')
-          return
-        }
-
-        // Check if Dockerfile exists
-        if (!existsSync(dockerfile)) {
-          cli.error(`Dockerfile not found: ${dockerfile}`)
-          return
-        }
-
-        // Run security scan on the build context before deployment
-        if (!options?.skipSecurityScan) {
-          cli.step('Scanning build context for leaked secrets...')
-
-          const { passed, result } = await runSecurityScan({
-            sourceDir: context,
-            failOnSeverity: options?.securityFailOn || 'critical',
-          })
-
-          displaySecurityResults(result)
-
-          if (!passed) {
-            cli.error('\n✗ Security scan failed - deployment blocked')
-            cli.info('\nPotential secrets detected in container build context:')
-            cli.info('  - Credentials may be baked into the Docker image')
-            cli.info('  - Use Docker secrets or environment variables instead')
-            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
+          if (!cluster || !service) {
+            cli.error('--cluster and --service are required')
             return
           }
 
-          cli.success('✓ Security scan passed\n')
-        }
-        else {
-          cli.warn('Security scan skipped (--skip-security-scan)\n')
-        }
+          if (!repository) {
+            cli.error('--repository is required')
+            return
+          }
 
-        cli.info(`Cluster: ${cluster}`)
-        cli.info(`Service: ${service}`)
-        cli.info(`Repository: ${repository}`)
-        cli.info(`Image Tag: ${imageTag}`)
-        cli.info(`Dockerfile: ${dockerfile}`)
+          // Check if Dockerfile exists
+          if (!existsSync(dockerfile)) {
+            cli.error(`Dockerfile not found: ${dockerfile}`)
+            return
+          }
 
-        const confirmed = await cli.confirm('\nDeploy container now?', true)
-        if (!confirmed) {
-          cli.info('Deployment cancelled')
-          return
-        }
+          // Run security scan on the build context before deployment
+          let policyScan: ScanResult | undefined
+          if (!options?.skipSecurityScan) {
+            cli.step('Scanning build context for leaked secrets...')
 
-        const ecr = new ECRClient(region)
-        const ecs = new ECSClient(region)
+            const { result } = await runSecurityScan({
+              sourceDir: context,
+              failOnSeverity: options?.securityFailOn || 'critical',
+            })
 
-        // Step 1: Get ECR login credentials
-        const loginSpinner = new cli.Spinner('Getting ECR credentials...')
-        loginSpinner.start()
+            displaySecurityResults(result)
+            policyScan = result
+          } else {
+            cli.warn('Security scan skipped (--skip-security-scan)\n')
+          }
+          const securityDecision = enforceSecurityPolicy(config, undefined, policyScan)
+          if (!securityDecision.allowed) {
+            cli.error(`\n✗ Container deployment blocked by security policy: ${securityDecision.explanation}`)
+            cli.info(
+              'Remediate the findings or create an authorized, time-limited waiver in the Security posture center.',
+            )
+            process.exitCode = 1
+            return
+          }
+          cli.success('✓ Security policy allows this deployment\n')
 
-        const authResult = await ecr.getAuthorizationToken()
-        if (!authResult.authorizationData?.[0]) {
-          loginSpinner.fail('Failed to get ECR credentials')
-          return
-        }
+          cli.info(`Cluster: ${cluster}`)
+          cli.info(`Service: ${service}`)
+          cli.info(`Repository: ${repository}`)
+          cli.info(`Image Tag: ${imageTag}`)
+          cli.info(`Dockerfile: ${dockerfile}`)
 
-        const auth = authResult.authorizationData[0]
-        const registryEndpoint = auth.proxyEndpoint || ''
-        const registryHost = registryEndpoint.replace('https://', '')
+          const confirmed = await cli.confirm('\nDeploy container now?', true)
+          if (!confirmed) {
+            cli.info('Deployment cancelled')
+            return
+          }
 
-        loginSpinner.succeed('ECR credentials obtained')
+          const ecr = new ECRClient(region)
+          const ecs = new ECSClient(region)
 
-        // Step 2: Docker login to ECR
-        const dockerLoginSpinner = new cli.Spinner('Logging into ECR...')
-        dockerLoginSpinner.start()
+          // Step 1: Get ECR login credentials
+          const loginSpinner = new cli.Spinner('Getting ECR credentials...')
+          loginSpinner.start()
 
-        const token = auth.authorizationToken || ''
-        const decoded = Buffer.from(token, 'base64').toString('utf8')
-        const password = decoded.split(':')[1]
+          const authResult = await ecr.getAuthorizationToken()
+          if (!authResult.authorizationData?.[0]) {
+            loginSpinner.fail('Failed to get ECR credentials')
+            return
+          }
 
-        // Run docker login
-        const { spawn } = await import('child_process')
-        const dockerLogin = spawn('docker', ['login', '--username', 'AWS', '--password-stdin', registryHost], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-        })
+          const auth = authResult.authorizationData[0]
+          const registryEndpoint = auth.proxyEndpoint || ''
+          const registryHost = registryEndpoint.replace('https://', '')
 
-        dockerLogin.stdin.write(password)
-        dockerLogin.stdin.end()
+          loginSpinner.succeed('ECR credentials obtained')
 
-        await new Promise<void>((resolve, reject) => {
-          dockerLogin.on('close', (code) => {
-            if (code === 0) resolve()
-            else reject(new Error(`Docker login failed with code ${code}`))
+          // Step 2: Docker login to ECR
+          const dockerLoginSpinner = new cli.Spinner('Logging into ECR...')
+          dockerLoginSpinner.start()
+
+          const token = auth.authorizationToken || ''
+          const decoded = Buffer.from(token, 'base64').toString('utf8')
+          const password = decoded.split(':')[1]
+
+          // Run docker login
+          const { spawn } = await import('child_process')
+          const dockerLogin = spawn('docker', ['login', '--username', 'AWS', '--password-stdin', registryHost], {
+            stdio: ['pipe', 'pipe', 'pipe'],
           })
-        })
 
-        dockerLoginSpinner.succeed('Logged into ECR')
+          dockerLogin.stdin.write(password)
+          dockerLogin.stdin.end()
 
-        // Step 3: Build Docker image
-        const buildSpinner = new cli.Spinner('Building Docker image...')
-        buildSpinner.start()
-
-        const imageUri = `${registryHost}/${repository}:${imageTag}`
-
-        const dockerBuild = spawn('docker', ['build', '-t', imageUri, '-f', dockerfile, context], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-        })
-
-        await new Promise<void>((resolve, reject) => {
-          let stderr = ''
-          dockerBuild.stderr.on('data', (data) => { stderr += data.toString() })
-          dockerBuild.on('close', (code) => {
-            if (code === 0) resolve()
-            else reject(new Error(`Docker build failed: ${stderr}`))
+          await new Promise<void>((resolve, reject) => {
+            dockerLogin.on('close', (code) => {
+              if (code === 0) resolve()
+              else reject(new Error(`Docker login failed with code ${code}`))
+            })
           })
-        })
 
-        buildSpinner.succeed('Docker image built')
+          dockerLoginSpinner.succeed('Logged into ECR')
 
-        // Step 4: Push to ECR
-        const pushSpinner = new cli.Spinner('Pushing image to ECR...')
-        pushSpinner.start()
+          // Step 3: Build Docker image
+          const buildSpinner = new cli.Spinner('Building Docker image...')
+          buildSpinner.start()
 
-        const dockerPush = spawn('docker', ['push', imageUri], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-        })
+          const imageUri = `${registryHost}/${repository}:${imageTag}`
 
-        await new Promise<void>((resolve, reject) => {
-          let stderr = ''
-          dockerPush.stderr.on('data', (data) => { stderr += data.toString() })
-          dockerPush.on('close', (code) => {
-            if (code === 0) resolve()
-            else reject(new Error(`Docker push failed: ${stderr}`))
+          const dockerBuild = spawn('docker', ['build', '-t', imageUri, '-f', dockerfile, context], {
+            stdio: ['pipe', 'pipe', 'pipe'],
           })
-        })
 
-        pushSpinner.succeed('Image pushed to ECR')
+          await new Promise<void>((resolve, reject) => {
+            let stderr = ''
+            dockerBuild.stderr.on('data', (data) => {
+              stderr += data.toString()
+            })
+            dockerBuild.on('close', (code) => {
+              if (code === 0) resolve()
+              else reject(new Error(`Docker build failed: ${stderr}`))
+            })
+          })
 
-        // Step 5: Update ECS service
-        const updateSpinner = new cli.Spinner('Updating ECS service...')
-        updateSpinner.start()
+          buildSpinner.succeed('Docker image built')
 
-        await ecs.updateService({
-          cluster,
-          service,
-          forceNewDeployment: forceDeployment,
-        })
+          // Step 4: Push to ECR
+          const pushSpinner = new cli.Spinner('Pushing image to ECR...')
+          pushSpinner.start()
 
-        updateSpinner.succeed('ECS service updated')
+          const dockerPush = spawn('docker', ['push', imageUri], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+          })
 
-        // Step 6: Wait for deployment (if requested)
-        if (shouldWait) {
-          const waitSpinner = new cli.Spinner('Waiting for deployment to stabilize...')
-          waitSpinner.start()
+          await new Promise<void>((resolve, reject) => {
+            let stderr = ''
+            dockerPush.stderr.on('data', (data) => {
+              stderr += data.toString()
+            })
+            dockerPush.on('close', (code) => {
+              if (code === 0) resolve()
+              else reject(new Error(`Docker push failed: ${stderr}`))
+            })
+          })
 
-          await ecs.waitForServiceStable(cluster, service)
+          pushSpinner.succeed('Image pushed to ECR')
 
-          waitSpinner.succeed('Deployment stabilized')
+          let imageSha256: string | undefined
+          const dockerInspect = spawn('docker', ['image', 'inspect', '--format={{.Id}}', imageUri], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+          const [inspectCode, inspectStdout] = await Promise.all([
+            new Promise<number | null>((resolve) => dockerInspect.on('close', resolve)),
+            new Response(dockerInspect.stdout).text(),
+          ])
+          if (inspectCode === 0) {
+            const candidate = inspectStdout.trim()
+            if (/^sha256:[a-f0-9]{64}$/i.test(candidate)) imageSha256 = candidate
+          }
+
+          const releaseDecision = await enforceContainerReleaseSecurity(config, {
+            imageRef: imageUri,
+            imageSha256,
+            artifactRoot: context,
+            invocationId: releaseInvocationId,
+            startedAt: releaseStartedAt,
+          })
+          if (!releaseDecision.allowed) {
+            cli.error(`\n✗ ECS service update blocked by release security policy: ${releaseDecision.explanation}`)
+            cli.info(
+              'The image remains in ECR for investigation. Remediate and rebuild it, or create an authorized, time-limited waiver.',
+            )
+            process.exitCode = 1
+            return
+          }
+          cli.success('✓ Release security policy allows the ECS service update\n')
+
+          // Step 5: Update ECS service
+          const updateSpinner = new cli.Spinner('Updating ECS service...')
+          updateSpinner.start()
+
+          await ecs.updateService({
+            cluster,
+            service,
+            forceNewDeployment: forceDeployment,
+          })
+
+          updateSpinner.succeed('ECS service updated')
+
+          // Step 6: Wait for deployment (if requested)
+          if (shouldWait) {
+            const waitSpinner = new cli.Spinner('Waiting for deployment to stabilize...')
+            waitSpinner.start()
+
+            await ecs.waitForServiceStable(cluster, service)
+
+            waitSpinner.succeed('Deployment stabilized')
+          }
+
+          cli.success('\nContainer deployment complete!')
+          cli.info(`\nImage: ${imageUri}`)
+          cli.info(`Cluster: ${cluster}`)
+          cli.info(`Service: ${service}`)
+        } catch (error: any) {
+          cli.error(`Deployment failed: ${error.message}`)
+          process.exitCode = 1
         }
-
-        cli.success('\nContainer deployment complete!')
-        cli.info(`\nImage: ${imageUri}`)
-        cli.info(`Cluster: ${cluster}`)
-        cli.info(`Service: ${service}`)
-      }
-      catch (error: any) {
-        cli.error(`Deployment failed: ${error.message}`)
-      }
-    })
+      },
+    )
 }
 
 /**
@@ -1943,15 +2295,14 @@ async function loadEnvironmentFile(environment: string): Promise<(() => Promise<
     stage: ['stage', 'staging'],
     staging: ['staging', 'stage'],
   }
-  const candidates = (envAliases[environment] || [environment]).map(e => `${cwd}/.env.${e}`)
-  const envFile = candidates.find(f => existsSync(f))
+  const candidates = (envAliases[environment] || [environment]).map((e) => `${cwd}/.env.${e}`)
+  const envFile = candidates.find((f) => existsSync(f))
 
   if (!envFile) {
     if (existsSync(targetEnv)) {
       cli.warn(`No .env.${environment} found, falling back to .env`)
-    }
-    else {
-      cli.error(`No .env.${environment} or .env file found`)
+    } else {
+      cli.info(`No .env.${environment} or .env file found; using the existing process environment`)
     }
     return null
   }
@@ -2036,22 +2387,14 @@ async function reconcileServerDns(
   config: any,
   appPublicIp: string | undefined,
   dnsProviderName: string | undefined,
+  appPublicIpv6?: string,
 ): Promise<void> {
-  if (!dnsProviderName)
-    return // opt-in — no DNS provider configured, nothing to do
+  if (!dnsProviderName) return // opt-in — no DNS provider configured, nothing to do
 
-  const sites = config.sites || {}
-  // Server-served sites: an explicit deploy:'server', or a legacy `start` site.
   // Bucket sites (S3/CloudFront) are handled by deployStaticSitesWithExternalDns.
-  const domains = new Set<string>()
-  for (const site of Object.values<any>(sites)) {
-    if (!site?.domain || site.redirect)
-      continue
-    if (site.deploy === 'server' || site.start)
-      domains.add(site.domain)
-  }
-  if (domains.size === 0)
-    return
+  // Redirect-only sites still terminate on this box and therefore need DNS.
+  const domains = collectServerDnsDomains(config.sites || {})
+  if (domains.size === 0) return
   if (!appPublicIp) {
     cli.warn('DNS: no app server IP resolved — skipping A-record reconciliation.')
     return
@@ -2060,8 +2403,7 @@ async function reconcileServerDns(
   let dnsConfig
   try {
     dnsConfig = resolveDnsProviderConfig(dnsProviderName)
-  }
-  catch (error) {
+  } catch (error) {
     cli.warn(`DNS: ${error instanceof Error ? error.message : String(error)}`)
     cli.info(`Point each site domain at ${appPublicIp} manually.`)
     return
@@ -2074,29 +2416,132 @@ async function reconcileServerDns(
   // Let the zone id from cloud.config.ts stand in for AWS_HOSTED_ZONE_ID.
   if (dnsConfig.provider === 'route53') {
     const configHostedZoneId = config.infrastructure?.dns?.hostedZoneId
-    if (configHostedZoneId && !dnsConfig.hostedZoneId)
-      dnsConfig.hostedZoneId = configHostedZoneId
+    if (configHostedZoneId && !dnsConfig.hostedZoneId) dnsConfig.hostedZoneId = configHostedZoneId
   }
 
   const dnsProvider = createDnsProvider(dnsConfig)
   const configuredZone = config.infrastructure?.dns?.domain as string | undefined
-  cli.step(`Reconciling DNS: ${domains.size} A record(s) → ${appPublicIp} via ${dnsProviderName}...`)
+  const ipv6 = normalizePublicIpv6(appPublicIpv6)
+  const families = ipv6 ? 'A/AAAA' : 'A'
+  cli.step(`Reconciling DNS: ${domains.size} ${families} record(s) → ${appPublicIp} via ${dnsProviderName}...`)
   for (const domain of domains) {
     // The zone is the registrable apex (config `dns.domain` wins; otherwise the
     // last two labels — good enough for `sub.example.com`).
-    const zone = configuredZone && domain.endsWith(configuredZone)
-      ? configuredZone
-      : domain.split('.').slice(-2).join('.')
+    const zone =
+      configuredZone && domain.endsWith(configuredZone) ? configuredZone : domain.split('.').slice(-2).join('.')
     try {
-      const res = await dnsProvider.upsertRecord(zone, { name: domain, type: 'A', content: appPublicIp, ttl: 300 })
-      if (res.success)
-        cli.success(`  ✓ ${domain} A → ${appPublicIp}`)
-      else
-        cli.warn(`  ⚠ ${domain}: ${res.message} — set the A record manually.`)
+      // Shared with the framework's deploy path so the upsert / stale-cleanup /
+      // verify rules — and the IPv4-vs-IPv6 split — live in exactly one place.
+      // Writing only A records here left a dual-stack box with stale AAAA
+      // records that dual-stack clients prefer, sending them to a dead address.
+      const report = await reconcileAddressRecords({ provider: dnsProvider, zone, fqdn: domain, ipv4: appPublicIp, ipv6 })
+      for (const record of report.published) cli.success(`  ✓ ${record.fqdn} ${record.type} → ${record.content}`)
+      for (const warning of report.warnings) cli.warn(`  ⚠ ${domain}: ${warning}`)
+    } catch (error) {
+      cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the address record manually.`)
     }
-    catch (error) {
-      cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the A record manually.`)
+  }
+}
+
+/**
+ * Publish `infrastructure.dns.records` — the records a deploy cannot infer:
+ * mail (MX, SPF, DMARC, autodiscover), verification tokens, third-party CNAMEs.
+ *
+ * Opt-in with the same `infrastructure.dns.provider` the address pass uses, and
+ * upsert-only: nothing outside the declared set is ever removed. Failures are
+ * reported per record rather than aborting — this runs after the release is
+ * live, and one rejected TXT should not read as a failed deploy.
+ */
+async function reconcileConfiguredDnsRecords(config: any, dnsProviderName: string | undefined): Promise<void> {
+  const declared = config.infrastructure?.dns?.records as any[] | undefined
+  if (!dnsProviderName || !declared?.length) return
+
+  const zone = config.infrastructure?.dns?.domain as string | undefined
+  if (!zone) {
+    cli.warn('DNS records: infrastructure.dns.domain is not set — skipping declared records.')
+    return
+  }
+
+  let dnsConfig
+  try {
+    dnsConfig = resolveDnsProviderConfig(dnsProviderName)
+  } catch (error) {
+    cli.warn(`DNS records: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+  if (!dnsConfig) {
+    cli.warn(`DNS records: provider '${dnsProviderName}' is not configured — skipping.`)
+    return
+  }
+
+  const provider = createDnsProvider(dnsConfig)
+  const records = resolveDeclaredRecords(declared, zone)
+  cli.step(`Reconciling ${records.length} declared DNS record(s) on ${zone}...`)
+
+  try {
+    const report = await reconcileDeclaredRecords({ provider, zone, records })
+    for (const outcome of report.outcomes) {
+      const { record, action } = outcome
+      const label = `${record.type} ${record.name} -> ${record.content.slice(0, 60)}`
+      if (action === 'failed') cli.warn(`  ⚠ ${label}: ${outcome.message || 'failed'}`)
+      else if (action === 'unchanged') cli.info(`  = ${label}`)
+      else cli.success(`  ✓ ${label} (${action})`)
     }
+    for (const warning of report.warnings) cli.warn(`  ⚠ ${warning}`)
+  } catch (error) {
+    cli.warn(`DNS records: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * Reconcile the Cloudflare proxy CDN in front of a compute box.
+ *
+ * Opt-in via `infrastructure.compute.proxy.cdn.provider === 'cloudflare'`, and
+ * deliberately non-fatal: it runs after the release is already live, so a
+ * plan-gated zone setting or a too-narrow API token is worth reporting loudly
+ * without turning a successful deploy into a failed one.
+ */
+async function reconcileCloudflareCdnForDeploy(
+  config: any,
+  appPublicIp: string | undefined,
+  appPublicIpv6?: string,
+): Promise<void> {
+  const { plan, errors } = resolveCloudflareCdnPlan(config)
+  for (const error of errors) cli.warn(`Cloudflare CDN: ${error}`)
+  if (!plan) return
+
+  if (!appPublicIp) {
+    cli.warn('Cloudflare CDN: no app server IP resolved — skipping.')
+    return
+  }
+
+  cli.step(`Cloudflare CDN: reconciling ${plan.hosts.length} host(s) on ${plan.zone}...`)
+  const provider = new CloudflareProvider(plan.apiToken, { zoneId: plan.zoneId, accountId: plan.accountId })
+
+  try {
+    const report = await reconcileCloudflareCdn({
+      provider,
+      zone: plan.zone,
+      hosts: plan.hosts,
+      ipv4: appPublicIp,
+      ipv6: normalizePublicIpv6(appPublicIpv6),
+      proxied: plan.proxied,
+      settings: plan.settings,
+      cache: plan.cache,
+      originGuard: plan.originGuard,
+      purge: plan.purge,
+      skipOriginProbe: plan.skipOriginProbe,
+    })
+
+    for (const record of report.records)
+      cli.success(`  ✓ ${record.host} ${record.type} → ${record.content}${record.proxied ? ' (proxied)' : ' (DNS-only)'}`)
+    for (const setting of report.settingsChanged) cli.info(`  ✓ ${setting.id}: ${JSON.stringify(setting.from)} → ${JSON.stringify(setting.to)}`)
+    if (report.cacheRules > 0) cli.success(`  ✓ ${report.cacheRules} cache rule(s) applied`)
+    if (report.originGuard) cli.success('  ✓ origin guard header applied')
+    if (report.purged) cli.success('  ✓ edge cache purged')
+    for (const warning of report.warnings) cli.warn(`  ⚠ ${warning}`)
+  } catch (error) {
+    cli.warn(`Cloudflare CDN: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -2121,26 +2566,49 @@ async function deployStaticSitesWithExternalDns(
     return
   }
 
-  // Get DNS provider config from environment
-  const dnsConfig = resolveDnsProviderConfig(dnsProviderName)
-  if (!dnsConfig) {
-    cli.error(`DNS provider '${dnsProviderName}' is not configured. Please set the required environment variables.`)
-    cli.info('\nFor Cloudflare: CLOUDFLARE_API_TOKEN')
-    cli.info('For Porkbun: PORKBUN_API_KEY, PORKBUN_SECRET_KEY')
-    cli.info('For GoDaddy: GODADDY_API_KEY, GODADDY_API_SECRET')
-    return
-  }
+  // The DNS provider is resolved on first use, not up front.
+  //
+  // Only sites that ship to a bucket reach it — every other site is skipped in
+  // the loop below. Resolving eagerly meant a project whose sites are all
+  // server-deployed had to supply DNS credentials for work this function was
+  // never going to do, and the deploy died before packaging anything. It also
+  // made the guidance below unreachable: resolveDnsProviderConfig THROWS for
+  // the providers whose credentials are missing rather than returning null, so
+  // the operator got a stack trace instead of the list of variables to set.
+  let resolvedDns: { config: DnsProviderConfig, provider: DnsProvider } | null = null
+  let dnsUnavailable = false
 
-  // Merge config-level DNS settings (e.g., hostedZoneId from cloud.config.ts)
-  // so users don't have to set AWS_HOSTED_ZONE_ID just to point at an existing zone.
-  if (dnsConfig.provider === 'route53') {
-    const configHostedZoneId = config.infrastructure?.dns?.hostedZoneId
-    if (configHostedZoneId && !dnsConfig.hostedZoneId) {
-      dnsConfig.hostedZoneId = configHostedZoneId
+  const requireDns = (): { config: DnsProviderConfig, provider: DnsProvider } | null => {
+    if (resolvedDns || dnsUnavailable) return resolvedDns
+
+    let dnsConfig: DnsProviderConfig | null = null
+    try {
+      dnsConfig = resolveDnsProviderConfig(dnsProviderName)
+    } catch (err: any) {
+      cli.error(err.message)
     }
-  }
 
-  const dnsProvider = createDnsProvider(dnsConfig)
+    if (!dnsConfig) {
+      cli.error(`DNS provider '${dnsProviderName}' is not configured. Please set the required environment variables.`)
+      cli.info('\nFor Cloudflare: CLOUDFLARE_API_TOKEN')
+      cli.info('For Porkbun: PORKBUN_API_KEY, PORKBUN_SECRET_KEY')
+      cli.info('For GoDaddy: GODADDY_API_KEY, GODADDY_API_SECRET')
+      dnsUnavailable = true
+      return null
+    }
+
+    // Merge config-level DNS settings (e.g., hostedZoneId from cloud.config.ts)
+    // so users don't have to set AWS_HOSTED_ZONE_ID just to point at an existing zone.
+    if (dnsConfig.provider === 'route53') {
+      const configHostedZoneId = config.infrastructure?.dns?.hostedZoneId
+      if (configHostedZoneId && !dnsConfig.hostedZoneId) {
+        dnsConfig.hostedZoneId = configHostedZoneId
+      }
+    }
+
+    resolvedDns = { config: dnsConfig, provider: createDnsProvider(dnsConfig) }
+    return resolvedDns
+  }
 
   for (const siteName of siteNames) {
     const siteConfig = sites[siteName]
@@ -2149,15 +2617,20 @@ async function deployStaticSitesWithExternalDns(
       continue
     }
 
-    // Skip sites the user EXPLICITLY targeted at the server (deploy:'server') —
-    // those are handled by the compute path (systemd app or static site shipped
-    // to /var/www), not S3+CloudFront. Backward-compat: a legacy site with `start` and NO
-    // explicit `deploy` still gets its static front here (unchanged behavior);
-    // only an explicit deploy:'server' opts out of the bucket path.
-    if (siteConfig.deploy === 'server') {
-      cli.info(`Site '${siteName}' is deploy:'server' — handled by the compute path, skipping static (bucket) deploy.`)
+    // The same resolver drives validation, compute packaging, and this bucket
+    // pipeline. In particular, `start` infers a server app even when `deploy`
+    // is omitted; sending that site through CloudFront first both double-
+    // deployed it and made Hetzner deployments depend on AWS credentials.
+    if (!shipsToBucket(siteConfig)) {
+      const kind = resolveSiteKind(siteConfig)
+      cli.info(`Site '${siteName}' is ${kind} — handled outside the static bucket pipeline.`)
       continue
     }
+
+    // First bucket site: this is the point where DNS credentials are genuinely
+    // needed, so this is where they are demanded.
+    const dns = requireDns()
+    if (!dns) return
 
     const domain = siteConfig.domain
     if (!domain) {
@@ -2182,8 +2655,7 @@ async function deployStaticSitesWithExternalDns(
           cwd: process.cwd(),
         })
         cli.success('Build completed successfully')
-      }
-      catch (err: any) {
+      } catch (err: any) {
         cli.error(`Build failed: ${err.message}`)
         continue
       }
@@ -2200,7 +2672,7 @@ async function deployStaticSitesWithExternalDns(
 
     // Check for existing DNS records
     cli.step('Checking existing DNS records...')
-    const existingRecords = await dnsProvider.listRecords(domain)
+    const existingRecords = await dns.provider.listRecords(domain)
 
     if (existingRecords.success && existingRecords.records.length > 0) {
       // Look for existing CNAME records that might be pointing to Netlify or other providers
@@ -2208,9 +2680,9 @@ async function deployStaticSitesWithExternalDns(
       const subdomain = domainParts.length > 2 ? domainParts[0] : '@'
       const rootDomain = domainParts.slice(-2).join('.')
 
-      const existingCname = existingRecords.records.find(r =>
-        r.type === 'CNAME' &&
-        (r.name === domain || r.name === subdomain || r.name === `${subdomain}.${rootDomain}`)
+      const existingCname = existingRecords.records.find(
+        (r) =>
+          r.type === 'CNAME' && (r.name === domain || r.name === subdomain || r.name === `${subdomain}.${rootDomain}`),
       )
 
       if (existingCname) {
@@ -2222,8 +2694,7 @@ async function deployStaticSitesWithExternalDns(
         if (isCloudFront) {
           cli.info(`Domain already points to CloudFront: ${existingCname.content}`)
           cli.info('Proceeding with file upload...')
-        }
-else {
+        } else {
           const providerName = isNetlify ? 'Netlify' : isVercel ? 'Vercel' : 'another provider'
 
           cli.warn(`\nExisting CNAME record detected:`)
@@ -2234,7 +2705,7 @@ else {
             cli.info('Deploying will update this record to point to AWS CloudFront.')
           }
 
-          const proceed = autoConfirm || await cli.confirm(`\nUpdate DNS record to point to AWS CloudFront?`, true)
+          const proceed = autoConfirm || (await cli.confirm(`\nUpdate DNS record to point to AWS CloudFront?`, true))
           if (!proceed) {
             cli.info('Deployment cancelled')
             continue
@@ -2242,7 +2713,7 @@ else {
 
           // Delete the old CNAME record before deploying
           cli.step(`Removing old ${providerName} CNAME record...`)
-          const deleteResult = await dnsProvider.deleteRecord(domain, {
+          const deleteResult = await dns.provider.deleteRecord(domain, {
             name: existingCname.name,
             type: 'CNAME',
             content: existingCname.content,
@@ -2250,8 +2721,7 @@ else {
 
           if (deleteResult.success) {
             cli.success(`Removed CNAME: ${existingCname.name} -> ${existingCname.content}`)
-          }
-else {
+          } else {
             cli.warn(`Could not remove old record: ${deleteResult.message}`)
             cli.info('The deployment will attempt to update it instead.')
           }
@@ -2300,7 +2770,12 @@ else {
     // Deploy the static site
     cli.step('Deploying to AWS (S3 + CloudFront)...')
 
-    const siteStackName = resolveSiteStackName(config, siteName, siteConfig, environment as 'production' | 'staging' | 'development')
+    const siteStackName = resolveSiteStackName(
+      config,
+      siteName,
+      siteConfig,
+      environment as 'production' | 'staging' | 'development',
+    )
     const siteResourceName = resolveSiteResourceName(config, siteName)
 
     cli.info(`Stack: ${siteStackName}`)
@@ -2310,23 +2785,28 @@ else {
       stackName: siteStackName,
       domain,
       region,
-      bucket: resolveSiteBucketName(config.project.slug, environment as 'production' | 'staging' | 'development', siteName, siteConfig.bucket),
+      bucket: resolveSiteBucketName(
+        config.project.slug,
+        environment as 'production' | 'staging' | 'development',
+        siteName,
+        siteConfig.bucket,
+      ),
       sourceDir: deploySourceDir,
       certificateArn: siteConfig.certificateArn,
-      dnsProvider: dnsConfig,
+      dnsProvider: dns.config,
       skipDnsVerification,
       passthroughUrls: hasInstallScript,
       dynamicApp: !!config.infrastructure?.compute?.cloudFrontOriginDomain,
       computeOriginDomain: config.infrastructure?.compute?.cloudFrontOriginDomain,
-      computeOriginPort: config.infrastructure?.compute?.cloudFrontOriginPort
-        ?? (config.infrastructure as { api?: { port?: number } })?.api?.port
-        ?? 3008,
+      computeOriginPort:
+        config.infrastructure?.compute?.cloudFrontOriginPort ??
+        (config.infrastructure as { api?: { port?: number } })?.api?.port ??
+        3008,
       computeOriginId: config.infrastructure?.compute?.cloudFrontOriginId ?? `${config.project.slug}-site-ec2`,
       onProgress: (stage, detail) => {
         if (stage === 'infrastructure') {
           cli.step(detail || 'Setting up infrastructure...')
-        }
-else if (stage === 'upload') {
+        } else if (stage === 'upload') {
           // Show upload progress without spamming
           if (detail?.includes('/') && !detail.includes('1/')) {
             const match = detail.match(/(\d+)\/(\d+)/)
@@ -2337,11 +2817,9 @@ else if (stage === 'upload') {
               }
             }
           }
-        }
-else if (stage === 'invalidate') {
+        } else if (stage === 'invalidate') {
           cli.step('Invalidating CDN cache...')
-        }
-else if (stage === 'complete') {
+        } else if (stage === 'complete') {
           // Handled below
         }
       },
@@ -2355,25 +2833,26 @@ else if (stage === 'complete') {
 
     if (result.success) {
       cli.success('\nDeployment successful!')
-      const filesInfo = (result as any).filesSkipped > 0
-        ? `${result.filesUploaded} uploaded, ${(result as any).filesSkipped} unchanged`
-        : `${result.filesUploaded}`
+      const filesInfo =
+        (result as any).filesSkipped > 0
+          ? `${result.filesUploaded} uploaded, ${(result as any).filesSkipped} unchanged`
+          : `${result.filesUploaded}`
 
-      const installInfo = hasInstallScript
-        ? `\nInstall: curl -fsSL https://${result.domain} | bash`
-        : ''
+      const installInfo = hasInstallScript ? `\nInstall: curl -fsSL https://${result.domain} | bash` : ''
 
-      cli.box(`Site Deployed!
+      cli.box(
+        `Site Deployed!
 
 Domain: https://${result.domain}
 CloudFront: ${result.distributionDomain}
 Bucket: ${result.bucket}
 Files: ${filesInfo}${installInfo}
 
-Your site is now live at https://${result.domain}`, 'green')
-    }
-else {
-      cli.error(`\nDeployment failed: ${result.message}`)
+Your site is now live at https://${result.domain}`,
+        'green',
+      )
+    } else {
+      throw new Error(result.message || `Site '${siteName}' deployment failed`)
     }
   }
 }

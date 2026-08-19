@@ -37,18 +37,15 @@ async function resolveHandler(): Promise<FetchHandler> {
     try {
       mod = await import(`${TASK_ROOT}/${file}${ext}`)
       break
-    }
-    catch {
+    } catch {
       // try the next extension
     }
   }
-  if (!mod)
-    throw new Error(`Cannot load handler module "${file}" from ${TASK_ROOT}`)
+  if (!mod) throw new Error(`Cannot load handler module "${file}" from ${TASK_ROOT}`)
 
   const candidate = mod[exportName] ?? mod.default?.[exportName] ?? mod.default
   const fn = typeof candidate === 'function' ? candidate : candidate?.fetch
-  if (typeof fn !== 'function')
-    throw new TypeError(`Handler "${HANDLER}" did not resolve to a fetch function`)
+  if (typeof fn !== 'function') throw new TypeError(`Handler "${HANDLER}" did not resolve to a fetch function`)
 
   return fn as FetchHandler
 }
@@ -65,11 +62,9 @@ function eventToRequest(event: any): Request {
 
   const headers = new Headers()
   for (const [k, v] of Object.entries(event.headers ?? {})) {
-    if (typeof v === 'string')
-      headers.set(k, v)
+    if (typeof v === 'string') headers.set(k, v)
   }
-  if (Array.isArray(event.cookies) && event.cookies.length > 0)
-    headers.set('cookie', event.cookies.join('; '))
+  if (Array.isArray(event.cookies) && event.cookies.length > 0) headers.set('cookie', event.cookies.join('; '))
 
   let body: string | Uint8Array | undefined
   if (event.body != null && method !== 'GET' && method !== 'HEAD')
@@ -86,10 +81,8 @@ async function responseToResult(response: Response): Promise<any> {
   const headers: Record<string, string> = {}
   const cookies: string[] = []
   response.headers.forEach((value, key) => {
-    if (key.toLowerCase() === 'set-cookie')
-      cookies.push(value)
-    else
-      headers[key] = value
+    if (key.toLowerCase() === 'set-cookie') cookies.push(value)
+    else headers[key] = value
   })
 
   const isText = TEXT_TYPES.test(response.headers.get('content-type') ?? '')
@@ -97,8 +90,7 @@ async function responseToResult(response: Response): Promise<any> {
   let isBase64Encoded = false
   if (isText) {
     body = await response.text()
-  }
-  else {
+  } else {
     body = Buffer.from(await response.arrayBuffer()).toString('base64')
     isBase64Encoded = true
   }
@@ -124,8 +116,7 @@ async function main(): Promise<void> {
   let handler: FetchHandler
   try {
     handler = await resolveHandler()
-  }
-  catch (err: any) {
+  } catch (err: any) {
     await postJson('/init/error', {
       errorType: 'Runtime.InitError',
       errorMessage: String(err?.message ?? err),
@@ -146,8 +137,7 @@ async function main(): Promise<void> {
       const event = await next.json()
       const response = await handler(eventToRequest(event))
       await postJson(`/invocation/${requestId}/response`, await responseToResult(response))
-    }
-    catch (err: any) {
+    } catch (err: any) {
       await postJson(`/invocation/${requestId}/error`, {
         errorType: err?.name ?? 'Error',
         errorMessage: String(err?.message ?? err),

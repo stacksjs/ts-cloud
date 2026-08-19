@@ -2,22 +2,14 @@
  * Cloudflare DNS Provider
  * API documentation: https://developers.cloudflare.com/api/resources/dns/subresources/records/
  */
-
-import type {
-  CreateRecordResult,
-  DeleteRecordResult,
-  DnsProvider,
-  DnsRecord,
-  DnsRecordResult,
-  DnsRecordType,
-  ListRecordsResult,
-} from './types'
+import type { CreateRecordResult, DeleteRecordResult, DnsProvider, DnsRecord, DnsRecordResult, DnsRecordType, ListRecordsResult } from './types'
+import { PROXIABLE_RECORD_TYPES } from './types'
 
 const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4'
 
 interface CloudflareApiResponse<T = any> {
   success: boolean
-  errors: Array<{ code: number, message: string }>
+  errors: Array<{ code: number; message: string }>
   messages: string[]
   result: T
   result_info?: {
@@ -58,27 +50,80 @@ interface CloudflareZone {
   name_servers: string[]
 }
 
+/** One entry of `GET /zones/{id}/settings` (and the body of a per-setting PATCH). */
+export interface CloudflareZoneSetting {
+  id: string
+  value: unknown
+  editable?: boolean
+  modified_on?: string | null
+}
+
+/**
+ * A rule inside a phase entrypoint ruleset (cache rules, transform rules, …).
+ * Only the fields ts-cloud writes or has to preserve are modelled.
+ */
+export interface CloudflareRule {
+  id?: string
+  action: string
+  expression: string
+  description?: string
+  enabled?: boolean
+  action_parameters?: Record<string, unknown>
+}
+
+interface CloudflareRuleset {
+  id: string
+  name: string
+  kind: string
+  phase: string
+  rules?: CloudflareRule[]
+}
+
+/**
+ * Marker that identifies a rule as ts-cloud's, carried in the rule description.
+ *
+ * Cloudflare's phase entrypoints are replace-only — `PUT .../entrypoint` sets
+ * the WHOLE rule list — so writing our rules naively would delete every rule a
+ * human added in the dashboard. Tagging ours lets a reconcile rewrite only what
+ * it owns and carry everything else through untouched.
+ */
+export const CLOUDFLARE_MANAGED_RULE_PREFIX = '[ts-cloud]'
+
+/** Ruleset phases ts-cloud manages rules in. */
+export type CloudflareRulesetPhase = 'http_request_cache_settings' | 'http_request_late_transform'
+
+export interface CloudflareProviderOptions {
+  /** Zone id, so the API token can be scoped to a single zone. */
+  zoneId?: string
+  /** Account id, for account-scoped resources. */
+  accountId?: string
+}
+
 export class CloudflareProvider implements DnsProvider {
   readonly name = 'cloudflare'
   private apiToken: string
+  /** Zone name → zone id. */
   private zoneCache: Map<string, string> = new Map()
+  /** Zone id configured up front (single-zone token); resolved to a name on first use. */
+  private readonly configuredZoneId?: string
+  private readonly accountId?: string
+  /** Name of {@link configuredZoneId}, learned once from the API. */
+  private configuredZoneName?: string
 
-  constructor(apiToken: string) {
+  constructor(apiToken: string, options: CloudflareProviderOptions = {}) {
     this.apiToken = apiToken
+    this.configuredZoneId = options.zoneId
+    this.accountId = options.accountId
   }
 
   /**
    * Make an authenticated API request to Cloudflare
    */
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    body?: any,
-  ): Promise<CloudflareApiResponse<T>> {
+  private async request<T>(method: string, endpoint: string, body?: any): Promise<CloudflareApiResponse<T>> {
     const url = `${CLOUDFLARE_API_URL}${endpoint}`
 
     const headers: Record<string, string> = {
-      'Authorization': `Bearer ${this.apiToken}`,
+      Authorization: `Bearer ${this.apiToken}`,
       'Content-Type': 'application/json',
     }
 
@@ -92,10 +137,10 @@ export class CloudflareProvider implements DnsProvider {
     }
 
     const response = await fetch(url, options)
-    const data = await response.json() as CloudflareApiResponse<T>
+    const data = (await response.json()) as CloudflareApiResponse<T>
 
     if (!data.success) {
-      const errorMessages = data.errors.map(e => e.message).join(', ')
+      const errorMessages = data.errors.map((e) => e.message).join(', ')
       throw new Error(`Cloudflare API error: ${errorMessages}`)
     }
 
@@ -115,63 +160,119 @@ export class CloudflareProvider implements DnsProvider {
   }
 
   /**
-   * Get Zone ID for a domain (with caching)
+   * Resolve the zone a hostname belongs to, as both id and name.
+   *
+   * A configured {@link CloudflareProviderOptions.zoneId} is tried first and is
+   * the only path that works with a single-zone API token: the by-name fallback
+   * calls `GET /zones?name=…`, an ACCOUNT-level listing that a zone-scoped token
+   * cannot read — it returns an empty list, which is indistinguishable from "the
+   * domain isn't here" unless you already know the token is narrow.
+   *
+   * Resolving the configured zone also yields its real name, which is what makes
+   * record naming correct for multi-label suffixes (`example.co.uk`). The
+   * fallback can only guess the apex from the last two labels.
    */
-  private async getZoneId(domain: string): Promise<string> {
-    const rootDomain = this.getRootDomain(domain)
+  private async resolveZone(domain: string): Promise<{ id: string, name: string }> {
+    const hostname = domain.replace(/\.$/, '').toLowerCase()
 
-    // Check cache first
+    if (this.configuredZoneId) {
+      const name = await this.resolveConfiguredZoneName()
+      if (name && (hostname === name || hostname.endsWith(`.${name}`))) {
+        return { id: this.configuredZoneId, name }
+      }
+    }
+
+    const rootDomain = this.getRootDomain(hostname)
     const cached = this.zoneCache.get(rootDomain)
     if (cached) {
-      return cached
+      return { id: cached, name: rootDomain }
     }
 
     // Look up zone by name
-    const response = await this.request<CloudflareZone[]>(
-      'GET',
-      `/zones?name=${encodeURIComponent(rootDomain)}`,
-    )
+    const response = await this.request<CloudflareZone[]>('GET', `/zones?name=${encodeURIComponent(rootDomain)}`)
 
     if (!response.result || response.result.length === 0) {
-      throw new Error(`Zone not found for domain: ${rootDomain}`)
+      throw new Error(
+        `Zone not found for domain: ${rootDomain}. ` +
+          `If the API token is scoped to a single zone, set its zone id (CLOUDFLARE_ZONE_ID) — ` +
+          `zone lookup by name needs account-wide Zone:Read.`,
+      )
     }
 
     const zoneId = response.result[0].id
     this.zoneCache.set(rootDomain, zoneId)
-    return zoneId
+    return { id: zoneId, name: response.result[0].name || rootDomain }
+  }
+
+  /** Name of the configured zone, fetched once. Undefined if it can't be read. */
+  private async resolveConfiguredZoneName(): Promise<string | undefined> {
+    if (!this.configuredZoneId) return undefined
+    if (this.configuredZoneName) return this.configuredZoneName
+
+    try {
+      const response = await this.request<CloudflareZone>('GET', `/zones/${this.configuredZoneId}`)
+      const name = response.result?.name?.toLowerCase()
+      if (!name) return undefined
+      this.configuredZoneName = name
+      this.zoneCache.set(name, this.configuredZoneId)
+      return name
+    } catch {
+      // A token without Zone:Read still manages DNS fine; fall back to by-name.
+      return undefined
+    }
+  }
+
+  /**
+   * Get Zone ID for a domain (with caching)
+   */
+  private async getZoneId(domain: string): Promise<string> {
+    return (await this.resolveZone(domain)).id
   }
 
   /**
    * Get the full record name
    * Cloudflare stores records with full domain names
+   *
+   * `zoneName` is the zone's actual name as Cloudflare reports it, not a guess
+   * from the requested domain — see {@link resolveZone}.
    */
-  private getFullRecordName(name: string, domain: string): string {
-    const rootDomain = this.getRootDomain(domain)
+  private getFullRecordName(name: string, zoneName: string): string {
     const cleanName = name.replace(/\.$/, '')
 
-    // If name is empty or equals root domain, return root domain
-    if (!cleanName || cleanName === rootDomain || cleanName === '@') {
-      return rootDomain
+    // If name is empty or equals the zone apex, return the apex
+    if (!cleanName || cleanName === zoneName || cleanName === '@') {
+      return zoneName
     }
 
-    // If name already ends with root domain, return as-is
-    if (cleanName.endsWith(`.${rootDomain}`)) {
+    // If name already ends with the zone name, return as-is
+    if (cleanName.endsWith(`.${zoneName}`)) {
       return cleanName
     }
 
-    // Otherwise, append root domain
-    return `${cleanName}.${rootDomain}`
+    // Otherwise, append the zone name
+    return `${cleanName}.${zoneName}`
   }
 
   /**
    * Convert DnsRecord to Cloudflare record format
    */
-  private toCloudflareRecord(record: DnsRecord, domain: string): Partial<CloudflareRecord> {
+  private toCloudflareRecord(record: DnsRecord, zoneName: string, proxied?: boolean): Partial<CloudflareRecord> {
     const cfRecord: Partial<CloudflareRecord> = {
       type: record.type,
-      name: this.getFullRecordName(record.name, domain),
+      name: this.getFullRecordName(record.name, zoneName),
       content: record.content || record.value || '',
       ttl: record.ttl || 1, // 1 = automatic in Cloudflare
+    }
+
+    // Proxying is only meaningful — and only ACCEPTED — for A/AAAA/CNAME.
+    // Sending `proxied` on a TXT/MX/CAA record is a hard API error, so the flag
+    // is dropped for those types rather than forwarded.
+    const desiredProxy = proxied ?? record.proxied
+    if (desiredProxy !== undefined && PROXIABLE_RECORD_TYPES.has(record.type)) {
+      cfRecord.proxied = desiredProxy
+      // A proxied record is served from Cloudflare's edge, so its TTL is the
+      // edge's to choose; Cloudflare rejects anything but "automatic" (1) here.
+      if (desiredProxy) cfRecord.ttl = 1
     }
 
     // MX records require priority
@@ -200,27 +301,23 @@ export class CloudflareProvider implements DnsProvider {
       content: record.content,
       ttl: record.ttl,
       priority: record.priority,
+      proxied: record.proxied,
     }
   }
 
   async createRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult> {
     try {
-      const zoneId = await this.getZoneId(domain)
-      const cfRecord = this.toCloudflareRecord(record, domain)
+      const zone = await this.resolveZone(domain)
+      const cfRecord = this.toCloudflareRecord(record, zone.name)
 
-      const response = await this.request<CloudflareRecord>(
-        'POST',
-        `/zones/${zoneId}/dns_records`,
-        cfRecord,
-      )
+      const response = await this.request<CloudflareRecord>('POST', `/zones/${zone.id}/dns_records`, cfRecord)
 
       return {
         success: true,
         id: response.result.id,
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -230,23 +327,33 @@ export class CloudflareProvider implements DnsProvider {
 
   async upsertRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult> {
     try {
-      const zoneId = await this.getZoneId(domain)
-      const fullName = this.getFullRecordName(record.name, domain)
+      const zone = await this.resolveZone(domain)
+      const fullName = this.getFullRecordName(record.name, zone.name)
 
       // First, try to find existing record
       const existingResponse = await this.request<CloudflareRecord[]>(
         'GET',
-        `/zones/${zoneId}/dns_records?type=${record.type}&name=${encodeURIComponent(fullName)}`,
+        `/zones/${zone.id}/dns_records?type=${record.type}&name=${encodeURIComponent(fullName)}`,
       )
 
-      const cfRecord = this.toCloudflareRecord(record, domain)
+      const existing = existingResponse.result?.[0]
 
-      if (existingResponse.result && existingResponse.result.length > 0) {
+      // An upsert that says nothing about proxying must not CHANGE proxying.
+      //
+      // Cloudflare's record update is a full PUT: any field left out is reset to
+      // its default, and the default for `proxied` is `false`. Every deploy
+      // re-upserts the box's address records, so without carrying the current
+      // value forward a single deploy would grey-cloud the site — dropping the
+      // CDN, exposing the origin IP, and doing it silently, since the record
+      // still resolves and the site still loads.
+      const proxied = record.proxied ?? existing?.proxied
+      const cfRecord = this.toCloudflareRecord(record, zone.name, proxied)
+
+      if (existing) {
         // Update existing record
-        const existingId = existingResponse.result[0].id
         const response = await this.request<CloudflareRecord>(
           'PUT',
-          `/zones/${zoneId}/dns_records/${existingId}`,
+          `/zones/${zone.id}/dns_records/${existing.id}`,
           cfRecord,
         )
 
@@ -258,19 +365,14 @@ export class CloudflareProvider implements DnsProvider {
       }
 
       // Create new record
-      const response = await this.request<CloudflareRecord>(
-        'POST',
-        `/zones/${zoneId}/dns_records`,
-        cfRecord,
-      )
+      const response = await this.request<CloudflareRecord>('POST', `/zones/${zone.id}/dns_records`, cfRecord)
 
       return {
         success: true,
         id: response.result.id,
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       // If upsert fails, try create
       return this.createRecord(domain, record)
     }
@@ -278,8 +380,9 @@ export class CloudflareProvider implements DnsProvider {
 
   async deleteRecord(domain: string, record: DnsRecord): Promise<DeleteRecordResult> {
     try {
-      const zoneId = await this.getZoneId(domain)
-      const fullName = this.getFullRecordName(record.name, domain)
+      const zone = await this.resolveZone(domain)
+      const zoneId = zone.id
+      const fullName = this.getFullRecordName(record.name, zone.name)
 
       // Find the record to delete
       const existingResponse = await this.request<CloudflareRecord[]>(
@@ -295,9 +398,7 @@ export class CloudflareProvider implements DnsProvider {
       }
 
       // Find matching record by content
-      const matchingRecord = existingResponse.result.find(
-        r => r.content === record.content,
-      )
+      const matchingRecord = existingResponse.result.find((r) => r.content === record.content)
 
       if (!matchingRecord) {
         return {
@@ -306,17 +407,13 @@ export class CloudflareProvider implements DnsProvider {
         }
       }
 
-      await this.request(
-        'DELETE',
-        `/zones/${zoneId}/dns_records/${matchingRecord.id}`,
-      )
+      await this.request('DELETE', `/zones/${zoneId}/dns_records/${matchingRecord.id}`)
 
       return {
         success: true,
         message: 'Record deleted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -339,28 +436,23 @@ export class CloudflareProvider implements DnsProvider {
 
       // Paginate through all records
       while (hasMore) {
-        const response = await this.request<CloudflareRecord[]>(
-          'GET',
-          `${endpoint}&page=${page}`,
-        )
+        const response = await this.request<CloudflareRecord[]>('GET', `${endpoint}&page=${page}`)
 
         allRecords.push(...(response.result || []))
 
         if (response.result_info) {
           hasMore = page < response.result_info.total_pages
           page++
-        }
-        else {
+        } else {
           hasMore = false
         }
       }
 
       return {
         success: true,
-        records: allRecords.map(r => this.fromCloudflareRecord(r)),
+        records: allRecords.map((r) => this.fromCloudflareRecord(r)),
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         records: [],
@@ -373,8 +465,7 @@ export class CloudflareProvider implements DnsProvider {
     try {
       await this.getZoneId(domain)
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -389,25 +480,20 @@ export class CloudflareProvider implements DnsProvider {
       let hasMore = true
 
       while (hasMore) {
-        const response = await this.request<CloudflareZone[]>(
-          'GET',
-          `/zones?per_page=50&page=${page}`,
-        )
+        const response = await this.request<CloudflareZone[]>('GET', `/zones?per_page=50&page=${page}`)
 
         allZones.push(...(response.result || []))
 
         if (response.result_info) {
           hasMore = page < response.result_info.total_pages
           page++
-        }
-        else {
+        } else {
           hasMore = false
         }
       }
 
-      return allZones.map(z => z.name)
-    }
-    catch {
+      return allZones.map((z) => z.name)
+    } catch {
       return []
     }
   }
@@ -424,10 +510,7 @@ export class CloudflareProvider implements DnsProvider {
   } | null> {
     try {
       const zoneId = await this.getZoneId(domain)
-      const response = await this.request<CloudflareZone>(
-        'GET',
-        `/zones/${zoneId}`,
-      )
+      const response = await this.request<CloudflareZone>('GET', `/zones/${zoneId}`)
 
       return {
         id: response.result.id,
@@ -436,8 +519,7 @@ export class CloudflareProvider implements DnsProvider {
         nameServers: response.result.name_servers,
         paused: response.result.paused,
       }
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -445,12 +527,15 @@ export class CloudflareProvider implements DnsProvider {
   /**
    * Purge cache for a domain (Cloudflare-specific)
    */
-  async purgeCache(domain: string, options?: {
-    purgeEverything?: boolean
-    files?: string[]
-    tags?: string[]
-    hosts?: string[]
-  }): Promise<boolean> {
+  async purgeCache(
+    domain: string,
+    options?: {
+      purgeEverything?: boolean
+      files?: string[]
+      tags?: string[]
+      hosts?: string[]
+    },
+  ): Promise<boolean> {
     try {
       const zoneId = await this.getZoneId(domain)
 
@@ -458,8 +543,7 @@ export class CloudflareProvider implements DnsProvider {
 
       if (options?.purgeEverything) {
         body.purge_everything = true
-      }
-      else {
+      } else {
         if (options?.files) body.files = options.files
         if (options?.tags) body.tags = options.tags
         if (options?.hosts) body.hosts = options.hosts
@@ -470,15 +554,10 @@ export class CloudflareProvider implements DnsProvider {
         body.purge_everything = true
       }
 
-      await this.request(
-        'POST',
-        `/zones/${zoneId}/purge_cache`,
-        body,
-      )
+      await this.request('POST', `/zones/${zoneId}/purge_cache`, body)
 
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -489,8 +568,9 @@ export class CloudflareProvider implements DnsProvider {
    */
   async getRecordProxyStatus(domain: string, record: DnsRecord): Promise<boolean | null> {
     try {
-      const zoneId = await this.getZoneId(domain)
-      const fullName = this.getFullRecordName(record.name, domain)
+      const zone = await this.resolveZone(domain)
+      const zoneId = zone.id
+      const fullName = this.getFullRecordName(record.name, zone.name)
 
       const response = await this.request<CloudflareRecord[]>(
         'GET',
@@ -498,13 +578,12 @@ export class CloudflareProvider implements DnsProvider {
       )
 
       if (response.result && response.result.length > 0) {
-        const matchingRecord = response.result.find(r => r.content === record.content)
+        const matchingRecord = response.result.find((r) => r.content === record.content)
         return matchingRecord?.proxied ?? null
       }
 
       return null
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -514,8 +593,9 @@ export class CloudflareProvider implements DnsProvider {
    */
   async setRecordProxyStatus(domain: string, record: DnsRecord, proxied: boolean): Promise<boolean> {
     try {
-      const zoneId = await this.getZoneId(domain)
-      const fullName = this.getFullRecordName(record.name, domain)
+      const zone = await this.resolveZone(domain)
+      const zoneId = zone.id
+      const fullName = this.getFullRecordName(record.name, zone.name)
 
       // Find the record
       const response = await this.request<CloudflareRecord[]>(
@@ -527,22 +607,156 @@ export class CloudflareProvider implements DnsProvider {
         return false
       }
 
-      const matchingRecord = response.result.find(r => r.content === record.content)
+      const matchingRecord = response.result.find((r) => r.content === record.content)
       if (!matchingRecord) {
         return false
       }
 
       // Update the record with new proxy status
-      await this.request(
-        'PATCH',
-        `/zones/${zoneId}/dns_records/${matchingRecord.id}`,
-        { proxied },
-      )
+      await this.request('PATCH', `/zones/${zoneId}/dns_records/${matchingRecord.id}`, { proxied })
 
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
+
+  /**
+   * Public zone id for a hostname — the entry point for the Cloudflare-specific
+   * work (settings, rulesets, purge) that sits outside the DnsProvider contract.
+   */
+  async zoneIdFor(domain: string): Promise<string> {
+    return this.getZoneId(domain)
+  }
+
+  /** Account id this provider was configured with, if any. */
+  get account(): string | undefined {
+    return this.accountId
+  }
+
+  /**
+   * Read every zone setting, keyed by setting id.
+   *
+   * Used to make {@link applyZoneSettings} a real reconcile: settings that
+   * already hold the desired value are left alone, so a deploy reports what it
+   * actually changed instead of rewriting the whole zone every time.
+   */
+  async getZoneSettings(domain: string): Promise<Record<string, unknown>> {
+    const zoneId = await this.getZoneId(domain)
+    const response = await this.request<CloudflareZoneSetting[]>('GET', `/zones/${zoneId}/settings`)
+
+    const settings: Record<string, unknown> = {}
+    for (const setting of response.result || []) settings[setting.id] = setting.value
+    return settings
+  }
+
+  /**
+   * Apply zone settings, skipping any that already match.
+   *
+   * Returns one entry per setting that was actually written, plus the failures.
+   * Failures are collected rather than thrown: zone settings are largely
+   * independent, several are plan-gated (a Free zone rejects `min_tls_version`
+   * above 1.0 on some plans, `http3` needs the feature enabled), and one
+   * unavailable toggle must not abort a deploy that has already shipped code.
+   */
+  async applyZoneSettings(
+    domain: string,
+    desired: Record<string, unknown>,
+  ): Promise<{ changed: Array<{ id: string, from: unknown, to: unknown }>, failed: Array<{ id: string, error: string }> }> {
+    const zoneId = await this.getZoneId(domain)
+    const current = await this.getZoneSettings(domain).catch(() => ({}) as Record<string, unknown>)
+
+    const changed: Array<{ id: string, from: unknown, to: unknown }> = []
+    const failed: Array<{ id: string, error: string }> = []
+
+    for (const [id, value] of Object.entries(desired)) {
+      if (value === undefined) continue
+      const existing = current[id]
+      if (existing !== undefined && deepEqual(existing, value)) continue
+
+      try {
+        await this.request('PATCH', `/zones/${zoneId}/settings/${id}`, { value })
+        changed.push({ id, from: existing, to: value })
+      }
+      catch (error) {
+        failed.push({ id, error: error instanceof Error ? error.message : String(error) })
+      }
+    }
+
+    return { changed, failed }
+  }
+
+  /**
+   * Read the rules currently in a phase entrypoint ruleset.
+   *
+   * A zone that has never had a rule in this phase has no entrypoint at all and
+   * the API answers 404, which is a normal empty state rather than a failure.
+   */
+  async getPhaseRules(domain: string, phase: CloudflareRulesetPhase): Promise<CloudflareRule[]> {
+    const zoneId = await this.getZoneId(domain)
+    try {
+      const response = await this.request<CloudflareRuleset>('GET', `/zones/${zoneId}/rulesets/phases/${phase}/entrypoint`)
+      return response.result?.rules || []
+    }
+    catch {
+      return []
+    }
+  }
+
+  /**
+   * Replace ts-cloud's rules in a phase while preserving everyone else's.
+   *
+   * Cloudflare only exposes a whole-list PUT for a phase entrypoint, so a naive
+   * write deletes every rule someone added in the dashboard. Rules ts-cloud owns
+   * are tagged in their description with {@link CLOUDFLARE_MANAGED_RULE_PREFIX};
+   * this drops exactly those, appends the new ones, and carries the rest through
+   * in their original order.
+   *
+   * Passing an empty `rules` removes ts-cloud's rules from the phase.
+   */
+  async putManagedPhaseRules(
+    domain: string,
+    phase: CloudflareRulesetPhase,
+    rules: CloudflareRule[],
+  ): Promise<{ success: boolean, message?: string }> {
+    try {
+      const zoneId = await this.getZoneId(domain)
+      const existing = await this.getPhaseRules(domain, phase)
+      const foreign = existing.filter(rule => !(rule.description || '').startsWith(CLOUDFLARE_MANAGED_RULE_PREFIX))
+
+      const managed = rules.map(rule => ({
+        ...rule,
+        description: rule.description?.startsWith(CLOUDFLARE_MANAGED_RULE_PREFIX)
+          ? rule.description
+          : `${CLOUDFLARE_MANAGED_RULE_PREFIX} ${rule.description || phase}`,
+      }))
+
+      // Strip server-assigned ids from preserved rules: Cloudflare rejects a PUT
+      // that reuses ids, treating the list as a fresh definition of the phase.
+      const payload = [...foreign, ...managed].map(({ id: _id, ...rule }) => rule)
+
+      await this.request('PUT', `/zones/${zoneId}/rulesets/phases/${phase}/entrypoint`, { rules: payload })
+      return { success: true }
+    }
+    catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) }
+    }
+  }
+}
+
+/** Structural comparison for zone-setting values (objects like HSTS, plain scalars). */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== typeof b || a === null || b === null) return false
+  if (typeof a !== 'object') return false
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    return a.every((item, index) => deepEqual(item, b[index]))
+  }
+
+  const aRecord = a as Record<string, unknown>
+  const bRecord = b as Record<string, unknown>
+  // Cloudflare echoes settings back with extra keys, so compare only what was asked for.
+  return Object.keys(bRecord).every(key => deepEqual(aRecord[key], bRecord[key]))
 }

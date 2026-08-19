@@ -9,6 +9,7 @@ import {
   certDomainsForConfig,
   DEFAULT_ACME_WEBROOT,
   deriveRouteId,
+  gatewayHostnames,
   mergeRpxFragments,
   normalizeRoutePath,
   normalizeSiteRedirect,
@@ -79,19 +80,19 @@ describe('buildRpxConfig', () => {
   it('maps a multi-site domain into app + static routes by path', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
 
-    const stacks = config.proxies.filter(r => r.to === 'stacksjs.com')
+    const stacks = config.proxies.filter((r) => r.to === 'stacksjs.com')
     expect(stacks).toHaveLength(3)
 
-    const api = stacks.find(r => r.path === '/api')!
+    const api = stacks.find((r) => r.path === '/api')!
     expect(api.from).toBe('localhost:3000')
     expect(api.static).toBeUndefined()
 
-    const docs = stacks.find(r => r.path === '/docs')!
+    const docs = stacks.find((r) => r.path === '/docs')!
     expect(docs.static).toMatchObject({ dir: '/var/www/app-docs/current' })
     expect(docs.from).toBeUndefined()
     expect(docs.cleanUrls).toBe(true)
 
-    const root = stacks.find(r => r.path === undefined)!
+    const root = stacks.find((r) => r.path === undefined)!
     expect(root.static).toMatchObject({ dir: '/var/www/app-public/current' })
   })
 
@@ -106,31 +107,36 @@ describe('buildRpxConfig', () => {
     }
     const config = buildRpxConfig(spaSites, { proxy: rpxProxy })
 
-    const app = config.proxies.find(r => r.to === 'everything.stacksjs.com')!
+    const app = config.proxies.find((r) => r.to === 'everything.stacksjs.com')!
     expect(app.static).toMatchObject({ spa: true, pathRewriteStyle: 'directory' })
     expect(typeof app.static).toBe('object')
 
-    const flat = config.proxies.find(r => r.to === 'flat.example.com')!
+    const flat = config.proxies.find((r) => r.to === 'flat.example.com')!
     expect(flat.static).toMatchObject({ spa: false, pathRewriteStyle: 'flat' })
     expect(flat.cleanUrls).toBe(false)
   })
 
   it('groups routes by domain, most-specific path first', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
-    const stacks = config.proxies.filter(r => r.to === 'stacksjs.com')
+    const stacks = config.proxies.filter((r) => r.to === 'stacksjs.com')
     // /api and /docs (len 4) before the root default (undefined).
     expect(stacks[stacks.length - 1].path).toBeUndefined()
   })
 
   it('includes a second domain and excludes bucket sites', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
-    expect(config.proxies.some(r => r.to === 'app.other.com' && r.from === 'localhost:4000')).toBe(true)
-    expect(config.proxies.some(r => r.to === 'marketing.example.com')).toBe(false)
+    expect(config.proxies.some((r) => r.to === 'app.other.com' && r.from === 'localhost:4000')).toBe(true)
+    expect(config.proxies.some((r) => r.to === 'marketing.example.com')).toBe(false)
   })
 
   it('points TLS at the default certs dir and disables hosts management', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     expect(config.productionCerts.certsDir).toBe('/etc/rpx/certs')
+    expect(config.productionCerts.certsDirServerNames?.sort()).toEqual([
+      'app.other.com',
+      'stacksjs.com',
+      'www.stacksjs.com',
+    ])
     expect(config.https).toBe(true)
     expect(config.hostsManagement).toBe(false)
     expect(config.onDemandTls).toBeUndefined()
@@ -152,6 +158,34 @@ describe('buildRpxConfig', () => {
     // app.other.com isn't apex (3 labels), so it gets no www counterpart.
     expect(config.onDemandTls?.allowedSuffixes.sort()).toEqual(['app.other.com', 'stacksjs.com', 'www.stacksjs.com'])
     expect(config.onDemandTls?.certsDir).toBe('/etc/bun-gateway/certs')
+    // Emitted explicitly, never left undefined: tlsx picks the production ACME
+    // directory only on an explicit `false` and otherwise issues staging certs
+    // that chain to an untrusted root while reporting success.
+    expect(config.onDemandTls?.staging).toBe(false)
+  })
+
+  it('emits staging: true only when explicitly opted in', () => {
+    const config = buildRpxConfig(sites, {
+      proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsStaging: true },
+    })
+    expect(config.onDemandTls?.staging).toBe(true)
+  })
+
+  it('mergeRpxFragments lets production win a staging disagreement', () => {
+    const frag = (domain: string, staging: boolean) =>
+      buildRpxConfig({ main: { domain, start: 'x', port: 3000 } }, {
+        proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsStaging: staging },
+      })
+
+    // A tenant that wants a real cert must not be handed a staging one just
+    // because a co-tenant on the same box is only smoke-testing its wiring.
+    expect(mergeRpxFragments([frag('a.com', true), frag('b.com', false)]).onDemandTls?.staging).toBe(false)
+    expect(mergeRpxFragments([frag('a.com', true), frag('b.com', true)]).onDemandTls?.staging).toBe(true)
+
+    // A fragment written before the flag existed counts as production.
+    const legacy = frag('c.com', true)
+    delete (legacy.onDemandTls as { staging?: boolean }).staging
+    expect(mergeRpxFragments([legacy]).onDemandTls?.staging).toBe(false)
   })
 
   it('enables origin lockdown from proxy.cdn when a secret is set', () => {
@@ -180,32 +214,44 @@ describe('buildRpxConfig', () => {
   })
 
   it('skips a server-app without a port (not routable)', () => {
-    const config = buildRpxConfig({
-      noport: { domain: 'x.com', root: '.output', start: 'bun run s.ts' },
-    }, { proxy: rpxProxy })
+    const config = buildRpxConfig(
+      {
+        noport: { domain: 'x.com', root: '.output', start: 'bun run s.ts' },
+      },
+      { proxy: rpxProxy },
+    )
     expect(config.proxies).toHaveLength(0)
   })
 
   it('respects a custom wwwRoot for static routes', () => {
-    const config = buildRpxConfig({
-      docs: { domain: 'd.com', deploy: 'server', root: 'dist' },
-    }, { proxy: rpxProxy, wwwRoot: '/srv/sites' })
+    const config = buildRpxConfig(
+      {
+        docs: { domain: 'd.com', deploy: 'server', root: 'dist' },
+      },
+      { proxy: rpxProxy, wwwRoot: '/srv/sites' },
+    )
     expect(config.proxies[0].static).toMatchObject({ dir: '/srv/sites/app-docs/current' })
   })
 
   it('maps a redirect site to a redirect route (no upstream, no static)', () => {
-    const config = buildRpxConfig({
-      altApex: { domain: 'very-good-adblock.org', redirect: 'https://verygoodadblock.org' },
-      altWww: { domain: 'www.very-good-adblock.org', redirect: { to: 'https://verygoodadblock.org', status: 308, preservePath: false } },
-    }, { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'hello@stacksjs.com' } })
+    const config = buildRpxConfig(
+      {
+        altApex: { domain: 'very-good-adblock.org', redirect: 'https://verygoodadblock.org' },
+        altWww: {
+          domain: 'www.very-good-adblock.org',
+          redirect: { to: 'https://verygoodadblock.org', status: 308, preservePath: false },
+        },
+      },
+      { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'hello@stacksjs.com' } },
+    )
 
-    const apex = config.proxies.find(r => r.to === 'very-good-adblock.org')!
+    const apex = config.proxies.find((r) => r.to === 'very-good-adblock.org')!
     expect(apex.redirect).toEqual({ to: 'https://verygoodadblock.org' })
     expect(apex.from).toBeUndefined()
     expect(apex.static).toBeUndefined()
     expect(apex.id).toBe('very-good-adblock.org')
 
-    const www = config.proxies.find(r => r.to === 'www.very-good-adblock.org')!
+    const www = config.proxies.find((r) => r.to === 'www.very-good-adblock.org')!
     expect(www.redirect).toEqual({ to: 'https://verygoodadblock.org', status: 308, preservePath: false })
 
     // Redirect domains still get a cert via the on-demand allowlist.
@@ -215,11 +261,14 @@ describe('buildRpxConfig', () => {
 
   describe('auto-adds a www redirect', () => {
     it('adds www.<domain> -> https://<domain> for an apex domain with no explicit www route', () => {
-      const config = buildRpxConfig({
-        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
-      }, { proxy: rpxProxy })
+      const config = buildRpxConfig(
+        {
+          main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+        },
+        { proxy: rpxProxy },
+      )
 
-      const www = config.proxies.find(r => r.to === 'www.example.com')!
+      const www = config.proxies.find((r) => r.to === 'www.example.com')!
       expect(www).toBeDefined()
       expect(www.redirect).toEqual({ to: 'https://example.com' })
       expect(www.from).toBeUndefined()
@@ -227,42 +276,57 @@ describe('buildRpxConfig', () => {
     })
 
     it('does not add a www route for a non-apex domain', () => {
-      const config = buildRpxConfig({
-        app: { domain: 'app.other.com', root: '.output', start: 'bun run app.ts', port: 4000 },
-      }, { proxy: rpxProxy })
-      expect(config.proxies.some(r => r.to.startsWith('www.'))).toBe(false)
+      const config = buildRpxConfig(
+        {
+          app: { domain: 'app.other.com', root: '.output', start: 'bun run app.ts', port: 4000 },
+        },
+        { proxy: rpxProxy },
+      )
+      expect(config.proxies.some((r) => r.to.startsWith('www.'))).toBe(false)
     })
 
     it('does not duplicate an explicit www route already declared by another site', () => {
-      const config = buildRpxConfig({
-        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
-        wwwRedirect: { domain: 'www.example.com', redirect: { to: 'https://example.com', status: 308 } },
-      }, { proxy: rpxProxy })
+      const config = buildRpxConfig(
+        {
+          main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+          wwwRedirect: { domain: 'www.example.com', redirect: { to: 'https://example.com', status: 308 } },
+        },
+        { proxy: rpxProxy },
+      )
 
-      const wwwRoutes = config.proxies.filter(r => r.to === 'www.example.com')
+      const wwwRoutes = config.proxies.filter((r) => r.to === 'www.example.com')
       expect(wwwRoutes).toHaveLength(1)
       // The explicit site's own redirect config wins, untouched.
       expect(wwwRoutes[0].redirect).toEqual({ to: 'https://example.com', status: 308 })
     })
 
     it('skips an already-www domain (no www.www.<domain>)', () => {
-      const config = buildRpxConfig({
-        site: { domain: 'www.example.com', deploy: 'server', root: 'dist' },
-      }, { proxy: rpxProxy })
-      expect(config.proxies.some(r => r.to.startsWith('www.www.'))).toBe(false)
+      const config = buildRpxConfig(
+        {
+          site: { domain: 'www.example.com', deploy: 'server', root: 'dist' },
+        },
+        { proxy: rpxProxy },
+      )
+      expect(config.proxies.some((r) => r.to.startsWith('www.www.'))).toBe(false)
     })
 
     it('is opted out with proxy.autoWww: false', () => {
-      const config = buildRpxConfig({
-        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
-      }, { proxy: { engine: 'rpx', autoWww: false } })
-      expect(config.proxies.some(r => r.to === 'www.example.com')).toBe(false)
+      const config = buildRpxConfig(
+        {
+          main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+        },
+        { proxy: { engine: 'rpx', autoWww: false } },
+      )
+      expect(config.proxies.some((r) => r.to === 'www.example.com')).toBe(false)
     })
 
     it('includes the auto-added www domain in the on-demand TLS allowlist', () => {
-      const config = buildRpxConfig({
-        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
-      }, { proxy: { engine: 'rpx', onDemandTls: true } })
+      const config = buildRpxConfig(
+        {
+          main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+        },
+        { proxy: { engine: 'rpx', onDemandTls: true } },
+      )
       expect(config.onDemandTls?.allowedSuffixes.sort()).toEqual(['example.com', 'www.example.com'])
     })
   })
@@ -284,10 +348,10 @@ describe('buildRpxLbConfig', () => {
     ]
     const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
 
-    const api = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!
+    const api = config.proxies.find((r) => r.to === 'stacksjs.com' && r.path === '/api')!
     expect(api.from).toEqual(['10.0.0.2:3000', '10.0.0.3:3000'])
 
-    const app2 = config.proxies.find(r => r.to === 'app.other.com')!
+    const app2 = config.proxies.find((r) => r.to === 'app.other.com')!
     expect(app2.from).toEqual(['10.0.0.2:4000', '10.0.0.3:4000'])
   })
 
@@ -297,14 +361,14 @@ describe('buildRpxLbConfig', () => {
       { publicIp: '203.0.113.9' }, // no private IP — e.g. network attach failed
     ]
     const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
-    const api = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!
+    const api = config.proxies.find((r) => r.to === 'stacksjs.com' && r.path === '/api')!
     expect(api.from).toEqual(['10.0.0.2:3000', '203.0.113.9:3000'])
   })
 
   it('leaves server-static and redirect routes unaffected (no from array)', () => {
     const appBoxes = [{ privateIp: '10.0.0.2' }]
     const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
-    const docs = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/docs')!
+    const docs = config.proxies.find((r) => r.to === 'stacksjs.com' && r.path === '/docs')!
     expect(docs.static).toMatchObject({ dir: '/var/www/app-docs/current' })
     expect(docs.from).toBeUndefined()
   })
@@ -316,18 +380,22 @@ describe('buildRpxLbConfig', () => {
     }
     const appBoxes = [{ privateIp: '10.0.0.2' }, { privateIp: '10.0.0.3' }]
     const config = buildRpxLbConfig(sites, appBoxes, { proxy })
-    const api = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!
+    const api = config.proxies.find((r) => r.to === 'stacksjs.com' && r.path === '/api')!
     expect(api.loadBalancer).toEqual({ strategy: 'least-connections', healthCheck: { path: '/healthz', interval: 5 } })
 
     // A single-upstream (single-box) route never carries loadBalancer tuning.
     const single = buildRpxConfig(sites, { proxy })
-    expect(single.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!.loadBalancer).toBeUndefined()
+    expect(single.proxies.find((r) => r.to === 'stacksjs.com' && r.path === '/api')!.loadBalancer).toBeUndefined()
   })
 
   it('skips a server-app without a port, same as buildRpxConfig', () => {
-    const config = buildRpxLbConfig({
-      noport: { domain: 'x.com', root: '.output', start: 'bun run s.ts' },
-    }, [{ privateIp: '10.0.0.2' }], { proxy: rpxProxy })
+    const config = buildRpxLbConfig(
+      {
+        noport: { domain: 'x.com', root: '.output', start: 'bun run s.ts' },
+      },
+      [{ privateIp: '10.0.0.2' }],
+      { proxy: rpxProxy },
+    )
     expect(config.proxies).toHaveLength(0)
   })
 })
@@ -338,39 +406,58 @@ describe('normalizeSiteRedirect', () => {
   })
 
   it('keeps explicit status and preservePath', () => {
-    expect(normalizeSiteRedirect({ to: 'https://example.com', status: 302, preservePath: false }))
-      .toEqual({ to: 'https://example.com', status: 302, preservePath: false })
+    expect(normalizeSiteRedirect({ to: 'https://example.com', status: 302, preservePath: false })).toEqual({
+      to: 'https://example.com',
+      status: 302,
+      preservePath: false,
+    })
   })
 })
 
 describe('resolveRouteAuth', () => {
   it('maps an enabled auth block, defaulting the username', () => {
-    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { password: 'pw' } } as SiteConfig))
-      .toEqual({ username: 'admin', password: 'pw' })
-    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { username: 'ops', password: 'pw', realm: 'Cockpit' } } as SiteConfig))
-      .toEqual({ username: 'ops', password: 'pw', realm: 'Cockpit' })
+    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { password: 'pw' } } as SiteConfig)).toEqual({
+      username: 'admin',
+      password: 'pw',
+    })
+    expect(
+      resolveRouteAuth({
+        domain: 'd',
+        root: '.',
+        auth: { username: 'ops', password: 'pw', realm: 'Cockpit' },
+      } as SiteConfig),
+    ).toEqual({ username: 'ops', password: 'pw', realm: 'Cockpit' })
   })
 
   it('returns undefined for public sites, disabled auth, or a missing password', () => {
     expect(resolveRouteAuth({ domain: 'd', root: '.' } as SiteConfig)).toBeUndefined()
-    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { enabled: false, username: 'a', password: 'p' } } as SiteConfig)).toBeUndefined()
+    expect(
+      resolveRouteAuth({
+        domain: 'd',
+        root: '.',
+        auth: { enabled: false, username: 'a', password: 'p' },
+      } as SiteConfig),
+    ).toBeUndefined()
     expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { username: 'a' } } as SiteConfig)).toBeUndefined()
   })
 })
 
 describe('buildRpxConfig auth (dashboard protection)', () => {
   it('gates a protected static site (e.g. the management dashboard) behind Basic auth', () => {
-    const config = buildRpxConfig({
-      dashboard: {
-        domain: 'dashboard.acme.com',
-        deploy: 'server',
-        type: 'static',
-        root: 'ui/dist',
-        auth: { username: 'admin', password: 's3cret', realm: 'ts-cloud' },
-      },
-    } as Record<string, SiteConfig>, { proxy: rpxProxy })
+    const config = buildRpxConfig(
+      {
+        dashboard: {
+          domain: 'dashboard.acme.com',
+          deploy: 'server',
+          type: 'static',
+          root: 'ui/dist',
+          auth: { username: 'admin', password: 's3cret', realm: 'ts-cloud' },
+        },
+      } as Record<string, SiteConfig>,
+      { proxy: rpxProxy },
+    )
 
-    const route = config.proxies.find(r => r.to === 'dashboard.acme.com')!
+    const route = config.proxies.find((r) => r.to === 'dashboard.acme.com')!
     expect(route.static).toMatchObject({ dir: '/var/www/app-dashboard/current' })
     expect(route.auth).toEqual({ username: 'admin', password: 's3cret', realm: 'ts-cloud' })
     // The credentials must survive serialization into the launcher.
@@ -378,17 +465,26 @@ describe('buildRpxConfig auth (dashboard protection)', () => {
   })
 
   it('gates a protected server-app route too', () => {
-    const config = buildRpxConfig({
-      admin: { domain: 'admin.acme.com', root: '.', start: 'bun run server.ts', port: 9000, auth: { password: 'pw' } },
-    } as Record<string, SiteConfig>, { proxy: rpxProxy })
-    const route = config.proxies.find(r => r.to === 'admin.acme.com')!
+    const config = buildRpxConfig(
+      {
+        admin: {
+          domain: 'admin.acme.com',
+          root: '.',
+          start: 'bun run server.ts',
+          port: 9000,
+          auth: { password: 'pw' },
+        },
+      } as Record<string, SiteConfig>,
+      { proxy: rpxProxy },
+    )
+    const route = config.proxies.find((r) => r.to === 'admin.acme.com')!
     expect(route.from).toBe('localhost:9000')
     expect(route.auth).toEqual({ username: 'admin', password: 'pw' })
   })
 
   it('leaves public sites without an auth field', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
-    expect(config.proxies.every(r => r.auth === undefined)).toBe(true)
+    expect(config.proxies.every((r) => r.auth === undefined)).toBe(true)
   })
 })
 
@@ -427,11 +523,18 @@ describe('buildRpxProvisionScript', () => {
     expect(script).toContain('rpx gateway assembler')
     expect(script).toContain('/opt/rpx-gateway')
     expect(script).toContain('ln -sfn /opt/rpx-gateway/node_modules /etc/rpx/node_modules')
+    expect(script).toContain('bun build --production --compile --outfile /etc/rpx/gateway.next /etc/rpx/gateway.ts')
+    expect(script).toContain('ExecStart=/etc/rpx/gateway')
+    expect(script).toContain('Environment=APP_ENV=production')
+    expect(script).toContain('Environment=NODE_ENV=production')
     expect(script).toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
     expect(script).toContain('WorkingDirectory=/opt/rpx-gateway')
     expect(script).toContain('AmbientCapabilities=CAP_NET_BIND_SERVICE')
     expect(script).toContain('systemctl disable --now bun-gateway.service')
+    expect(script).toContain('systemctl disable --now bun-gateway-renew.timer bun-gateway-renew.service')
     expect(script).toContain('systemctl disable --now ts-cloud-nginx.service')
+    expect(script).toContain('rpx-cert-renew-*.timer')
+    expect(script).toContain('[ -f "/etc/rpx/sites.d/$tenant.json" ] && continue')
     expect(script).toContain(`systemctl enable ${RPX_SERVICE_NAME}`)
     expect(script).toContain(`systemctl restart ${RPX_SERVICE_NAME}`)
   })
@@ -440,6 +543,23 @@ describe('buildRpxProvisionScript', () => {
     const config = buildRpxConfig(sites, { proxy: { engine: 'rpx', version: '0.12.0' } })
     const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', version: '0.12.0' }, config }).join('\n')
     expect(script).toContain('bun add @stacksjs/rpx@0.12.0')
+  })
+
+  it('preserves the live dashboard route during an app-only gateway reload', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({
+      proxy: rpxProxy,
+      config,
+      preserveManagementDashboardRoutes: true,
+    }).join('\n')
+
+    expect(script).toContain(`mktemp "${RPX_SITES_DIR}/app.json.candidate.XXXXXX"`)
+    expect(script).toContain('TS_CLOUD_RPX_CURRENT_FRAGMENT=/etc/rpx/sites.d/app.json')
+    expect(script).toContain('current.proxies.filter(isDashboard)')
+    expect(script).toContain('candidate.proxies = [...next, ...retained]')
+    expect(script.indexOf('candidate.proxies = [...next, ...retained]')).toBeLessThan(
+      script.indexOf(`mv -f "$__tsc_fragment_candidate" ${RPX_SITES_DIR}/app.json`),
+    )
   })
 
   // Regression: a non-atomic `cat > sites.d/<slug>.json` truncates then streams,
@@ -452,7 +572,7 @@ describe('buildRpxProvisionScript', () => {
     const script = lines.join('\n')
 
     // No `cat >` ever targets a real /etc/rpx path directly — only the temp var.
-    const directWrites = lines.filter(l => /^cat > (?!"\$__tsc_tmp")/.test(l.trim()))
+    const directWrites = lines.filter((l) => /^cat > (?!"\$__tsc_tmp")/.test(l.trim()))
     expect(directWrites).toEqual([])
 
     // The fragment + the launcher each land via an atomic rename from the temp.
@@ -465,8 +585,9 @@ describe('buildRpxProvisionScript', () => {
 
     // The launcher must be renamed into place BEFORE the gateway is (re)started,
     // or the restart reads a stale/absent launcher.
-    expect(script.lastIndexOf(`mv -f "$__tsc_tmp" ${RPX_LAUNCHER_PATH}`))
-      .toBeLessThan(script.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`))
+    expect(script.lastIndexOf(`mv -f "$__tsc_tmp" ${RPX_LAUNCHER_PATH}`)).toBeLessThan(
+      script.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`),
+    )
   })
 
   // The generated assembler must announce a dropped host instead of silently
@@ -475,6 +596,13 @@ describe('buildRpxProvisionScript', () => {
     const assembler = renderRpxAssembler()
     expect(assembler).toContain('console.error')
     expect(assembler).toContain('SKIPPING malformed fragment')
+  })
+
+  it('generates an assembler that reports duplicate route ownership', () => {
+    const assembler = renderRpxAssembler()
+    expect(assembler).toContain('const owners = new Map()')
+    expect(assembler).toContain('duplicate route')
+    expect(assembler).toContain('first declared by')
   })
 
   // A production gateway must bound stalled upstreams, or rpx's per-upstream
@@ -506,6 +634,34 @@ describe('buildRpxProvisionScript', () => {
     expect(script.indexOf('RPX_MAX_UPSTREAM_CONNS')).toBeLessThan(script.indexOf('Restart=always'))
   })
 
+  it('outranks the work it serves when the box is contended', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
+
+    // Every tenant is served through this process, so it cannot sit at the
+    // default weight of 100 alongside batch work. Where it does, a saturating
+    // background job slows every site on the host at once — a scheduling
+    // problem that presents as a network one.
+    expect(script).toContain('CPUWeight=500')
+    expect(script).toContain('IOWeight=500')
+  })
+
+  it('contains gateway memory spikes inside the rpx cgroup', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const defaults = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
+    expect(defaults).toContain('MemoryAccounting=true')
+    expect(defaults).toContain('MemoryHigh=512M')
+    expect(defaults).toContain('MemoryMax=768M')
+    expect(defaults).toContain('OOMPolicy=stop')
+
+    const custom = buildRpxProvisionScript({
+      proxy: { engine: 'rpx', memoryHigh: '640M', memoryMax: '896M' },
+      config,
+    }).join('\n')
+    expect(custom).toContain('MemoryHigh=640M')
+    expect(custom).toContain('MemoryMax=896M')
+  })
+
   // A failed `bun add` must never gut the live gateway: the install is staged
   // in a sibling dir and swapped in only on success (two atomic renames). The
   // old wipe-then-install flow left the box uninstallable on a registry hiccup,
@@ -520,11 +676,13 @@ describe('buildRpxProvisionScript', () => {
     // The live install is never wiped before the add.
     expect(script).not.toContain('rm -rf /opt/rpx-gateway/node_modules')
     // The add strictly precedes the swap…
-    expect(script.indexOf('bun add @stacksjs/rpx@latest'))
-      .toBeLessThan(script.indexOf('mv /opt/rpx-gateway /opt/rpx-gateway.prev'))
+    expect(script.indexOf('bun add @stacksjs/rpx@latest')).toBeLessThan(
+      script.indexOf('mv /opt/rpx-gateway /opt/rpx-gateway.prev'),
+    )
     // …and stale staging dirs from an interrupted prior run are cleaned first.
-    expect(script.indexOf('rm -rf /opt/rpx-gateway.next /opt/rpx-gateway.prev'))
-      .toBeLessThan(script.indexOf('bun add @stacksjs/rpx@latest'))
+    expect(script.indexOf('rm -rf /opt/rpx-gateway.next /opt/rpx-gateway.prev')).toBeLessThan(
+      script.indexOf('bun add @stacksjs/rpx@latest'),
+    )
   })
 })
 
@@ -553,11 +711,28 @@ describe('buildRpxFragmentRefreshScript', () => {
     expect(script).not.toContain('tlsx')
   })
 
+  it('can preserve the running dashboard route on a fleet fragment refresh', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxFragmentRefreshScript({
+      config,
+      slug: 'my-app',
+      preserveManagementDashboardRoutes: true,
+    }).join('\n')
+
+    expect(script).toContain('TS_CLOUD_RPX_CURRENT_FRAGMENT=/etc/rpx/sites.d/my-app.json')
+    expect(script).toContain('current.proxies.filter(isDashboard)')
+    expect(script).toContain('candidate.proxies = [...next, ...retained]')
+  })
+
   it('defaults the fragment slug to app and carries multi-upstream LB routes verbatim', () => {
-    const config = buildRpxLbConfig(sites, [
-      { privateIp: '10.0.0.11', publicIp: '203.0.113.11' },
-      { privateIp: '10.0.0.12', publicIp: '203.0.113.12' },
-    ], { proxy: rpxProxy, slug: 'my-app' })
+    const config = buildRpxLbConfig(
+      sites,
+      [
+        { privateIp: '10.0.0.11', publicIp: '203.0.113.11' },
+        { privateIp: '10.0.0.12', publicIp: '203.0.113.12' },
+      ],
+      { proxy: rpxProxy, slug: 'my-app' },
+    )
     const script = buildRpxFragmentRefreshScript({ config }).join('\n')
 
     expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/app.json`)
@@ -583,11 +758,14 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
   })
 
   it('certDomainsForConfig returns the routable FQDNs, skipping wildcards/host:port', () => {
-    const config = buildRpxConfig({
-      app: { domain: 'app.example.com', root: '.out', start: 'bun run x', port: 3000 },
-      site: { domain: 'example.com', deploy: 'server', root: 'dist' },
-      alt: { domain: 'alt.example.com', redirect: 'https://example.com' },
-    }, { proxy: tlsProxy })
+    const config = buildRpxConfig(
+      {
+        app: { domain: 'app.example.com', root: '.out', start: 'bun run x', port: 3000 },
+        site: { domain: 'example.com', deploy: 'server', root: 'dist' },
+        alt: { domain: 'alt.example.com', redirect: 'https://example.com' },
+      },
+      { proxy: tlsProxy },
+    )
     const domains = certDomainsForConfig(config)
     expect(domains).toContain('app.example.com')
     expect(domains).toContain('example.com')
@@ -603,6 +781,20 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
     expect(joined).toContain('acme:renew')
     expect(joined).toContain('--webroot')
     expect(joined).toContain(DEFAULT_ACME_WEBROOT)
+    expect(joined).toContain('while ! dns_resolves "$d"')
+    // The readiness check must consult PUBLIC resolvers, because Let's Encrypt
+    // validates from its own — gating on the box's resolver made a new record
+    // unissuable for as long as the host provider cached the zone's previous
+    // negative answer. `getent` survives only as the last-resort fallback.
+    expect(joined).toContain("DNS_RESOLVERS='1.1.1.1 8.8.8.8'")
+    expect(joined).toContain('for ns in $DNS_RESOLVERS')
+    expect(joined).toContain('getent ahosts "$d" >/dev/null 2>&1')
+    expect(joined.indexOf('for ns in $DNS_RESOLVERS')).toBeLessThan(joined.indexOf('getent ahosts "$d"'))
+    expect(joined).toContain("DNS_ATTEMPTS='24'")
+    expect(joined).toContain("DNS_DELAY_SECONDS='5'")
+    expect(joined.indexOf('wait_for_dns "$d"')).toBeLessThan(joined.indexOf('$TLSX acme:issue'))
+    expect(joined).toContain(`[ -s "$CERTS/$d.crt" ] && systemctl restart ${RPX_SERVICE_NAME}`)
+    expect(joined.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`)).toBeLessThan(joined.indexOf('acme:renew'))
     // Per-app renewal units (slug defaults to 'app').
     expect(joined).toContain('rpx-cert-renew-app.timer')
     expect(joined).toContain('hello@stacksjs.com')
@@ -619,15 +811,25 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
 })
 
 describe('per-app gateway registry (independent deploys)', () => {
-  const appA = buildRpxConfig({
-    web: { domain: 'a.com', root: '.out', start: 'bun run a', port: 3000 },
-  }, { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'a@a.com' } })
-  const appB = buildRpxConfig({
-    site: { domain: 'b.com', deploy: 'server', root: 'dist' },
-  }, { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'b@b.com' } })
+  const appA = buildRpxConfig(
+    {
+      web: { domain: 'a.com', root: '.out', start: 'bun run a', port: 3000 },
+    },
+    { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'a@a.com' } },
+  )
+  const appB = buildRpxConfig(
+    {
+      site: { domain: 'b.com', deploy: 'server', root: 'dist' },
+    },
+    { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'b@b.com' } },
+  )
 
   it('writes only THIS app fragment + the assembler — not a full config launcher', () => {
-    const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', onDemandTls: true }, config: appA, slug: 'app-a' }).join('\n')
+    const script = buildRpxProvisionScript({
+      proxy: { engine: 'rpx', onDemandTls: true },
+      config: appA,
+      slug: 'app-a',
+    }).join('\n')
     expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/app-a.json`)
     expect(script).toContain('"slug": "app-a"')
     expect(script).toContain('"to": "a.com"')
@@ -640,17 +842,22 @@ describe('per-app gateway registry (independent deploys)', () => {
 
   it('mergeRpxFragments composes two apps without dropping either app routes', () => {
     const merged = mergeRpxFragments([appA, appB])
-    const hosts = merged.proxies.map(p => p.to)
+    const hosts = merged.proxies.map((p) => p.to)
     expect(hosts).toContain('a.com')
     expect(hosts).toContain('b.com')
     expect(merged.onDemandTls?.allowedSuffixes).toContain('a.com')
     expect(merged.onDemandTls?.allowedSuffixes).toContain('b.com')
+    expect(merged.productionCerts.certsDirServerNames).toContain('a.com')
+    expect(merged.productionCerts.certsDirServerNames).toContain('b.com')
   })
 
   it('mergeRpxFragments dedupes routes by id (first writer wins)', () => {
-    const dupe = buildRpxConfig({ web: { domain: 'a.com', root: '.out', start: 'bun run a2', port: 3000 } }, { proxy: { engine: 'rpx' } })
+    const dupe = buildRpxConfig(
+      { web: { domain: 'a.com', root: '.out', start: 'bun run a2', port: 3000 } },
+      { proxy: { engine: 'rpx' } },
+    )
     const merged = mergeRpxFragments([appA, dupe])
-    expect(merged.proxies.filter(p => p.to === 'a.com')).toHaveLength(1)
+    expect(merged.proxies.filter((p) => p.to === 'a.com')).toHaveLength(1)
   })
 
   it('renderRpxAssembler reads the sites dir and starts the merged config', () => {
@@ -658,6 +865,7 @@ describe('per-app gateway registry (independent deploys)', () => {
     expect(asm).toContain('readdirSync')
     expect(asm).toContain(RPX_SITES_DIR)
     expect(asm).toContain('startProxies(config)')
+    expect(asm).toContain('certsDirServerNames')
     // Resilient: a malformed fragment is skipped (not fatal), but the skip is
     // logged loud rather than swallowed silently.
     expect(asm).toContain('continue')
@@ -680,8 +888,9 @@ describe('per-app gateway registry (independent deploys)', () => {
     const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
     expect(script).toContain(`verbose: process.env.RPX_VERBOSE !== 'false'`)
     // Written as part of the launcher heredoc, before the unit starts it.
-    expect(script.indexOf(`verbose: process.env.RPX_VERBOSE !== 'false'`))
-      .toBeLessThan(script.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`))
+    expect(script.indexOf(`verbose: process.env.RPX_VERBOSE !== 'false'`)).toBeLessThan(
+      script.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`),
+    )
   })
 })
 
@@ -718,5 +927,111 @@ describe('buildRpxLbConfig is on the package public export barrel', () => {
       expect(usesRpxProxy({})).toBe(false)
       expect(usesRpxProxy(undefined)).toBe(false)
     })
+  })
+})
+
+describe('proxy-only sites', () => {
+  it('routes the domain to the declared upstream without shipping anything', () => {
+    const config = buildRpxConfig(
+      { registry: { domain: 'registry.pantry.dev', proxyTo: 'localhost:3001' } },
+      { proxy: rpxProxy, slug: 'pantry' },
+    )
+
+    const route = config.proxies.find((r) => r.to === 'registry.pantry.dev')!
+    expect(route.from).toBe('localhost:3001')
+    expect(route.static).toBeUndefined()
+    expect(route.redirect).toBeUndefined()
+  })
+
+  it('puts the host in the TLS set, which is the whole point of the kind', () => {
+    // A proxy site exists so a service ts-cloud never deploys still gets
+    // certsDirServerNames + allowedSuffixes, and therefore the project's
+    // rpx-cert-renew units. Without this it would sit on the box's fallback cert.
+    const config = buildRpxConfig(
+      { registry: { domain: 'registry.pantry.dev', proxyTo: 'localhost:3001' } },
+      { proxy: { engine: 'rpx', onDemandTls: true }, slug: 'pantry' },
+    )
+
+    expect(config.productionCerts?.certsDirServerNames).toContain('registry.pantry.dev')
+    expect(config.onDemandTls?.allowedSuffixes).toContain('registry.pantry.dev')
+  })
+
+  it('load-balances across several upstreams', () => {
+    const config = buildRpxConfig(
+      { api: { domain: 'api.example.com', proxyTo: ['10.0.0.1:8080', '10.0.0.2:8080'] } },
+      { proxy: { engine: 'rpx', loadBalancer: { strategy: 'round-robin' } }, slug: 'app' },
+    )
+
+    const route = config.proxies.find((r) => r.to === 'api.example.com')!
+    expect(route.from).toEqual(['10.0.0.1:8080', '10.0.0.2:8080'])
+    expect(route.loadBalancer).toMatchObject({ strategy: 'round-robin' })
+  })
+
+  it('does not take the upstream from `port`, which belongs to sites ts-cloud runs', () => {
+    // `port` on a proxy site is ignored (and warned about) — the upstream is
+    // given verbatim because the service is not ts-cloud's to address.
+    const config = buildRpxConfig(
+      { registry: { domain: 'r.example.com', proxyTo: 'localhost:3001', port: 9999 } },
+      { proxy: rpxProxy, slug: 'app' },
+    )
+    expect(config.proxies.find((r) => r.to === 'r.example.com')!.from).toBe('localhost:3001')
+  })
+
+  it('emits no route when the upstream is blank', () => {
+    const config = buildRpxConfig({ broken: { domain: 'b.example.com', proxyTo: '   ' } }, { proxy: rpxProxy })
+    expect(config.proxies.find((r) => r.to === 'b.example.com')).toBeUndefined()
+  })
+})
+
+describe('gatewayHostnames', () => {
+  // The set DNS publishes and the set the gateway routes must be the same set.
+  // When they drift, a name resolves with no route and no cert of its own, and
+  // rpx answers it with the fallback certificate — on a shared box, another
+  // tenant's. This locks the two together.
+  const cases: Array<[string, Record<string, SiteConfig>]> = [
+    ['apex plus autoWww', {
+      main: { root: '.', domain: 'example.com', port: 3000, start: 'bun run start' },
+    }],
+    ['subdomain site with an explicit www', {
+      main: { root: '.', domain: 'ps1.stacksjs.com', port: 3170, start: 'bun run start' },
+      wwwMain: { domain: 'www.ps1.stacksjs.com', redirect: 'https://ps1.stacksjs.com' },
+    }],
+    ['redirect-only alias', {
+      main: { root: '.', domain: 'trifitla.stacksjs.com', port: 3140, start: 'bun run start' },
+      alias: { domain: 'trifit.stacksjs.com', redirect: 'https://trifitla.stacksjs.com' },
+    }],
+    ['loopback site contributes nothing', {
+      main: { root: '.', domain: 'example.com', port: 3000, start: 'bun run start' },
+      api: { root: '.', port: 3008, start: 'bun run api' },
+    }],
+  ]
+
+  for (const [name, sites] of cases) {
+    it(`matches the routed domains: ${name}`, () => {
+      const config = buildRpxConfig(sites, { proxy: rpxProxy })
+      expect(gatewayHostnames(sites).sort()).toEqual(certDomainsForConfig(config).sort())
+    })
+  }
+
+  it('keeps an explicitly declared www host instead of collapsing it to the apex', () => {
+    const sites: Record<string, SiteConfig> = {
+      main: { root: '.', domain: 'ps1.stacksjs.com', port: 3170, start: 'bun run start' },
+      wwwMain: { domain: 'www.ps1.stacksjs.com', redirect: 'https://ps1.stacksjs.com' },
+    }
+    expect(gatewayHostnames(sites).sort()).toEqual(['ps1.stacksjs.com', 'www.ps1.stacksjs.com'])
+  })
+
+  it('does not invent a www host for a subdomain site', () => {
+    const sites: Record<string, SiteConfig> = {
+      main: { root: '.', domain: 'campushq.stacksjs.com', port: 3160, start: 'bun run start' },
+    }
+    expect(gatewayHostnames(sites)).toEqual(['campushq.stacksjs.com'])
+  })
+
+  it('honours autoWww: false', () => {
+    const sites: Record<string, SiteConfig> = {
+      main: { root: '.', domain: 'example.com', port: 3000, start: 'bun run start' },
+    }
+    expect(gatewayHostnames(sites, { autoWww: false })).toEqual(['example.com'])
   })
 })

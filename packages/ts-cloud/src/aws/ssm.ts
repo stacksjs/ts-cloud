@@ -2,7 +2,6 @@
  * AWS SSM (Systems Manager) Parameter Store Client
  * Manages parameters and secrets using direct API calls
  */
-
 import { AWSClient } from './client'
 
 export interface Parameter {
@@ -40,7 +39,7 @@ export interface PutParameterOptions {
   KeyId?: string
   Overwrite?: boolean
   AllowedPattern?: string
-  Tags?: { Key: string, Value: string }[]
+  Tags?: { Key: string; Value: string }[]
   Tier?: 'Standard' | 'Advanced' | 'Intelligent-Tiering'
   DataType?: string
 }
@@ -313,8 +312,8 @@ export class SSMClient {
    * Describe parameters (metadata only, no values)
    */
   async describeParameters(options?: {
-    Filters?: { Key: string, Values: string[] }[]
-    ParameterFilters?: { Key: string, Option?: string, Values?: string[] }[]
+    Filters?: { Key: string; Values: string[] }[]
+    ParameterFilters?: { Key: string; Option?: string; Values?: string[] }[]
     MaxResults?: number
     NextToken?: string
   }): Promise<{
@@ -417,11 +416,7 @@ export class SSMClient {
   /**
    * Label a parameter version
    */
-  async labelParameterVersion(options: {
-    Name: string
-    ParameterVersion?: number
-    Labels: string[]
-  }): Promise<{
+  async labelParameterVersion(options: { Name: string; ParameterVersion?: number; Labels: string[] }): Promise<{
     InvalidLabels?: string[]
     ParameterVersion?: number
   }> {
@@ -458,7 +453,7 @@ export class SSMClient {
   async addTagsToResource(options: {
     ResourceType: 'Parameter'
     ResourceId: string
-    Tags: { Key: string, Value: string }[]
+    Tags: { Key: string; Value: string }[]
   }): Promise<void> {
     const params: Record<string, any> = {
       ResourceType: options.ResourceType,
@@ -509,11 +504,8 @@ export class SSMClient {
   /**
    * List tags for a parameter
    */
-  async listTagsForResource(options: {
-    ResourceType: 'Parameter'
-    ResourceId: string
-  }): Promise<{
-    TagList?: { Key: string, Value: string }[]
+  async listTagsForResource(options: { ResourceType: 'Parameter'; ResourceId: string }): Promise<{
+    TagList?: { Key: string; Value: string }[]
   }> {
     const params: Record<string, any> = {
       ResourceType: options.ResourceType,
@@ -540,11 +532,15 @@ export class SSMClient {
   /**
    * Helper: Set a string parameter
    */
-  async setString(name: string, value: string, options?: {
-    description?: string
-    overwrite?: boolean
-    tags?: { Key: string, Value: string }[]
-  }): Promise<{ Version?: number }> {
+  async setString(
+    name: string,
+    value: string,
+    options?: {
+      description?: string
+      overwrite?: boolean
+      tags?: { Key: string; Value: string }[]
+    },
+  ): Promise<{ Version?: number }> {
     return this.putParameter({
       Name: name,
       Value: value,
@@ -558,12 +554,16 @@ export class SSMClient {
   /**
    * Helper: Set a secure string parameter (encrypted)
    */
-  async setSecureString(name: string, value: string, options?: {
-    description?: string
-    overwrite?: boolean
-    kmsKeyId?: string
-    tags?: { Key: string, Value: string }[]
-  }): Promise<{ Version?: number }> {
+  async setSecureString(
+    name: string,
+    value: string,
+    options?: {
+      description?: string
+      overwrite?: boolean
+      kmsKeyId?: string
+      tags?: { Key: string; Value: string }[]
+    },
+  ): Promise<{ Version?: number }> {
     return this.putParameter({
       Name: name,
       Value: value,
@@ -636,7 +636,7 @@ export class SSMClient {
    */
   async sendCommand(options: {
     InstanceIds?: string[]
-    Targets?: Array<{ Key: string, Values: string[] }>
+    Targets?: Array<{ Key: string; Values: string[] }>
     DocumentName: string
     Parameters?: Record<string, string[]>
     TimeoutSeconds?: number
@@ -706,10 +706,7 @@ export class SSMClient {
   /**
    * Get command invocation result
    */
-  async getCommandInvocation(options: {
-    CommandId: string
-    InstanceId: string
-  }): Promise<{
+  async getCommandInvocation(options: { CommandId: string; InstanceId: string }): Promise<{
     Status?: string
     StatusDetails?: string
     StandardOutputContent?: string
@@ -745,12 +742,16 @@ export class SSMClient {
   /**
    * Run a shell command on an EC2 instance and wait for result
    */
-  async runShellCommand(instanceId: string, commands: string[], options?: {
-    timeoutSeconds?: number
-    waitForCompletion?: boolean
-    pollIntervalMs?: number
-    maxWaitMs?: number
-  }): Promise<{
+  async runShellCommand(
+    instanceId: string,
+    commands: string[],
+    options?: {
+      timeoutSeconds?: number
+      waitForCompletion?: boolean
+      pollIntervalMs?: number
+      maxWaitMs?: number
+    },
+  ): Promise<{
     success: boolean
     output?: string
     error?: string
@@ -779,7 +780,7 @@ export class SSMClient {
     const startTime = Date.now()
 
     while (Date.now() - startTime < maxWait) {
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
 
       try {
         const invocation = await this.getCommandInvocation({
@@ -806,8 +807,7 @@ export class SSMClient {
         }
 
         // Still pending/in progress, continue polling
-      }
-      catch (e: any) {
+      } catch (e: any) {
         // InvocationDoesNotExist means command is still being sent
         if (!e.message?.includes('InvocationDoesNotExist')) {
           return { success: false, error: e.message }
@@ -823,16 +823,15 @@ export class SSMClient {
    * Used by tag-based deploys to discover which instances received the
    * command and poll each one for completion.
    */
-  async listCommandInvocations(options: {
-    CommandId: string
-    Details?: boolean
-  }): Promise<Array<{
-    InstanceId: string
-    Status?: string
-    StatusDetails?: string
-    StandardOutputContent?: string
-    StandardErrorContent?: string
-  }>> {
+  async listCommandInvocations(options: { CommandId: string; Details?: boolean }): Promise<
+    Array<{
+      InstanceId: string
+      Status?: string
+      StatusDetails?: string
+      StandardOutputContent?: string
+      StandardErrorContent?: string
+    }>
+  > {
     const params: Record<string, any> = {
       CommandId: options.CommandId,
     }
@@ -878,7 +877,7 @@ export class SSMClient {
   }): Promise<{
     success: boolean
     instanceCount: number
-    perInstance: Array<{ instanceId: string, status: string, output?: string, error?: string }>
+    perInstance: Array<{ instanceId: string; status: string; output?: string; error?: string }>
     error?: string
   }> {
     const targets = Object.entries(options.tags).map(([key, value]) => ({
@@ -903,10 +902,16 @@ export class SSMClient {
     const startTime = Date.now()
 
     const terminalStatuses = new Set(['Success', 'Failed', 'Cancelled', 'TimedOut'])
-    let lastInvocations: Array<{ InstanceId: string, Status?: string, StatusDetails?: string, StandardOutputContent?: string, StandardErrorContent?: string }> = []
+    let lastInvocations: Array<{
+      InstanceId: string
+      Status?: string
+      StatusDetails?: string
+      StandardOutputContent?: string
+      StandardErrorContent?: string
+    }> = []
 
     while (Date.now() - startTime < maxWait) {
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
 
       try {
         lastInvocations = await this.listCommandInvocations({
@@ -917,15 +922,15 @@ export class SSMClient {
         // No invocations yet — SSM is still resolving the targets
         if (lastInvocations.length === 0) continue
 
-        const allDone = lastInvocations.every(inv => terminalStatuses.has(inv.Status || ''))
+        const allDone = lastInvocations.every((inv) => terminalStatuses.has(inv.Status || ''))
         if (allDone) {
-          const perInstance = lastInvocations.map(inv => ({
+          const perInstance = lastInvocations.map((inv) => ({
             instanceId: inv.InstanceId,
             status: inv.Status || 'Unknown',
             output: inv.StandardOutputContent,
             error: inv.StandardErrorContent || inv.StatusDetails,
           }))
-          const allSucceeded = lastInvocations.every(inv => inv.Status === 'Success')
+          const allSucceeded = lastInvocations.every((inv) => inv.Status === 'Success')
           return {
             success: allSucceeded,
             instanceCount: lastInvocations.length,
@@ -933,8 +938,7 @@ export class SSMClient {
             error: allSucceeded ? undefined : 'One or more instances reported a non-success status',
           }
         }
-      }
-      catch (e: any) {
+      } catch (e: any) {
         // Bubble up real errors; ignore "still propagating" type errors
         if (!e.message?.includes('InvocationDoesNotExist')) {
           return { success: false, instanceCount: 0, perInstance: [], error: e.message }
@@ -945,7 +949,7 @@ export class SSMClient {
     return {
       success: false,
       instanceCount: lastInvocations.length,
-      perInstance: lastInvocations.map(inv => ({
+      perInstance: lastInvocations.map((inv) => ({
         instanceId: inv.InstanceId,
         status: inv.Status || 'Unknown',
       })),

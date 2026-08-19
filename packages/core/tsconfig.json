@@ -1,16 +1,26 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
     "composite": false,
+    "rootDir": "./src",
+    "paths": {
+      "@ts-cloud/aws-types": [
+        "../aws-types/dist/index.d.ts"
+      ],
+      "@ts-cloud/aws-types/*": [
+        "../aws-types/dist/*"
+      ]
+    },
     "declaration": true,
     "declarationMap": true,
-    "paths": {
-      "@ts-cloud/aws-types": ["../aws-types/dist/index.d.ts"],
-      "@ts-cloud/aws-types/*": ["../aws-types/dist/*"]
-    }
+    "outDir": "./dist"
   },
-  "include": ["src/**/*", "src/**/*.json"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*",
+    "src/**/*.json"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

@@ -1,3 +1,6 @@
+import type { RecursionProtectionConfig } from './auto-recursion'
+import { checkInvocation, withInvocation } from './auto-recursion'
+import { recursionBlockedResponse } from './recursion'
 /**
  * Serverless runtime adapter (Node/Bun).
  *
@@ -107,7 +110,8 @@ export function resolveApp(mod: unknown): ServerlessApp {
 
 // ── Body / content helpers ──────────────────────────────────────────────────
 
-const TEXT_CONTENT = /^(?:text\/|application\/(?:json|xml|javascript|graphql|x-www-form-urlencoded|.*\+json|.*\+xml)|image\/svg)/i
+const TEXT_CONTENT =
+  /^(?:text\/|application\/(?:json|xml|javascript|graphql|x-www-form-urlencoded|.*\+json|.*\+xml)|image\/svg)/i
 
 function isTextContentType(contentType: string | null): boolean {
   // No declared type → treat as text (the common case for `new Response(str)`).
@@ -120,6 +124,12 @@ function isTextContentType(contentType: string | null): boolean {
 
 export interface HttpAdapterOptions {
   /**
+   * Recursion protection. On by default; pass `false` or set
+   * `TS_CLOUD_RECURSION_PROTECTION=0` to disable, or `{ detectionOnly: true }`
+   * to watch what it would block before it blocks anything.
+   */
+  recursionProtection?: RecursionProtectionConfig | false
+  /**
    * Read maintenance state from the environment. When `MAINTENANCE_MODE` is
    * truthy, requests get a 503 unless they carry the bypass secret in the
    * `x-maintenance-bypass` header or a `tscloud_bypass` cookie.
@@ -130,7 +140,7 @@ export interface HttpAdapterOptions {
   }
 }
 
-function readMaintenance(opts?: HttpAdapterOptions): { enabled: boolean, bypassSecret?: string } {
+function readMaintenance(opts?: HttpAdapterOptions): { enabled: boolean; bypassSecret?: string } {
   if (opts?.maintenance) return opts.maintenance
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {}
   return {
@@ -168,9 +178,10 @@ export async function responseToResult(response: Response): Promise<ApiGatewayPr
   const cookies: string[] = []
 
   // `getSetCookie` is available in the Lambda runtime's undici Headers.
-  const setCookies = typeof (response.headers as { getSetCookie?: () => string[] }).getSetCookie === 'function'
-    ? (response.headers as { getSetCookie: () => string[] }).getSetCookie()
-    : []
+  const setCookies =
+    typeof (response.headers as { getSetCookie?: () => string[] }).getSetCookie === 'function'
+      ? (response.headers as { getSetCookie: () => string[] }).getSetCookie()
+      : []
   for (const c of setCookies) cookies.push(c)
 
   response.headers.forEach((value, key) => {
@@ -203,13 +214,19 @@ export function createHttpHandler(handler: FetchHandler | undefined, opts?: Http
     }
 
     if (!handler) {
-      return { statusCode: 501, headers: { 'content-type': 'text/plain' }, body: 'No HTTP handler configured', isBase64Encoded: false }
+      return {
+        statusCode: 501,
+        headers: { 'content-type': 'text/plain' },
+        body: 'No HTTP handler configured',
+        isBase64Encoded: false,
+      }
     }
 
     const maintenance = readMaintenance(opts)
     if (maintenance.enabled) {
-      const bypass = event.headers?.['x-maintenance-bypass']
-        ?? (event.cookies?.find(c => c.startsWith('tscloud_bypass='))?.split('=')[1])
+      const bypass =
+        event.headers?.['x-maintenance-bypass'] ??
+        event.cookies?.find((c) => c.startsWith('tscloud_bypass='))?.split('=')[1]
       if (!maintenance.bypassSecret || bypass !== maintenance.bypassSecret) {
         return {
           statusCode: 503,
@@ -220,9 +237,33 @@ export function createHttpHandler(handler: FetchHandler | undefined, opts?: Http
       }
     }
 
+    // Recursion protection runs after maintenance (a parked app should answer
+    // 503 either way) and before the handler, so a loop costs one rejected
+    // invocation rather than a full execution plus everything it calls.
+    const recursion = checkInvocation(event.headers ?? {}, opts?.recursionProtection)
+    if (recursion?.blocked) {
+      const blocked = recursionBlockedResponse(recursion.verdict)
+      return {
+        statusCode: blocked.status,
+        headers: { ...blocked.headers, 'retry-after': '60' },
+        body: JSON.stringify(blocked.body),
+        isBase64Encoded: false,
+      }
+    }
+
     const request = eventToRequest(event)
-    const response = await handler(request)
-    return responseToResult(response)
+    if (!recursion) {
+      const response = await handler(request)
+      return responseToResult(response)
+    }
+    if (recursion.observed) {
+      console.warn(
+        `[ts-cloud] recursion detected (${recursion.verdict.reason}) at depth ${recursion.verdict.depth}; detection-only mode let it run`,
+      )
+    }
+    // Run inside the invocation context so outbound fetch carries the chain.
+    // Without this the next hop starts a fresh chain and the loop is invisible.
+    return withInvocation(recursion.verdict, async () => responseToResult(await handler(request)))
   }
 }
 
@@ -231,8 +272,7 @@ export function createHttpHandler(handler: FetchHandler | undefined, opts?: Http
 function parseRecordBody(body: string): unknown {
   try {
     return JSON.parse(body)
-  }
-  catch {
+  } catch {
     return body
   }
 }
@@ -253,8 +293,7 @@ export function createQueueHandler(handler: JobHandler | undefined): LambdaQueue
     for (const record of event.Records ?? []) {
       try {
         await handler(parseRecordBody(record.body), record)
-      }
-      catch {
+      } catch {
         batchItemFailures.push({ itemIdentifier: record.messageId })
       }
     }
@@ -279,7 +318,10 @@ export function createCliHandler(handler: CommandHandler | undefined): LambdaCli
 }
 
 /** Convenience: build all three Lambda handlers from a resolved app. */
-export function createHandlers(app: ServerlessApp, opts?: HttpAdapterOptions): {
+export function createHandlers(
+  app: ServerlessApp,
+  opts?: HttpAdapterOptions,
+): {
   http: LambdaHttpHandler
   queue: LambdaQueueHandler
   cli: LambdaCliHandler

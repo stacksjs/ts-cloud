@@ -22,9 +22,14 @@ describe('stack-naming', () => {
   })
 
   it('honors project.stackName override', () => {
-    expect(resolveProjectStackName({
-      project: { ...baseConfig.project, stackName: 'pantry-sh-main-static-site' },
-    }, 'production')).toBe('pantry-sh-main-static-site')
+    expect(
+      resolveProjectStackName(
+        {
+          project: { ...baseConfig.project, stackName: 'pantry-sh-main-static-site' },
+        },
+        'production',
+      ),
+    ).toBe('pantry-sh-main-static-site')
   })
 
   it('resolves site stack as slug-environment-siteKey-site', () => {
@@ -32,9 +37,16 @@ describe('stack-naming', () => {
   })
 
   it('honors site.stackName override', () => {
-    expect(resolveSiteStackName(baseConfig, 'main', {
-      stackName: 'pantry-sh-main-static-site',
-    }, 'production')).toBe('pantry-sh-main-static-site')
+    expect(
+      resolveSiteStackName(
+        baseConfig,
+        'main',
+        {
+          stackName: 'pantry-sh-main-static-site',
+        },
+        'production',
+      ),
+    ).toBe('pantry-sh-main-static-site')
   })
 
   it('resolves site resource prefix as slug-siteKey', () => {

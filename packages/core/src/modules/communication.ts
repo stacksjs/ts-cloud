@@ -6,10 +6,9 @@
  *
  * This module is the main entry point for `buddy deploy` communication services.
  */
-
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
-import { generateLogicalId, generateResourceName } from '../resource-naming'
+import { generateLogicalId } from '../resource-naming'
 
 export interface CommunicationConfig {
   slug: string
@@ -137,7 +136,10 @@ export class Communication {
   /**
    * Create Lambda execution role with all necessary permissions
    */
-  private static createLambdaExecutionRole(slug: string, environment: EnvironmentType): {
+  private static createLambdaExecutionRole(
+    slug: string,
+    environment: EnvironmentType,
+  ): {
     resources: Record<string, any>
     roleArn: any
     roleName: string
@@ -152,105 +154,83 @@ export class Communication {
           RoleName: roleName,
           AssumeRolePolicyDocument: {
             Version: '2012-10-17',
-            Statement: [{
-              Effect: 'Allow',
-              Principal: { Service: 'lambda.amazonaws.com' },
-              Action: 'sts:AssumeRole',
-            }],
+            Statement: [
+              {
+                Effect: 'Allow',
+                Principal: { Service: 'lambda.amazonaws.com' },
+                Action: 'sts:AssumeRole',
+              },
+            ],
           },
-          ManagedPolicyArns: [
-            'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-          ],
-          Policies: [{
-            PolicyName: 'CommunicationPolicy',
-            PolicyDocument: {
-              Version: '2012-10-17',
-              Statement: [
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    's3:GetObject',
-                    's3:PutObject',
-                    's3:DeleteObject',
-                    's3:ListBucket',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'ses:SendEmail',
-                    'ses:SendRawEmail',
-                    'ses:GetIdentityVerificationAttributes',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'sns:Publish',
-                    'sns:Subscribe',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'dynamodb:GetItem',
-                    'dynamodb:PutItem',
-                    'dynamodb:UpdateItem',
-                    'dynamodb:DeleteItem',
-                    'dynamodb:Query',
-                    'dynamodb:Scan',
-                    'dynamodb:BatchWriteItem',
-                    'dynamodb:BatchGetItem',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'connect:*',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'mobiletargeting:SendMessages',
-                    'mobiletargeting:GetEndpoint',
-                    'mobiletargeting:UpdateEndpoint',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'transcribe:StartTranscriptionJob',
-                    'transcribe:GetTranscriptionJob',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'bedrock:InvokeModel',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'es:ESHttpGet',
-                    'es:ESHttpPost',
-                    'es:ESHttpPut',
-                    'es:ESHttpDelete',
-                  ],
-                  Resource: '*',
-                },
-              ],
+          ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
+          Policies: [
+            {
+              PolicyName: 'CommunicationPolicy',
+              PolicyDocument: {
+                Version: '2012-10-17',
+                Statement: [
+                  {
+                    Effect: 'Allow',
+                    Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: ['ses:SendEmail', 'ses:SendRawEmail', 'ses:GetIdentityVerificationAttributes'],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: ['sns:Publish', 'sns:Subscribe'],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: [
+                      'dynamodb:GetItem',
+                      'dynamodb:PutItem',
+                      'dynamodb:UpdateItem',
+                      'dynamodb:DeleteItem',
+                      'dynamodb:Query',
+                      'dynamodb:Scan',
+                      'dynamodb:BatchWriteItem',
+                      'dynamodb:BatchGetItem',
+                    ],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: ['connect:*'],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: [
+                      'mobiletargeting:SendMessages',
+                      'mobiletargeting:GetEndpoint',
+                      'mobiletargeting:UpdateEndpoint',
+                    ],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: ['transcribe:StartTranscriptionJob', 'transcribe:GetTranscriptionJob'],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: ['bedrock:InvokeModel'],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: ['es:ESHttpGet', 'es:ESHttpPost', 'es:ESHttpPut', 'es:ESHttpDelete'],
+                    Resource: '*',
+                  },
+                ],
+              },
             },
-          }],
+          ],
         },
       },
     }
@@ -284,10 +264,14 @@ export class Communication {
             {
               Id: 'ArchiveOldEmails',
               Status: 'Enabled',
-              Transitions: email.server?.storage?.archiveAfterDays ? [{
-                StorageClass: 'GLACIER',
-                TransitionInDays: email.server.storage.archiveAfterDays,
-              }] : [],
+              Transitions: email.server?.storage?.archiveAfterDays
+                ? [
+                    {
+                      StorageClass: 'GLACIER',
+                      TransitionInDays: email.server.storage.archiveAfterDays,
+                    },
+                  ]
+                : [],
               ExpirationInDays: email.server?.storage?.retentionDays || 365,
             },
           ],
@@ -388,12 +372,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-email-analytics`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'messageId', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'messageId', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'messageId', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'messageId', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -433,10 +413,12 @@ export class Communication {
           Name: `${prefix}-email-scheduler`,
           ScheduleExpression: 'rate(1 minute)',
           State: 'ENABLED',
-          Targets: [{
-            Id: 'EmailSchedulerTarget',
-            Arn: Fn.GetAtt(schedulerLambdaLogicalId, 'Arn'),
-          }],
+          Targets: [
+            {
+              Id: 'EmailSchedulerTarget',
+              Arn: Fn.GetAtt(schedulerLambdaLogicalId, 'Arn'),
+            },
+          ],
         },
       }
     }
@@ -497,14 +479,14 @@ export class Communication {
             { AttributeName: 'id', AttributeType: 'S' },
             { AttributeName: 'type', AttributeType: 'S' },
           ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+          GlobalSecondaryIndexes: [
+            {
+              IndexName: 'type-index',
+              KeySchema: [{ AttributeName: 'type', KeyType: 'HASH' }],
+              Projection: { ProjectionType: 'ALL' },
+            },
           ],
-          GlobalSecondaryIndexes: [{
-            IndexName: 'type-index',
-            KeySchema: [{ AttributeName: 'type', KeyType: 'HASH' }],
-            Projection: { ProjectionType: 'ALL' },
-          }],
         },
       }
     }
@@ -515,7 +497,10 @@ export class Communication {
       resources[searchDomainLogicalId] = {
         Type: 'AWS::OpenSearchService::Domain',
         Properties: {
-          DomainName: `${prefix}-email-search`.toLowerCase().replace(/[^a-z0-9-]/g, '-').substring(0, 28),
+          DomainName: `${prefix}-email-search`
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, '-')
+            .substring(0, 28),
           EngineVersion: 'OpenSearch_2.11',
           ClusterConfig: {
             InstanceType: 't3.small.search',
@@ -553,12 +538,8 @@ export class Communication {
       Properties: {
         TableName: `${prefix}-call-log`,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-          { AttributeName: 'contactId', AttributeType: 'S' },
-        ],
-        KeySchema: [
-          { AttributeName: 'contactId', KeyType: 'HASH' },
-        ],
+        AttributeDefinitions: [{ AttributeName: 'contactId', AttributeType: 'S' }],
+        KeySchema: [{ AttributeName: 'contactId', KeyType: 'HASH' }],
         TimeToLiveSpecification: {
           AttributeName: 'ttl',
           Enabled: true,
@@ -574,11 +555,13 @@ export class Communication {
         Properties: {
           BucketName: `${prefix}-voicemail`,
           LifecycleConfiguration: {
-            Rules: [{
-              Id: 'DeleteOldVoicemails',
-              Status: 'Enabled',
-              ExpirationInDays: 90,
-            }],
+            Rules: [
+              {
+                Id: 'DeleteOldVoicemails',
+                Status: 'Enabled',
+                ExpirationInDays: 90,
+              },
+            ],
           },
         },
       }
@@ -650,12 +633,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-call-recordings`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'recordingId', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'recordingId', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'recordingId', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'recordingId', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -672,12 +651,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-callbacks`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -694,12 +669,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-call-metrics`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'period', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'period', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'period', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'period', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -748,12 +719,8 @@ export class Communication {
       Properties: {
         TableName: `${prefix}-sms-log`,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-          { AttributeName: 'messageId', AttributeType: 'S' },
-        ],
-        KeySchema: [
-          { AttributeName: 'messageId', KeyType: 'HASH' },
-        ],
+        AttributeDefinitions: [{ AttributeName: 'messageId', AttributeType: 'S' }],
+        KeySchema: [{ AttributeName: 'messageId', KeyType: 'HASH' }],
         TimeToLiveSpecification: {
           AttributeName: 'ttl',
           Enabled: true,
@@ -769,12 +736,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-sms-optout`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'phoneNumber', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'phoneNumber', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'phoneNumber', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'phoneNumber', KeyType: 'HASH' }],
         },
       }
     }
@@ -845,12 +808,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-sms-campaigns`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
         },
       }
     }
@@ -863,12 +822,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-sms-analytics`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'period', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'period', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'period', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'period', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -885,12 +840,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-short-links`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -907,12 +858,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-chatbot-sessions`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'phoneNumber', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'phoneNumber', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'phoneNumber', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'phoneNumber', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -926,12 +873,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-chatbot-rules`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
         },
       }
     }
@@ -944,12 +887,8 @@ export class Communication {
         Properties: {
           TableName: `${prefix}-ab-tests`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
         },
       }
     }
@@ -962,11 +901,13 @@ export class Communication {
         Properties: {
           BucketName: `${prefix}-mms-media`,
           LifecycleConfiguration: {
-            Rules: [{
-              Id: 'DeleteOldMedia',
-              Status: 'Enabled',
-              ExpirationInDays: 30,
-            }],
+            Rules: [
+              {
+                Id: 'DeleteOldMedia',
+                Status: 'Enabled',
+                ExpirationInDays: 30,
+              },
+            ],
           },
         },
       }

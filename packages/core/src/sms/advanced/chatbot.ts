@@ -110,12 +110,8 @@ export class SmsChatbot {
         Properties: {
           TableName: `${config.slug}-chatbot-sessions`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'phoneNumber', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'phoneNumber', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'phoneNumber', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'phoneNumber', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -135,12 +131,8 @@ export class SmsChatbot {
         Properties: {
           TableName: `${config.slug}-chatbot-rules`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
         },
       },
     }

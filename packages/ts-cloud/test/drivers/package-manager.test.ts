@@ -17,10 +17,10 @@ describe('buildPantryBootstrapScript', () => {
     expect(script).toContain(`export PANTRY_INSTALL_DIR=${PANTRY_INSTALL_DIR}`)
     // The pantry.dev pipe installer is dead (404s) — the CLI comes from its
     // GitHub release zip, platform-detected on the box.
-    expect(script).toContain('https://github.com/home-lang/pantry/releases/')
+    expect(script).toContain('https://github.com/pantry-pm/pantry/releases/')
     expect(script).toContain('pantry-${OS}-${ARCH}.zip')
-    // Idempotent: skip when pantry already present.
-    expect(script).toContain('command -v pantry >/dev/null 2>&1 ||')
+    // Provisioning must upgrade old CLIs that do not know newer recipes.
+    expect(script).not.toContain('command -v pantry >/dev/null 2>&1 ||')
     // curl + unzip are the only apt prerequisites.
     expect(script).toContain('apt-get install -y curl ca-certificates')
     expect(script).toContain('apt-get install -y unzip')
@@ -30,7 +30,7 @@ describe('buildPantryBootstrapScript', () => {
   it('defaults to the latest release but can pin a version', () => {
     expect(buildPantryBootstrapScript().join('\n')).toContain('PANTRY_VERSION:-latest')
     const pinned = buildPantryBootstrapScript({ version: '0.9.39' }).join('\n')
-    expect(pinned).toContain('export PANTRY_VERSION=\'0.9.39\'')
+    expect(pinned).toContain("export PANTRY_VERSION='0.9.39'")
   })
 })
 
@@ -42,8 +42,8 @@ describe('buildPantryInstallScript', () => {
 
   it('supports pinned versions and dedupes', () => {
     const script = buildPantryInstallScript(['php.net@8.3', 'php.net@8.3', 'redis.io']).join('\n')
-    expect(script).toContain('\'php.net@8.3\'')
-    expect(script).toContain('\'redis.io\'')
+    expect(script).toContain("'php.net@8.3'")
+    expect(script).toContain("'redis.io'")
     // Deduped: php.net@8.3 appears once.
     expect(script.match(/php\.net@8\.3/g)?.length).toBe(1)
   })

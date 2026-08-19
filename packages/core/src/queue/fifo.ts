@@ -91,10 +91,7 @@ export class FIFOQueueManager {
   /**
    * Create high-throughput FIFO queue
    */
-  createHighThroughputFIFO(options: {
-    name: string
-    contentBasedDeduplication?: boolean
-  }): FIFOQueue {
+  createHighThroughputFIFO(options: { name: string; contentBasedDeduplication?: boolean }): FIFOQueue {
     return this.createFIFOQueue({
       name: options.name,
       contentBasedDeduplication: options.contentBasedDeduplication ?? true,
@@ -109,10 +106,7 @@ export class FIFOQueueManager {
   /**
    * Create standard FIFO queue
    */
-  createStandardFIFO(options: {
-    name: string
-    contentBasedDeduplication?: boolean
-  }): FIFOQueue {
+  createStandardFIFO(options: { name: string; contentBasedDeduplication?: boolean }): FIFOQueue {
     return this.createFIFOQueue({
       name: options.name,
       contentBasedDeduplication: options.contentBasedDeduplication ?? false,
@@ -164,7 +158,8 @@ export class FIFOQueueManager {
     // Check deduplication
     const deduplicationConfig = this.deduplicationConfigs.get(options.queueId)
     if (deduplicationConfig) {
-      const deduplicationId = options.messageDeduplicationId ||
+      const deduplicationId =
+        options.messageDeduplicationId ||
         (queue.contentBasedDeduplication ? this.generateHash(options.messageBody) : undefined)
 
       if (deduplicationId && this.isDuplicate(deduplicationConfig, deduplicationId)) {
@@ -226,7 +221,7 @@ export class FIFOQueueManager {
     let hash = 0
     for (let i = 0; i < content.length; i++) {
       const char = content.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
+      hash = (hash << 5) - hash + char
       hash = hash & hash
     }
     return Math.abs(hash).toString(36)
@@ -265,7 +260,7 @@ export class FIFOQueueManager {
    * Get message groups for queue
    */
   getMessageGroups(queueId: string): MessageGroup[] {
-    return Array.from(this.messageGroups.values()).filter(g => g.queueId === queueId)
+    return Array.from(this.messageGroups.values()).filter((g) => g.queueId === queueId)
   }
 
   /**
@@ -289,7 +284,7 @@ export class FIFOQueueManager {
     let messages = Array.from(this.messages.values())
 
     if (messageGroupId) {
-      messages = messages.filter(m => m.messageGroupId === messageGroupId)
+      messages = messages.filter((m) => m.messageGroupId === messageGroupId)
     }
 
     return messages.sort((a, b) => a.sequenceNumber.localeCompare(b.sequenceNumber))

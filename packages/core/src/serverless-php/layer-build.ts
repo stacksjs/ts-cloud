@@ -10,14 +10,14 @@
  * Requires Docker. Intended to run in CI to publish a versioned, ts-cloud-owned
  * layer that user deploys reference (no per-deploy compilation).
  */
-
 import type { ZipEntry } from '../serverless/zip'
+import type { PhpDockerfileOptions } from './dockerfile'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { createZip } from '../serverless/zip'
-import { generatePhpLayerDockerfile, type PhpDockerfileOptions } from './dockerfile'
+import { generatePhpLayerDockerfile } from './dockerfile'
 import { phpRuntimeLayerAssets } from './runtime-assets'
 
 export interface BuildPhpLayerOptions extends PhpDockerfileOptions {
@@ -41,7 +41,7 @@ export interface PhpLayerArtifact {
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
-    if (statSync(full).isDirectory()) yield * walk(full)
+    if (statSync(full).isDirectory()) yield* walk(full)
     else yield full
   }
 }
@@ -71,26 +71,24 @@ export function buildPhpRuntimeLayerZip(options: BuildPhpLayerOptions = {}): Php
     mkdirSync(optDir, { recursive: true })
     try {
       execFileSync('docker', ['cp', `${cid}:/opt/php`, join(optDir, 'php')], { stdio: 'inherit' })
-    }
-    finally {
+    } finally {
       execFileSync('docker', ['rm', cid], { stdio: 'ignore' })
     }
 
-    if (!existsSync(join(optDir, 'php', 'bin', 'php')))
-      throw new Error('layer build produced no /opt/php/bin/php')
+    if (!existsSync(join(optDir, 'php', 'bin', 'php'))) throw new Error('layer build produced no /opt/php/bin/php')
 
     // Collect the built /opt tree.
     const entries: ZipEntry[] = []
     for (const file of walk(optDir)) {
       const rel = relative(optDir, file).replace(/\\/g, '/')
-      const mode = (statSync(file).mode & 0o111) ? 0o755 : 0o644
+      const mode = statSync(file).mode & 0o111 ? 0o755 : 0o644
       entries.push({ name: rel, data: readFileSync(file), mode })
     }
 
     // Inject/overwrite the runtime assets (bootstrap, runtime loops, fpm config).
     step('Injecting runtime assets')
-    const assetPaths = new Set(phpRuntimeLayerAssets().map(a => a.path))
-    const filtered = entries.filter(e => !assetPaths.has(e.name))
+    const assetPaths = new Set(phpRuntimeLayerAssets().map((a) => a.path))
+    const filtered = entries.filter((e) => !assetPaths.has(e.name))
     for (const asset of phpRuntimeLayerAssets()) {
       filtered.push({ name: asset.path, data: asset.contents, mode: asset.mode })
     }
@@ -98,8 +96,7 @@ export function buildPhpRuntimeLayerZip(options: BuildPhpLayerOptions = {}): Php
     step('Packaging layer ZIP')
     const zip = createZip(filtered)
     return { zip, architecture, fileCount: filtered.length }
-  }
-  finally {
+  } finally {
     rmSync(stage, { recursive: true, force: true })
   }
 }

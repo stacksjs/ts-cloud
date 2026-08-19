@@ -4,8 +4,7 @@
  *
  * This is a pure TypeScript/Bun implementation without external dependencies.
  */
-
-import { createHash, createSign, generateKeyPairSync, randomBytes } from 'node:crypto'
+import { createHash, createSign, generateKeyPairSync } from 'node:crypto'
 
 // ACME Directory URLs
 export const ACME_DIRECTORIES = {
@@ -74,9 +73,7 @@ export class AcmeClient {
   private nonce: string | null = null
 
   constructor(options: AcmeClientOptions) {
-    this.directoryUrl = options.staging
-      ? ACME_DIRECTORIES.staging
-      : ACME_DIRECTORIES.production
+    this.directoryUrl = options.staging ? ACME_DIRECTORIES.staging : ACME_DIRECTORIES.production
     this.email = options.email
     this.accountKey = options.accountKey || this.generateAccountKey()
   }
@@ -102,7 +99,7 @@ export class AcmeClient {
       throw new Error(`Failed to fetch ACME directory: ${response.status}`)
     }
 
-    this.directory = await response.json() as AcmeDirectory
+    this.directory = (await response.json()) as AcmeDirectory
     return this.directory
   }
 
@@ -132,8 +129,9 @@ export class AcmeClient {
    */
   private getJwk(): Record<string, string> {
     // Parse the EC private key to extract public key components
-    const keyLines = this.accountKey.split('\n')
-      .filter(line => !line.startsWith('-----'))
+    const keyLines = this.accountKey
+      .split('\n')
+      .filter((line) => !line.startsWith('-----'))
       .join('')
 
     // For EC P-256, we need to extract x and y coordinates
@@ -176,10 +174,7 @@ export class AcmeClient {
    */
   private base64UrlEncode(data: Buffer | string): string {
     const buffer = typeof data === 'string' ? Buffer.from(data) : data
-    return buffer.toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '')
+    return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
   }
 
   /**
@@ -198,15 +193,12 @@ export class AcmeClient {
     // Use kid if we have an account URL, otherwise use jwk
     if (this.accountUrl) {
       protectedHeader.kid = this.accountUrl
-    }
-else {
+    } else {
       protectedHeader.jwk = jwk
     }
 
     const protectedB64 = this.base64UrlEncode(JSON.stringify(protectedHeader))
-    const payloadB64 = payload === ''
-      ? ''
-      : this.base64UrlEncode(JSON.stringify(payload))
+    const payloadB64 = payload === '' ? '' : this.base64UrlEncode(JSON.stringify(payload))
 
     const signatureInput = `${protectedB64}.${payloadB64}`
 
@@ -258,8 +250,7 @@ else {
     const contentType = response.headers.get('content-type')
     if (contentType?.includes('application/json') || contentType?.includes('application/problem+json')) {
       responseBody = await response.json()
-    }
-else {
+    } else {
       responseBody = await response.text()
     }
 
@@ -305,7 +296,7 @@ else {
     const directory = await this.getDirectory()
 
     const { body, headers } = await this.acmeRequest(directory.newOrder, {
-      identifiers: domains.map(domain => ({
+      identifiers: domains.map((domain) => ({
         type: 'dns',
         value: domain,
       })),
@@ -347,12 +338,9 @@ else {
             keyAuthorization,
             identifier: `/.well-known/acme-challenge/${c.token}`,
           }
-        }
-else {
+        } else {
           // DNS-01: TXT record value is base64url(sha256(keyAuthorization))
-          const dnsValue = this.base64UrlEncode(
-            createHash('sha256').update(keyAuthorization).digest()
-          )
+          const dnsValue = this.base64UrlEncode(createHash('sha256').update(keyAuthorization).digest())
           return {
             type: 'dns-01' as const,
             token: c.token,
@@ -388,7 +376,7 @@ else {
         throw new Error(`Authorization failed: ${JSON.stringify(body)}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 2000))
     }
 
     throw new Error('Authorization timed out')
@@ -433,7 +421,7 @@ else {
     // For production, use a library like @peculiar/x509 or node-forge
     throw new Error(
       'CSR generation requires additional implementation. ' +
-      'Consider using the shell-based certbot approach instead.'
+        'Consider using the shell-based certbot approach instead.',
     )
   }
 

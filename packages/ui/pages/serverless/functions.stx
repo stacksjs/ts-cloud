@@ -45,31 +45,18 @@ const modes = (__d?.functionsDetail ?? functions).map(f => f.key)
 const initialMode = modes[0] ?? 'http'
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Per-function config runs live against AWS through /api/serverless/functions/config.
 const mode = state(initialMode)
 const mem = state('1024')
 const to = state('28')
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
-function cancelOp() { pending.set(null) }
 function applyConfig() { const m = mode(); askOp(m, m, 'update the ' + m + ' function') }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Updating ' + p.operation + '...')
-  try {
-    const res = await fetch('/api/serverless/functions/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: p.operation, memory: Number(mem()), timeout: Number(to()), confirm: p.confirm }) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
-  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const res = await fetch('/api/serverless/functions/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: p.operation, memory: Number(mem()), timeout: Number(to()), confirm: p.apiConfirm }) })
+  const body = await res.json()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : '')
+})
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -88,9 +75,11 @@ async function runOp() {
       </div>
     </header>
 
+    @if (functions.length)
     @foreach (functions as fn)
       <div class="section">
         <h2><span class="tag">{{ fn.key }}</span> <span class="mono">{{ fn.name }}</span></h2>
+        <p class="note"><a href="/operations/workloads?search={{ encodeURIComponent(fn.name) }}">Open normalized workload and release context</a></p>
         <div class="cols">
           <div class="panel">
             <h3>Invocations (24h)</h3>
@@ -142,26 +131,30 @@ async function runOp() {
         </div>
       </div>
     @endforeach
+    @else
+      <div class="section"><div class="empty"><strong>No functions deployed</strong><span>Deploy the serverless application to create its HTTP, queue, and CLI functions.</span></div></div>
+    @endif
 
+    @if (functions.length)
     <div class="section">
       <h2>Configure function</h2>
       <div class="panel">
         <div class="form-grid">
           <div class="field-block">
-            <label>Function</label>
-            <select :value="mode()" @change="mode.set($event.target.value)">
+            <label for="function-mode">Function</label>
+            <select id="function-mode" :value="mode()" @change="mode.set($event.target.value)">
               @foreach (modes as m)
                 <option value="{{ m }}">{{ m }}</option>
               @endforeach
             </select>
           </div>
           <div class="field-block">
-            <label>Memory (MB)</label>
-            <input type="number" min="128" max="10240" :value="mem()" @input="mem.set($event.target.value)" placeholder="1024" autocomplete="off">
+            <label for="function-memory">Memory (MB)</label>
+            <input id="function-memory" type="number" min="128" max="10240" :value="mem()" @input="mem.set($event.target.value)" placeholder="1024" autocomplete="off">
           </div>
           <div class="field-block">
-            <label>Timeout (s)</label>
-            <input type="number" min="1" max="900" :value="to()" @input="to.set($event.target.value)" placeholder="28" autocomplete="off">
+            <label for="function-timeout">Timeout (s)</label>
+            <input id="function-timeout" type="number" min="1" max="900" :value="to()" @input="to.set($event.target.value)" placeholder="28" autocomplete="off">
           </div>
           <div class="form-actions">
             <button class="btn" type="button" @click="applyConfig()">Apply</button>
@@ -171,6 +164,7 @@ async function runOp() {
         <p class="note">Memory is 128 to 10240 MB, timeout is 1 to 900 s. Changes are applied to the live function immediately via <span class="mono">cloud functions:config</span>.</p>
       </div>
     </div>
+    @endif
   </div>
 </body>
 </html>

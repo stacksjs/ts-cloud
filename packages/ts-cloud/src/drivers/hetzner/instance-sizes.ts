@@ -4,7 +4,10 @@ import type { InstanceSize } from '@ts-cloud/core'
  * Map ts-cloud instance size shorthands to Hetzner Cloud server types.
  * @see https://www.hetzner.com/cloud
  */
-export const HETZNER_INSTANCE_TYPES: Record<Exclude<InstanceSize, string & {}> | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge', string> = {
+export const HETZNER_INSTANCE_TYPES: Record<
+  Exclude<InstanceSize, string & {}> | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge',
+  string
+> = {
   // Hetzner deprecated the original shared-Intel `cx` line (cx11…cx52). The
   // current shared lines are `cx2x`-suffixed (cx23/cx33/cx43/cx53) for Intel
   // and `cpx`/`cax` for AMD/ARM. Map to non-deprecated types so `createServer`
@@ -42,8 +45,26 @@ export function matchesTsCloudLabels(
   environment: string,
   role = 'app',
 ): boolean {
+  return matchesTsCloudProject(labels, slug, environment) && labels![`${TS_CLOUD_LABEL_PREFIX}/role`] === role
+}
+
+/**
+ * Whether a resource belongs to this project and environment, whatever role it
+ * plays. Use this for resources that are not per-role — an SSH key is created
+ * once and used by app, services, and load balancer boxes alike.
+ *
+ * A resource ts-cloud merely *reused* (an SSH key already on the account under
+ * someone else's name, say) carries no ts-cloud labels, so it never matches —
+ * which is what keeps teardown from deleting something it did not create.
+ */
+export function matchesTsCloudProject(
+  labels: Record<string, string> | undefined,
+  slug: string,
+  environment: string,
+): boolean {
   if (!labels) return false
-  return labels[`${TS_CLOUD_LABEL_PREFIX}/project`] === slug
-    && labels[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment
-    && labels[`${TS_CLOUD_LABEL_PREFIX}/role`] === role
+  return (
+    labels[`${TS_CLOUD_LABEL_PREFIX}/project`] === slug &&
+    labels[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment
+  )
 }

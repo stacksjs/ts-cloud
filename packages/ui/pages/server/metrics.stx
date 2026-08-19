@@ -1,74 +1,277 @@
 <script server>
 import { renderResourceBars } from '../../src/charts.ts'
 
-// ts-cloud server health view. Real data is injected at build time via
-// TSCLOUD_DASHBOARD_DATA (see deploy/dashboard-data-server.ts); the sample
-// values below render the design when nothing is injected.
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 
-const server = __d?.server ?? {
-  name: 'acme-production-app', provider: 'Hetzner', region: 'fsn1',
-  os: 'Ubuntu 24.04', uptime: '14d 6h', ip: '203.0.113.42',
-}
+const server = __d?.server ?? { name: 'Server', provider: 'unavailable', region: 'unavailable', os: 'unavailable', uptime: 'unavailable' }
 const m = __d?.systemMetrics ?? {
-  load: 0.42, cpus: 4,
-  memUsedMb: 2480, memTotalMb: 7860,
-  diskUsedPct: 38, diskUsedGb: 19, diskTotalGb: 50,
+  load: 0, load5: 0, load15: 0, cpuUsedPct: 0, cpus: 0,
+  memUsedMb: 0, memTotalMb: 0, memAvailableMb: 0, memCacheMb: 0,
+  swapUsedMb: 0, swapTotalMb: 0, diskUsedPct: 0, diskUsedGb: 0,
+  diskTotalGb: 0, inodeUsedPct: 0, networkRxBytes: 0, networkTxBytes: 0,
+  processes: 0,
 }
-const live = __d ? !!__d?._serverReachable && !__d?.metricsUnavailable : true
-
-// ── Derived percentages ───────────────────────────────────────────────
+const live = !!__d && !!__d?._serverReachable && !__d?.metricsUnavailable
 const memPct = live ? Math.min(100, Math.round((m.memUsedMb / Math.max(1, m.memTotalMb)) * 100)) : 0
 const loadPct = live ? Math.min(100, Math.round((m.load / Math.max(1, m.cpus || 1)) * 100)) : 0
+const cpuPct = live ? Math.min(100, Math.round(m.cpuUsedPct ?? loadPct)) : 0
 const diskPct = live ? Math.min(100, Math.round(m.diskUsedPct)) : 0
-
-// Human-friendly sizes.
+const swapPct = live && m.swapTotalMb ? Math.min(100, Math.round((m.swapUsedMb / m.swapTotalMb) * 100)) : 0
 const gb = mb => (mb / 1024).toFixed(1)
+const bytes = value => {
+  const n = Number(value || 0)
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(1) + ' GB'
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB'
+  return Math.round(n / 1024) + ' KB'
+}
+const rate = value => {
+  const n = Number(value || 0)
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(2) + ' GB/s'
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB/s'
+  if (n >= 1024) return Math.round(n / 1024) + ' KB/s'
+  return Math.round(n) + ' B/s'
+}
+const monthBytes = Number(m.networkRxBytesMonth || 0) + Number(m.networkTxBytesMonth || 0)
+// Providers quote allowances in decimal TB and bill overage the same way, so the
+// projection has to use the same unit the invoice will.
+const bandwidthBudget = Number(__d?.bandwidthBudgetBytes || 0)
+const bandwidthNote = (() => {
+  const now = new Date()
+  const dayOfMonth = now.getUTCDate()
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  const projected = dayOfMonth > 0 ? monthBytes / dayOfMonth * daysInMonth : monthBytes
+  const tb = value => (value / 1000 ** 4).toFixed(2) + ' TB'
+  if (!bandwidthBudget) return `On track for ${tb(projected)} by month end`
+  const pct = Math.round(monthBytes / bandwidthBudget * 100)
+  return `${pct}% of ${tb(bandwidthBudget)} — on track for ${tb(projected)}`
+})()
 const memUsedGb = gb(m.memUsedMb)
 const memTotalGb = gb(m.memTotalMb)
-const memFreeGb = gb(Math.max(0, m.memTotalMb - m.memUsedMb))
+const memAvailableGb = gb(m.memAvailableMb || Math.max(0, m.memTotalMb - m.memUsedMb))
 const diskFreeGb = Math.max(0, m.diskTotalGb - m.diskUsedGb)
-const loadPerCpu = (m.load / Math.max(1, m.cpus || 1)).toFixed(2)
 const unavailableNote = 'Live metrics are unavailable because the dashboard probe could not reach the server.'
-const loadPerCpuNote = `${loadPerCpu} per core`
-const memTotalNote = `of ${memTotalGb} GB total`
-const diskTotalNote = `of ${m.diskTotalGb} GB total`
-
-// ── Threshold tone: green < 70%, amber 70-90%, red ≥ 90% ───────────────
 function toneOf(p) { return p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok' }
 function word(p) { return p >= 90 ? 'Critical' : p >= 70 ? 'Elevated' : 'Healthy' }
-const cpuTone = toneOf(loadPct), memTone = toneOf(memPct), diskTone = toneOf(diskPct)
-
-// Overall verdict = worst of the three vitals.
+const cpuTone = toneOf(cpuPct), memTone = toneOf(memPct), diskTone = toneOf(diskPct)
 const ranks = { ok: 0, warn: 1, bad: 2 }
 const worst = [cpuTone, memTone, diskTone].sort((a, b) => ranks[b] - ranks[a])[0]
 const measuredOverall = {
-  bad: { tone: 'bad', title: 'Action needed', note: 'One or more vitals are in the critical range.' },
-  warn: { tone: 'warn', title: 'Running warm', note: 'Resources are elevated - keep an eye on it.' },
-  ok: { tone: 'ok', title: 'All systems healthy', note: 'CPU, memory, and disk are well within limits.' },
+  bad: { tone: 'bad', title: 'Action needed', note: 'One or more host resources are in the critical range.' },
+  warn: { tone: 'warn', title: 'Running warm', note: 'At least one host resource is elevated.' },
+  ok: { tone: 'ok', title: 'All systems healthy', note: 'CPU, memory, and disk are within normal limits.' },
 }[worst]
 const overall = live ? measuredOverall : { tone: 'warn', title: 'Probe unavailable', note: unavailableNote }
-
-// One descriptor per gauge - rendered with @foreach below.
 const gaugeCards = [
-  { label: 'CPU Load', icon: 'cpu', tone: live ? cpuTone : 'warn', tag: live ? word(loadPct) : 'Unavailable', big: live ? loadPct : '-', pct: loadPct, unit: live ? 'of capacity' : 'probe offline', sub: live ? `${loadPerCpu} load / core · ${m.load} avg` : unavailableNote },
-  { label: 'Memory', icon: 'mem', tone: live ? memTone : 'warn', tag: live ? word(memPct) : 'Unavailable', big: live ? memPct : '-', pct: memPct, unit: live ? 'memory used' : 'probe offline', sub: live ? `${memUsedGb} / ${memTotalGb} GB · ${memFreeGb} free` : unavailableNote },
-  { label: 'Disk', icon: 'disk', tone: live ? diskTone : 'warn', tag: live ? word(diskPct) : 'Unavailable', big: live ? diskPct : '-', pct: diskPct, unit: live ? 'disk used' : 'probe offline', sub: live ? `${m.diskUsedGb} / ${m.diskTotalGb} GB · ${diskFreeGb} GB free` : unavailableNote },
+  { label: 'CPU utilization', icon: 'cpu', tone: live ? cpuTone : 'warn', tag: live ? word(cpuPct) : 'Unavailable', big: live ? cpuPct : '-', pct: cpuPct, unit: live ? 'processor busy' : 'probe offline', sub: live ? `${m.load} load across ${m.cpus} vCPU` : unavailableNote },
+  { label: 'Memory', icon: 'mem', tone: live ? memTone : 'warn', tag: live ? word(memPct) : 'Unavailable', big: live ? memPct : '-', pct: memPct, unit: live ? 'memory used' : 'probe offline', sub: live ? `${memUsedGb} / ${memTotalGb} GB, ${memAvailableGb} GB available` : unavailableNote },
+  { label: 'Disk', icon: 'disk', tone: live ? diskTone : 'warn', tag: live ? word(diskPct) : 'Unavailable', big: live ? diskPct : '-', pct: diskPct, unit: live ? 'disk used' : 'probe offline', sub: live ? `${m.diskUsedGb} / ${m.diskTotalGb} GB, ${diskFreeGb} GB free` : unavailableNote },
 ]
-
 const resourceChart = renderResourceBars([
-  { label: 'CPU', value: loadPct, detail: live ? `${m.load} load / ${m.cpus} vCPU` : unavailableNote },
+  { label: 'CPU', value: cpuPct, detail: live ? `${cpuPct}% busy, ${m.load} one-minute load` : unavailableNote },
   { label: 'Memory', value: memPct, detail: live ? `${memUsedGb} / ${memTotalGb} GB` : unavailableNote },
   { label: 'Disk', value: diskPct, detail: live ? `${m.diskUsedGb} / ${m.diskTotalGb} GB` : unavailableNote },
+  { label: 'Swap', value: swapPct, detail: live ? `${gb(m.swapUsedMb)} / ${gb(m.swapTotalMb)} GB` : unavailableNote },
 ], { disabled: !live })
+</script>
+<script client>
+import { usePolling } from '../../functions/usePolling.ts'
 
-// ── Load trend (sample only - not part of the live metrics payload) ────
-const loadTrend = __d?.loadTrend ?? [22, 28, 31, 26, 40, 38, 33, 45, 41, 30, 27, 35, 48, 52, 39, 33, 29, 44, 50, 47, 36, 31, 28, 34]
-const maxLoad = Math.max(...loadTrend, 1)
-const trendPeak = Math.max(...loadTrend)
-function barPct(v) { return Math.round((v / maxLoad) * 100) }
-function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7 ? 'hot' : '' }
+const ranges = { '1h': 3600000, '6h': 21600000, '24h': 86400000, '7d': 604800000, '30d': 2592000000 }
+const historyRange = state('24h')
+const historySeries = state([])
+const historyError = state('')
+const currentData = state(null)
+function historyParams() {
+  const duration = ranges[historyRange()] || ranges['24h']
+  const to = new Date()
+  const from = new Date(to.getTime() - duration)
+  const bucketMs = Math.max(60000, Math.ceil(duration / 96 / 60000) * 60000)
+  return new URLSearchParams({
+    from: from.toISOString(),
+    to: to.toISOString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    names: [
+      'host.cpu.used_percent', 'host.load', 'host.cpu.capacity',
+      'host.memory.used_percent', 'host.memory.used', 'host.memory.total',
+      'host.disk.used_percent', 'host.swap.used_percent',
+      'host.disk.inode_used_percent',
+      'host.network.rx_rate', 'host.network.tx_rate',
+      'storage.egress.day', 'storage.egress.month',
+      'storage.egress.budget', 'storage.egress.budget_used_percent',
+      'storage.egress.projected_month',
+    ].join(','),
+    aggregation: 'avg',
+    bucketMs: String(bucketMs),
+  })
+}
+async function loadHistory() {
+  const response = await fetch('/api/telemetry/series?' + historyParams())
+  const body = await response.json()
+  if (!response.ok || body.ok === false) throw new Error(body.error || 'Historical metrics could not be loaded.')
+  historySeries.set(body.series || [])
+  historyError.set('')
+}
+async function loadCurrent() {
+  const response = await fetch('/api/dashboard-data')
+  const body = await response.json()
+  if (!response.ok || body._serverReachable !== true)
+    throw new Error(body.error || 'Current server metrics could not be loaded.')
+  currentData.set(body)
+}
+const { pollingState, pollingError, lastUpdatedAt, refresh } = usePolling(async () => {
+  try { await Promise.all([loadCurrent(), loadHistory()]) }
+  catch (error) { historyError.set(error?.message || String(error)); throw error }
+}, 60000)
+function liveMetric() { return currentData()?.systemMetrics || {} }
+function percent(value) { return Math.max(0, Math.min(100, Math.round(Number(value) || 0))) }
+function ratio(used, total) { return total ? percent(Number(used) / Number(total) * 100) : 0 }
+function liveCpu() { return percent(liveMetric().cpuUsedPct) }
+function liveMemory() { return ratio(liveMetric().memUsedMb, liveMetric().memTotalMb) }
+function liveDisk() { return percent(liveMetric().diskUsedPct) }
+function liveSwap() { return ratio(liveMetric().swapUsedMb, liveMetric().swapTotalMb) }
+function liveTone() {
+  const peak = Math.max(liveCpu(), liveMemory(), liveDisk())
+  return peak >= 90 ? 'bad' : peak >= 70 ? 'warn' : 'ok'
+}
+function liveStatus() { return liveTone() === 'bad' ? 'Action needed' : liveTone() === 'warn' ? 'Running warm' : 'All systems healthy' }
+function liveGb(value) { return (Number(value || 0) / 1024).toFixed(1) }
+function liveBytes(value) {
+  const n = Number(value || 0)
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(1) + ' GB'
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB'
+  return Math.round(n / 1024) + ' KB'
+}
+function liveRate(value) {
+  const n = Number(value || 0)
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(2) + ' GB/s'
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB/s'
+  if (n >= 1024) return Math.round(n / 1024) + ' KB/s'
+  return Math.round(n) + ' B/s'
+}
+function liveMonthBytes() {
+  return Number(liveMetric().networkRxBytesMonth || 0) + Number(liveMetric().networkTxBytesMonth || 0)
+}
+function liveBandwidthNote() {
+  const used = liveMonthBytes()
+  const budget = Number(currentData()?.bandwidthBudgetBytes || 0)
+  const now = new Date()
+  const dayOfMonth = now.getUTCDate()
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  const projected = dayOfMonth > 0 ? used / dayOfMonth * daysInMonth : used
+  const tb = value => (value / 1000 ** 4).toFixed(2) + ' TB'
+  if (!budget) return `On track for ${tb(projected)} by month end`
+  return `${Math.round(used / budget * 100)}% of ${tb(budget)} — on track for ${tb(projected)}`
+}
+const liveCards = derived(() => [
+  { label: 'CPU utilization', pct: liveCpu(), detail: `${liveMetric().load} load across ${liveMetric().cpus} vCPU` },
+  { label: 'Memory', pct: liveMemory(), detail: `${liveGb(liveMetric().memUsedMb)} / ${liveGb(liveMetric().memTotalMb)} GB` },
+  { label: 'Disk', pct: liveDisk(), detail: `${liveMetric().diskUsedGb} / ${liveMetric().diskTotalGb} GB` },
+  { label: 'Swap', pct: liveSwap(), detail: `${liveGb(liveMetric().swapUsedMb)} / ${liveGb(liveMetric().swapTotalMb)} GB` },
+])
+function series(name) { return historySeries().find(item => item.name === name) }
+function points(name) { return (series(name)?.points || []).filter(point => !point.gap && point.value != null) }
+function ratioPoints(primary, numerator, denominator, multiplier = 100) {
+  const direct = points(primary)
+  if (direct.length) return direct.map(point => ({ ...point, value: Math.max(0, Math.min(100, Number(point.value))) }))
+  const den = new Map(points(denominator).map(point => [point.timestamp, Number(point.value)]))
+  return points(numerator)
+    .filter(point => Number(den.get(point.timestamp)) > 0)
+    .map(point => ({ ...point, value: Math.max(0, Math.min(100, Number(point.value) / Number(den.get(point.timestamp)) * multiplier)) }))
+}
+const RATE_METRICS = { 'network-in': 'host.network.rx_rate', 'network-out': 'host.network.tx_rate' }
+const BYTE_METRICS = { 'egress-daily': 'storage.egress.day' }
+function isByteMetric(name) { return Object.hasOwn(BYTE_METRICS, name) }
+function bytesLabel(value) {
+  const n = Number(value || 0)
+  if (n >= 1000 ** 4) return (n / 1000 ** 4).toFixed(2) + ' TB'
+  if (n >= 1000 ** 3) return (n / 1000 ** 3).toFixed(1) + ' GB'
+  if (n >= 1000 ** 2) return (n / 1000 ** 2).toFixed(1) + ' MB'
+  return Math.round(n / 1000) + ' KB'
+}
+function latestValue(name) {
+  const values = points(name)
+  return values.length ? Number(values.at(-1).value) : null
+}
+function egressBudget() { return latestValue('storage.egress.budget') }
+function egressMonth() { return latestValue('storage.egress.month') }
+function egressProjected() { return latestValue('storage.egress.projected_month') }
+function egressPercent() { return latestValue('storage.egress.budget_used_percent') }
+function hasEgress() { return points('storage.egress.day').length > 0 || egressMonth() != null }
+function egressTone() {
+  const pct = egressPercent()
+  if (pct == null) return 'ok'
+  return pct >= 90 ? 'bad' : pct >= 75 ? 'warn' : 'ok'
+}
+function egressSummary() {
+  const month = egressMonth()
+  if (month == null) return 'No egress reported yet.'
+  const budget = egressBudget()
+  const projected = egressProjected()
+  const projectedNote = projected == null ? '' : ` — on track for ${bytesLabel(projected)}`
+  if (!budget) return `${bytesLabel(month)} this month${projectedNote}`
+  return `${bytesLabel(month)} of ${bytesLabel(budget)} (${egressPercent() ?? 0}%)${projectedNote}`
+}
+// A projection above the allowance is the whole point of the panel: it is the
+// window in which the overrun is still avoidable.
+function egressWillExceed() {
+  const budget = egressBudget()
+  const projected = egressProjected()
+  return !!budget && projected != null && projected > budget
+}
+function isRateMetric(name) { return Object.hasOwn(RATE_METRICS, name) }
+function metricPoints(name) {
+  if (isRateMetric(name)) return points(RATE_METRICS[name])
+  if (isByteMetric(name)) return points(BYTE_METRICS[name])
+  if (name === 'cpu') return ratioPoints('host.cpu.used_percent', 'host.load', 'host.cpu.capacity')
+  if (name === 'memory') return ratioPoints('host.memory.used_percent', 'host.memory.used', 'host.memory.total')
+  if (name === 'disk') return points('host.disk.used_percent')
+  if (name === 'swap') return points('host.swap.used_percent')
+  if (name === 'inodes') return points('host.disk.inode_used_percent')
+  return points('host.load')
+}
+function linePath(metric) {
+  const values = metricPoints(metric)
+  if (!values.length) return ''
+  const max = metric === 'load' || isRateMetric(metric) || isByteMetric(metric)
+    ? Math.max(1, ...values.map(point => Number(point.value)))
+    : 100
+  return values.map((point, index) => {
+    const x = values.length === 1 ? 50 : index / (values.length - 1) * 100
+    const y = 42 - Math.max(0, Math.min(1, Number(point.value) / max)) * 38
+    return `${index ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`
+  }).join(' ')
+}
+function areaPath(metric) {
+  const line = linePath(metric)
+  return line ? `${line} L 100 44 L 0 44 Z` : ''
+}
+function latest(metric) {
+  const values = metricPoints(metric)
+  return values.length ? Number(values.at(-1).value) : null
+}
+function peak(metric) {
+  const values = metricPoints(metric)
+  return values.length ? Math.max(...values.map(point => Number(point.value))) : null
+}
+function display(value, suffix = '%') {
+  if (value == null) return 'No data'
+  if (suffix === 'rate') return liveRate(value)
+  if (suffix === 'bytes') return bytesLabel(value)
+  return `${value.toFixed(value >= 10 ? 0 : 1)}${suffix}`
+}
+function samples(metric) { return metricPoints(metric).length }
+const historyCards = [
+  { key: 'cpu', label: 'CPU utilization', note: 'Actual busy time, with load-per-core fallback for older samples', tone: 'blue' },
+  { key: 'memory', label: 'Memory usage', note: 'Used RAM as a percentage of installed memory', tone: 'green' },
+  { key: 'disk', label: 'Disk usage', note: 'Root filesystem capacity consumed', tone: 'amber' },
+  { key: 'swap', label: 'Swap usage', note: 'Swap pressure across the selected period', tone: 'violet' },
+  { key: 'load', label: 'Load average', note: 'One-minute runnable and waiting task average', tone: 'cyan', suffix: '' },
+  { key: 'inodes', label: 'Inode usage', note: 'Root filesystem inode capacity consumed', tone: 'rose' },
+  { key: 'network-out', label: 'Network out', note: 'Egress throughput — the metric providers meter and bill', tone: 'amber', suffix: 'rate' },
+  { key: 'network-in', label: 'Network in', note: 'Ingress throughput across all non-loopback interfaces', tone: 'blue', suffix: 'rate' },
+]
+function setRange(value) { historyRange.set(value); refresh() }
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -78,21 +281,56 @@ function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Health</div>
     <header class="page">
-      <div>
-        <h1>Server health</h1>
-        <p>CPU, memory, disk &amp; vital signs for {{ server.name }}.</p>
-      </div>
-      <div class="header-actions">
-        @if (live)<span class="ok pill">live</span>@else<span class="pill warn">probe unavailable</span>@endif
-      </div>
+      <div><h1>Server health</h1><p>Current and historical resource pressure for {{ server.name }}.</p></div>
+      <div class="header-actions"><span class="pill" :class="pollingState() === 'live' ? 'ok' : 'warn'">{{ pollingState() }}</span><small>{{ lastUpdatedAt()?.toLocaleTimeString() || 'connecting' }}</small></div>
     </header>
 
-    <!-- Verdict banner: the one-glance "is the box OK?" answer. -->
-    <div class="health-hero {{ overall.tone }}">
-      <div class="status">
-        <span class="led"></span>
-        <span>{{ overall.title }}<small>{{ overall.note }}</small></span>
+    <div class="health-hero" :class="liveTone()" @show="!!currentData()">
+      <div class="status"><span class="led"></span><span>{{ liveStatus() }}<small>Live host probe, refreshed automatically.</small></span></div>
+      <div class="hmeta">
+        <div class="item"><span>OS</span><b>{{ currentData()?.server?.os || 'unavailable' }}</b></div>
+        <div class="item"><span>Region</span><b>{{ currentData()?.server?.provider || 'unavailable' }} · {{ currentData()?.server?.region || 'unavailable' }}</b></div>
+        <div class="item"><span>Uptime</span><b>{{ currentData()?.server?.uptime || 'unavailable' }}</b></div>
+        <div class="item"><span>vCPUs</span><b>{{ liveMetric().cpus }}</b></div>
       </div>
+    </div>
+
+    <div class="gauges live-gauges" @show="!!currentData()">
+      <template :for="card in liveCards()">
+        <div class="gauge" :class="card.pct >= 90 ? 'bad' : card.pct >= 70 ? 'warn' : 'ok'">
+          <div class="ghead">{{ card.label }}</div>
+          <div class="ring" :style="'--pct:' + card.pct"><div class="center"><div class="pct">{{ card.pct }}<sup>%</sup></div><div class="punit">used</div></div></div>
+          <div class="gsub">{{ card.detail }}</div>
+        </div>
+      </template>
+    </div>
+
+    <div class="section" @show="!!currentData()">
+      <h2>Vital signs</h2>
+      <div class="host-vitals vitals">
+        <div class="vital"><div class="vlabel">Load averages</div><div class="vval">{{ liveMetric().load }} / {{ liveMetric().load5 }} / {{ liveMetric().load15 }}</div><div class="vnote">1, 5, and 15 minutes</div></div>
+        <div class="vital"><div class="vlabel">Memory available</div><div class="vval">{{ liveGb(liveMetric().memAvailableMb) }} <small>GB</small></div><div class="vnote">{{ liveGb(liveMetric().memCacheMb) }} GB cache</div></div>
+        <div class="vital"><div class="vlabel">Disk inodes</div><div class="vval">{{ liveMetric().inodeUsedPct }}<small>% used</small></div><div class="vnote">Filesystem entry capacity</div></div>
+        <div class="vital"><div class="vlabel">Processes</div><div class="vval">{{ liveMetric().processes }}</div><div class="vnote">Current process count</div></div>
+        <div class="vital"><div class="vlabel">Network in</div><div class="vval">{{ liveRate(liveMetric().networkRxBytesPerSec) }}</div><div class="vnote">{{ liveBytes(liveMetric().networkRxBytesToday) }} today</div></div>
+        <div class="vital"><div class="vlabel">Network out</div><div class="vval">{{ liveRate(liveMetric().networkTxBytesPerSec) }}</div><div class="vnote">{{ liveBytes(liveMetric().networkTxBytesToday) }} today</div></div>
+        <div class="vital"><div class="vlabel">Bandwidth this month</div><div class="vval">{{ liveBytes(liveMonthBytes()) }}</div><div class="vnote">{{ liveBandwidthNote() }}</div></div>
+        <div class="vital"><div class="vlabel">Disk free</div><div class="vval">{{ Math.max(0, Number(liveMetric().diskTotalGb) - Number(liveMetric().diskUsedGb)) }} <small>GB</small></div><div class="vnote">{{ liveMetric().diskTotalGb }} GB total</div></div>
+        <div class="vital"><div class="vlabel">Swap</div><div class="vval">{{ liveSwap() }}<small>% used</small></div><div class="vnote">{{ liveGb(liveMetric().swapUsedMb) }} / {{ liveGb(liveMetric().swapTotalMb) }} GB</div></div>
+      </div>
+    </div>
+
+    <div class="section" @show="!!currentData()">
+      <h2>Current resource shape</h2>
+      <div class="live-bars panel">
+        <template :for="card in liveCards()">
+          <div class="live-bar"><div><span>{{ card.label }}</span><strong>{{ card.pct }}%</strong></div><div class="live-bar-track"><i :style="'width:' + card.pct + '%'"></i></div><small>{{ card.detail }}</small></div>
+        </template>
+      </div>
+    </div>
+
+    <div class="health-hero {{ overall.tone }}" @show="!currentData()">
+      <div class="status"><span class="led"></span><span>{{ overall.title }}<small>{{ overall.note }}</small></span></div>
       <div class="hmeta">
         <div class="item"><span>OS</span><b>{{ server.os }}</b></div>
         <div class="item"><span>Region</span><b>{{ server.provider }} · {{ server.region }}</b></div>
@@ -101,83 +339,127 @@ function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7
       </div>
     </div>
 
-    <!-- Centerpiece: radial gauges for the three vitals. -->
-    <div class="gauges">
+    <div class="gauges" @show="!currentData()">
       @foreach (gaugeCards as g)
         <div class="gauge {{ g.tone }}">
-          <div class="ghead">
-            @if (g.icon === 'cpu')
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>
-            @elseif (g.icon === 'mem')
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7v-2M12 7v-2M17 7v-2M7 21v-2M12 21v-2M17 21v-2"/></svg>
-            @else
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
-            @endif
-            {{ g.label }}
-          </div>
-          <div class="ring" style="--pct: {{ g.pct }}">
-            <div class="center">
-              <div class="pct">{{ g.big }}@if (live)<sup>%</sup>@endif</div>
-              <div class="punit">{{ g.unit }}</div>
-            </div>
-          </div>
-          <div class="gsub">{{ g.sub }}</div>
-          <div class="gtag">{{ g.tag }}</div>
+          <div class="ghead">{{ g.label }}</div>
+          <div class="ring" style="--pct: {{ g.pct }}"><div class="center"><div class="pct">{{ g.big }}@if (live)<sup>%</sup>@endif</div><div class="punit">{{ g.unit }}</div></div></div>
+          <div class="gsub">{{ g.sub }}</div><div class="gtag">{{ g.tag }}</div>
         </div>
       @endforeach
     </div>
 
-    <!-- Secondary vital signs. -->
-    <div class="section">
+    <div class="section" @show="!currentData()">
       <h2>Vital signs</h2>
-      <div class="vitals">
-        <div class="vital">
-          <div class="vlabel">Load average</div>
-          <div class="vval">{{ live ? m.load : 'Unavailable' }} @if (live)<small>/ {{ m.cpus }} cores</small>@endif</div>
-          <div class="vnote">{{ live ? loadPerCpuNote : unavailableNote }}</div>
-        </div>
-        <div class="vital">
-          <div class="vlabel">Memory free</div>
-          <div class="vval">{{ live ? memFreeGb : 'Unavailable' }} @if (live)<small>GB</small>@endif</div>
-          <div class="vnote">{{ live ? memTotalNote : unavailableNote }}</div>
-        </div>
-        <div class="vital">
-          <div class="vlabel">Disk free</div>
-          <div class="vval">{{ live ? diskFreeGb : 'Unavailable' }} @if (live)<small>GB</small>@endif</div>
-          <div class="vnote">{{ live ? diskTotalNote : unavailableNote }}</div>
-        </div>
-        <div class="vital">
-          <div class="vlabel">Uptime</div>
-          <div class="vval">{{ live ? server.uptime : 'Unavailable' }}</div>
-          <div class="vnote">{{ server.os }}</div>
-        </div>
+        <div class="host-vitals vitals">
+        <div class="vital"><div class="vlabel">Load averages</div><div class="vval">{{ live ? `${m.load} / ${m.load5} / ${m.load15}` : 'Unavailable' }}</div><div class="vnote">1, 5, and 15 minutes</div></div>
+        <div class="vital"><div class="vlabel">Memory available</div><div class="vval">{{ live ? memAvailableGb : 'Unavailable' }} @if (live)<small>GB</small>@endif</div><div class="vnote">{{ live ? `${gb(m.memCacheMb)} GB cache` : unavailableNote }}</div></div>
+        <div class="vital"><div class="vlabel">Swap</div><div class="vval">{{ live ? swapPct : 'Unavailable' }}@if (live)<small>% used</small>@endif</div><div class="vnote">{{ live ? `${gb(m.swapUsedMb)} / ${gb(m.swapTotalMb)} GB` : unavailableNote }}</div></div>
+        <div class="vital"><div class="vlabel">Disk inodes</div><div class="vval">{{ live ? m.inodeUsedPct : 'Unavailable' }}@if (live)<small>% used</small>@endif</div><div class="vnote">Filesystem entry capacity</div></div>
+        <div class="vital"><div class="vlabel">Network in</div><div class="vval">{{ live ? rate(m.networkRxBytesPerSec) : 'Unavailable' }}</div><div class="vnote">{{ live ? `${bytes(m.networkRxBytesToday)} today` : unavailableNote }}</div></div>
+        <div class="vital"><div class="vlabel">Network out</div><div class="vval">{{ live ? rate(m.networkTxBytesPerSec) : 'Unavailable' }}</div><div class="vnote">{{ live ? `${bytes(m.networkTxBytesToday)} today` : unavailableNote }}</div></div>
+        <div class="vital"><div class="vlabel">Bandwidth this month</div><div class="vval">{{ live ? bytes(monthBytes) : 'Unavailable' }}</div><div class="vnote">{{ live ? bandwidthNote : unavailableNote }}</div></div>
+        <div class="vital"><div class="vlabel">Processes</div><div class="vval">{{ live ? m.processes : 'Unavailable' }}</div><div class="vnote">Current process count</div></div>
+        <div class="vital"><div class="vlabel">Disk free</div><div class="vval">{{ live ? diskFreeGb : 'Unavailable' }} @if (live)<small>GB</small>@endif</div><div class="vnote">{{ live ? `${m.diskTotalGb} GB total` : unavailableNote }}</div></div>
       </div>
     </div>
 
-    <!-- Load over recent snapshots. -->
-    <div class="section">
-      <h2>Resource chart</h2>
-      <div class="chart-panel panel">
-        {{{ resourceChart }}}
-      </div>
+    <div class="section" @show="!currentData()">
+      <h2>Current resource shape</h2>
+      <div class="chart-panel panel">{{{ resourceChart }}}</div>
     </div>
 
     <div class="section">
-      <h2>CPU load trend</h2>
-      <div class="chart panel">
-        @if (live)
-          <div class="spark">
-            @foreach (loadTrend as v)
-              <i class="{{ barTone(v) }}" style="height: {{ barPct(v) }}%"></i>
-            @endforeach
+      <div class="history-heading">
+        <div><h2>Historical performance</h2><p>Persisted independently of browser sessions. Gaps remain visible as missing samples.</p></div>
+        <div class="segmented" role="group" aria-label="Historical metric range">
+          <template :for="value in ['1h','6h','24h','7d','30d']"><button type="button" :class="{active:historyRange()===value}" @click="setRange(value)">{{ value }}</button></template>
+        </div>
+      </div>
+      <p class="bad notice" role="status" @show="!!historyError() || !!pollingError()">{{ historyError() || pollingError() }}</p>
+      <div class="history-grid">
+        <template :for="card in historyCards">
+          <article class="history-card panel" :class="card.tone">
+            <div class="history-card-head"><div><h3>{{ card.label }}</h3><p>{{ card.note }}</p></div><strong>{{ display(latest(card.key), card.suffix ?? '%') }}</strong></div>
+            <svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img" :aria-label="card.label + ' history'">
+              <line x1="0" x2="100" y1="23" y2="23" class="history-gridline"></line>
+              <path :d="areaPath(card.key)" class="history-area"></path>
+              <path :d="linePath(card.key)" class="history-line"></path>
+            </svg>
+            <div class="history-meta"><span>{{ samples(card.key) }} samples</span><span>peak {{ display(peak(card.key), card.suffix ?? '%') }}</span></div>
+            <div class="compact empty" @show="samples(card.key) === 0"><strong>Collecting history</strong><span>The first persisted point appears within one minute.</span></div>
+          </article>
+        </template>
+      </div>
+      <div class="egress-panel panel" :class="egressTone()" @show="hasEgress()">
+        <div class="egress-head">
+          <div>
+            <h3>Object storage egress</h3>
+            <p>Reported by the applications that serve the downloads — these bytes never cross this host's network interface.</p>
           </div>
-          <div class="xaxis"><span>-24 snapshots</span><span>peak {{ trendPeak }}% · now</span></div>
-          <p class="note">% of CPU capacity · refresh with <span class="mono">cloud server:monitoring {{ server.name }}</span></p>
-        @else
-          <div class="compact empty"><strong>No live trend</strong><span>{{ unavailableNote }}</span></div>
-        @endif
+          <strong>{{ egressSummary() }}</strong>
+        </div>
+        <div class="egress-track" @show="!!egressBudget()">
+          <i :style="'width:' + Math.min(100, egressPercent() ?? 0) + '%'"></i>
+        </div>
+        <p class="bad notice" role="status" @show="egressWillExceed()">
+          Projected to exceed the monthly allowance — {{ bytesLabel(egressProjected()) }} against {{ bytesLabel(egressBudget()) }}.
+        </p>
+        <svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img" aria-label="Daily object storage egress">
+          <line x1="0" x2="100" y1="23" y2="23" class="history-gridline"></line>
+          <path :d="areaPath('egress-daily')" class="history-area"></path>
+          <path :d="linePath('egress-daily')" class="history-line"></path>
+        </svg>
+        <div class="history-meta">
+          <span>{{ samples('egress-daily') }} days</span>
+          <span>peak {{ display(peak('egress-daily'), 'bytes') }}</span>
+        </div>
       </div>
+      <p class="note">Retention, source freshness, comparisons, logs, and exports are available in <a href="/operations/observability">Observability</a>.</p>
     </div>
   </div>
+  <style>
+    .egress-panel { margin-top:18px; padding:18px; }
+    .egress-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+    .egress-head h3 { margin:0; font-size:14px; }
+    .egress-head p { margin:4px 0 0; color:var(--txt3); font-size:11px; max-width:52ch; }
+    .egress-head strong { color:var(--txt); font-size:13px; white-space:nowrap; }
+    .egress-track { height:7px; margin:14px 0 4px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.07); }
+    .egress-track > i { display:block; height:100%; border-radius:999px; background:var(--ok); }
+    .egress-panel.warn .egress-track > i { background:var(--warn); }
+    .egress-panel.bad .egress-track > i { background:var(--bad); }
+    .egress-panel svg { width:100%; height:88px; margin-top:10px; }
+    .host-vitals { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .live-gauges { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .live-bars { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 24px; }
+    .live-bar > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; }
+    .live-bar strong { color:var(--txt); }
+    .live-bar small { display:block; margin-top:7px; color:var(--txt3); font-size:11px; }
+    .live-bar-track { height:7px; margin-top:8px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.07); }
+    .live-bar-track i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),#22d3ee); transition:width .35s ease; }
+    .history-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:14px; }
+    .history-heading h2 { font-size:15px; }
+    .history-heading p { margin-top:5px; color:var(--txt3); font-size:12px; }
+    .history-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .history-card { --series:var(--accent); position:relative; overflow:hidden; min-height:244px; }
+    .history-card.green { --series:var(--ok); }
+    .history-card.amber { --series:var(--warn); }
+    .history-card.violet { --series:#a78bfa; }
+    .history-card.cyan { --series:#22d3ee; }
+    .history-card.rose { --series:#fb7185; }
+    .history-card-head { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; }
+    .history-card-head h3 { color:var(--txt); font-size:13px; text-transform:none; letter-spacing:0; }
+    .history-card-head p { color:var(--txt3); font-size:11px; line-height:1.45; margin-top:4px; max-width:44ch; }
+    .history-card-head strong { color:var(--series); font-size:22px; white-space:nowrap; }
+    .history-card svg { width:100%; height:126px; margin-top:14px; overflow:visible; }
+    .history-gridline { stroke:rgba(255,255,255,.07); stroke-width:.35; stroke-dasharray:2 3; vector-effect:non-scaling-stroke; }
+    .history-area { fill:color-mix(in srgb,var(--series) 16%,transparent); }
+    .history-line { fill:none; stroke:var(--series); stroke-width:1.35; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+    .history-meta { display:flex; justify-content:space-between; color:var(--txt3); font-size:11px; }
+    .history-card .empty { position:absolute; inset:86px 18px 38px; min-height:0; background:rgba(12,16,23,.92); }
+    @media(max-width:900px){.host-vitals,.history-grid,.live-gauges{grid-template-columns:repeat(2,minmax(0,1fr));}.history-heading{align-items:flex-start;flex-direction:column;}}
+    @media(max-width:560px){.host-vitals,.history-grid,.live-gauges,.live-bars{grid-template-columns:1fr}.history-heading .segmented{overflow-x:auto}.history-heading .segmented button{min-width:48px}}
+    @media(prefers-reduced-motion:reduce){.health-hero .status .led{animation:none}.gauge{transition:none}}
+  </style>
 </body>
 </html>

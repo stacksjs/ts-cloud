@@ -1,11 +1,11 @@
-import { CloudFrontClient } from '../aws/cloudfront'
 import * as cli from '../utils/cli'
+import { CloudFrontClient } from '../aws/cloudfront'
 
 function normalizeAliases(aliases: unknown): string[] {
   if (!aliases) return []
   if (Array.isArray(aliases)) return aliases.map(String)
 
-  const record = aliases as { Items?: unknown, Item?: unknown }
+  const record = aliases as { Items?: unknown; Item?: unknown }
   const items = record.Items ?? record.Item
   if (!items) return []
 
@@ -41,12 +41,12 @@ export async function ensureDynamicMethodsForDomains(domains: string[]): Promise
 
   const cf = new CloudFrontClient()
   const distributions = await cf.listDistributions()
-  const uniqueDomains = [...new Set(domains.map(d => d.toLowerCase()))]
+  const uniqueDomains = [...new Set(domains.map((d) => d.toLowerCase()))]
 
   for (const domain of uniqueDomains) {
     const distribution = distributions.find((entry) => {
       const aliases = normalizeAliases(entry.Aliases)
-      return aliases.some(alias => alias.toLowerCase() === domain)
+      return aliases.some((alias) => alias.toLowerCase() === domain)
     })
 
     if (!distribution?.Id) {
@@ -57,8 +57,7 @@ export async function ensureDynamicMethodsForDomains(domains: string[]): Promise
     const updated = await cf.ensureDynamicHttpMethods(distribution.Id)
     if (updated) {
       cli.success(`CloudFront ${distribution.Id} (${domain}): enabled POST/PUT/PATCH/DELETE on dynamic paths`)
-    }
-    else {
+    } else {
       cli.info(`CloudFront ${distribution.Id} (${domain}): already allows dynamic HTTP methods`)
     }
   }

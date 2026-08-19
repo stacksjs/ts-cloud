@@ -1,7 +1,6 @@
 import type { Route53HostedZone, Route53RecordSet } from '@ts-cloud/aws-types'
-import { Fn } from '../intrinsic-functions'
-import { generateLogicalId, generateResourceName } from '../resource-naming'
 import type { EnvironmentType } from '../types'
+import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 export interface HostedZoneOptions {
   domain: string
@@ -34,7 +33,7 @@ export class DNS {
   /**
    * Create a Route53 hosted zone
    */
-  static createHostedZone(options: HostedZoneOptions): { zone: Route53HostedZone, logicalId: string } {
+  static createHostedZone(options: HostedZoneOptions): { zone: Route53HostedZone; logicalId: string } {
     const { domain, slug, environment, comment } = options
 
     const resourceName = generateResourceName({
@@ -61,7 +60,7 @@ export class DNS {
   /**
    * Create a DNS record
    */
-  static createRecord(options: RecordOptions): { record: Route53RecordSet, logicalId: string } {
+  static createRecord(options: RecordOptions): { record: Route53RecordSet; logicalId: string } {
     const { hostedZoneId, hostedZoneName, name, type, ttl, values, aliasTarget } = options
 
     const logicalId = generateLogicalId(`record-${name.replace(/\./g, '')}-${type}`)
@@ -77,8 +76,7 @@ export class DNS {
     // Set hosted zone reference
     if (hostedZoneId) {
       record.Properties.HostedZoneId = hostedZoneId
-    }
-    else if (hostedZoneName) {
+    } else if (hostedZoneName) {
       record.Properties.HostedZoneName = hostedZoneName
     }
 
@@ -90,8 +88,7 @@ export class DNS {
         HostedZoneId: aliasTarget.hostedZoneId,
         EvaluateTargetHealth: aliasTarget.evaluateTargetHealth ?? false,
       }
-    }
-    else {
+    } else {
       // Standard record (requires TTL and values)
       record.Properties.TTL = ttl || 300
       record.Properties.ResourceRecords = values || []
@@ -107,7 +104,7 @@ export class DNS {
     domain: string,
     distributionDomainName: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createRecord({
       hostedZoneId,
       name: domain,
@@ -128,7 +125,7 @@ export class DNS {
     albDomainName: string,
     albHostedZoneId: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createRecord({
       hostedZoneId,
       name: domain,
@@ -149,7 +146,7 @@ export class DNS {
     target: string,
     hostedZoneId: string,
     ttl = 300,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createRecord({
       hostedZoneId,
       name,
@@ -162,10 +159,7 @@ export class DNS {
   /**
    * Create www → non-www redirect using S3 and Route53
    */
-  static createWwwRedirect(
-    domain: string,
-    hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  static createWwwRedirect(domain: string, hostedZoneId: string): { record: Route53RecordSet; logicalId: string } {
     return DNS.createRecord({
       hostedZoneId,
       name: `www.${domain}`,
@@ -180,16 +174,16 @@ export class DNS {
    */
   static createMxRecords(
     domain: string,
-    mailServers: Array<{ priority: number, server: string }>,
+    mailServers: Array<{ priority: number; server: string }>,
     hostedZoneId: string,
     ttl = 300,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createRecord({
       hostedZoneId,
       name: domain,
       type: 'MX',
       ttl,
-      values: mailServers.map(mx => `${mx.priority} ${mx.server}`),
+      values: mailServers.map((mx) => `${mx.priority} ${mx.server}`),
     })
   }
 
@@ -201,7 +195,7 @@ export class DNS {
     value: string,
     hostedZoneId: string,
     ttl = 300,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createRecord({
       hostedZoneId,
       name,
@@ -218,7 +212,7 @@ export class DNS {
     domain: string,
     spfValue: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createTxtRecord(domain, spfValue, hostedZoneId)
   }
 
@@ -230,7 +224,7 @@ export class DNS {
     policy: 'none' | 'quarantine' | 'reject',
     email: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     const dmarcValue = `v=DMARC1; p=${policy}; rua=mailto:${email}`
     return DNS.createTxtRecord(`_dmarc.${domain}`, dmarcValue, hostedZoneId)
   }
@@ -244,7 +238,7 @@ export class DNS {
     s3WebsiteEndpoint: string,
     s3HostedZoneId: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createRecord({
       hostedZoneId,
       name: domain,
@@ -304,7 +298,7 @@ export class DNS {
     domain: string,
     storeUrl: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createCname(`store.${domain}`, storeUrl, hostedZoneId)
   }
 
@@ -315,7 +309,7 @@ export class DNS {
     domain: string,
     apiUrl: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createCname(`api.${domain}`, apiUrl, hostedZoneId)
   }
 
@@ -326,7 +320,7 @@ export class DNS {
     domain: string,
     docsUrl: string,
     hostedZoneId: string,
-  ): { record: Route53RecordSet, logicalId: string } {
+  ): { record: Route53RecordSet; logicalId: string } {
     return DNS.createCname(`docs.${domain}`, docsUrl, hostedZoneId)
   }
 

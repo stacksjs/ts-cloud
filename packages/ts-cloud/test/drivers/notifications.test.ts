@@ -1,13 +1,9 @@
 import type { FetchLike } from '../../src/drivers/shared/notifications'
 import { describe, expect, it } from 'bun:test'
-import {
-  buildNotifierScript,
-  resolveNotifications,
-  sendNotifications,
-} from '../../src/drivers/shared/notifications'
+import { buildNotifierScript, resolveNotifications, sendNotifications } from '../../src/drivers/shared/notifications'
 
-function recorder(): { fetchImpl: FetchLike, calls: Array<{ url: string, body?: string, method?: string }> } {
-  const calls: Array<{ url: string, body?: string, method?: string }> = []
+function recorder(): { fetchImpl: FetchLike; calls: Array<{ url: string; body?: string; method?: string }> } {
+  const calls: Array<{ url: string; body?: string; method?: string }> = []
   const fetchImpl: FetchLike = async (url, init) => {
     calls.push({ url, body: init?.body, method: init?.method })
     return { ok: true, status: 200 }
@@ -18,33 +14,45 @@ function recorder(): { fetchImpl: FetchLike, calls: Array<{ url: string, body?: 
 describe('sendNotifications', () => {
   it('posts to Slack, Discord, Telegram, and a webhook', async () => {
     const { fetchImpl, calls } = recorder()
-    const attempted = await sendNotifications({
-      slack: { webhookUrl: 'https://hooks.slack.com/x' },
-      discord: { webhookUrl: 'https://discord.com/api/webhooks/y' },
-      telegram: { botToken: 'TOK', chatId: '42' },
-      webhook: { url: 'https://example.com/hook' },
-    }, 'deploy', 'hello', { fetchImpl })
+    const attempted = await sendNotifications(
+      {
+        slack: { webhookUrl: 'https://hooks.slack.com/x' },
+        discord: { webhookUrl: 'https://discord.com/api/webhooks/y' },
+        telegram: { botToken: 'TOK', chatId: '42' },
+        webhook: { url: 'https://example.com/hook' },
+      },
+      'deploy',
+      'hello',
+      { fetchImpl },
+    )
 
     expect(attempted.sort()).toEqual(['discord', 'slack', 'telegram', 'webhook'])
-    expect(calls.find(c => c.url.includes('slack'))?.body).toContain('"text":"hello"')
-    expect(calls.find(c => c.url.includes('discord'))?.body).toContain('"content":"hello"')
-    expect(calls.find(c => c.url.includes('telegram'))?.url).toContain('/botTOK/sendMessage')
-    expect(calls.find(c => c.url.includes('example.com'))?.body).toContain('"event":"deploy"')
+    expect(calls.find((c) => c.url.includes('slack'))?.body).toContain('"text":"hello"')
+    expect(calls.find((c) => c.url.includes('discord'))?.body).toContain('"content":"hello"')
+    expect(calls.find((c) => c.url.includes('telegram'))?.url).toContain('/botTOK/sendMessage')
+    expect(calls.find((c) => c.url.includes('example.com'))?.body).toContain('"event":"deploy"')
   })
 
   it('respects the events filter', async () => {
     const { fetchImpl, calls } = recorder()
-    const attempted = await sendNotifications({
-      slack: { webhookUrl: 'https://hooks.slack.com/x' },
-      events: ['deploy-failed'],
-    }, 'deploy', 'hi', { fetchImpl })
+    const attempted = await sendNotifications(
+      {
+        slack: { webhookUrl: 'https://hooks.slack.com/x' },
+        events: ['deploy-failed'],
+      },
+      'deploy',
+      'hi',
+      { fetchImpl },
+    )
     expect(attempted).toEqual([])
     expect(calls).toHaveLength(0)
   })
 
   it('sends a GET webhook with query params', async () => {
     const { fetchImpl, calls } = recorder()
-    await sendNotifications({ webhook: { url: 'https://example.com/h', method: 'GET' } }, 'ssl', 'renewed', { fetchImpl })
+    await sendNotifications({ webhook: { url: 'https://example.com/h', method: 'GET' } }, 'ssl', 'renewed', {
+      fetchImpl,
+    })
     expect(calls[0].method).toBe('GET')
     expect(calls[0].url).toContain('event=ssl')
     expect(calls[0].url).toContain('message=renewed')

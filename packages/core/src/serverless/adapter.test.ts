@@ -14,7 +14,7 @@ function httpEvent(overrides: Partial<ApiGatewayProxyEventV2> = {}): ApiGatewayP
     version: '2.0',
     rawPath: '/hello',
     rawQueryString: 'name=ada',
-    headers: { 'content-type': 'application/json', 'host': 'api.example.com' },
+    headers: { 'content-type': 'application/json', host: 'api.example.com' },
     requestContext: { domainName: 'api.example.com', http: { method: 'GET', path: '/hello' } },
     isBase64Encoded: false,
     ...overrides,
@@ -51,7 +51,9 @@ describe('HTTP adapter', () => {
   })
 
   it('serializes a text Response as plain body', async () => {
-    const result = await responseToResult(new Response('hello', { status: 201, headers: { 'content-type': 'text/plain' } }))
+    const result = await responseToResult(
+      new Response('hello', { status: 201, headers: { 'content-type': 'text/plain' } }),
+    )
     expect(result.statusCode).toBe(201)
     expect(result.body).toBe('hello')
     expect(result.isBase64Encoded).toBe(false)
@@ -59,13 +61,15 @@ describe('HTTP adapter', () => {
 
   it('base64-encodes a binary Response', async () => {
     const bytes = new Uint8Array([0, 1, 2, 255])
-    const result = await responseToResult(new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } }))
+    const result = await responseToResult(
+      new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } }),
+    )
     expect(result.isBase64Encoded).toBe(true)
     expect(Buffer.from(result.body!, 'base64')).toEqual(Buffer.from(bytes))
   })
 
   it('end-to-end invokes the fetch handler', async () => {
-    const handler = createHttpHandler(async req => new Response(`hi ${new URL(req.url).searchParams.get('name')}`))
+    const handler = createHttpHandler(async (req) => new Response(`hi ${new URL(req.url).searchParams.get('name')}`))
     const result = await handler(httpEvent())
     expect(result.statusCode).toBe(200)
     expect(result.body).toBe('hi ada')
@@ -115,7 +119,9 @@ describe('Queue adapter', () => {
 
   it('short-circuits warmer pings without invoking the handler', async () => {
     let called = false
-    const handler = createQueueHandler(async () => { called = true })
+    const handler = createQueueHandler(async () => {
+      called = true
+    })
     const res = await handler({ warmer: true } as any)
     expect(called).toBe(false)
     expect(res.batchItemFailures).toEqual([])
@@ -131,7 +137,10 @@ describe('CLI adapter', () => {
 
   it('short-circuits warmer pings without invoking the handler', async () => {
     let called = false
-    const handler = createCliHandler(async () => { called = true; return { statusCode: 0, output: '' } })
+    const handler = createCliHandler(async () => {
+      called = true
+      return { statusCode: 0, output: '' }
+    })
     const res = await handler({ warmer: true } as any)
     expect(called).toBe(false)
     expect(res.output).toBe('warm')
@@ -145,7 +154,11 @@ describe('resolveApp', () => {
   })
 
   it('accepts an object with fetch/queue/cli', () => {
-    const app = resolveApp({ fetch: () => new Response('x'), queue: () => {}, cli: () => ({ statusCode: 0, output: '' }) })
+    const app = resolveApp({
+      fetch: () => new Response('x'),
+      queue: () => {},
+      cli: () => ({ statusCode: 0, output: '' }),
+    })
     expect(typeof app.fetch).toBe('function')
     expect(typeof app.queue).toBe('function')
     expect(typeof app.cli).toBe('function')

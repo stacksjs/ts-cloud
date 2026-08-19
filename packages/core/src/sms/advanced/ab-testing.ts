@@ -251,12 +251,8 @@ function unmarshallTest(item) {
         Properties: {
           TableName: `${config.slug}-ab-tests`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
         },
       },
     }
@@ -380,7 +376,7 @@ function unmarshallTest(item) {
     let hash = 0
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
+      hash = (hash << 5) - hash + char
       hash = hash & hash
     }
     return Math.abs(hash)

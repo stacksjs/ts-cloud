@@ -230,7 +230,9 @@ describe('Registry Module', () => {
       expect(updated.Properties?.RepositoryPolicyText).toBeDefined()
       expect(updated.Properties?.RepositoryPolicyText?.Statement).toHaveLength(1)
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Effect).toBe('Allow')
-      const principal = updated.Properties?.RepositoryPolicyText?.Statement[0].Principal as { Service?: string | string[] }
+      const principal = updated.Properties?.RepositoryPolicyText?.Statement[0].Principal as {
+        Service?: string | string[]
+      }
       expect(principal.Service).toBe('lambda.amazonaws.com')
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Action).toContain('ecr:GetDownloadUrlForLayer')
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Action).toContain('ecr:BatchGetImage')

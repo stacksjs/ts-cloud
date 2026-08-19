@@ -1,19 +1,61 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
-import { parseBlock, parseDeployHistory, parseServerLogs, parseServerSecurity, resolveConfigOnlyServerDashboardData, serverLogSources } from './dashboard-data-server'
+import {
+  parseBlock,
+  parseDeployHistory,
+  parseServerLogs,
+  parseServerSecurity,
+  mergeDiscoveredSites,
+  metricsScript,
+  resolveConfigOnlyServerDashboardData,
+  serverLogSources,
+  sharedBoxProbeScript,
+} from './dashboard-data-server'
+
+describe('sharedBoxProbeScript', () => {
+  it('drains route probe responses so pooled proxy streams close cleanly', () => {
+    const encoded = sharedBoxProbeScript().match(/^echo '([^']+)'/)?.[1]
+    expect(encoded).toBeTruthy()
+    const script = Buffer.from(encoded!, 'base64').toString('utf8')
+    expect(script).toContain("method: 'GET'")
+    expect(script).toContain('await response.arrayBuffer()')
+    expect(script).toContain('mapWithConcurrency(configuredRoutes, 8')
+    expect(script).toContain('new X509Certificate(readFileSync(cert))')
+    expect(script).not.toContain("Bun.spawnSync(['openssl'")
+    expect(script).not.toContain('response.body?.cancel()')
+  })
+
+  it('can collect minute-level host metrics without probing every route', () => {
+    expect(metricsScript({ includeServices: false, includeSites: false }).join('\n')).not.toContain('base64 -d | bun -')
+    expect(metricsScript({ includeServices: false, includeSites: true }).join('\n')).toContain('base64 -d | bun -')
+  })
+
+  it('collects memory and root-disk fields with one command each', () => {
+    const script = metricsScript({ includeServices: false, includeSites: false }).join('\n')
+    expect((script.match(/free -m/g) ?? [])).toHaveLength(1)
+    expect((script.match(/df -BG -P/g) ?? [])).toHaveLength(1)
+  })
+})
 
 describe('serverLogSources', () => {
   const config = {
     project: { name: 'Acme', slug: 'acme' },
     infrastructure: { compute: { webServer: 'rpx', proxy: { engine: 'rpx' }, managedServices: { redis: true } } },
     sites: {
-      web: { domain: 'acme.com', root: '.', start: 'bun run server.ts', port: 3000, queues: [{ name: 'default' }], daemons: [{ name: 'reverb' }] },
+      web: {
+        domain: 'acme.com',
+        root: '.',
+        start: 'bun run server.ts',
+        port: 3000,
+        queues: [{ name: 'default' }],
+        daemons: [{ name: 'reverb' }],
+      },
       docs: { domain: 'acme.com', path: '/docs', root: 'dist', deploy: 'server', type: 'static' },
     },
   } as unknown as CloudConfig
 
   it('collects the web server, services, and each app service + its workers/daemons', () => {
-    const labels = serverLogSources(config).map(s => s.label)
+    const labels = serverLogSources(config).map((s) => s.label)
     expect(labels).toContain('rpx-gateway')
     expect(labels).toContain('redis')
     expect(labels).toContain('acme-web')
@@ -25,8 +67,8 @@ describe('serverLogSources', () => {
 
   it('maps worker/daemon labels to journalctl unit globs (all instances, not just one)', () => {
     const sources = serverLogSources(config)
-    expect(sources.find(s => s.label === 'acme-web-queues')?.pattern).toBe('acme-web-queue-*')
-    expect(sources.find(s => s.label === 'acme-web-daemons')?.pattern).toBe('acme-web-daemon-*')
+    expect(sources.find((s) => s.label === 'acme-web-queues')?.pattern).toBe('acme-web-queue-*')
+    expect(sources.find((s) => s.label === 'acme-web-daemons')?.pattern).toBe('acme-web-daemon-*')
   })
 })
 
@@ -66,25 +108,116 @@ describe('parseBlock (server metrics probe output)', () => {
     const r = parseBlock('OS=Name=With=Equals')
     expect(r.OS).toBe('Name=With=Equals')
   })
+
+  it('decodes safe shared-box route inventory records', () => {
+    const site = {
+      name: 'main',
+      project: 'analyticshq',
+      route: 'analyticshq.com',
+      href: 'https://analyticshq.com',
+      domain: 'analyticshq.com',
+      path: '/',
+      kind: 'app',
+      runtime: 'service',
+      deploy: 'service',
+      tls: 'https',
+      root: 'localhost:3200',
+      branch: 'main',
+      status: 'live',
+      httpStatus: 200,
+      responseMs: 42,
+      tlsDaysRemaining: 71,
+      checkedAt: '2026-07-26T12:00:00.000Z',
+    } as const
+    const r = parseBlock(`DISCOVERED_SITE=${Buffer.from(JSON.stringify(site)).toString('base64')}`)
+    expect(r.discoveredSites).toEqual([site])
+  })
+})
+
+describe('mergeDiscoveredSites', () => {
+  it('keeps owner metadata and adds routes from attached projects', () => {
+    const owner = [{ name: 'main', route: 'stacksjs.com', kind: 'stacks', runtime: 'bun', root: '/var/www/stacks-main/current' }]
+    const discovered = [
+      {
+        name: 'main',
+        project: 'stacks',
+        route: 'stacksjs.com',
+        href: 'https://stacksjs.com',
+        domain: 'stacksjs.com',
+        path: '/',
+        kind: 'app',
+        runtime: 'service',
+        deploy: 'service',
+        tls: 'https',
+        root: 'localhost:3000',
+        branch: 'main',
+        status: 'live',
+        managedBy: 'owner',
+        httpStatus: 200,
+        responseMs: 23,
+        checkedAt: '2026-07-26T12:00:00.000Z',
+      },
+      {
+        name: 'site',
+        project: 'whitepaper',
+        route: 'whitepaper.dev',
+        href: 'https://whitepaper.dev',
+        domain: 'whitepaper.dev',
+        path: '/',
+        kind: 'static',
+        runtime: 'static',
+        deploy: 'server static',
+        tls: 'https',
+        root: '/var/www/whitepaper-site/current',
+        branch: 'build artifact',
+        status: 'live',
+        managedBy: 'attached',
+        httpStatus: 200,
+        responseMs: 31,
+        checkedAt: '2026-07-26T12:00:00.000Z',
+      },
+    ] as any
+
+    expect(mergeDiscoveredSites(owner, discovered, 'stacks')).toEqual([
+      expect.objectContaining({
+        name: 'main',
+        route: 'stacksjs.com',
+        kind: 'stacks',
+        runtime: 'bun',
+        managedBy: 'owner',
+        responseMs: 23,
+      }),
+      expect.objectContaining({
+        name: 'whitepaper:site',
+        project: 'whitepaper',
+        route: 'whitepaper.dev',
+        managedBy: 'attached',
+        responseMs: 31,
+      }),
+    ])
+  })
 })
 
 describe('resolveConfigOnlyServerDashboardData', () => {
   it('derives rpx services and disabled backups from config instead of sample data', () => {
-    const data = resolveConfigOnlyServerDashboardData({
-      project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
-      cloud: { provider: 'hetzner' },
-      infrastructure: {
-        compute: {
-          instances: 1,
-          disk: { size: 20 },
-          webServer: 'rpx',
-          proxy: { engine: 'rpx' },
+    const data = resolveConfigOnlyServerDashboardData(
+      {
+        project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
+        cloud: { provider: 'hetzner' },
+        infrastructure: {
+          compute: {
+            instances: 1,
+            disk: { size: 20 },
+            webServer: 'rpx',
+            proxy: { engine: 'rpx' },
+          },
         },
-      },
-      sites: {
-        verygoodadblock: { deploy: 'server', domain: 'verygoodadblock.org', root: '../adblock/dist/site' },
-      },
-    } as any, 'production' as any)
+        sites: {
+          verygoodadblock: { deploy: 'server', domain: 'verygoodadblock.org', root: '../adblock/dist/site' },
+        },
+      } as any,
+      'production' as any,
+    )
 
     expect(data.server.name).toBe('stacks-production-app')
     expect(data.server.provider).toBe('hetzner')
@@ -108,53 +241,130 @@ describe('resolveConfigOnlyServerDashboardData', () => {
   })
 
   it('labels Stacks, BunPress, internal API, and shadowed routes without PHP defaults', () => {
-    const data = resolveConfigOnlyServerDashboardData({
-      project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
-      cloud: { provider: 'hetzner' },
-      infrastructure: {
-        compute: {
-          webServer: 'rpx',
-          proxy: { engine: 'rpx' },
+    const data = resolveConfigOnlyServerDashboardData(
+      {
+        project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
+        cloud: { provider: 'hetzner' },
+        infrastructure: {
+          compute: {
+            webServer: 'rpx',
+            proxy: { engine: 'rpx' },
+          },
         },
-      },
-      sites: {
-        main: { root: '.', domain: 'stacksjs.com', path: '/', start: 'bun storage/framework/core/buddy/src/cli.ts serve', port: 3000 },
-        api: { root: '.', start: 'bun storage/framework/core/actions/src/serve/api.ts', port: 3008 },
-        docs: { deploy: 'server', root: 'dist/docs/.bunpress', path: '/docs', domain: 'stacksjs.com', build: 'bunx @stacksjs/bunpress build --dir ./docs --outdir ./dist/docs' },
-        blog: { deploy: 'server', root: 'dist/blog', path: '/blog', domain: 'stacksjs.com', build: 'bun -e "const {buildBlog}=await import(\'./blog\')"' },
-        public: { deploy: 'server', root: 'storage/framework/frontend-dist', path: '/', domain: 'stacksjs.com', build: 'bun storage/framework/core/buddy/src/cli.ts build:frontend-static' },
-      },
-    } as any, 'production' as any)
+        sites: {
+          main: {
+            root: '.',
+            domain: 'stacksjs.com',
+            path: '/',
+            start: 'bun storage/framework/core/buddy/src/cli.ts serve',
+            port: 3000,
+          },
+          api: { root: '.', start: 'bun storage/framework/core/actions/src/serve/api.ts', port: 3008 },
+          docs: {
+            deploy: 'server',
+            root: 'dist/docs/.bunpress',
+            path: '/docs',
+            domain: 'stacksjs.com',
+            build: 'bunx @stacksjs/bunpress build --dir ./docs --outdir ./dist/docs',
+          },
+          blog: {
+            deploy: 'server',
+            root: 'dist/blog',
+            path: '/blog',
+            domain: 'stacksjs.com',
+            build: 'bun -e "const {buildBlog}=await import(\'./blog\')"',
+          },
+          public: {
+            deploy: 'server',
+            root: 'storage/framework/frontend-dist',
+            path: '/',
+            domain: 'stacksjs.com',
+            build: 'bun storage/framework/core/buddy/src/cli.ts build:frontend-static',
+          },
+        },
+      } as any,
+      'production' as any,
+    )
 
-    expect(data.sites.map((site: any) => ({
-      name: site.name,
-      route: site.route,
-      kind: site.kind,
-      runtime: site.runtime,
-      deploy: site.deploy,
-      tls: site.tls,
-      status: site.status,
-      shadowedBy: site.shadowedBy,
-    }))).toEqual([
-      { name: 'main', route: 'stacksjs.com', kind: 'stacks', runtime: 'bun', deploy: 'service', tls: 'https', status: 'live', shadowedBy: undefined },
-      { name: 'api', route: 'internal', kind: 'api', runtime: 'bun', deploy: 'service', tls: 'loopback', status: 'live', shadowedBy: undefined },
-      { name: 'docs', route: 'stacksjs.com/docs', kind: 'bunpress', runtime: 'static/bun', deploy: 'server static', tls: 'https', status: 'live', shadowedBy: undefined },
-      { name: 'blog', route: 'stacksjs.com/blog', kind: 'bunpress blog', runtime: 'static/bun', deploy: 'server static', tls: 'https', status: 'live', shadowedBy: undefined },
-      { name: 'public', route: 'stacksjs.com', kind: 'static', runtime: 'static/bun', deploy: 'server static', tls: 'https', status: 'shadowed', shadowedBy: 'main' },
+    expect(
+      data.sites.map((site: any) => ({
+        name: site.name,
+        route: site.route,
+        kind: site.kind,
+        runtime: site.runtime,
+        deploy: site.deploy,
+        tls: site.tls,
+        status: site.status,
+        shadowedBy: site.shadowedBy,
+      })),
+    ).toEqual([
+      {
+        name: 'main',
+        route: 'stacksjs.com',
+        kind: 'stacks',
+        runtime: 'bun',
+        deploy: 'service',
+        tls: 'https',
+        status: 'live',
+        shadowedBy: undefined,
+      },
+      {
+        name: 'api',
+        route: 'internal',
+        kind: 'api',
+        runtime: 'bun',
+        deploy: 'service',
+        tls: 'loopback',
+        status: 'live',
+        shadowedBy: undefined,
+      },
+      {
+        name: 'docs',
+        route: 'stacksjs.com/docs',
+        kind: 'bunpress',
+        runtime: 'static/bun',
+        deploy: 'server static',
+        tls: 'https',
+        status: 'live',
+        shadowedBy: undefined,
+      },
+      {
+        name: 'blog',
+        route: 'stacksjs.com/blog',
+        kind: 'bunpress blog',
+        runtime: 'static/bun',
+        deploy: 'server static',
+        tls: 'https',
+        status: 'live',
+        shadowedBy: undefined,
+      },
+      {
+        name: 'public',
+        route: 'stacksjs.com',
+        kind: 'static',
+        runtime: 'static/bun',
+        deploy: 'server static',
+        tls: 'https',
+        status: 'shadowed',
+        shadowedBy: 'main',
+      },
     ])
     expect(JSON.stringify(data.sites)).not.toContain('laravel')
     expect(JSON.stringify(data.sites)).not.toContain('"php"')
   })
 
   it('labels redirect-only sites as redirect, not bucket', () => {
-    const data = resolveConfigOnlyServerDashboardData({
-      project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
-      cloud: { provider: 'hetzner' },
-      infrastructure: { compute: { webServer: 'rpx', proxy: { engine: 'rpx' } } },
-      sites: {
-        wwwRedirect: { domain: 'www.stacksjs.com', redirect: 'https://stacksjs.com' },
-      },
-    } as any, 'production' as any)
+    const data = resolveConfigOnlyServerDashboardData(
+      {
+        project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
+        cloud: { provider: 'hetzner' },
+        infrastructure: { compute: { webServer: 'rpx', proxy: { engine: 'rpx' } } },
+        sites: {
+          wwwRedirect: { domain: 'www.stacksjs.com', redirect: 'https://stacksjs.com' },
+        },
+      } as any,
+      'production' as any,
+    )
 
     expect(data.sites[0]).toMatchObject({
       name: 'wwwRedirect',
@@ -180,7 +390,13 @@ describe('parseServerSecurity', () => {
     const security = parseServerSecurity(output)
 
     expect(security.ports).toHaveLength(2)
-    expect(security.ports[0]).toMatchObject({ proto: 'tcp', listen: '0.0.0.0:443', processName: 'users:(("rpx",pid=123,fd=7))', exposure: 'public', tone: 'ok' })
+    expect(security.ports[0]).toMatchObject({
+      proto: 'tcp',
+      listen: '0.0.0.0:443',
+      processName: 'users:(("rpx",pid=123,fd=7))',
+      exposure: 'public',
+      tone: 'ok',
+    })
     expect(security.ports[1]).toMatchObject({ listen: '127.0.0.1:3000', exposure: 'loopback', tone: 'ok' })
     expect(security.firewall).toMatchObject({ status: 'active', summary: 'ufw active' })
     expect(security.firewall.rules[0]).toContain('22/tcp')
@@ -202,7 +418,7 @@ describe('parseDeployHistory', () => {
       main: { start: 'bun server.ts', port: 3000 },
     } as any)
 
-    expect(records.map(record => record.site)).toEqual(['main', 'docs'])
+    expect(records.map((record) => record.site)).toEqual(['main', 'docs'])
     expect(records[0]).toMatchObject({ sha: 'def5678', status: 'failed', rc: '1', branch: 'main' })
     expect(records[1]).toMatchObject({ sha: 'abc1234', status: 'success', branch: 'build artifact' })
   })
@@ -219,7 +435,7 @@ describe('parseServerLogs', () => {
 
     const records = parseServerLogs(output)
 
-    expect(records.map(record => record.source)).toEqual(['stacks-main', 'nginx', 'rpx-gateway'])
+    expect(records.map((record) => record.source)).toEqual(['stacks-main', 'nginx', 'rpx-gateway'])
     expect(records[0]).toMatchObject({ level: 'error', message: 'app[456]: failed to bind port' })
     expect(records[1]).toMatchObject({ level: 'warn', message: 'nginx[789]: warning duplicate server name' })
     expect(records[2]).toMatchObject({ level: 'info', message: 'rpx[123]: route loaded' })

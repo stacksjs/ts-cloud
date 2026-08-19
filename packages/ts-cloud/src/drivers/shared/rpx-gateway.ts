@@ -2,10 +2,12 @@
  * Generate the rpx reverse-proxy gateway config + provisioning from the `sites`
  * model.
  *
- * ts-cloud's per-site deploy model resolves each site to one of three kinds
+ * ts-cloud's per-site deploy model resolves each site to a kind
  * (see {@link import('../../deploy/site-target').resolveSiteKind}):
  *  - `server-app`    — a dynamic app running on a port (systemd service);
  *  - `server-static` — a static site shipped to `/var/www/<name>`;
+ *  - `redirect`      — answered here with a Location header, nothing shipped;
+ *  - `proxy`         — forwarded here to an upstream ts-cloud does not manage;
  *  - `bucket`        — object storage + CDN (not on the box; ignored here).
  *
  * The rpx gateway fronts :80/:443 on the box and routes by host **and path**:
@@ -18,10 +20,70 @@
  * tooling), so the gateway is rpx, not Caddy.
  */
 import type { ComputeProxyConfig, RpxLoadBalancerConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
-import { resolveSiteKind } from '../../deploy/site-target'
+import { resolveProxyUpstreams, resolveSiteKind } from '../../deploy/site-target'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
 export const DEFAULT_RPX_CERTS_DIR = '/etc/rpx/certs'
+
+/** Whether the gateway adds a `www.` redirect for `domain` on its own. */
+export function hasAutoWwwVariant(domain: string): boolean {
+  return domain.split('.').length === 2
+}
+
+/**
+ * Every hostname the gateway will answer for a sites config.
+ *
+ * This is the set DNS has to publish, and it is deliberately derived from the
+ * same rules {@link buildRpxConfig} routes by, because the two drifting apart
+ * produces a specific and nasty failure: a name that resolves, has no route or
+ * certificate, and so is served the gateway's fallback cert — which on a shared
+ * box belongs to whichever *other* tenant sorts first. A visitor gets someone
+ * else's certificate and a browser warning, which is strictly worse than the
+ * name not existing.
+ *
+ * Two rules, both mirroring the route builder:
+ *  - every site's literal `domain`, including an explicitly declared
+ *    `www.<sub>.<apex>` (that host gets a real route here, so it needs a real
+ *    record — collapsing it to its apex is what left `www.ps1.stacksjs.com`
+ *    resolving onto another tenant's cert);
+ *  - plus `www.<domain>` for two-label apexes, which the gateway synthesizes
+ *    itself unless `autoWww` is off.
+ *
+ * `bucket` sites are excluded: they live on object storage + CDN, not this box.
+ */
+export function gatewayHostnames(
+  sites: Record<string, SiteConfig | undefined>,
+  options: { autoWww?: boolean } = {},
+): string[] {
+  const hosts = new Set<string>()
+
+  for (const site of Object.values(sites)) {
+    if (!site?.domain) continue
+    if (resolveSiteKind(site) === 'bucket') continue
+    hosts.add(site.domain)
+  }
+
+  if (options.autoWww !== false) {
+    for (const domain of [...hosts]) {
+      if (!hasAutoWwwVariant(domain)) continue
+      hosts.add(`www.${domain}`)
+    }
+  }
+
+  return [...hosts]
+}
+
+/**
+ * Public recursive resolvers used to decide whether a hostname is ready for an
+ * ACME http-01 challenge.
+ *
+ * The question the check has to answer is "can Let's Encrypt see this record
+ * yet", and LE resolves from the public internet — so the box's own resolver is
+ * the wrong vantage point, and a stale negative entry there blocks issuance for
+ * a record the rest of the world can already resolve. Two independent operators
+ * so one being unreachable does not stall a deploy.
+ */
+export const PUBLIC_DNS_RESOLVERS: readonly string[] = ['1.1.1.1', '8.8.8.8']
 
 /** Default webroot the gateway serves ACME http-01 challenges from on `:80`. */
 export const DEFAULT_ACME_WEBROOT = '/var/www/acme-challenge'
@@ -39,13 +101,10 @@ export interface RpxRedirect {
  * when unset so rpx applies its own defaults (status `301`, path-preserving).
  */
 export function normalizeSiteRedirect(input: string | SiteRedirectConfig): RpxRedirect {
-  if (typeof input === 'string')
-    return { to: input }
+  if (typeof input === 'string') return { to: input }
   const out: RpxRedirect = { to: input.to }
-  if (input.status != null)
-    out.status = input.status
-  if (input.preservePath != null)
-    out.preservePath = input.preservePath
+  if (input.status != null) out.status = input.status
+  if (input.preservePath != null) out.preservePath = input.preservePath
   return out
 }
 
@@ -71,7 +130,7 @@ export interface RpxRoute {
    * see `buildRpxConfig`. The string shorthand remains valid for a plain
    * directory served with the route-level `cleanUrls`.
    */
-  static?: string | { dir: string, spa?: boolean, pathRewriteStyle?: 'directory' | 'flat', maxAge?: number }
+  static?: string | { dir: string; spa?: boolean; pathRewriteStyle?: 'directory' | 'flat'; maxAge?: number }
   /**
    * Redirect target for a `redirect` site — the gateway answers `to` (the host)
    * with an HTTP redirect here instead of proxying/serving. The request path +
@@ -88,7 +147,7 @@ export interface RpxRoute {
    * how the management dashboard (and other protected sites) stay private behind
    * rpx, the same way the nginx driver applies htpasswd.
    */
-  auth?: { username: string, password: string, realm?: string }
+  auth?: { username: string; password: string; realm?: string }
   /**
    * Load-balancing strategy/health-check tuning for a multi-upstream `from`
    * (see {@link ComputeProxyConfig.loadBalancer}). Only meaningful when `from`
@@ -106,8 +165,7 @@ export interface RpxRoute {
  */
 export function resolveRouteAuth(site: SiteConfig): RpxRoute['auth'] {
   const auth = site.auth
-  if (!auth || auth.enabled === false || !auth.password)
-    return undefined
+  if (!auth || auth.enabled === false || !auth.password) return undefined
   return {
     username: auth.username || 'admin',
     password: auth.password,
@@ -123,12 +181,12 @@ export interface RpxGatewayConfig {
    * Production per-domain SNI certs: rpx serves a real PEM per server name from
    * this directory (`<domain>.crt` / `<domain>.key`).
    */
-  productionCerts: { certsDir: string }
+  productionCerts: { certsDir: string; certsDirServerNames?: string[] }
   /**
    * On-demand TLS (opt-in): lazily issue a real cert for an approved host the
    * first time it's needed. The site domains form the allowlist.
    */
-  onDemandTls?: { enabled: true, allowedSuffixes: string[], email?: string, certsDir: string }
+  onDemandTls?: { enabled: true; allowedSuffixes: string[]; email?: string; certsDir: string; staging: boolean }
   /**
    * Directory the gateway serves ACME http-01 challenge tokens from on `:80`
    * before redirecting to HTTPS. Set when ts-cloud manages certs so the renewal
@@ -141,12 +199,12 @@ export interface RpxGatewayConfig {
   /** Never touch `/etc/hosts` on a real server with real DNS. */
   hostsManagement: false
   /** Don't remove certs/hosts on exit. */
-  cleanup: { hosts: false, certs: false }
+  cleanup: { hosts: false; certs: false }
   /**
    * Origin lockdown (from `proxy.cdn` when a `secret` is set): rpx rejects
    * direct hits to the CDN-fronted hosts that lack the shared-secret header.
    */
-  originGuard?: { header: string, value: string, hosts: string[] }
+  originGuard?: { header: string; value: string; hosts: string[] }
 }
 
 export interface BuildRpxConfigOptions {
@@ -169,18 +227,19 @@ export interface BuildRpxConfigOptions {
  * `undefined` for the host default. Mirrors rpx's `normalizePathPrefix`.
  */
 export function normalizeRoutePath(path: string | undefined): string | undefined {
-  if (!path || path === '/')
-    return undefined
+  if (!path || path === '/') return undefined
   let p = `/${path}`.replace(/\/+/g, '/').replace(/\/+$/, '')
-  if (!p.startsWith('/'))
-    p = `/${p}`
+  if (!p.startsWith('/')) p = `/${p}`
   return p === '' || p === '/' ? undefined : p
 }
 
 /** Derive a stable, filesystem/registry-safe id from a host (+ optional path). */
 export function deriveRouteId(to: string, path?: string): string {
   const base = path ? `${to}${path}` : to
-  const cleaned = base.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 128)
+  const cleaned = base
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 128)
   return cleaned.length > 0 ? cleaned : 'rpx'
 }
 
@@ -191,9 +250,8 @@ export function deriveRouteId(to: string, path?: string): string {
  * private IP (falling back to its public IP when no private IP is available).
  */
 function resolveServerAppFrom(port: number, appBoxes?: RpxLbAppBox[]): string | string[] {
-  if (!appBoxes || appBoxes.length === 0)
-    return `localhost:${port}`
-  return appBoxes.map(box => `${box.privateIp ?? box.publicIp}:${port}`)
+  if (!appBoxes || appBoxes.length === 0) return `localhost:${port}`
+  return appBoxes.map((box) => `${box.privateIp ?? box.publicIp}:${port}`)
 }
 
 /**
@@ -219,11 +277,9 @@ function buildRpxConfigInternal(
   const domains = new Set<string>()
 
   for (const [name, site] of Object.entries(sites)) {
-    if (!site || !site.domain)
-      continue
+    if (!site || !site.domain) continue
     const kind = resolveSiteKind(site)
-    if (kind === 'bucket')
-      continue
+    if (kind === 'bucket') continue
 
     const path = normalizeRoutePath(site.path)
     const id = deriveRouteId(site.domain, path)
@@ -232,15 +288,43 @@ function buildRpxConfigInternal(
     if (kind === 'redirect') {
       // Gateway-only redirect: answer `domain` with a Location to the target.
       // `site.redirect` is guaranteed here (it's what makes the kind 'redirect').
-      proxies.push({ to: site.domain, path, redirect: normalizeSiteRedirect(site.redirect!), id, ...(auth ? { auth } : {}) })
+      proxies.push({
+        to: site.domain,
+        path,
+        redirect: normalizeSiteRedirect(site.redirect!),
+        id,
+        ...(auth ? { auth } : {}),
+      })
+      domains.add(site.domain)
+      continue
+    }
+
+    if (kind === 'proxy') {
+      // Gateway-only proxy: forward `domain` to an upstream ts-cloud does not
+      // manage. Unlike server-app the upstream is given verbatim (host:port),
+      // because there is no ts-cloud-owned service whose port we could derive
+      // it from — and no appBoxes rewrite, since the operator chose the target.
+      const upstreams = resolveProxyUpstreams(site)
+      if (upstreams.length === 0) continue
+      const from = upstreams.length === 1 ? upstreams[0]! : upstreams
+      proxies.push({
+        to: site.domain,
+        path,
+        from,
+        id,
+        ...(auth ? { auth } : {}),
+        ...(Array.isArray(from) && loadBalancer ? { loadBalancer } : {}),
+      })
+      // Joining `domains` is the whole reason this kind exists: it puts the host
+      // into certsDirServerNames + onDemandTls.allowedSuffixes, so the project's
+      // rpx-cert-renew units cover a service ts-cloud never deploys.
       domains.add(site.domain)
       continue
     }
 
     if (kind === 'server-app') {
       // A server-app must declare the port it listens on to be routable.
-      if (typeof site.port !== 'number')
-        continue
+      if (typeof site.port !== 'number') continue
       const from = resolveServerAppFrom(site.port, appBoxes)
       proxies.push({
         to: site.domain,
@@ -250,8 +334,7 @@ function buildRpxConfigInternal(
         ...(auth ? { auth } : {}),
         ...(Array.isArray(from) && loadBalancer ? { loadBalancer } : {}),
       })
-    }
-    else {
+    } else {
       // server-static: served from the atomic-release `current` symlink under
       // /var/www/<name> (zero-downtime swaps — see buildStaticSiteDeployScript).
       // `spa` + `pathRewriteStyle` MUST live inside the `static` object — rpx
@@ -285,11 +368,9 @@ function buildRpxConfigInternal(
   // custom domains where `www.<domain>` might belong to someone else).
   if (options.proxy.autoWww !== false) {
     for (const domain of [...domains]) {
-      if (domain.split('.').length !== 2)
-        continue
+      if (!hasAutoWwwVariant(domain)) continue
       const wwwDomain = `www.${domain}`
-      if (domains.has(wwwDomain))
-        continue
+      if (domains.has(wwwDomain)) continue
       proxies.push({ to: wwwDomain, redirect: { to: `https://${domain}` }, id: deriveRouteId(wwwDomain) })
       domains.add(wwwDomain)
     }
@@ -298,14 +379,13 @@ function buildRpxConfigInternal(
   // Sort so routes group by domain and, within a domain, the most-specific path
   // comes first (cosmetic — rpx re-sorts longest-prefix-first at runtime).
   proxies.sort((a, b) => {
-    if (a.to !== b.to)
-      return a.to.localeCompare(b.to)
+    if (a.to !== b.to) return a.to.localeCompare(b.to)
     return (b.path?.length ?? 0) - (a.path?.length ?? 0)
   })
 
   const config: RpxGatewayConfig = {
     proxies,
-    productionCerts: { certsDir },
+    productionCerts: { certsDir, certsDirServerNames: [...domains] },
     https: true,
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
@@ -317,6 +397,10 @@ function buildRpxConfigInternal(
       allowedSuffixes: [...domains],
       email: options.proxy.onDemandTlsEmail,
       certsDir,
+      // Always explicit — see ComputeProxyConfig.onDemandTlsStaging. An absent
+      // flag makes tlsx fall back to the staging directory, which issues certs
+      // that every client rejects while the deploy reports success.
+      staging: options.proxy.onDemandTlsStaging ?? false,
     }
   }
 
@@ -328,12 +412,19 @@ function buildRpxConfigInternal(
   }
 
   // CDN-in-front origin lockdown: enforce the shared secret on the fronted hosts.
+  //
+  // `frontedHosts` defaults to every hostname the gateway answers for — the same
+  // default the CDN reconcile uses. Deriving both from one rule is what keeps the
+  // guarded set and the fronted set identical: a host the CDN fronts but the
+  // gateway does not guard is a way around the edge, and a host the gateway
+  // guards but the CDN does not front rejects all of its traffic.
   const cdn = options.proxy.cdn
-  if (cdn?.secret && cdn.frontedHosts.length > 0) {
+  const guardedHosts = cdn?.frontedHosts?.length ? cdn.frontedHosts : [...domains]
+  if (cdn?.secret && guardedHosts.length > 0) {
     config.originGuard = {
       header: cdn.secretHeader ?? 'X-Origin-Verify',
       value: cdn.secret,
-      hosts: cdn.frontedHosts,
+      hosts: guardedHosts,
     }
   }
 
@@ -419,7 +510,7 @@ await startProxies({ verbose: process.env.RPX_VERBOSE !== 'false', ...config } a
  * challenge fails with "Address already in use". Treating either signal as
  * "rpx mode" keeps the nginx/SSL path and the gateway path from contradicting.
  */
-export function usesRpxProxy(compute?: { webServer?: string, proxy?: { engine?: string } }): boolean {
+export function usesRpxProxy(compute?: { webServer?: string; proxy?: { engine?: string } }): boolean {
   return compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx'
 }
 
@@ -427,6 +518,7 @@ export function usesRpxProxy(compute?: { webServer?: string, proxy?: { engine?: 
 export const RPX_DIR = '/etc/rpx'
 export const RPX_INSTALL_DIR = '/opt/rpx-gateway'
 export const RPX_LAUNCHER_PATH = '/etc/rpx/gateway.ts'
+export const RPX_BINARY_PATH = '/etc/rpx/gateway'
 export const RPX_SERVICE_NAME = 'rpx-gateway.service'
 /**
  * Per-app gateway registry. Each project's deploy writes ONLY its own fragment
@@ -456,42 +548,55 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
   let email: string | undefined
   let certsDir = DEFAULT_RPX_CERTS_DIR
   let acmeChallengeWebroot: string | undefined
-  let guard: { header: string, value: string } | undefined
+  let guard: { header: string; value: string } | undefined
+  let anyProduction = false
 
   for (const f of fragments) {
     for (const p of f.proxies ?? []) {
       const key = p.id || `${p.to}${p.path ?? ''}`
-      if (seen.has(key))
-        continue
+      if (seen.has(key)) continue
       seen.add(key)
       proxies.push(p)
     }
-    for (const s of f.onDemandTls?.allowedSuffixes ?? [])
-      suffixes.add(s)
+    for (const s of f.onDemandTls?.allowedSuffixes ?? []) suffixes.add(s)
     email ??= f.onDemandTls?.email
-    if (f.productionCerts?.certsDir)
-      certsDir = f.productionCerts.certsDir
+    // One gateway means one ACME directory, so co-tenants must agree. Production
+    // wins any disagreement: a production cert is valid for a tenant that only
+    // wanted staging, whereas a staging cert breaks every client of a tenant
+    // that wanted production. A fragment predating this field counts as
+    // production, matching the documented default.
+    if (f.onDemandTls && f.onDemandTls.staging !== true) anyProduction = true
+    if (f.productionCerts?.certsDir) certsDir = f.productionCerts.certsDir
     acmeChallengeWebroot ??= f.acmeChallengeWebroot
     if (f.originGuard) {
+      // rpx enforces ONE header/value pair for the whole gateway, so co-tenants
+      // cannot each bring their own secret. Adopting the first and then adding a
+      // disagreeing tenant's hosts to the guarded set would be the worst
+      // possible outcome: its CDN sends secret B, the gateway demands secret A,
+      // and every request to that host is rejected — a total outage for a host
+      // that was working. Leaving those hosts unguarded is a weaker posture but
+      // a serving one, so the conflict degrades instead of breaking.
       guard ??= { header: f.originGuard.header, value: f.originGuard.value }
-      for (const h of f.originGuard.hosts)
-        guardHosts.add(h)
+      if (f.originGuard.header === guard.header && f.originGuard.value === guard.value) {
+        for (const h of f.originGuard.hosts) guardHosts.add(h)
+      }
     }
   }
 
   const merged: RpxGatewayConfig = {
     proxies,
-    productionCerts: { certsDir },
+    productionCerts: {
+      certsDir,
+      certsDirServerNames: [...new Set(proxies.map(proxy => proxy.to).filter(Boolean))],
+    },
     https: true,
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
   }
   if (suffixes.size > 0)
-    merged.onDemandTls = { enabled: true, allowedSuffixes: [...suffixes], email, certsDir }
-  if (acmeChallengeWebroot)
-    merged.acmeChallengeWebroot = acmeChallengeWebroot
-  if (guard)
-    merged.originGuard = { header: guard.header, value: guard.value, hosts: [...guardHosts] }
+    merged.onDemandTls = { enabled: true, allowedSuffixes: [...suffixes], email, certsDir, staging: !anyProduction }
+  if (acmeChallengeWebroot) merged.acmeChallengeWebroot = acmeChallengeWebroot
+  if (guard) merged.originGuard = { header: guard.header, value: guard.value, hosts: [...guardHosts] }
   return merged
 }
 
@@ -501,7 +606,10 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
  * at startup, merges them (same algorithm as {@link mergeRpxFragments}), and
  * starts the gateway. A malformed fragment is skipped, not fatal.
  */
-export function renderRpxAssembler(sitesDir: string = RPX_SITES_DIR, defaultCertsDir: string = DEFAULT_RPX_CERTS_DIR): string {
+export function renderRpxAssembler(
+  sitesDir: string = RPX_SITES_DIR,
+  defaultCertsDir: string = DEFAULT_RPX_CERTS_DIR,
+): string {
   return `// Generated by ts-cloud — rpx gateway assembler.
 // Merges every app's fragment in ${sitesDir} so independent deploys compose
 // without clobbering each other. Each deploy writes only its own <slug>.json.
@@ -511,12 +619,14 @@ import { readdirSync, readFileSync } from 'node:fs'
 const dir = ${JSON.stringify(sitesDir)}
 const proxies = []
 const seen = new Set()
+const owners = new Map()
 const suffixes = new Set()
 const guardHosts = new Set()
 let email
 let certsDir = ${JSON.stringify(defaultCertsDir)}
 let acmeChallengeWebroot
 let guard
+let anyProduction = false
 let files = []
 try { files = readdirSync(dir).filter(n => n.endsWith('.json')).sort() } catch {}
 for (const f of files) {
@@ -530,22 +640,47 @@ for (const f of files) {
   catch (err) { console.error('[rpx-assembler] SKIPPING malformed fragment ' + f + ' — its host(s) will 404 until fixed: ' + err); continue }
   for (const p of frag.proxies ?? []) {
     const key = p.id || (p.to + (p.path ?? ''))
-    if (seen.has(key)) continue
+    if (seen.has(key)) {
+      console.warn('[rpx-assembler] duplicate route ' + key + ' in ' + f + ' ignored; first declared by ' + owners.get(key))
+      continue
+    }
     seen.add(key)
+    owners.set(key, f)
     proxies.push(p)
   }
   for (const s of frag.onDemandTls?.allowedSuffixes ?? []) suffixes.add(s)
   email ??= frag.onDemandTls?.email
+  // One gateway, one ACME directory: production wins any disagreement between
+  // co-tenants, and a fragment predating the flag counts as production. A
+  // staging cert chains to an untrusted root, so defaulting the other way
+  // breaks every client of every tenant that wanted a real cert.
+  if (frag.onDemandTls && frag.onDemandTls.staging !== true) anyProduction = true
   if (frag.productionCerts?.certsDir) certsDir = frag.productionCerts.certsDir
   acmeChallengeWebroot ??= frag.acmeChallengeWebroot
   if (frag.originGuard) {
+    // One gateway means one origin-guard secret (rpx takes a single
+    // header/value). A tenant whose secret disagrees with the adopted one must
+    // NOT have its hosts guarded: its CDN would send a different value, the
+    // gateway would reject every request, and a working host would go dark.
+    // Unguarded is weaker but serving, and the mismatch is logged.
     guard ??= { header: frag.originGuard.header, value: frag.originGuard.value }
-    for (const h of frag.originGuard.hosts ?? []) guardHosts.add(h)
+    if (frag.originGuard.header === guard.header && frag.originGuard.value === guard.value) {
+      for (const h of frag.originGuard.hosts ?? []) guardHosts.add(h)
+    }
+    else {
+      console.warn('[rpx-assembler] origin-guard secret in ' + f + ' differs from the one already in force; its hosts stay unguarded rather than rejecting all traffic')
+    }
   }
 }
 const config = {
   proxies,
-  productionCerts: { certsDir },
+  productionCerts: {
+    certsDir,
+    // A shared host's cert directory also contains mail and retired-site PEMs.
+    // Keep those files on disk for their owners, but do not turn them into live
+    // OpenSSL SNI contexts when no current route can select them.
+    certsDirServerNames: [...new Set(proxies.map(p => p.to).filter(Boolean))],
+  },
   https: true,
   hostsManagement: false,
   cleanup: { hosts: false, certs: false },
@@ -555,7 +690,7 @@ const config = {
   // journal and a production TLS failure looks like "nothing happens". Silence
   // it by setting RPX_VERBOSE=false on the systemd unit.
   verbose: process.env.RPX_VERBOSE !== 'false',
-  ...(suffixes.size > 0 ? { onDemandTls: { enabled: true, allowedSuffixes: [...suffixes], email, certsDir } } : {}),
+  ...(suffixes.size > 0 ? { onDemandTls: { enabled: true, allowedSuffixes: [...suffixes], email, certsDir, staging: !anyProduction } } : {}),
   ...(acmeChallengeWebroot ? { acmeChallengeWebroot } : {}),
   ...(guard ? { originGuard: { header: guard.header, value: guard.value, hosts: [...guardHosts] } } : {}),
 }
@@ -593,6 +728,56 @@ function writeFileHeredoc(path: string, content: string, delimiter: string, mode
   ]
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+/**
+ * Write one project's route fragment while optionally retaining the dashboard
+ * routes already active on the box.
+ *
+ * A narrowed application deploy intentionally does not restart the management
+ * dashboard. Its local config can still contain a different dashboard port,
+ * for example from a stale TS_CLOUD_UI_PORT override. Replacing the whole
+ * fragment in that state points rpx at a service the deploy never started and
+ * turns an otherwise healthy dashboard into a 502. Preserve the current
+ * dashboard routes for those app-only reloads, while replacing every regular
+ * application route from the new source model.
+ */
+function writeRpxFragment(
+  path: string,
+  content: string,
+  delimiter: string,
+  options: { preserveManagementDashboardRoutes?: boolean, bunBin: string },
+): string[] {
+  if (!options.preserveManagementDashboardRoutes)
+    return writeFileHeredoc(path, content, delimiter, '0600')
+
+  const mergeScript = `
+const { readFileSync, writeFileSync } = require('node:fs')
+const currentPath = process.env.TS_CLOUD_RPX_CURRENT_FRAGMENT
+const candidatePath = process.env.TS_CLOUD_RPX_CANDIDATE_FRAGMENT
+const isDashboard = route => /^(?:dashboard|cloud)\\./i.test(String(route?.to || ''))
+const current = JSON.parse(readFileSync(currentPath, 'utf8'))
+const candidate = JSON.parse(readFileSync(candidatePath, 'utf8'))
+const retained = Array.isArray(current.proxies) ? current.proxies.filter(isDashboard) : []
+const next = Array.isArray(candidate.proxies) ? candidate.proxies.filter(route => !isDashboard(route)) : []
+candidate.proxies = [...next, ...retained]
+writeFileSync(candidatePath, JSON.stringify(candidate, null, 2) + '\\n', { mode: 0o600 })
+`.trim()
+
+  return [
+    `__tsc_fragment_candidate="$(mktemp "${path}.candidate.XXXXXX")"`,
+    `cat > "$__tsc_fragment_candidate" <<'${delimiter}'`,
+    content,
+    delimiter,
+    'chmod 0600 "$__tsc_fragment_candidate"',
+    `if [ -f ${path} ]; then TS_CLOUD_RPX_CURRENT_FRAGMENT=${path} TS_CLOUD_RPX_CANDIDATE_FRAGMENT="$__tsc_fragment_candidate" ${options.bunBin} -e ${shellSingleQuote(mergeScript)}; fi`,
+    `mv -f "$__tsc_fragment_candidate" ${path}`,
+    `chmod 0600 ${path}`,
+  ]
+}
+
 export interface BuildRpxProvisionOptions {
   config: RpxGatewayConfig
   proxy: ComputeProxyConfig
@@ -605,11 +790,18 @@ export interface BuildRpxProvisionOptions {
   slug?: string
   /** Absolute path to the `bun` binary on the box. @default '/usr/local/bin/bun' */
   bunBin?: string
+  /** Keep the dashboard route currently running on the box during an app-only deploy. */
+  preserveManagementDashboardRoutes?: boolean
 }
 
 export const RPX_CERT_RENEW_SCRIPT = '/etc/rpx/renew-certs.sh'
 export const RPX_CERT_RENEW_SERVICE = 'rpx-cert-renew.service'
 export const RPX_CERT_RENEW_TIMER = 'rpx-cert-renew.timer'
+
+export function rpxCertRenewServiceName(slug: string): string {
+  const safeSlug = (slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
+  return `rpx-cert-renew-${safeSlug}.service`
+}
 
 /** The routable FQDNs in a gateway config — each terminates TLS so each needs a cert. */
 export function certDomainsForConfig(config: RpxGatewayConfig): string[] {
@@ -617,8 +809,7 @@ export function certDomainsForConfig(config: RpxGatewayConfig): string[] {
   for (const r of config.proxies) {
     const host = r.to
     // Skip wildcards / non-FQDN / host:port — http-01 can only cover real names.
-    if (!host || host.startsWith('*') || host.includes(':') || !host.includes('.'))
-      continue
+    if (!host || host.startsWith('*') || host.includes(':') || !host.includes('.')) continue
     seen.add(host)
   }
   return [...seen]
@@ -639,8 +830,7 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
   const { config, proxy } = options
   const webroot = config.acmeChallengeWebroot
   const domains = certDomainsForConfig(config)
-  if (!proxy.onDemandTls || !webroot || domains.length === 0)
-    return []
+  if (!proxy.onDemandTls || !webroot || domains.length === 0) return []
 
   const bunBin = options.bunBin ?? '/usr/local/bin/bun'
   const version = proxy.version ?? 'latest'
@@ -653,7 +843,7 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
   // app's deploy never touches another app's renewal (Forge-style independence).
   const slug = (options.slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
   const renewScriptPath = `${RPX_DIR}/renew-certs-${slug}.sh`
-  const renewServiceName = `rpx-cert-renew-${slug}.service`
+  const renewServiceName = rpxCertRenewServiceName(slug)
   const renewTimerName = `rpx-cert-renew-${slug}.timer`
 
   const renewScript = [
@@ -666,10 +856,59 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
     `WEBROOT='${webroot}'`,
     `EMAIL='${email}'`,
     `TLSX="${tlsxCli}"`,
+    `BUN='${bunBin}'`,
     `DOMAINS='${csv}'`,
+    "DNS_ATTEMPTS='24'",
+    "DNS_DELAY_SECONDS='5'",
+    `DNS_RESOLVERS='${PUBLIC_DNS_RESOLVERS.join(' ')}'`,
+    // Ask PUBLIC resolvers, not this box's.
+    //
+    // Let's Encrypt validates from its own recursive resolvers, which query the
+    // domain's authoritative nameservers — the box's view of DNS has nothing to
+    // do with whether the challenge will succeed. Gating on `getent` (the local
+    // stub, i.e. whatever the host provider runs) made a freshly-created record
+    // unissuable for as long as that resolver cached the zone's previous
+    // negative answer: Hetzner's resolvers hold NODATA for the zone's SOA
+    // minimum, which is routinely 30 minutes, so the first deploy of a new
+    // domain waited two minutes, gave up, and shipped a site with no
+    // certificate — while the record had been publicly resolvable the whole time.
+    'dns_resolves() {',
+    '  d="$1"',
+    '  for ns in $DNS_RESOLVERS; do',
+    '    if $BUN --eval "const{Resolver}=require(\'node:dns\');const r=new Resolver();r.setServers([process.argv[1]]);r.resolve4(process.argv[2],e=>process.exit(e?1:0))" "$ns" "$d" >/dev/null 2>&1; then',
+    '      return 0',
+    '    fi',
+    '  done',
+    // Last resort: the local resolver. Correct whenever it is not holding a
+    // stale negative answer, and the only option if egress to :53 is blocked.
+    '  getent ahosts "$d" >/dev/null 2>&1',
+    '}',
+    'wait_for_dns() {',
+    '  d="$1"',
+    '  attempt=1',
+    '  while ! dns_resolves "$d"; do',
+    '    if [ "$attempt" -ge "$DNS_ATTEMPTS" ]; then',
+    '      echo "DNS for $d did not become resolvable after $DNS_ATTEMPTS attempts" >&2',
+    '      return 1',
+    '    fi',
+    '    echo "Waiting for public DNS before ACME: $d (attempt $attempt/$DNS_ATTEMPTS)"',
+    '    sleep "$DNS_DELAY_SECONDS"',
+    '    attempt=$((attempt + 1))',
+    '  done',
+    '}',
     'before=$(cat "$CERTS"/*.crt 2>/dev/null | sha256sum)',
     `for d in ${spaced}; do`,
-    '  [ -s "$CERTS/$d.crt" ] || $TLSX acme:issue -d "$d" --method http-01 --webroot "$WEBROOT" --dir "$CERTS" --prod --email "$EMAIL" || echo "issue $d failed (non-fatal)"',
+    '  if [ ! -s "$CERTS/$d.crt" ]; then',
+    '    if wait_for_dns "$d"; then',
+    '      $TLSX acme:issue -d "$d" --method http-01 --webroot "$WEBROOT" --dir "$CERTS" --prod --email "$EMAIL" || echo "issue $d failed (non-fatal)"',
+    '    else',
+    '      echo "issue $d skipped until DNS resolves (non-fatal)"',
+    '    fi',
+    '    # rpx reloads its SNI set when a PEM appears. Complete that reload',
+    '    # before the next hostname starts http-01, or :80 can disappear in',
+    '    # the middle of the following challenge on a multi-domain deploy.',
+    `    [ -s "$CERTS/$d.crt" ] && systemctl restart ${RPX_SERVICE_NAME}`,
+    '  fi',
     'done',
     '$TLSX acme:renew --domains "$DOMAINS" --method http-01 --webroot "$WEBROOT" --dir "$CERTS" --days 30 --prod --email "$EMAIL" || echo "renew: some domains failed (non-fatal)"',
     'rm -f "$CERTS"/*.chain.crt',
@@ -746,6 +985,13 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
   const poolEnv = [`Environment=RPX_UPSTREAM_TIMEOUT=${upstreamTimeout}`]
   if (typeof proxy.maxUpstreamConns === 'number')
     poolEnv.push(`Environment=RPX_MAX_UPSTREAM_CONNS=${proxy.maxUpstreamConns}`)
+  // A shared app box can run many Bun tenants plus databases and search. Keep a
+  // gateway spike inside its own cgroup so global pressure cannot make the
+  // kernel choose the mail server or another unrelated service as the victim.
+  // The gateway normally stays well below 100M; these defaults leave ample
+  // burst room while remaining safe on a 4G host.
+  const memoryHigh = proxy.memoryHigh ?? '512M'
+  const memoryMax = proxy.memoryMax ?? '768M'
 
   return [
     'set -euo pipefail',
@@ -768,35 +1014,89 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     // Write THIS app's registry fragment (its routes only) — root-only: it
     // carries basic-auth passwords and the origin-guard shared secret, and the
     // assembler runs as root so nothing else needs read access.
-    ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', '0600'),
+    ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
+      bunBin,
+      preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
+    }),
     // ... and the stable assembler launcher that merges every app's fragment.
     ...writeFileHeredoc(RPX_LAUNCHER_PATH, assembler, 'TS_CLOUD_RPX_EOF'),
+    // Compile the generated, route-specific launcher in Bun production mode.
+    // This removes runtime TypeScript parsing/module traversal from the hot
+    // gateway process. The command runs before the unit is rewritten or
+    // restarted, so a failed compile leaves the currently-running gateway
+    // untouched.
+    `${bunBin} build --production --compile --outfile ${RPX_BINARY_PATH}.next ${RPX_LAUNCHER_PATH}`,
+    `chmod 0755 ${RPX_BINARY_PATH}.next`,
+    `mv -f ${RPX_BINARY_PATH}.next ${RPX_BINARY_PATH}`,
     // systemd unit: runs the launcher as root so it can bind :80/:443.
-    ...writeFileHeredoc(`/etc/systemd/system/${RPX_SERVICE_NAME}`, [
-      '[Unit]',
-      'Description=rpx reverse-proxy gateway (managed by ts-cloud)',
-      'After=network.target network-online.target',
-      'Wants=network-online.target',
-      '',
-      '[Service]',
-      'Type=simple',
-      `ExecStart=${bunBin} ${RPX_LAUNCHER_PATH}`,
-      `WorkingDirectory=${RPX_INSTALL_DIR}`,
-      `Environment=BUN_INSTALL=/root/.bun`,
-      ...poolEnv,
-      'Restart=always',
-      'RestartSec=5',
-      'LimitNOFILE=1048576',
-      'AmbientCapabilities=CAP_NET_BIND_SERVICE',
-      '',
-      '[Install]',
-      'WantedBy=multi-user.target',
-    ].join('\n'), 'TS_CLOUD_RPX_UNIT_EOF'),
+    ...writeFileHeredoc(
+      `/etc/systemd/system/${RPX_SERVICE_NAME}`,
+      [
+        '[Unit]',
+        'Description=rpx reverse-proxy gateway (managed by ts-cloud)',
+        'After=network.target network-online.target',
+        'Wants=network-online.target',
+        '',
+        '[Service]',
+        'Type=simple',
+        `ExecStart=${RPX_BINARY_PATH}`,
+        `WorkingDirectory=${RPX_INSTALL_DIR}`,
+        `Environment=BUN_INSTALL=/root/.bun`,
+        `Environment=APP_ENV=production`,
+        `Environment=NODE_ENV=production`,
+        ...poolEnv,
+        'MemoryAccounting=true',
+        `MemoryHigh=${memoryHigh}`,
+        `MemoryMax=${memoryMax}`,
+        // Every tenant on the box is served THROUGH this process, so under
+        // contention it has to outrank the work it is serving. The default
+        // weight is 100: a batch scanner or a build saturating the cores would
+        // otherwise compete with the gateway on equal terms, and the symptom
+        // is every site on the host getting slower at once — which reads as a
+        // network problem rather than a scheduling one.
+        //
+        // This box had exactly this hierarchy applied by hand, gateway at 500
+        // down to dashboards at 10, recorded in no repo and surviving only
+        // because nobody rebuilt the machine. Declared here it survives a
+        // rebuild, which is the whole difference between a policy and a
+        // memory of one.
+        'CPUWeight=500',
+        'IOWeight=500',
+        'OOMPolicy=stop',
+        'Restart=always',
+        'RestartSec=5',
+        // Without a start limit, a gateway that cannot bind restarts forever.
+        // A production box was found mid-crash-loop at restart 65: an orphaned
+        // predecessor held :443, every new instance died on EADDRINUSE, and
+        // systemd reported the unit as `activating` the whole time while the
+        // orphan served a stale route table. Bounded, it lands in `failed`,
+        // which is visible to both an operator and a monitor.
+        'StartLimitIntervalSec=120',
+        'StartLimitBurst=5',
+        // `systemctl disable --now` on a predecessor does not kill a process
+        // whose unit is already inactive, and that is precisely the case that
+        // wedged the box. Clear the ports from whatever actually holds them
+        // before binding. `|| true` so a clean boot is not a startup failure.
+        'ExecStartPre=/bin/sh -c \'for p in 80 443; do fuser -k -n tcp "$p" 2>/dev/null || true; done; sleep 1\'',
+        'LimitNOFILE=1048576',
+        'AmbientCapabilities=CAP_NET_BIND_SERVICE',
+        '',
+        '[Install]',
+        'WantedBy=multi-user.target',
+      ].join('\n'),
+      'TS_CLOUD_RPX_UNIT_EOF',
+    ),
     'systemctl daemon-reload',
     // Older ts-cloud/stacks boxes used bun-gateway.service for the same
     // :80/:443 role. Retire managed predecessors so rpx can bind cleanly.
     'systemctl disable --now bun-gateway.service 2>/dev/null || true',
+    'systemctl disable --now bun-gateway-renew.timer bun-gateway-renew.service 2>/dev/null || true',
+    'rm -f /etc/systemd/system/bun-gateway-renew.timer /etc/systemd/system/bun-gateway-renew.service',
     'systemctl disable --now ts-cloud-nginx.service 2>/dev/null || true',
+    // Retired tenants must not leave daily renewal processes behind. A live
+    // tenant always owns a same-slug atomic route fragment, so absence is a
+    // safe and deterministic ownership test on a shared box.
+    `for timer in /etc/systemd/system/rpx-cert-renew-*.timer; do [ -e "$timer" ] || continue; unit="$(basename "$timer")"; tenant="\${unit#rpx-cert-renew-}"; tenant="\${tenant%.timer}"; [ -f "${RPX_SITES_DIR}/$tenant.json" ] && continue; systemctl disable --now "$unit" 2>/dev/null || true; rm -f "$timer" "/etc/systemd/system/rpx-cert-renew-$tenant.service" "${RPX_DIR}/renew-certs-$tenant.sh"; done`,
     `systemctl enable ${RPX_SERVICE_NAME}`,
     `systemctl restart ${RPX_SERVICE_NAME}`,
     // Managed TLS (issue on deploy + daily renewal). No-op unless onDemandTls is
@@ -814,6 +1114,8 @@ export interface BuildRpxFragmentRefreshOptions {
    * Defaults to `'app'`.
    */
   slug?: string
+  /** Keep the dashboard route currently running on the box during an app-only deploy. */
+  preserveManagementDashboardRoutes?: boolean
 }
 
 /**
@@ -841,7 +1143,10 @@ export function buildRpxFragmentRefreshScript(options: BuildRpxFragmentRefreshOp
     `mkdir -p ${RPX_SITES_DIR}`,
     // Root-only (0600), atomic temp+rename — same as the provision-time write:
     // the fragment carries basic-auth passwords and the origin-guard secret.
-    ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', '0600'),
+    ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
+      bunBin: '/usr/local/bin/bun',
+      preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
+    }),
     `systemctl restart ${RPX_SERVICE_NAME}`,
   ]
 }

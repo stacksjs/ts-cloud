@@ -227,7 +227,9 @@ describe('Email Module', () => {
       expect(receiptRule.Properties.Rule.Actions).toHaveLength(1)
       expect(receiptRule.Properties.Rule.Actions?.[0].S3Action?.BucketName).toBe('my-email-bucket')
       expect(receiptRule.Properties.Rule.Actions?.[0].S3Action?.ObjectKeyPrefix).toBe('emails/')
-      expect(receiptRule.Properties.Rule.Actions?.[0].S3Action?.KmsKeyArn).toBe('arn:aws:kms:us-east-1:123456789:key/abc')
+      expect(receiptRule.Properties.Rule.Actions?.[0].S3Action?.KmsKeyArn).toBe(
+        'arn:aws:kms:us-east-1:123456789:key/abc',
+      )
     })
 
     it('should support Lambda action', () => {
@@ -242,7 +244,9 @@ describe('Email Module', () => {
       })
 
       expect(receiptRule.Properties.Rule.Actions).toHaveLength(1)
-      expect(receiptRule.Properties.Rule.Actions?.[0].LambdaAction?.FunctionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:process-email')
+      expect(receiptRule.Properties.Rule.Actions?.[0].LambdaAction?.FunctionArn).toBe(
+        'arn:aws:lambda:us-east-1:123456789:function:process-email',
+      )
       expect(receiptRule.Properties.Rule.Actions?.[0].LambdaAction?.InvocationType).toBe('RequestResponse')
     })
 
@@ -258,7 +262,9 @@ describe('Email Module', () => {
       })
 
       expect(receiptRule.Properties.Rule.Actions).toHaveLength(1)
-      expect(receiptRule.Properties.Rule.Actions?.[0].SNSAction?.TopicArn).toBe('arn:aws:sns:us-east-1:123456789:email-notifications')
+      expect(receiptRule.Properties.Rule.Actions?.[0].SNSAction?.TopicArn).toBe(
+        'arn:aws:sns:us-east-1:123456789:email-notifications',
+      )
       expect(receiptRule.Properties.Rule.Actions?.[0].SNSAction?.Encoding).toBe('Base64')
     })
 
@@ -284,11 +290,7 @@ describe('Email Module', () => {
 
   describe('createMxRecord', () => {
     it('should create MX record for receiving emails', () => {
-      const { record, logicalId } = Email.createMxRecord(
-        'example.com',
-        'Z1234567890ABC',
-        'us-east-1',
-      )
+      const { record, logicalId } = Email.createMxRecord('example.com', 'Z1234567890ABC', 'us-east-1')
 
       expect(record.Type).toBe('AWS::Route53::RecordSet')
       expect(record.Properties.HostedZoneId).toBe('Z1234567890ABC')
@@ -302,11 +304,7 @@ describe('Email Module', () => {
 
   describe('createVerificationRecord', () => {
     it('should create TXT record for domain verification', () => {
-      const { record, logicalId } = Email.createVerificationRecord(
-        'example.com',
-        'abc123xyz',
-        'Z1234567890ABC',
-      )
+      const { record, logicalId } = Email.createVerificationRecord('example.com', 'abc123xyz', 'Z1234567890ABC')
 
       expect(record.Type).toBe('AWS::Route53::RecordSet')
       expect(record.Properties.HostedZoneId).toBe('Z1234567890ABC')
@@ -403,11 +401,7 @@ describe('Email Module', () => {
       template.addResource(ruleId, receiptRule)
 
       // Create MX record
-      const { record: mxRecord, logicalId: mxId } = Email.createMxRecord(
-        'example.com',
-        'Z1234567890ABC',
-        'us-east-1',
-      )
+      const { record: mxRecord, logicalId: mxId } = Email.createMxRecord('example.com', 'Z1234567890ABC', 'us-east-1')
       template.addResource(mxId, mxRecord)
 
       const result = template.build()

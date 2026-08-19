@@ -16,11 +16,21 @@ function config(): CloudConfig {
       production: { type: 'production', variables: { APP_KEY: 'base64:secret', LOG_LEVEL: 'info' } },
     },
     infrastructure: {
-      compute: { provider: 'hetzner', runtime: 'bun' },
+      appDatabase: { engine: 'vitess', name: 'stacks', username: 'stacks', password: 'app-db-secret' },
+      compute: {
+        provider: 'hetzner',
+        runtime: 'bun',
+        database: { engine: 'mysql', password: 'legacy-db-secret' },
+        managedServices: { vitess: { username: 'stacks', password: 'vtgate-secret' } },
+      },
       databases: { main: { engine: 'postgres', password: 'db-super-secret' } },
     },
     sites: {
-      main: { domain: 'stacksjs.com', root: 'dist', env: { STRIPE_KEY: 'sk_live_secret', APP_URL: 'https://stacksjs.com' } },
+      main: {
+        domain: 'stacksjs.com',
+        root: 'dist',
+        env: { STRIPE_KEY: 'sk_live_secret', APP_URL: 'https://stacksjs.com' },
+      },
       docs: { domain: 'stacksjs.com', path: '/docs', root: 'dist/docs' },
     },
     hooks: { beforeDeploy: () => Promise.resolve() },
@@ -66,6 +76,12 @@ describe('redactForDashboard', () => {
     const safe = redactForDashboard(config())
     expect(safe.infrastructure.databases.main.password).toBe('')
     expect(safe.infrastructure.databases.main.engine).toBe('postgres')
+    expect(safe.infrastructure.appDatabase.password).toBe('')
+    expect(safe.infrastructure.compute.database.password).toBe('')
+    expect(safe.infrastructure.compute.managedServices.vitess.password).toBe('')
+    expect(JSON.stringify(safe)).not.toContain('app-db-secret')
+    expect(JSON.stringify(safe)).not.toContain('legacy-db-secret')
+    expect(JSON.stringify(safe)).not.toContain('vtgate-secret')
   })
 
   it('keeps everything the dashboard actually reads', () => {
@@ -113,13 +129,20 @@ describe('serializeDashboardConfig', () => {
       expect(mod.default.sites.main.domain).toBe('stacksjs.com')
       expect(mod.default.sites.docs.path).toBe('/docs')
       expect(mod.default.hetzner.apiToken).toBeUndefined()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
-    finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
   it('carries no secrets', () => {
     const text = serializeDashboardConfig(config())
-    for (const secret of ['hcloud-super-secret', 'aws-super-secret', 'sk_live_secret', 'db-super-secret', 'base64:secret'])
+    for (const secret of [
+      'hcloud-super-secret',
+      'aws-super-secret',
+      'sk_live_secret',
+      'db-super-secret',
+      'base64:secret',
+    ])
       expect(text).not.toContain(secret)
   })
 })

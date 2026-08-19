@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'bun:test'
-import { addSiteToCloudConfig, isValidHostname, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderRedirectsValue, renderSiteSnippet, renderSslValue, setSitePropertyInCloudConfig, updateSiteInCloudConfig } from '../../src/deploy/site-config-editor'
+import {
+  addSiteToCloudConfig,
+  isValidHostname,
+  removeSiteFromCloudConfig,
+  renderAliasesValue,
+  renderEnvValue,
+  renderRedirectsValue,
+  renderSiteSnippet,
+  renderSslValue,
+  setSitePropertyInCloudConfig,
+  updateSiteInCloudConfig,
+} from '../../src/deploy/site-config-editor'
 
 // Assert the rewritten config still parses as TypeScript so a malformed result
 // (e.g. a missing separating comma between sites) fails loudly.
@@ -10,15 +21,17 @@ function assertValidTs(code: string): void {
 
 describe('renderSiteSnippet', () => {
   it('renders a server-static site snippet', () => {
-    expect(renderSiteSnippet({
-      name: 'docs',
-      deploy: 'server',
-      root: 'dist/docs/.bunpress',
-      path: '/docs',
-      domain: 'example.com',
-      build: 'bun run docs:build',
-      pathRewriteStyle: 'directory',
-    })).toContain("deploy: 'server'")
+    expect(
+      renderSiteSnippet({
+        name: 'docs',
+        deploy: 'server',
+        root: 'dist/docs/.bunpress',
+        path: '/docs',
+        domain: 'example.com',
+        build: 'bun run docs:build',
+        pathRewriteStyle: 'directory',
+      }),
+    ).toContain("deploy: 'server'")
   })
 })
 
@@ -71,11 +84,13 @@ describe('addSiteToCloudConfig', () => {
   })
 
   it('refuses duplicate sites', () => {
-    expect(() => addSiteToCloudConfig({
-      configText: `export default { sites: { docs: { root: 'dist' } } }`,
-      name: 'docs',
-      root: 'dist/docs',
-    })).toThrow("Site 'docs' already exists")
+    expect(() =>
+      addSiteToCloudConfig({
+        configText: `export default { sites: { docs: { root: 'dist' } } }`,
+        name: 'docs',
+        root: 'dist/docs',
+      }),
+    ).toThrow("Site 'docs' already exists")
   })
 
   it('ignores braces inside strings while finding the sites block', () => {
@@ -90,7 +105,12 @@ describe('addSiteToCloudConfig', () => {
   })
 
   it('renders env vars and an ssl toggle', () => {
-    const snippet = renderSiteSnippet({ name: 'web', root: '.', ssl: false, env: { NODE_ENV: 'production', LOG_LEVEL: 'info' } })
+    const snippet = renderSiteSnippet({
+      name: 'web',
+      root: '.',
+      ssl: false,
+      env: { NODE_ENV: 'production', LOG_LEVEL: 'info' },
+    })
     expect(snippet).toContain('ssl: false,')
     expect(snippet).toContain('env: {')
     expect(snippet).toContain("NODE_ENV: 'production',")
@@ -137,7 +157,12 @@ describe('removeSiteFromCloudConfig', () => {
 
   it('round-trips remove → add without corrupting the config', () => {
     const removed = removeSiteFromCloudConfig({ configText: baseConfig, name: 'docs' })
-    const readded = addSiteToCloudConfig({ configText: removed, name: 'docs', root: '/var/www/docs', domain: 'acme.com' })
+    const readded = addSiteToCloudConfig({
+      configText: removed,
+      name: 'docs',
+      root: '/var/www/docs',
+      domain: 'acme.com',
+    })
     expect(readded).toContain('docs: {')
     assertValidTs(readded)
   })
@@ -175,7 +200,12 @@ describe('setSitePropertyInCloudConfig', () => {
 `
 
   it('inserts a new property without disturbing existing ones', () => {
-    const updated = setSitePropertyInCloudConfig({ configText: withExtras, siteName: 'web', key: 'env', valueText: renderEnvValue({ NODE_ENV: 'production', API_URL: 'https://api.acme.com' }) })
+    const updated = setSitePropertyInCloudConfig({
+      configText: withExtras,
+      siteName: 'web',
+      key: 'env',
+      valueText: renderEnvValue({ NODE_ENV: 'production', API_URL: 'https://api.acme.com' }),
+    })
     expect(updated).toContain("NODE_ENV: 'production',")
     // Other fields — crucially the queues — must be preserved (no data loss).
     expect(updated).toContain("queues: [{ name: 'default', processes: 2 }]")
@@ -184,7 +214,12 @@ describe('setSitePropertyInCloudConfig', () => {
   })
 
   it('replaces an existing property value (object → false) preserving the rest', () => {
-    const updated = setSitePropertyInCloudConfig({ configText: withExtras, siteName: 'web', key: 'ssl', valueText: renderSslValue(false) })
+    const updated = setSitePropertyInCloudConfig({
+      configText: withExtras,
+      siteName: 'web',
+      key: 'ssl',
+      valueText: renderSslValue(false),
+    })
     expect(updated).toContain('ssl: false,')
     expect(updated).not.toContain("ssl: { provider: 'letsencrypt' }")
     expect(updated).toContain("queues: [{ name: 'default', processes: 2 }]")
@@ -200,12 +235,16 @@ describe('setSitePropertyInCloudConfig', () => {
   })
 
   it('throws for an unknown site', () => {
-    expect(() => setSitePropertyInCloudConfig({ configText: withExtras, siteName: 'nope', key: 'ssl', valueText: 'false' })).toThrow('does not exist')
+    expect(() =>
+      setSitePropertyInCloudConfig({ configText: withExtras, siteName: 'nope', key: 'ssl', valueText: 'false' }),
+    ).toThrow('does not exist')
   })
 
   it('renders a validated, deduped, lowercased aliases array', () => {
     expect(renderAliasesValue([])).toBe('[]')
-    expect(renderAliasesValue(['WWW.Example.com', 'cdn.example.com', 'www.example.com'])).toBe("['www.example.com', 'cdn.example.com']")
+    expect(renderAliasesValue(['WWW.Example.com', 'cdn.example.com', 'www.example.com'])).toBe(
+      "['www.example.com', 'cdn.example.com']",
+    )
     expect(() => renderAliasesValue(['not a host'])).toThrow(/valid hostname/)
     expect(isValidHostname('a.example.com')).toBe(true)
     expect(isValidHostname('localhost')).toBe(false)
@@ -214,7 +253,9 @@ describe('setSitePropertyInCloudConfig', () => {
   it('renders a redirects map with quoted from/to keys', () => {
     expect(renderRedirectsValue({})).toBe('{}')
     expect(renderRedirectsValue({ '/old': '/new', 'legacy.com': 'https://acme.com' })).toContain("'/old': '/new',")
-    expect(renderRedirectsValue({ '/old': '/new', 'legacy.com': 'https://acme.com' })).toContain("'legacy.com': 'https://acme.com',")
+    expect(renderRedirectsValue({ '/old': '/new', 'legacy.com': 'https://acme.com' })).toContain(
+      "'legacy.com': 'https://acme.com',",
+    )
     expect(renderRedirectsValue({ '  ': 'x', '/a': '  ' })).toBe('{}')
   })
 })

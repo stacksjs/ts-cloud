@@ -2,10 +2,22 @@ import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
 
 export type CloudProviderName = 'aws' | 'hetzner'
 
+/**
+ * Exhaustive provider map. Provider-specific contract tests key off this type,
+ * so adding a provider without adding its resilience coverage is a type error.
+ */
+export type CloudProviderContract<T> = { [Provider in CloudProviderName]: T }
+
 export interface ComputeTarget {
   id: string
   name?: string
   publicIp?: string
+  /**
+   * Public IPv6 address, normalized to something an AAAA record can point at
+   * (see `normalizePublicIpv6` — providers report anything from a plain
+   * address to a routed block).
+   */
+  publicIpv6?: string
   privateIp?: string
   status?: string
 }
@@ -15,6 +27,12 @@ export interface ComputeStackOutputs {
   deployStoragePath?: string
   appInstanceId?: string
   appPublicIp?: string
+  /**
+   * Public IPv6 address of the app box, when the provider gives it one. Drivers
+   * narrow a routed block to the address the interface actually holds before
+   * reporting it here, so this is always something an AAAA record can point at.
+   */
+  appPublicIpv6?: string
   sshUser?: string
   /** Fleet: private IP of the dedicated services box (DB/cache/search). */
   servicesPrivateIp?: string
@@ -45,6 +63,13 @@ export interface FindComputeTargetsOptions {
   slug: string
   environment: EnvironmentType
   role?: string
+  /**
+   * Region to search, for drivers that have one. Defaults to the driver's own.
+   * A driver method that resolved a region from config passes it here, so the
+   * lookup and whatever is done with the results cannot disagree about where
+   * the instances are.
+   */
+  region?: string
   /**
    * Project stack name (`resolveProjectStackName(config, environment)`), used
    * by drivers that can pin targets from local state when label/tag scans

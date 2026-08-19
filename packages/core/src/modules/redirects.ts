@@ -2,7 +2,6 @@
  * Redirects Module - URL Redirect Management
  * Provides clean API for creating domain and path-based redirects
  */
-
 import type { CloudFrontFunction, S3Bucket, S3BucketPolicy } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
@@ -45,13 +44,7 @@ export class Redirects {
     logicalId: string
     policyLogicalId: string
   } {
-    const {
-      slug,
-      environment,
-      sourceDomain,
-      targetDomain,
-      protocol = 'https',
-    } = options
+    const { slug, environment, sourceDomain, targetDomain, protocol = 'https' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -93,13 +86,15 @@ export class Redirects {
         Bucket: Fn.Ref(logicalId),
         PolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Sid: 'PublicReadForRedirect',
-            Effect: 'Allow',
-            Principal: '*',
-            Action: ['s3:GetObject'],
-            Resource: [Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any],
-          }],
+          Statement: [
+            {
+              Sid: 'PublicReadForRedirect',
+              Effect: 'Allow',
+              Principal: '*',
+              Action: ['s3:GetObject'],
+              Resource: [Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any],
+            },
+          ],
         },
       },
     }
@@ -157,11 +152,13 @@ export class Redirects {
    * Generate CloudFront Function code for path redirects
    */
   static generateRedirectFunctionCode(rules: RedirectRule[]): string {
-    const redirectMap = rules.map((rule) => {
-      const preserveQs = rule.preserveQueryString !== false
-      const statusCode = rule.statusCode || 301
-      return `  '${rule.source}': { target: '${rule.target}', statusCode: ${statusCode}, preserveQs: ${preserveQs} }`
-    }).join(',\n')
+    const redirectMap = rules
+      .map((rule) => {
+        const preserveQs = rule.preserveQueryString !== false
+        const statusCode = rule.statusCode || 301
+        return `  '${rule.source}': { target: '${rule.target}', statusCode: ${statusCode}, preserveQs: ${preserveQs} }`
+      })
+      .join(',\n')
 
     return `function handler(event) {
   const request = event.request;
@@ -260,7 +257,7 @@ ${redirectMap}
      * Trailing slash normalization (add trailing slash)
      */
     addTrailingSlash: (paths: string[]): RedirectRule[] =>
-      paths.map(path => ({
+      paths.map((path) => ({
         source: path.endsWith('/') ? path.slice(0, -1) : path,
         target: path.endsWith('/') ? path : `${path}/`,
         statusCode: 301,
@@ -270,7 +267,7 @@ ${redirectMap}
      * Trailing slash normalization (remove trailing slash)
      */
     removeTrailingSlash: (paths: string[]): RedirectRule[] =>
-      paths.map(path => ({
+      paths.map((path) => ({
         source: path.endsWith('/') && path !== '/' ? path : `${path}/`,
         target: path.endsWith('/') && path !== '/' ? path.slice(0, -1) : path,
         statusCode: 301,
@@ -285,7 +282,7 @@ ${redirectMap}
      * Old blog URL pattern to new pattern
      * /blog/2023/01/my-post -> /blog/my-post
      */
-    flattenBlogUrls: (posts: Array<{ oldPath: string, newPath: string }>): RedirectRule[] =>
+    flattenBlogUrls: (posts: Array<{ oldPath: string; newPath: string }>): RedirectRule[] =>
       posts.map(({ oldPath, newPath }) => ({
         source: oldPath,
         target: newPath,
@@ -312,7 +309,7 @@ ${redirectMap}
     /**
      * Product page URL pattern
      */
-    productSlugChange: (products: Array<{ oldSlug: string, newSlug: string }>): RedirectRule[] =>
+    productSlugChange: (products: Array<{ oldSlug: string; newSlug: string }>): RedirectRule[] =>
       products.map(({ oldSlug, newSlug }) => ({
         source: `/products/${oldSlug}`,
         target: `/products/${newSlug}`,
@@ -323,7 +320,7 @@ ${redirectMap}
      * Deprecated API version redirects
      */
     apiVersionRedirect: (oldVersion: string, newVersion: string, endpoints: string[]): RedirectRule[] =>
-      endpoints.map(endpoint => ({
+      endpoints.map((endpoint) => ({
         source: `/api/${oldVersion}/${endpoint}`,
         target: `/api/${newVersion}/${endpoint}`,
         statusCode: 307, // Temporary, preserves method
@@ -334,7 +331,7 @@ ${redirectMap}
      * Gone (410) redirects for deleted content
      */
     gonePages: (paths: string[]): RedirectRule[] =>
-      paths.map(path => ({
+      paths.map((path) => ({
         source: path,
         target: '/410',
         statusCode: 301, // CloudFront Functions don't support 410, redirect to a 410 page
@@ -398,7 +395,7 @@ ${redirectMap}
    */
   static fromMapping(
     mapping: Record<string, string>,
-    options?: { statusCode?: 301 | 302 | 307 | 308, preserveQueryString?: boolean },
+    options?: { statusCode?: 301 | 302 | 307 | 308; preserveQueryString?: boolean },
   ): RedirectRule[] {
     return Object.entries(mapping).map(([source, target]) => ({
       source,
@@ -449,7 +446,7 @@ ${redirectMap}
 
     // Check for potential redirect chains
     for (const rule of rules) {
-      const chainTarget = rules.find(r => r.source === rule.target)
+      const chainTarget = rules.find((r) => r.source === rule.target)
       if (chainTarget) {
         warnings.push(`Potential redirect chain: ${rule.source} -> ${rule.target} -> ${chainTarget.target}`)
       }

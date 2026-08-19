@@ -1,15 +1,4 @@
-import type {
-  IAMPolicy,
-  IAMRole,
-  LambdaFunction,
-  LambdaPermission,
-  Route53RecordSet,
-  S3Bucket,
-  SESConfigurationSet,
-  SESEmailIdentity,
-  SESReceiptRule,
-  SESReceiptRuleSet,
-} from '@ts-cloud/aws-types'
+import type { IAMPolicy, IAMRole, LambdaFunction, LambdaPermission, Route53RecordSet, S3Bucket, SESConfigurationSet, SESEmailIdentity, SESReceiptRule, SESReceiptRuleSet } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -73,13 +62,7 @@ export class Email {
     emailIdentity: SESEmailIdentity
     logicalId: string
   } {
-    const {
-      domain,
-      slug,
-      environment,
-      enableDkim = true,
-      dkimKeyLength = 'RSA_2048_BIT',
-    } = options
+    const { domain, slug, environment, enableDkim = true, dkimKeyLength = 'RSA_2048_BIT' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -116,8 +99,8 @@ export class Email {
     domain: string,
     dkimTokens: string[],
     hostedZoneId: string,
-  ): Array<{ record: Route53RecordSet, logicalId: string }> {
-    const records: Array<{ record: Route53RecordSet, logicalId: string }> = []
+  ): Array<{ record: Route53RecordSet; logicalId: string }> {
+    const records: Array<{ record: Route53RecordSet; logicalId: string }> = []
 
     for (let i = 0; i < dkimTokens.length; i++) {
       const token = dkimTokens[i]
@@ -157,19 +140,19 @@ export class Email {
       suppressComplaints = true,
     } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'ses-config',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'ses-config',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
     const suppressedReasons: ('BOUNCE' | 'COMPLAINT')[] = []
-    if (suppressBounces)
-      suppressedReasons.push('BOUNCE')
-    if (suppressComplaints)
-      suppressedReasons.push('COMPLAINT')
+    if (suppressBounces) suppressedReasons.push('BOUNCE')
+    if (suppressComplaints) suppressedReasons.push('COMPLAINT')
 
     const configurationSet: SESConfigurationSet = {
       Type: 'AWS::SES::ConfigurationSet',
@@ -199,11 +182,13 @@ export class Email {
   } {
     const { slug, environment, name } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'ses-ruleset',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'ses-ruleset',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -224,9 +209,9 @@ export class Email {
     ruleSetLogicalId: string,
     options: ReceiptRuleOptions,
   ): {
-      receiptRule: SESReceiptRule
-      logicalId: string
-    } {
+    receiptRule: SESReceiptRule
+    logicalId: string
+  } {
     const {
       slug,
       environment,
@@ -304,9 +289,9 @@ export class Email {
     hostedZoneId: string,
     region: string,
   ): {
-      record: Route53RecordSet
-      logicalId: string
-    } {
+    record: Route53RecordSet
+    logicalId: string
+  } {
     const logicalId = generateLogicalId(`mx-${domain.replace(/\./g, '')}`)
 
     const record: Route53RecordSet = {
@@ -331,9 +316,9 @@ export class Email {
     verificationToken: string,
     hostedZoneId: string,
   ): {
-      record: Route53RecordSet
-      logicalId: string
-    } {
+    record: Route53RecordSet
+    logicalId: string
+  } {
     const logicalId = generateLogicalId(`verification-${domain.replace(/\./g, '')}`)
 
     const record: Route53RecordSet = {
@@ -377,9 +362,9 @@ export class Email {
       softFail?: boolean
     },
   ): {
-      record: Route53RecordSet
-      logicalId: string
-    } {
+    record: Route53RecordSet
+    logicalId: string
+  } {
     const { includeDomains = [], softFail = false } = options || {}
     const logicalId = generateLogicalId(`spf-${domain.replace(/\./g, '')}`)
 
@@ -420,16 +405,10 @@ export class Email {
       forensicEmail?: string
     },
   ): {
-      record: Route53RecordSet
-      logicalId: string
-    } {
-    const {
-      policy = 'none',
-      subdomainPolicy,
-      percentage = 100,
-      reportingEmail,
-      forensicEmail,
-    } = options || {}
+    record: Route53RecordSet
+    logicalId: string
+  } {
+    const { policy = 'none', subdomainPolicy, percentage = 100, reportingEmail, forensicEmail } = options || {}
 
     const logicalId = generateLogicalId(`dmarc-${domain.replace(/\./g, '')}`)
 
@@ -506,34 +485,31 @@ export class Email {
     resources[ruleSetLogicalId] = ruleSet
 
     // Create receipt rule
-    const { receiptRule, logicalId: ruleLogicalId } = Email.createReceiptRule(
-      ruleSetLogicalId,
-      {
-        slug,
-        environment,
-        ruleSetName: ruleSet.Properties!.RuleSetName || `${slug}-${environment}-receipt-rule-set`,
-        recipients: [domain],
-        s3Action: {
-          bucketName: s3BucketName,
-          prefix: s3KeyPrefix,
-        },
-        lambdaAction: lambdaFunctionArn ? {
-          functionArn: lambdaFunctionArn,
-          invocationType: 'Event',
-        } : undefined,
-        snsAction: snsTopicArn ? {
-          topicArn: snsTopicArn,
-        } : undefined,
+    const { receiptRule, logicalId: ruleLogicalId } = Email.createReceiptRule(ruleSetLogicalId, {
+      slug,
+      environment,
+      ruleSetName: ruleSet.Properties!.RuleSetName || `${slug}-${environment}-receipt-rule-set`,
+      recipients: [domain],
+      s3Action: {
+        bucketName: s3BucketName,
+        prefix: s3KeyPrefix,
       },
-    )
+      lambdaAction: lambdaFunctionArn
+        ? {
+            functionArn: lambdaFunctionArn,
+            invocationType: 'Event',
+          }
+        : undefined,
+      snsAction: snsTopicArn
+        ? {
+            topicArn: snsTopicArn,
+          }
+        : undefined,
+    })
     resources[ruleLogicalId] = receiptRule
 
     // Create MX record
-    const { record: mxRecord, logicalId: mxRecordLogicalId } = Email.createMxRecord(
-      domain,
-      hostedZoneId,
-      region,
-    )
+    const { record: mxRecord, logicalId: mxRecordLogicalId } = Email.createMxRecord(domain, hostedZoneId, region)
     resources[mxRecordLogicalId] = mxRecord
 
     return {
@@ -595,21 +571,14 @@ export class Email {
     resources[configSetLogicalId] = configurationSet
 
     // Create SPF record
-    const { record: spfRecord, logicalId: spfLogicalId } = Email.createSpfRecord(
-      domain,
-      hostedZoneId,
-    )
+    const { record: spfRecord, logicalId: spfLogicalId } = Email.createSpfRecord(domain, hostedZoneId)
     resources[spfLogicalId] = spfRecord
 
     // Create DMARC record
-    const { record: dmarcRecord, logicalId: dmarcLogicalId } = Email.createDmarcRecord(
-      domain,
-      hostedZoneId,
-      {
-        policy: 'none', // Start with monitoring
-        reportingEmail: dmarcReportingEmail || `dmarc-reports@${domain}`,
-      },
-    )
+    const { record: dmarcRecord, logicalId: dmarcLogicalId } = Email.createDmarcRecord(domain, hostedZoneId, {
+      policy: 'none', // Start with monitoring
+      reportingEmail: dmarcReportingEmail || `dmarc-reports@${domain}`,
+    })
     resources[dmarcLogicalId] = dmarcRecord
 
     // Create inbound email setup if enabled
@@ -692,9 +661,7 @@ export class Email {
             },
           ],
         },
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-        ],
+        ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
         Tags: [
           { Key: 'Name', Value: resourceName },
           { Key: 'Environment', Value: environment },
@@ -706,16 +673,8 @@ export class Email {
       // S3 permissions for reading/writing emails
       {
         Effect: 'Allow',
-        Action: [
-          's3:GetObject',
-          's3:PutObject',
-          's3:DeleteObject',
-          's3:ListBucket',
-        ],
-        Resource: [
-          s3BucketArn,
-          `${s3BucketArn}/*`,
-        ],
+        Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
+        Resource: [s3BucketArn, `${s3BucketArn}/*`],
       },
     ]
 
@@ -723,10 +682,7 @@ export class Email {
     if (sesIdentityArn) {
       policyStatements.push({
         Effect: 'Allow',
-        Action: [
-          'ses:SendEmail',
-          'ses:SendRawEmail',
-        ],
+        Action: ['ses:SendEmail', 'ses:SendRawEmail'],
         Resource: sesIdentityArn,
       })
     }
@@ -767,15 +723,7 @@ export class Email {
     function: LambdaFunction
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      roleArn,
-      domain,
-      configurationSetName,
-      timeout = 30,
-      memorySize = 256,
-    } = options
+    const { slug, environment, roleArn, domain, configurationSetName, timeout = 30, memorySize = 256 } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -971,12 +919,8 @@ export class Email {
   }): {
     notificationConfiguration: NonNullable<NonNullable<S3Bucket['Properties']>['NotificationConfiguration']>
   } {
-    const {
-      lambdaArn,
-      prefix = 'inbound/',
-      suffix,
-      events = ['s3:ObjectCreated:*'],
-    } = options
+    const { lambdaArn, prefix = 'inbound/', suffix, events } = options
+    const eventNames = events ?? ['s3:ObjectCreated:*']
 
     const filter: any = {}
     if (prefix || suffix) {
@@ -994,7 +938,7 @@ export class Email {
     const notificationConfiguration = {
       LambdaConfigurations: [
         {
-          Event: events[0],
+          Event: eventNames[0],
           Function: lambdaArn,
           Filter: Object.keys(filter).length > 0 ? filter : undefined,
         },

@@ -1,9 +1,4 @@
-import type {
-  DynamoDBTable,
-  RDSDBInstance,
-  RDSDBParameterGroup,
-  RDSDBSubnetGroup,
-} from '@ts-cloud/aws-types'
+import type { DynamoDBTable, RDSDBInstance, RDSDBParameterGroup, RDSDBSubnetGroup } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -107,11 +102,11 @@ export class Database {
     engineVersion: string,
     options: RDSOptions,
   ): {
-      dbInstance: RDSDBInstance
-      subnetGroup?: RDSDBSubnetGroup
-      logicalId: string
-      subnetGroupId?: string
-    } {
+    dbInstance: RDSDBInstance
+    subnetGroup?: RDSDBSubnetGroup
+    logicalId: string
+    subnetGroupId?: string
+  } {
     const {
       slug,
       environment,
@@ -207,9 +202,8 @@ export class Database {
     }
 
     if (enableCloudwatchLogs) {
-      dbInstance.Properties.EnableCloudwatchLogsExports = engine === 'postgres'
-        ? ['postgresql']
-        : ['error', 'general', 'slowquery']
+      dbInstance.Properties.EnableCloudwatchLogsExports =
+        engine === 'postgres' ? ['postgresql'] : ['error', 'general', 'slowquery']
     }
 
     return {
@@ -227,16 +221,10 @@ export class Database {
     sourceDbLogicalId: string,
     options: Omit<RDSOptions, 'masterUsername' | 'masterPassword' | 'databaseName'>,
   ): {
-      replica: RDSDBInstance
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      instanceClass = 'db.t3.micro',
-      securityGroupIds,
-      publiclyAccessible = false,
-    } = options
+    replica: RDSDBInstance
+    logicalId: string
+  } {
+    const { slug, environment, instanceClass = 'db.t3.micro', securityGroupIds, publiclyAccessible = false } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -280,9 +268,9 @@ export class Database {
       parameters?: Record<string, string>
     },
   ): {
-      parameterGroup: RDSDBParameterGroup
-      logicalId: string
-    } {
+    parameterGroup: RDSDBParameterGroup
+    logicalId: string
+  } {
     const { slug, environment, parameters = {} } = options
 
     const resourceName = generateResourceName({
@@ -294,9 +282,10 @@ export class Database {
     const logicalId = generateLogicalId(resourceName)
 
     // Determine parameter group family
-    const family = engine === 'postgres'
-      ? `postgres${version.split('.')[0]}`
-      : `mysql${version.split('.')[0]}.${version.split('.')[1]}`
+    const family =
+      engine === 'postgres'
+        ? `postgres${version.split('.')[0]}`
+        : `mysql${version.split('.')[0]}.${version.split('.')[1]}`
 
     const parameterGroup: RDSDBParameterGroup = {
       Type: 'AWS::RDS::DBParameterGroup',
@@ -318,10 +307,7 @@ export class Database {
   /**
    * Enable backup for RDS instance
    */
-  static enableBackup(
-    dbInstance: RDSDBInstance,
-    retentionDays: number = 7,
-  ): RDSDBInstance {
+  static enableBackup(dbInstance: RDSDBInstance, retentionDays: number = 7): RDSDBInstance {
     dbInstance.Properties.BackupRetentionPeriod = retentionDays
     return dbInstance
   }
@@ -350,11 +336,13 @@ export class Database {
       ttlAttribute,
     } = options
 
-    const resourceName = tableName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'table',
-    })
+    const resourceName =
+      tableName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'table',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -442,10 +430,7 @@ export class Database {
   /**
    * Add a global secondary index to a DynamoDB table
    */
-  static addGlobalSecondaryIndex(
-    table: DynamoDBTable,
-    index: GlobalSecondaryIndexOptions,
-  ): DynamoDBTable {
+  static addGlobalSecondaryIndex(table: DynamoDBTable, index: GlobalSecondaryIndexOptions): DynamoDBTable {
     const {
       indexName,
       partitionKey,
@@ -457,14 +442,14 @@ export class Database {
     } = index
 
     // Add attribute definitions if not already present
-    if (!table.Properties.AttributeDefinitions.some(attr => attr.AttributeName === partitionKey.name)) {
+    if (!table.Properties.AttributeDefinitions.some((attr) => attr.AttributeName === partitionKey.name)) {
       table.Properties.AttributeDefinitions.push({
         AttributeName: partitionKey.name,
         AttributeType: partitionKey.type,
       })
     }
 
-    if (sortKey && !table.Properties.AttributeDefinitions.some(attr => attr.AttributeName === sortKey.name)) {
+    if (sortKey && !table.Properties.AttributeDefinitions.some((attr) => attr.AttributeName === sortKey.name)) {
       table.Properties.AttributeDefinitions.push({
         AttributeName: sortKey.name,
         AttributeType: sortKey.type,
@@ -472,7 +457,7 @@ export class Database {
     }
 
     // Build GSI key schema
-    const gsiKeySchema: { AttributeName: string, KeyType: 'HASH' | 'RANGE' }[] = [
+    const gsiKeySchema: { AttributeName: string; KeyType: 'HASH' | 'RANGE' }[] = [
       {
         AttributeName: partitionKey.name,
         KeyType: 'HASH',
@@ -494,7 +479,7 @@ export class Database {
         ProjectionType: projectionType as 'ALL' | 'KEYS_ONLY' | 'INCLUDE',
         NonKeyAttributes: projectionType === 'INCLUDE' ? nonKeyAttributes : undefined,
       },
-      ProvisionedThroughput: undefined as { ReadCapacityUnits: number, WriteCapacityUnits: number } | undefined,
+      ProvisionedThroughput: undefined as { ReadCapacityUnits: number; WriteCapacityUnits: number } | undefined,
     }
 
     if (table.Properties.BillingMode === 'PROVISIONED') {

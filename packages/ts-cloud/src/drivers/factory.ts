@@ -17,8 +17,7 @@ export interface CreateCloudDriverOptions {
  * scripts and operations against localhost instead of reaching out over SSH/SSM.
  */
 export function createCloudDriver(options: CreateCloudDriverOptions): CloudDriver {
-  if (isBoxMode())
-    return new LocalBoxDriver()
+  if (isBoxMode()) return new LocalBoxDriver()
 
   const provider = options.provider ?? resolveCloudProvider(options.config)
 
@@ -31,6 +30,7 @@ export function createCloudDriver(options: CreateCloudDriverOptions): CloudDrive
       // config directly, per-call, since compute.image can override it.)
       return new HetznerDriver({
         apiToken: options.config.hetzner?.apiToken,
+        allowStateOnly: Boolean(options.config.cloud?.attachTo),
         sshPrivateKeyPath: options.config.hetzner?.sshPrivateKeyPath,
         sshPublicKeyPath: options.config.hetzner?.sshPublicKeyPath,
         sshUser: options.config.hetzner?.sshUser,

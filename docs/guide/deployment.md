@@ -171,6 +171,16 @@ cloud deploy:container \
 
 ## Rollback
 
+For a consistent history across every deployable type, use the unified release workflow. It compares exact artifacts/configuration, previews data-hook caveats, and restores the preserved provider version through the durable queue:
+
+```bash
+cloud release:list --env production
+cloud release:compare <current-release-id> <prior-release-id>
+cloud release:rollback <current-release-id> --to <prior-release-id>
+```
+
+See [Releases, promotion, and rollback](/features/releases). The target-specific commands below remain available for legacy deployment history.
+
 ### Compute Sites
 
 Roll a deployed compute (server) site back to a previous release:
@@ -332,26 +342,11 @@ const deployment = await manager.deploy(config, {
 console.log(deployment.status, deployment.regions)
 ```
 
-### Preview Environments
+### Preview environments
 
-`PreviewEnvironmentManager` manages ephemeral, TTL-bound stacks for PR previews.
+Preview environments are persistent control-plane records backed by durable create, update, and teardown jobs. Signed pull-request and branch events deploy an exact immutable SHA to a collision-safe stack and stable HTTPS URL; TTL and retention cleanup remove only resources carrying the preview's complete tag set.
 
-```typescript
-import { PreviewEnvironmentManager } from '@stacksjs/ts-cloud'
-
-const manager = new PreviewEnvironmentManager()
-
-const preview = await manager.createPreviewEnvironment({
-  branch: 'feature/new-feature',
-  pr: 123,
-  commitSha: 'abc1234',
-  ttl: 24, // hours
-  baseConfig: config,
-  region: 'us-east-1',
-})
-
-console.log('Preview:', preview.stackName, preview.url)
-```
+Configure the policy and inspect lifecycle state under **Operations → Preview environments**, or use `cloud env:preview` and the automation API. See [Preview environments](/features/preview-environments) for the complete workflow and security model.
 
 ## CI/CD Integration
 

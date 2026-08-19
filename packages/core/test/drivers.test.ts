@@ -13,16 +13,20 @@ describe('resolveCloudProvider', () => {
   })
 
   it('respects cloud.provider in config', () => {
-    expect(resolveCloudProvider({
-      ...baseConfig,
-      cloud: { provider: 'hetzner' },
-    })).toBe('hetzner')
+    expect(
+      resolveCloudProvider({
+        ...baseConfig,
+        cloud: { provider: 'hetzner' },
+      }),
+    ).toBe('hetzner')
   })
 
   it('auto-detects hetzner from hetzner.apiToken', () => {
-    expect(resolveCloudProvider({
-      ...baseConfig,
-      hetzner: { apiToken: 'test-token' },
-    })).toBe('hetzner')
+    expect(
+      resolveCloudProvider({
+        ...baseConfig,
+        hetzner: { apiToken: 'test-token' },
+      }),
+    ).toBe('hetzner')
   })
 })

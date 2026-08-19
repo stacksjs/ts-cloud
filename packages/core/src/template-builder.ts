@@ -90,24 +90,20 @@ export class TemplateBuilder {
     let yaml = ''
 
     for (const [key, value] of Object.entries(obj)) {
-      if (value === null || value === undefined)
-        continue
+      if (value === null || value === undefined) continue
 
       if (typeof value === 'object' && !Array.isArray(value)) {
         yaml += `${spaces}${key}:\n${this.convertToYAML(value, indent + 1)}`
-      }
-      else if (Array.isArray(value)) {
+      } else if (Array.isArray(value)) {
         yaml += `${spaces}${key}:\n`
         for (const item of value) {
           if (typeof item === 'object') {
             yaml += `${spaces}  -\n${this.convertToYAML(item, indent + 2)}`
-          }
-          else {
+          } else {
             yaml += `${spaces}  - ${item}\n`
           }
         }
-      }
-      else {
+      } else {
         yaml += `${spaces}${key}: ${value}\n`
       }
     }

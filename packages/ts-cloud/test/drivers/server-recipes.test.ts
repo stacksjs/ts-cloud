@@ -3,7 +3,9 @@ import { buildServerRecipeScript } from '../../src/drivers/shared/server-recipes
 
 describe('buildServerRecipeScript', () => {
   it('wraps the body in a login shell as root with begin/end markers', () => {
-    const s = buildServerRecipeScript({ name: 'clear-cache', script: ['php artisan cache:clear', 'echo done'] }).join('\n')
+    const s = buildServerRecipeScript({ name: 'clear-cache', script: ['php artisan cache:clear', 'echo done'] }).join(
+      '\n',
+    )
     expect(s).toContain('__TS_CLOUD_RECIPE_BEGIN__ clear-cache (user=root)')
     expect(s).toContain('php artisan cache:clear')
     expect(s).toContain('bash -l "$TS_CLOUD_RECIPE"')
@@ -18,7 +20,7 @@ describe('buildServerRecipeScript', () => {
   })
 
   it('preserves the body verbatim (heredocs/quotes) via a temp file', () => {
-    const s = buildServerRecipeScript({ name: 'r', script: ['cat > /tmp/x <<\'EOF\'', 'literal $VAR', 'EOF'] }).join('\n')
+    const s = buildServerRecipeScript({ name: 'r', script: ["cat > /tmp/x <<'EOF'", 'literal $VAR', 'EOF'] }).join('\n')
     expect(s).toContain('literal $VAR')
     expect(s).toContain('TS_CLOUD_RECIPE=$(mktemp)')
   })

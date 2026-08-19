@@ -23,38 +23,46 @@ describe('server_name injection', () => {
   })
 
   it('refuses to build a vhost from an injected domain', () => {
-    expect(() => buildNginxVhost({
-      siteName: 'app',
-      domain: INJECTION,
-      appDir: '/var/www/app/current',
-    })).toThrow(/not a valid hostname/)
+    expect(() =>
+      buildNginxVhost({
+        siteName: 'app',
+        domain: INJECTION,
+        appDir: '/var/www/app/current',
+      }),
+    ).toThrow(/not a valid hostname/)
   })
 
   it('refuses to build a vhost from an injected alias', () => {
-    expect(() => buildNginxVhost({
-      siteName: 'app',
-      domain: 'example.com',
-      aliases: [INJECTION],
-      appDir: '/var/www/app/current',
-    })).toThrow(/not a valid hostname/)
+    expect(() =>
+      buildNginxVhost({
+        siteName: 'app',
+        domain: 'example.com',
+        aliases: [INJECTION],
+        appDir: '/var/www/app/current',
+      }),
+    ).toThrow(/not a valid hostname/)
   })
 
   it('rejects whitespace, newlines and directive punctuation in a hostname', () => {
     for (const bad of ['a.com b.com', 'a.com\nserver_name evil.com', 'a.com;', 'a.com{', 'a.com}']) {
-      expect(() => buildNginxVhost({
-        siteName: 'app',
-        domain: bad,
-        appDir: '/var/www/app/current',
-      })).toThrow(/not a valid hostname/)
+      expect(() =>
+        buildNginxVhost({
+          siteName: 'app',
+          domain: bad,
+          appDir: '/var/www/app/current',
+        }),
+      ).toThrow(/not a valid hostname/)
     }
   })
 
   it('rejects an empty server_name rather than emitting `server_name ;`', () => {
-    expect(() => buildNginxVhost({
-      siteName: 'app',
-      domain: '',
-      appDir: '/var/www/app/current',
-    })).toThrow(/no server_name/)
+    expect(() =>
+      buildNginxVhost({
+        siteName: 'app',
+        domain: '',
+        appDir: '/var/www/app/current',
+      }),
+    ).toThrow(/no server_name/)
   })
 
   // compute-deploy falls back to `domain: site.domain || siteName`, so an
@@ -86,12 +94,12 @@ describe('cloud.config.ts string escaping', () => {
   it('escapes newlines so a value cannot terminate the string literal', () => {
     const rendered = renderStringValue('a\nb')
     expect(rendered).not.toContain('\n')
-    expect(rendered).toBe('\'a\\nb\'')
+    expect(rendered).toBe("'a\\nb'")
   })
 
   it('escapes carriage returns, quotes and backslashes', () => {
     expect(renderStringValue('a\rb')).not.toContain('\r')
-    expect(renderStringValue('it\'s')).toBe('\'it\\\'s\'')
-    expect(renderStringValue('a\\b')).toBe('\'a\\\\b\'')
+    expect(renderStringValue("it's")).toBe("'it\\'s'")
+    expect(renderStringValue('a\\b')).toBe("'a\\\\b'")
   })
 })

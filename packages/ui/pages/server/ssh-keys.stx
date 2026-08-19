@@ -5,6 +5,9 @@ const server = __d?.server ?? { name: 'acme-production-app' }
 const initialKeys = __d?.sshKeys ?? []
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+import { requestJson } from '../../functions/requestJson.ts'
+
 // Reactive SSH key management - list + add + remove, via signals + directives.
 // Seeded from build-time data (stx server→client bridge); load() reconciles
 // against the live cloud config (same describeSshKeys shape).
@@ -23,37 +26,31 @@ async function load() {
   } catch (e) { setMessage((e && e.message) || 'Could not read SSH keys.', 'bad') }
 }
 async function addKey() {
-  setMessage('Saving...', '')
-  const res = await fetch('/api/ssh-keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: name(), publicKey: pub() }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not add key.', 'bad'); return }
-  keys.set(data.keys || []); name.set(''); pub.set('')
-  setMessage('Saved to cloud config. Run cloud deploy to apply.', 'ok')
+  if (busy()) return
+  busy.set(true); setMessage('Saving...', '')
+  try {
+    const data = await requestJson('/api/ssh-keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: name(), publicKey: pub() }) })
+    keys.set(data.keys || []); name.set(''); pub.set('')
+    setMessage('Saved to cloud config. Run cloud deploy to apply.', 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not add key.', 'bad') }
+  finally { busy.set(false) }
 }
 async function removeKey(n) {
   setMessage('Removing...', '')
-  const res = await fetch('/api/ssh-keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: n }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not remove key.', 'bad'); return }
-  keys.set(data.keys || [])
-  setMessage('Removed from cloud config. Run cloud deploy to apply.', 'ok')
+  try {
+    const data = await requestJson('/api/ssh-keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: n }) })
+    keys.set(data.keys || [])
+    setMessage('Removed from cloud config. Run cloud deploy to apply.', 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not remove key.', 'bad') }
 }
 // Removal runs through a typed-confirm bar (same pattern as firewall/team):
 // type the key name to confirm. Removing the wrong key can lock every operator
 // out of the box, so it should never be one misclick away.
-const pending = state(null)
-const typed = state('')
-const canRun = derived(() => { const k = pending(); return k !== null && typed() === String(k.name) })
-const confirmTok = derived(() => { const k = pending(); return k ? String(k.name) : '' })
-const confirmVerb = derived(() => 'remove this key from the box')
-function askRemove(key) { pending.set(key); typed.set('') }
-function cancelOp() { pending.set(null); typed.set('') }
-async function runOp() {
-  const k = pending()
-  if (!k || typed() !== String(k.name)) return
-  pending.set(null); typed.set('')
-  await removeKey(k.name)
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  await removeKey(String(p.name))
+  return message()
+})
+function askRemove(key) { askOp('ssh-key:remove:' + key.name, key.name, 'remove SSH key ' + key.name + ' from the box', null, key.name, { name: key.name, danger: true, label: 'Remove SSH key' }) }
 
 onMount(() => { load() })
 </script>
@@ -78,7 +75,7 @@ onMount(() => { load() })
             <textarea id="ssh-public-key" rows="4" placeholder="ssh-ed25519 AAAA... chris@macbook" :value="pub()" @input="pub.set($event.target.value)" required></textarea>
           </div>
           <div class="form-actions">
-            <button class="btn" type="submit">Add key</button>
+            <button class="btn" type="submit" :disabled="busy()">Add key</button>
             <span class="msg" :class="messageKind()" role="status">{{ message() }}</span>
           </div>
         </form>
@@ -88,7 +85,7 @@ onMount(() => { load() })
       <h2>Configured keys</h2>
       <div class="panel">
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Fingerprint</th><th>Added</th><th></th></tr></thead>
+          <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Fingerprint</th><th scope="col">Added</th><th scope="col"></th></tr></thead>
           <tbody>
             <template :for="k in keys()">
               <tr>
@@ -102,7 +99,7 @@ onMount(() => { load() })
           </tbody>
         </table>
         <div class="compact empty" @show="keys().length === 0"><strong>No SSH keys configured</strong><span>Add a public key above to update <span class="mono">infrastructure.compute.sshKeys</span>.</span></div>
-        @include('../partials/op-confirm', { label: 'Remove', danger: true, output: false })
+        @include('../partials/op-confirm')
         <p class="note">Keys are declarative: this page edits <span class="mono">infrastructure.compute.sshKeys</span> in cloud config. Run <span class="mono">cloud deploy</span> to apply changes to the box. Connect with <span class="mono">cloud server:ssh {{ server.name }}</span>.</p>
       </div>
     </div>

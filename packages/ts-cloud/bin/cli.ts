@@ -7,6 +7,9 @@ import {
   registerSiteCommands,
   registerGenerateCommands,
   registerServerCommands,
+  registerPlacementCommands,
+  registerRegionCommands,
+  registerMaintenanceCommands,
   registerFunctionCommands,
   registerContainerCommands,
   registerDomainCommands,
@@ -16,11 +19,17 @@ import {
   registerFirewallCommands,
   registerSslCommands,
   registerCostCommands,
+  registerProtectCommands,
+  registerSpendCommands,
   registerGitCommands,
+  registerApplicationCommands,
   registerEnvironmentCommands,
+  registerComposeCommands,
+  registerReleaseCommands,
   registerAssetsCommands,
   registerTeamCommands,
   registerDeployCommands,
+  registerFullStackCommands,
   registerComputeLifecycleCommands,
   registerStackCommands,
   registerUtilsCommands,
@@ -45,7 +54,13 @@ import {
   // Operations
   registerStatusCommands,
   registerBackupCommands,
+  registerRecoveryCommands,
   registerApiCommands,
+  registerOperationQueueCommands,
+  registerRuntimeCommands,
+  registerTelemetryCommands,
+  registerAlertingCommands,
+  registerJobCommands,
   registerTunnelCommands,
 } from './commands'
 
@@ -76,11 +91,15 @@ registerConfigCommands(app)
 registerSiteCommands(app)
 registerGenerateCommands(app)
 registerDeployCommands(app)
+registerFullStackCommands(app)
 registerComputeLifecycleCommands(app)
 registerStackCommands(app)
 
 // Infrastructure Management
 registerServerCommands(app)
+registerPlacementCommands(app)
+registerRegionCommands(app)
+registerMaintenanceCommands(app)
 registerFunctionCommands(app)
 registerContainerCommands(app)
 registerCdnCommands(app)
@@ -116,14 +135,25 @@ registerAuditCommands(app)
 
 // Operations & Backup
 registerBackupCommands(app)
+registerRecoveryCommands(app)
 registerApiCommands(app)
+registerOperationQueueCommands(app)
+registerRuntimeCommands(app)
+registerTelemetryCommands(app)
+registerAlertingCommands(app)
+registerJobCommands(app)
 
 // Cost & Resources
 registerCostCommands(app)
+registerSpendCommands(app)
+registerProtectCommands(app)
 
 // Git & Environment
 registerGitCommands(app)
+registerApplicationCommands(app)
 registerEnvironmentCommands(app)
+registerComposeCommands(app)
+registerReleaseCommands(app)
 
 // Assets & Team
 registerAssetsCommands(app)

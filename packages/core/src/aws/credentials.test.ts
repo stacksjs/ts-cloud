@@ -3,11 +3,7 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
-import {
-  fromEnvironment,
-  fromSharedCredentials,
-  createCredentialProvider,
-} from './credentials'
+import { fromEnvironment, fromSharedCredentials, createCredentialProvider } from './credentials'
 
 describe('Credential Providers', () => {
   // Store original env

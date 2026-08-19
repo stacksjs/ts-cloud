@@ -67,14 +67,7 @@ export class Security {
     certificate: ACMCertificate
     logicalId: string
   } {
-    const {
-      domain,
-      subdomains = [],
-      slug,
-      environment,
-      validationMethod = 'DNS',
-      hostedZoneId,
-    } = options
+    const { domain, subdomains = [], slug, environment, validationMethod = 'DNS', hostedZoneId } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -90,8 +83,7 @@ export class Security {
       // Support wildcard notation
       if (subdomain === '*') {
         sans.push(`*.${domain}`)
-      }
-      else {
+      } else {
         sans.push(`${subdomain}.${domain}`)
       }
     }
@@ -107,7 +99,7 @@ export class Security {
 
     // Add DNS validation with Route53 if hostedZoneId is provided
     if (validationMethod === 'DNS' && hostedZoneId) {
-      certificate.Properties.DomainValidationOptions = sans.map(domainName => ({
+      certificate.Properties.DomainValidationOptions = sans.map((domainName) => ({
         DomainName: domainName,
         HostedZoneId: hostedZoneId,
       }))
@@ -125,13 +117,7 @@ export class Security {
     logicalId: string
     aliasId?: string
   } {
-    const {
-      description,
-      slug,
-      environment,
-      enableRotation = true,
-      multiRegion = false,
-    } = options
+    const { description, slug, environment, enableRotation = true, multiRegion = false } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -165,10 +151,7 @@ export class Security {
               'secretsmanager.amazonaws.com',
             ],
           },
-          Action: [
-            'kms:Decrypt',
-            'kms:GenerateDataKey',
-          ],
+          Action: ['kms:Decrypt', 'kms:GenerateDataKey'],
           Resource: '*',
         },
       ],
@@ -207,12 +190,7 @@ export class Security {
     webAcl: WAFv2WebACL
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      scope = 'CLOUDFRONT',
-      defaultAction = 'allow',
-    } = options
+    const { slug, environment, scope = 'CLOUDFRONT', defaultAction = 'allow' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -244,10 +222,7 @@ export class Security {
   /**
    * Add rate limiting to a Web ACL
    */
-  static setRateLimit(
-    webAcl: WAFv2WebACL,
-    rule: RateLimitRule,
-  ): WAFv2WebACL {
+  static setRateLimit(webAcl: WAFv2WebACL, rule: RateLimitRule): WAFv2WebACL {
     if (!webAcl.Properties.Rules) {
       webAcl.Properties.Rules = []
     }
@@ -277,10 +252,7 @@ export class Security {
   /**
    * Block specific countries
    */
-  static blockCountries(
-    webAcl: WAFv2WebACL,
-    rule: GeoBlockRule,
-  ): WAFv2WebACL {
+  static blockCountries(webAcl: WAFv2WebACL, rule: GeoBlockRule): WAFv2WebACL {
     if (!webAcl.Properties.Rules) {
       webAcl.Properties.Rules = []
     }
@@ -315,10 +287,10 @@ export class Security {
     slug: string,
     environment: EnvironmentType,
   ): {
-      webAcl: WAFv2WebACL
-      ipSet: WAFv2IPSet
-      ipSetLogicalId: string
-    } {
+    webAcl: WAFv2WebACL
+    ipSet: WAFv2IPSet
+    ipSetLogicalId: string
+  } {
     const resourceName = generateResourceName({
       slug,
       environment,
@@ -368,10 +340,7 @@ export class Security {
   /**
    * Add AWS Managed Rules
    */
-  static addManagedRules(
-    webAcl: WAFv2WebACL,
-    rule: ManagedRuleGroup,
-  ): WAFv2WebACL {
+  static addManagedRules(webAcl: WAFv2WebACL, rule: ManagedRuleGroup): WAFv2WebACL {
     if (!webAcl.Properties.Rules) {
       webAcl.Properties.Rules = []
     }
@@ -384,7 +353,7 @@ export class Security {
     }
 
     if (rule.excludedRules && rule.excludedRules.length > 0) {
-      managedRuleStatement.ManagedRuleGroupStatement!.ExcludedRules = rule.excludedRules.map(name => ({ Name: name }))
+      managedRuleStatement.ManagedRuleGroupStatement!.ExcludedRules = rule.excludedRules.map((name) => ({ Name: name }))
     }
 
     webAcl.Properties.Rules.push({
@@ -467,24 +436,23 @@ export class Security {
    * Add path-based rate limiting
    * Rate limit specific URL paths (e.g., login, API endpoints)
    */
-  static setPathRateLimit(
-    webAcl: WAFv2WebACL,
-    rule: RateLimitRule & { paths: string[] },
-  ): WAFv2WebACL {
+  static setPathRateLimit(webAcl: WAFv2WebACL, rule: RateLimitRule & { paths: string[] }): WAFv2WebACL {
     if (!webAcl.Properties.Rules) {
       webAcl.Properties.Rules = []
     }
 
     // Build path patterns for the rule
-    const pathConditions = rule.paths.map(path => ({
+    const pathConditions = rule.paths.map((path) => ({
       SearchString: path,
       FieldToMatch: {
         UriPath: {},
       },
-      TextTransformation: [{
-        Priority: 0,
-        Type: 'LOWERCASE',
-      }],
+      TextTransformation: [
+        {
+          Priority: 0,
+          Type: 'LOWERCASE',
+        },
+      ],
       PositionalConstraint: 'STARTS_WITH',
     }))
 
@@ -497,7 +465,7 @@ export class Security {
           AggregateKeyType: rule.aggregateKeyType || 'IP',
           ScopeDownStatement: {
             OrStatement: {
-              Statements: pathConditions.map(condition => ({
+              Statements: pathConditions.map((condition) => ({
                 ByteMatchStatement: condition,
               })),
             },
@@ -523,7 +491,7 @@ export class Security {
    */
   static setHeaderRateLimit(
     webAcl: WAFv2WebACL,
-    rule: RateLimitRule & { headerName: string, headerValue?: string },
+    rule: RateLimitRule & { headerName: string; headerValue?: string },
   ): WAFv2WebACL {
     if (!webAcl.Properties.Rules) {
       webAcl.Properties.Rules = []

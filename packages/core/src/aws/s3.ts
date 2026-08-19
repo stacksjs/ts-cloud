@@ -7,9 +7,10 @@
  * - Multipart uploads for large files
  * - Automatic content type detection
  */
-
-import { signRequest, signRequestAsync, createPresignedUrl, createPresignedUrlAsync, type RetryOptions } from './signature'
-import { getCredentials, type AWSCredentials, type CredentialProviderOptions } from './credentials'
+import type { AWSCredentials, CredentialProviderOptions } from './credentials'
+import type { RetryOptions } from './signature'
+import { getCredentials } from './credentials'
+import { createPresignedUrl, signRequest } from './signature'
 
 export interface S3ClientOptions {
   /** AWS region (default: 'us-east-1') */
@@ -187,9 +188,7 @@ export class S3Client {
     const encodedKey = key ? encodeURIComponent(key).replace(/%2F/g, '/') : ''
 
     if (this.forcePathStyle) {
-      return key
-        ? `${this.endpoint}/${bucket}/${encodedKey}`
-        : `${this.endpoint}/${bucket}`
+      return key ? `${this.endpoint}/${bucket}/${encodedKey}` : `${this.endpoint}/${bucket}`
     }
 
     // Virtual-hosted style
@@ -214,7 +213,8 @@ export class S3Client {
     // Add response overrides as query params
     const urlObj = new URL(url)
     if (options.responseContentType) urlObj.searchParams.set('response-content-type', options.responseContentType)
-    if (options.responseContentDisposition) urlObj.searchParams.set('response-content-disposition', options.responseContentDisposition)
+    if (options.responseContentDisposition)
+      urlObj.searchParams.set('response-content-disposition', options.responseContentDisposition)
 
     const signed = signRequest({
       method: 'GET',
@@ -279,20 +279,16 @@ export class S3Client {
     if (typeof body === 'string') {
       size = new TextEncoder().encode(body).length
       bodyToUpload = body
-    }
-else if (body instanceof ArrayBuffer) {
+    } else if (body instanceof ArrayBuffer) {
       size = body.byteLength
       bodyToUpload = body
-    }
-else if (body instanceof Uint8Array) {
+    } else if (body instanceof Uint8Array) {
       size = body.byteLength
       bodyToUpload = body
-    }
-else if (body instanceof Blob) {
+    } else if (body instanceof Blob) {
       size = body.size
       bodyToUpload = body
-    }
-else {
+    } else {
       // ReadableStream - use multipart upload
       return this.uploadMultipart(bucket, key, body, {
         ...options,
@@ -350,11 +346,9 @@ else {
     let bodyString: string
     if (typeof body === 'string') {
       bodyString = body
-    }
-else if (body instanceof Blob) {
+    } else if (body instanceof Blob) {
       bodyString = await body.text()
-    }
-else {
+    } else {
       bodyString = new TextDecoder().decode(body instanceof ArrayBuffer ? new Uint8Array(body) : body)
     }
 
@@ -412,12 +406,15 @@ else {
   /**
    * Delete multiple objects from S3
    */
-  async deleteMany(bucket: string, keys: string[]): Promise<{ deleted: string[], errors: Array<{ key: string, error: string }> }> {
+  async deleteMany(
+    bucket: string,
+    keys: string[],
+  ): Promise<{ deleted: string[]; errors: Array<{ key: string; error: string }> }> {
     const credentials = await this.getCredentials()
     const url = `${this.buildUrl(bucket)}?delete`
 
     // Build XML body
-    const objects = keys.map(key => `<Object><Key>${escapeXml(key)}</Key></Object>`).join('')
+    const objects = keys.map((key) => `<Object><Key>${escapeXml(key)}</Key></Object>`).join('')
     const body = `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>false</Quiet>${objects}</Delete>`
 
     const signed = signRequest({
@@ -445,7 +442,7 @@ else {
 
     const xml = await response.text()
     const deleted: string[] = []
-    const errors: Array<{ key: string, error: string }> = []
+    const errors: Array<{ key: string; error: string }> = []
 
     // Parse deleted keys
     const deletedRegex = /<Deleted><Key>([^<]+)<\/Key>/g
@@ -502,7 +499,10 @@ else {
   /**
    * List all objects with automatic pagination
    */
-  async *listAll(bucket: string, options: Omit<ListObjectsOptions, 'continuationToken'> = {}): AsyncGenerator<S3Object> {
+  async *listAll(
+    bucket: string,
+    options: Omit<ListObjectsOptions, 'continuationToken'> = {},
+  ): AsyncGenerator<S3Object> {
     let continuationToken: string | undefined
 
     do {
@@ -629,11 +629,7 @@ else {
   /**
    * Generate a presigned URL for an object
    */
-  async getPresignedUrl(
-    bucket: string,
-    key: string,
-    options: PresignedUrlOptions = {},
-  ): Promise<string> {
+  async getPresignedUrl(bucket: string, key: string, options: PresignedUrlOptions = {}): Promise<string> {
     const credentials = await this.getCredentials()
     const url = this.buildUrl(bucket, key)
 
@@ -665,12 +661,10 @@ else {
 
     if (body instanceof ReadableStream) {
       stream = body as ReadableStream<Uint8Array>
-    }
-else if (body instanceof Blob) {
+    } else if (body instanceof Blob) {
       stream = body.stream()
       totalSize = body.size
-    }
-else {
+    } else {
       const blob = new Blob([body])
       stream = blob.stream()
       totalSize = blob.size
@@ -703,8 +697,7 @@ else {
 
       // Complete multipart upload
       return await this.completeMultipartUpload(bucket, key, baseUrl, uploadId, parts)
-    }
-catch (error) {
+    } catch (error) {
       // Abort on failure
       await this.abortMultipartUpload(bucket, key, uploadId, baseUrl).catch(() => {})
       throw error
@@ -718,7 +711,7 @@ catch (error) {
     bucket: string,
     key: string,
     options: PutObjectOptions,
-  ): Promise<{ uploadId: string, baseUrl: string }> {
+  ): Promise<{ uploadId: string; baseUrl: string }> {
     const credentials = await this.getCredentials()
     const baseUrl = this.buildUrl(bucket, key)
     const url = `${baseUrl}?uploads`
@@ -772,8 +765,7 @@ catch (error) {
         const resolved = new URL(response.url)
         resolved.search = ''
         resolvedBaseUrl = resolved.toString()
-      }
-      catch {
+      } catch {
         // Fall back to the computed base URL if response.url is unusable.
       }
     }
@@ -795,8 +787,8 @@ catch (error) {
     totalSize: number | undefined,
     concurrency: number,
     onProgress?: (progress: MultipartProgress) => void,
-  ): Promise<Array<{ partNumber: number, etag: string }>> {
-    const parts: Array<{ partNumber: number, etag: string }> = []
+  ): Promise<Array<{ partNumber: number; etag: string }>> {
+    const parts: Array<{ partNumber: number; etag: string }> = []
     const reader = stream.getReader()
     let partNumber = 1
     let buffer = new Uint8Array(0)
@@ -808,9 +800,9 @@ catch (error) {
     // one that actually settled. (A naive `splice(indexOf(...))` on an array of
     // promises fails because the resolved value is not the promise object, so it
     // drops/duplicates parts under concurrency and corrupts the completed list.)
-    const inFlight = new Map<number, Promise<{ partNumber: number, etag: string }>>()
+    const inFlight = new Map<number, Promise<{ partNumber: number; etag: string }>>()
 
-    const uploadPart = async (data: Uint8Array, num: number): Promise<{ partNumber: number, etag: string }> => {
+    const uploadPart = async (data: Uint8Array, num: number): Promise<{ partNumber: number; etag: string }> => {
       // Address the exact host+path the upload was created against.
       const url = `${baseUrl}?partNumber=${num}&uploadId=${encodeURIComponent(uploadId)}`
 
@@ -917,14 +909,14 @@ catch (error) {
     key: string,
     baseUrl: string,
     uploadId: string,
-    parts: Array<{ partNumber: number, etag: string }>,
+    parts: Array<{ partNumber: number; etag: string }>,
   ): Promise<{ etag: string }> {
     const credentials = await this.getCredentials()
     const url = `${baseUrl}?uploadId=${encodeURIComponent(uploadId)}`
 
     // Build XML body
     const partsXml = parts
-      .map(p => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>"${p.etag}"</ETag></Part>`)
+      .map((p) => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>"${p.etag}"</ETag></Part>`)
       .join('')
     const body = `<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUpload>${partsXml}</CompleteMultipartUpload>`
 
@@ -1097,63 +1089,63 @@ function detectContentType(key: string): string {
 
   const contentTypes: Record<string, string> = {
     // Text
-    'html': 'text/html',
-    'htm': 'text/html',
-    'css': 'text/css',
-    'js': 'application/javascript',
-    'mjs': 'application/javascript',
-    'json': 'application/json',
-    'xml': 'application/xml',
-    'txt': 'text/plain',
-    'md': 'text/markdown',
-    'csv': 'text/csv',
+    html: 'text/html',
+    htm: 'text/html',
+    css: 'text/css',
+    js: 'application/javascript',
+    mjs: 'application/javascript',
+    json: 'application/json',
+    xml: 'application/xml',
+    txt: 'text/plain',
+    md: 'text/markdown',
+    csv: 'text/csv',
 
     // Images
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'webp': 'image/webp',
-    'svg': 'image/svg+xml',
-    'ico': 'image/x-icon',
-    'avif': 'image/avif',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    ico: 'image/x-icon',
+    avif: 'image/avif',
 
     // Video
-    'mp4': 'video/mp4',
-    'webm': 'video/webm',
-    'mov': 'video/quicktime',
-    'avi': 'video/x-msvideo',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    mov: 'video/quicktime',
+    avi: 'video/x-msvideo',
 
     // Audio
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'ogg': 'audio/ogg',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
 
     // Documents
-    'pdf': 'application/pdf',
-    'doc': 'application/msword',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xls': 'application/vnd.ms-excel',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'ppt': 'application/vnd.ms-powerpoint',
-    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 
     // Archives
-    'zip': 'application/zip',
-    'gz': 'application/gzip',
-    'tar': 'application/x-tar',
-    'rar': 'application/vnd.rar',
+    zip: 'application/zip',
+    gz: 'application/gzip',
+    tar: 'application/x-tar',
+    rar: 'application/vnd.rar',
     '7z': 'application/x-7z-compressed',
 
     // Fonts
-    'woff': 'font/woff',
-    'woff2': 'font/woff2',
-    'ttf': 'font/ttf',
-    'otf': 'font/otf',
-    'eot': 'application/vnd.ms-fontobject',
+    woff: 'font/woff',
+    woff2: 'font/woff2',
+    ttf: 'font/ttf',
+    otf: 'font/otf',
+    eot: 'application/vnd.ms-fontobject',
 
     // Data
-    'wasm': 'application/wasm',
+    wasm: 'application/wasm',
   }
 
   return contentTypes[ext || ''] || 'application/octet-stream'

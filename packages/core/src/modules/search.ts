@@ -2,7 +2,6 @@
  * Search Module (OpenSearch/Elasticsearch)
  * Clean API for AWS OpenSearch Service
  */
-
 import type { OpenSearchDomain } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -86,11 +85,13 @@ export class Search {
       tags = {},
     } = options
 
-    const resourceName = domainName || generateResourceName({
-      slug,
-      environment: environment as EnvironmentType,
-      resourceType: 'search',
-    })
+    const resourceName =
+      domainName ||
+      generateResourceName({
+        slug,
+        environment: environment as EnvironmentType,
+        resourceType: 'search',
+      })
     const logicalId = generateLogicalId(resourceName)
 
     const domain: OpenSearchDomain = {
@@ -151,12 +152,13 @@ export class Search {
           AdvancedSecurityOptions: {
             Enabled: advancedSecurity.enabled,
             InternalUserDatabaseEnabled: advancedSecurity.internalUserDatabase ?? true,
-            ...(advancedSecurity.masterUserName && advancedSecurity.masterUserPassword && {
-              MasterUserOptions: {
-                MasterUserName: advancedSecurity.masterUserName,
-                MasterUserPassword: advancedSecurity.masterUserPassword,
-              },
-            }),
+            ...(advancedSecurity.masterUserName &&
+              advancedSecurity.masterUserPassword && {
+                MasterUserOptions: {
+                  MasterUserName: advancedSecurity.masterUserName,
+                  MasterUserPassword: advancedSecurity.masterUserPassword,
+                },
+              }),
             ...(advancedSecurity.masterUserArn && {
               MasterUserOptions: {
                 MasterUserARN: advancedSecurity.masterUserArn,
@@ -286,7 +288,11 @@ export class Search {
     /**
      * Production domain (HA, multi-AZ)
      */
-    production: (slug: string, environment: string, vpc?: SearchDomainOptions['vpc']): { domain: OpenSearchDomain; logicalId: string } => {
+    production: (
+      slug: string,
+      environment: string,
+      vpc?: SearchDomainOptions['vpc'],
+    ): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
         environment,
@@ -336,7 +342,11 @@ export class Search {
     /**
      * High-performance domain (analytics, large datasets)
      */
-    highPerformance: (slug: string, environment: string, vpc: SearchDomainOptions['vpc']): { domain: OpenSearchDomain; logicalId: string } => {
+    highPerformance: (
+      slug: string,
+      environment: string,
+      vpc: SearchDomainOptions['vpc'],
+    ): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
         environment,

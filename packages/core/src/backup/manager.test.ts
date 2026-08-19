@@ -244,17 +244,12 @@ describe('BackupManager', () => {
 
   describe('Point-in-Time Recovery', () => {
     it('should enable PITR for RDS', () => {
-      const result = manager.enablePointInTimeRecovery(
-        'arn:aws:rds:us-east-1:123456789012:db:mydb',
-        'rds',
-      )
+      const result = manager.enablePointInTimeRecovery('arn:aws:rds:us-east-1:123456789012:db:mydb', 'rds')
 
       expect(result.enabled).toBe(true)
       expect(result.earliestRestorableTime).toBeInstanceOf(Date)
       expect(result.latestRestorableTime).toBeInstanceOf(Date)
-      expect(result.earliestRestorableTime.getTime()).toBeLessThan(
-        result.latestRestorableTime.getTime(),
-      )
+      expect(result.earliestRestorableTime.getTime()).toBeLessThan(result.latestRestorableTime.getTime())
     })
 
     it('should enable PITR for DynamoDB', () => {
@@ -269,14 +264,10 @@ describe('BackupManager', () => {
     })
 
     it('should provide 7-day window for PITR', () => {
-      const result = manager.enablePointInTimeRecovery(
-        'arn:aws:rds:us-east-1:123456789012:db:mydb',
-        'rds',
-      )
+      const result = manager.enablePointInTimeRecovery('arn:aws:rds:us-east-1:123456789012:db:mydb', 'rds')
 
       const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
-      const timeDiff
-        = result.latestRestorableTime.getTime() - result.earliestRestorableTime.getTime()
+      const timeDiff = result.latestRestorableTime.getTime() - result.earliestRestorableTime.getTime()
 
       // Allow some tolerance for test execution time
       expect(timeDiff).toBeGreaterThanOrEqual(sevenDaysMs - 1000)
@@ -467,9 +458,7 @@ describe('BackupManager', () => {
       expect(cf.Properties.BackupPlanId.Ref).toBe(`BackupPlan${plan.id}`)
       expect(cf.Properties.BackupSelection.SelectionName).toBe('Test PlanSelection')
       expect(cf.Properties.BackupSelection.Resources).toHaveLength(2)
-      expect(cf.Properties.BackupSelection.Resources[0]).toBe(
-        'arn:aws:rds:us-east-1:123456789012:db:mydb',
-      )
+      expect(cf.Properties.BackupSelection.Resources[0]).toBe('arn:aws:rds:us-east-1:123456789012:db:mydb')
     })
   })
 

@@ -204,10 +204,7 @@ export class ServiceMeshManager {
   /**
    * Create App Mesh
    */
-  createAppMesh(options: {
-    name: string
-    services: MeshService[]
-  }): ServiceMesh {
+  createAppMesh(options: { name: string; services: MeshService[] }): ServiceMesh {
     return this.createMesh({
       name: options.name,
       meshType: 'app_mesh',
@@ -237,12 +234,7 @@ export class ServiceMeshManager {
   /**
    * Create HTTP virtual node
    */
-  createHTTPVirtualNode(options: {
-    name: string
-    serviceName: string
-    port: number
-    namespace: string
-  }): VirtualNode {
+  createHTTPVirtualNode(options: { name: string; serviceName: string; port: number; namespace: string }): VirtualNode {
     return this.createVirtualNode({
       name: options.name,
       serviceName: options.serviceName,
@@ -451,7 +443,7 @@ export class ServiceMeshManager {
         MeshName: meshName,
         VirtualNodeName: node.name,
         Spec: {
-          Listeners: node.listeners.map(listener => ({
+          Listeners: node.listeners.map((listener) => ({
             PortMapping: {
               Port: listener.port,
               Protocol: listener.protocol,
@@ -488,7 +480,7 @@ export class ServiceMeshManager {
         MeshName: meshName,
         VirtualRouterName: router.name,
         Spec: {
-          Listeners: router.listeners.map(listener => ({
+          Listeners: router.listeners.map((listener) => ({
             PortMapping: {
               Port: listener.port,
               Protocol: listener.protocol,

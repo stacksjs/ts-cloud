@@ -42,8 +42,9 @@ describe('buildPhpFpmPoolConf', () => {
   })
 
   it('honours a custom max_children', () => {
-    expect(buildPhpFpmPoolConf({ siteName: 'app', appBase: '/var/www/app', maxChildren: 25 }))
-      .toContain('pm.max_children = 25')
+    expect(buildPhpFpmPoolConf({ siteName: 'app', appBase: '/var/www/app', maxChildren: 25 })).toContain(
+      'pm.max_children = 25',
+    )
   })
 })
 

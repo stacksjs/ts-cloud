@@ -178,10 +178,7 @@ export class ContainerRegistryManager {
   /**
    * Enable cross-region replication
    */
-  enableReplication(
-    registryId: string,
-    destinations: ReplicationDestination[]
-  ): ContainerRegistry {
+  enableReplication(registryId: string, destinations: ReplicationDestination[]): ContainerRegistry {
     const registry = this.registries.get(registryId)
 
     if (!registry) {
@@ -263,7 +260,7 @@ export class ContainerRegistryManager {
       Type: 'AWS::ECR::ReplicationConfiguration',
       Properties: {
         ReplicationConfiguration: {
-          Rules: replication.destinations.map(dest => ({
+          Rules: replication.destinations.map((dest) => ({
             Destinations: [
               {
                 Region: dest.region,

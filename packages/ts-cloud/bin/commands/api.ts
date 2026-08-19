@@ -25,8 +25,8 @@ export function registerApiCommands(app: CLI): void {
         const cfn = new CloudFormationClient(region)
 
         const stacks = await cfn.listStacks(['CREATE_COMPLETE', 'UPDATE_COMPLETE'])
-        const apiStacks = stacks.StackSummaries.filter(s =>
-          s.StackName?.includes('api') || s.StackName?.includes('Api') || s.StackName?.includes('API'),
+        const apiStacks = stacks.StackSummaries.filter(
+          (s) => s.StackName?.includes('api') || s.StackName?.includes('Api') || s.StackName?.includes('API'),
         )
 
         spinner.succeed('APIs listed')
@@ -37,11 +37,10 @@ export function registerApiCommands(app: CLI): void {
           cli.info('\nTo create an API, you can:')
           cli.info('  1. Use cloud.config.ts to define your API')
           cli.info('  2. Deploy with `cloud deploy`')
-        }
-        else {
+        } else {
           cli.table(
             ['Stack Name', 'Status', 'Created'],
-            apiStacks.map(stack => [
+            apiStacks.map((stack) => [
               stack.StackName || 'N/A',
               stack.StackStatus || 'N/A',
               stack.CreationTime ? new Date(stack.CreationTime).toLocaleDateString() : 'N/A',
@@ -50,8 +49,7 @@ export function registerApiCommands(app: CLI): void {
         }
 
         cli.info('\nTip: Use AWS Console or `aws apigateway get-rest-apis` for detailed API listing')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list APIs: ${error.message}`)
         process.exit(1)
       }
@@ -74,8 +72,7 @@ export function registerApiCommands(app: CLI): void {
         cli.info(`  aws apigateway get-rest-api --rest-api-id ${apiId} --region ${region}`)
         cli.info(`  aws apigateway get-resources --rest-api-id ${apiId} --region ${region}`)
         cli.info(`  aws apigateway get-stages --rest-api-id ${apiId} --region ${region}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to describe API: ${error.message}`)
         process.exit(1)
       }
@@ -101,8 +98,7 @@ export function registerApiCommands(app: CLI): void {
         cli.info('')
         cli.info('For detailed stage information, use AWS CLI:')
         cli.info(`  aws apigateway get-stages --rest-api-id ${apiId} --region ${region}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list stages: ${error.message}`)
         process.exit(1)
       }
@@ -136,8 +132,7 @@ export function registerApiCommands(app: CLI): void {
         if (options.description) {
           cli.info(`    --description "${options.description}"`)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to deploy API: ${error.message}`)
         process.exit(1)
       }
@@ -163,8 +158,7 @@ export function registerApiCommands(app: CLI): void {
         cli.info('  2. Create a custom domain in API Gateway')
         cli.info('  3. Create a base path mapping to your API')
         cli.info('  4. Add a DNS record pointing to the distribution')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list domains: ${error.message}`)
         process.exit(1)
       }
@@ -210,8 +204,7 @@ export function registerApiCommands(app: CLI): void {
         cli.info('  - 4XXError: Client errors')
         cli.info('  - 5XXError: Server errors')
         cli.info('  - IntegrationLatency: Backend latency')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get usage: ${error.message}`)
         process.exit(1)
       }
@@ -242,8 +235,7 @@ export function registerApiCommands(app: CLI): void {
         cli.info(`    --accepts application/json \\`)
         cli.info(`    --region ${options.region} \\`)
         cli.info(`    ${options.output || 'api-spec.json'}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to export API: ${error.message}`)
         process.exit(1)
       }
@@ -279,8 +271,7 @@ export function registerApiCommands(app: CLI): void {
         cli.info('')
         cli.info('Note: Ensure logging is enabled for the API stage.')
         cli.info('You can enable it in the stage settings.')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get logs: ${error.message}`)
         process.exit(1)
       }
@@ -293,87 +284,91 @@ export function registerApiCommands(app: CLI): void {
     .option('--method <method>', 'HTTP method', { default: 'GET' })
     .option('--body <json>', 'Request body (JSON)')
     .option('--header <header>', 'Request header (can be specified multiple times)')
-    .action(async (apiId: string, path: string, options: {
-      region?: string
-      stage: string
-      method: string
-      body?: string
-      header?: string | string[]
-    }) => {
-      cli.header('Test API Endpoint')
+    .action(
+      async (
+        apiId: string,
+        path: string,
+        options: {
+          region?: string
+          stage: string
+          method: string
+          body?: string
+          header?: string | string[]
+        },
+      ) => {
+        cli.header('Test API Endpoint')
 
-      try {
-        const config = await loadValidatedConfig()
-        const region = options.region || config.project.region || 'us-east-1'
-
-        // Build the API URL
-        const apiUrl = `https://${apiId}.execute-api.${region}.amazonaws.com/${options.stage}${path.startsWith('/') ? path : `/${path}`}`
-
-        cli.info(`URL: ${apiUrl}`)
-        cli.info(`Method: ${options.method}`)
-
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        }
-
-        if (options.header) {
-          const headerList = Array.isArray(options.header) ? options.header : [options.header]
-          for (const h of headerList) {
-            const [key, ...valueParts] = h.split(':')
-            headers[key.trim()] = valueParts.join(':').trim()
-          }
-        }
-
-        cli.info('Headers:')
-        for (const [key, value] of Object.entries(headers)) {
-          cli.info(`  ${key}: ${value}`)
-        }
-
-        if (options.body) {
-          cli.info(`Body: ${options.body}`)
-        }
-
-        const confirmed = await cli.confirm('\nSend request?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Sending request...')
-        spinner.start()
-
-        const startTime = Date.now()
-
-        const response = await fetch(apiUrl, {
-          method: options.method,
-          headers,
-          body: options.body,
-        })
-
-        const elapsed = Date.now() - startTime
-        const responseBody = await response.text()
-
-        spinner.succeed(`Response received (${elapsed}ms)`)
-
-        cli.info(`\nStatus: ${response.status} ${response.statusText}`)
-
-        cli.info('\nResponse Headers:')
-        response.headers.forEach((value, key) => {
-          cli.info(`  ${key}: ${value}`)
-        })
-
-        cli.info('\nResponse Body:')
         try {
-          const json = JSON.parse(responseBody)
-          console.log(JSON.stringify(json, null, 2))
+          const config = await loadValidatedConfig()
+          const region = options.region || config.project.region || 'us-east-1'
+
+          // Build the API URL
+          const apiUrl = `https://${apiId}.execute-api.${region}.amazonaws.com/${options.stage}${path.startsWith('/') ? path : `/${path}`}`
+
+          cli.info(`URL: ${apiUrl}`)
+          cli.info(`Method: ${options.method}`)
+
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          }
+
+          if (options.header) {
+            const headerList = Array.isArray(options.header) ? options.header : [options.header]
+            for (const h of headerList) {
+              const [key, ...valueParts] = h.split(':')
+              headers[key.trim()] = valueParts.join(':').trim()
+            }
+          }
+
+          cli.info('Headers:')
+          for (const [key, value] of Object.entries(headers)) {
+            cli.info(`  ${key}: ${value}`)
+          }
+
+          if (options.body) {
+            cli.info(`Body: ${options.body}`)
+          }
+
+          const confirmed = await cli.confirm('\nSend request?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Sending request...')
+          spinner.start()
+
+          const startTime = Date.now()
+
+          const response = await fetch(apiUrl, {
+            method: options.method,
+            headers,
+            body: options.body,
+          })
+
+          const elapsed = Date.now() - startTime
+          const responseBody = await response.text()
+
+          spinner.succeed(`Response received (${elapsed}ms)`)
+
+          cli.info(`\nStatus: ${response.status} ${response.statusText}`)
+
+          cli.info('\nResponse Headers:')
+          response.headers.forEach((value, key) => {
+            cli.info(`  ${key}: ${value}`)
+          })
+
+          cli.info('\nResponse Body:')
+          try {
+            const json = JSON.parse(responseBody)
+            console.log(JSON.stringify(json, null, 2))
+          } catch {
+            console.log(responseBody)
+          }
+        } catch (error: any) {
+          cli.error(`Failed to test API: ${error.message}`)
+          process.exit(1)
         }
-        catch {
-          console.log(responseBody)
-        }
-      }
-      catch (error: any) {
-        cli.error(`Failed to test API: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 }

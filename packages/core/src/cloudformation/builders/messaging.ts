@@ -18,12 +18,9 @@ export interface MessagingConfig {
 /**
  * Add SNS topic resources to CloudFormation template
  */
-export function addMessagingResources(
-  builder: CloudFormationBuilder,
-  config: MessagingConfig,
-): void {
+export function addMessagingResources(builder: CloudFormationBuilder, config: MessagingConfig): void {
   if (config.topics) {
-    config.topics.forEach(topic => {
+    config.topics.forEach((topic) => {
       addTopic(builder, topic)
     })
   }
@@ -32,56 +29,48 @@ export function addMessagingResources(
 /**
  * Add SNS topic with subscriptions
  */
-function addTopic(
-  builder: CloudFormationBuilder,
-  config: TopicConfig,
-): void {
+function addTopic(builder: CloudFormationBuilder, config: TopicConfig): void {
   const logicalId = builder.toLogicalId(`${config.name}-topic`)
 
   // SNS Topic
   builder.addResource(logicalId, 'AWS::SNS::Topic', {
     TopicName: Fn.sub(`\${AWS::StackName}-${config.name}`),
     DisplayName: config.displayName || config.name,
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}`) },
-    ],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}`) }],
   })
 
   // Topic Policy
-  builder.addResource(`${logicalId}Policy`, 'AWS::SNS::TopicPolicy', {
-    Topics: [Fn.ref(logicalId)],
-    PolicyDocument: {
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Effect: 'Allow',
-          Principal: {
-            Service: [
-              'events.amazonaws.com',
-              'cloudwatch.amazonaws.com',
-              's3.amazonaws.com',
-            ],
+  builder.addResource(
+    `${logicalId}Policy`,
+    'AWS::SNS::TopicPolicy',
+    {
+      Topics: [Fn.ref(logicalId)],
+      PolicyDocument: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: {
+              Service: ['events.amazonaws.com', 'cloudwatch.amazonaws.com', 's3.amazonaws.com'],
+            },
+            Action: 'sns:Publish',
+            Resource: Fn.ref(logicalId),
           },
-          Action: 'sns:Publish',
-          Resource: Fn.ref(logicalId),
-        },
-        {
-          Effect: 'Allow',
-          Principal: {
-            AWS: Fn.sub('arn:aws:iam::${AWS::AccountId}:root'),
+          {
+            Effect: 'Allow',
+            Principal: {
+              AWS: Fn.sub('arn:aws:iam::${AWS::AccountId}:root'),
+            },
+            Action: ['sns:Subscribe', 'sns:Publish', 'sns:Receive'],
+            Resource: Fn.ref(logicalId),
           },
-          Action: [
-            'sns:Subscribe',
-            'sns:Publish',
-            'sns:Receive',
-          ],
-          Resource: Fn.ref(logicalId),
-        },
-      ],
+        ],
+      },
     },
-  }, {
-    dependsOn: logicalId,
-  })
+    {
+      dependsOn: logicalId,
+    },
+  )
 
   // Subscriptions
   if (config.subscriptions) {
@@ -111,14 +100,19 @@ function addTopic(
         subscriptionProperties.Endpoint = Fn.getAtt(functionLogicalId, 'Arn')
 
         // Add Lambda permission for SNS
-        builder.addResource(`${subscriptionId}Permission`, 'AWS::Lambda::Permission', {
-          FunctionName: Fn.ref(functionLogicalId),
-          Action: 'lambda:InvokeFunction',
-          Principal: 'sns.amazonaws.com',
-          SourceArn: Fn.ref(logicalId),
-        }, {
-          dependsOn: [functionLogicalId, logicalId],
-        })
+        builder.addResource(
+          `${subscriptionId}Permission`,
+          'AWS::Lambda::Permission',
+          {
+            FunctionName: Fn.ref(functionLogicalId),
+            Action: 'lambda:InvokeFunction',
+            Principal: 'sns.amazonaws.com',
+            SourceArn: Fn.ref(logicalId),
+          },
+          {
+            dependsOn: [functionLogicalId, logicalId],
+          },
+        )
       }
 
       builder.addResource(subscriptionId, 'AWS::SNS::Subscription', subscriptionProperties, {

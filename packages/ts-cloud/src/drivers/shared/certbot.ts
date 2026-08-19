@@ -15,13 +15,12 @@ import { NGINX_WRAPPER } from './nginx-vhost'
 
 /** Resolve the effective SSL provider for a site (Let's Encrypt by default when it has a domain). */
 export function resolveSslProvider(site: SiteConfig): 'letsencrypt' | 'custom' | 'none' {
-  if (site.ssl?.provider)
-    return site.ssl.provider
+  if (site.ssl?.provider) return site.ssl.provider
   return site.domain ? 'letsencrypt' : 'none'
 }
 
 /** apt package + certbot plugin name for a DNS provider. */
-const DNS_PLUGINS: Record<SslDnsConfig['provider'], { pkg: string, plugin: string }> = {
+const DNS_PLUGINS: Record<SslDnsConfig['provider'], { pkg: string; plugin: string }> = {
   cloudflare: { pkg: 'python3-certbot-dns-cloudflare', plugin: 'dns-cloudflare' },
   route53: { pkg: 'python3-certbot-dns-route53', plugin: 'dns-route53' },
   digitalocean: { pkg: 'python3-certbot-dns-digitalocean', plugin: 'dns-digitalocean' },
@@ -52,7 +51,7 @@ export function buildCertbotInstallScript(dns?: SslDnsConfig): string[] {
     // cert kept being served until a manual restart. Fall back for apt-nginx
     // boxes.
     'mkdir -p /etc/letsencrypt/renewal-hooks/deploy',
-    'cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh <<\'TS_CLOUD_HOOK_EOF\'',
+    "cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh <<'TS_CLOUD_HOOK_EOF'",
     '#!/bin/sh',
     'systemctl reload ts-cloud-nginx 2>/dev/null || systemctl reload nginx 2>/dev/null || true',
     'TS_CLOUD_HOOK_EOF',
@@ -84,16 +83,12 @@ export interface CertbotIssueOptions {
  * when there are no credentials (e.g. route53 using instance-role creds).
  */
 export function buildDnsCredentialsScript(dns: SslDnsConfig): string[] {
-  if (!dns.credentials || Object.keys(dns.credentials).length === 0)
-    return []
+  if (!dns.credentials || Object.keys(dns.credentials).length === 0) return []
   const file = dnsCredentialsPath(dns.provider)
-  const lines = Object.entries(dns.credentials).map(([k, v]) => `${k} = ${v}`).join('\n')
-  return [
-    `cat > ${file} <<'TS_CLOUD_DNSCREDS_EOF'`,
-    lines,
-    'TS_CLOUD_DNSCREDS_EOF',
-    `chmod 600 ${file}`,
-  ]
+  const lines = Object.entries(dns.credentials)
+    .map(([k, v]) => `${k} = ${v}`)
+    .join('\n')
+  return [`cat > ${file} <<'TS_CLOUD_DNSCREDS_EOF'`, lines, 'TS_CLOUD_DNSCREDS_EOF', `chmod 600 ${file}`]
 }
 
 /**
@@ -120,20 +115,16 @@ export function buildCertbotIssueScript(options: CertbotIssueOptions): string[] 
       args.push(`--${plugin}-propagation-seconds ${dns.propagationSeconds}`)
     // DNS-01 only obtains the cert; nginx is reloaded by the renewal/deploy hook.
     args.push('certonly')
-  }
-  else {
+  } else {
     // certbot's nginx plugin shells out to an `nginx` binary on PATH (nginx -V,
     // -t, reload). These boxes only carry the ts-cloud wrapper around the
     // pantry-installed binary, so point certbot at it explicitly — otherwise
     // issuance aborts with "Could not find a usable 'nginx' binary".
     args.push('--nginx', `--nginx-ctl ${NGINX_WRAPPER}`, options.redirect === false ? '--no-redirect' : '--redirect')
   }
-  if (options.email)
-    args.push(`-m ${options.email}`)
-  else
-    args.push('--register-unsafely-without-email')
-  for (const d of domains)
-    args.push(`-d ${d}`)
+  if (options.email) args.push(`-m ${options.email}`)
+  else args.push('--register-unsafely-without-email')
+  for (const d of domains) args.push(`-d ${d}`)
 
   return [args.join(' ')]
 }
@@ -145,13 +136,11 @@ export function buildCertbotIssueScript(options: CertbotIssueOptions): string[] 
  * it's skipped.
  */
 export function buildSslScript(site: SiteConfig): string[] {
-  if (resolveSslProvider(site) !== 'letsencrypt' || !site.domain)
-    return []
+  if (resolveSslProvider(site) !== 'letsencrypt' || !site.domain) return []
   const ssl = site.ssl
   const dns = ssl?.dns
   const wildcard = ssl?.wildcard === true
-  if (wildcard && !dns)
-    return [] // wildcard needs DNS-01; nothing to do without it
+  if (wildcard && !dns) return [] // wildcard needs DNS-01; nothing to do without it
   return [
     ...buildCertbotInstallScript(dns),
     ...(dns ? buildDnsCredentialsScript(dns) : []),

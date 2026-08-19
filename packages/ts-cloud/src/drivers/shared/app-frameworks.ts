@@ -24,10 +24,8 @@ const PHP_SITE_TYPES = new Set(['laravel', 'php', 'statamic', 'wordpress'])
  * backward compatibility; everything else uses the Stacks-first default.
  */
 export function resolveSiteFramework(site: Pick<SiteConfig, 'framework' | 'type'>): FrameworkId {
-  if (site.framework)
-    return site.framework
-  if (site.type && PHP_SITE_TYPES.has(site.type))
-    return 'laravel'
+  if (site.framework) return site.framework
+  if (site.type && PHP_SITE_TYPES.has(site.type)) return 'laravel'
   return 'stacks'
 }
 
@@ -67,9 +65,10 @@ export interface AppFrameworkDriver {
 /** Loads pantry's env (PATH + LD_LIBRARY_PATH) so bare `php`/`composer` resolve. */
 const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)"`
 
-/** The ts-cloud-installed bun (see ubuntu-bootstrap) + the Stacks CLI entry. */
+/** The ts-cloud-installed bun (see ubuntu-bootstrap) + dedicated runtime entries. */
 const BUN_BIN = '/usr/local/bin/bun'
 const STACKS_CLI = 'storage/framework/core/buddy/src/cli.ts'
+const STACKS_SCHEDULER = 'node_modules/@stacksjs/ts-cloud/dist/bin/stacks-scheduler.js'
 
 /**
  * Stacks (Bun) — the default. bun lives at an absolute path installed by the box
@@ -80,12 +79,18 @@ const STACKS_CLI = 'storage/framework/core/buddy/src/cli.ts'
  */
 export const stacksDriver: AppFrameworkDriver = {
   id: 'stacks',
-  wrapExec: command => command,
-  execEnv: { PATH: '/usr/local/bin:/usr/bin:/bin', BUN_INSTALL: '/root/.bun' },
-  // `buddy schedule:run` stays alive (in-process timers) → one always-on unit.
-  // systemd sets WorkingDirectory to the release dir, so the CLI path is relative.
+  wrapExec: (command) => command,
+  execEnv: {
+    PATH: '/usr/local/bin:/usr/bin:/bin',
+    BUN_INSTALL: '/root/.bun',
+    APP_ENV: 'production',
+    NODE_ENV: 'production',
+  },
+  // The scheduler action stays alive through its in-process timers. Launch it
+  // through ts-cloud's dedicated production entry so Buddy's full command
+  // dispatcher does not remain resident while waiting on a child process.
   schedulerMode: 'daemon',
-  schedulerCommand: () => `${BUN_BIN} ${STACKS_CLI} schedule:run`,
+  schedulerCommand: () => `${BUN_BIN} ${STACKS_SCHEDULER}`,
   queueWorkerCommand: (worker, { current }) => {
     const flags = [
       `--queue=${worker.queue || 'default'}`,
@@ -100,14 +105,13 @@ export const stacksDriver: AppFrameworkDriver = {
 /** Laravel (PHP / Artisan) — the original Forge-style behavior, now a driver. */
 export const laravelDriver: AppFrameworkDriver = {
   id: 'laravel',
-  wrapExec: command => `/bin/sh -lc '${PANTRY_ENV_EVAL}; exec ${command}'`,
+  wrapExec: (command) => `/bin/sh -lc '${PANTRY_ENV_EVAL}; exec ${command}'`,
   // `php artisan schedule:run` is one-shot → run it every minute from cron.
   schedulerMode: 'cron',
   schedulerCommand: ({ current }) => `cd ${current} && ${PANTRY_ENV_EVAL} && php artisan schedule:run`,
   queueWorkerCommand: (worker, { current }) => {
     const artisan = `${current}/artisan`
-    if (worker.horizon)
-      return `php ${artisan} horizon`
+    if (worker.horizon) return `php ${artisan} horizon`
     const flags = [
       worker.connection || 'default',
       `--queue=${worker.queue || 'default'}`,
@@ -116,10 +120,8 @@ export const laravelDriver: AppFrameworkDriver = {
       `--timeout=${worker.timeout ?? 60}`,
       `--memory=${worker.memory ?? 128}`,
     ]
-    if (worker.maxJobs)
-      flags.push(`--max-jobs=${worker.maxJobs}`)
-    if (worker.maxTime)
-      flags.push(`--max-time=${worker.maxTime}`)
+    if (worker.maxJobs) flags.push(`--max-jobs=${worker.maxJobs}`)
+    if (worker.maxTime) flags.push(`--max-time=${worker.maxTime}`)
     return `php ${artisan} queue:work ${flags.join(' ')}`
   },
 }

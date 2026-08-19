@@ -21,7 +21,6 @@
  * Authorization is deny-by-default: {@link authorize} answers `false` for any
  * capability it does not explicitly recognize.
  */
-
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 
 /** Box-wide role. `admin` owns the server and everything hosted on it. */
@@ -42,6 +41,8 @@ export interface DashboardUser {
   sites: Record<string, SiteRole>
   /** Display name shown in the UI. Defaults to the username. */
   name?: string
+  /** Verified once an emailed invitation or verification link is consumed. */
+  email?: string
   createdAt?: string
 }
 
@@ -97,33 +98,28 @@ export interface AuthorizeInput {
  */
 export function authorize({ user, capability, site }: AuthorizeInput): boolean {
   // Admins own the box and everything on it.
-  if (user.role === 'admin')
-    return true
+  if (user.role === 'admin') return true
 
   // Members can never perform box-level work, regardless of their site grants.
-  if (isBoxCapability(capability))
-    return false
+  if (isBoxCapability(capability)) return false
 
   // Every site capability must name the site it applies to. A `site:*` check
   // with no site is a programming error at the call site; refuse it rather than
   // guessing which site was meant.
-  if (!site)
-    return false
+  if (!site) return false
 
   const siteRole = user.sites?.[site]
-  if (!siteRole)
-    return false
+  if (!siteRole) return false
 
   return SITE_ROLE_CAPABILITIES[siteRole]?.has(capability) ?? false
 }
 
 /** The sites a user may see. Admins see everything, so pass the full list. */
 export function visibleSites(user: Pick<DashboardUser, 'role' | 'sites'>, allSites: string[]): string[] {
-  if (user.role === 'admin')
-    return [...allSites]
+  if (user.role === 'admin') return [...allSites]
   // Intersect the grants with the sites that actually exist, so a stale grant
   // for a deleted site never conjures a phantom entry in the UI.
-  return allSites.filter(site => !!user.sites?.[site])
+  return allSites.filter((site) => !!user.sites?.[site])
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +130,7 @@ export function visibleSites(user: Pick<DashboardUser, 'role' | 'sites'>, allSit
  * scrypt parameters. N=16384 keeps a single hash near ~50ms on a small box,
  * which is a reasonable brute-force cost without stalling the login request.
  */
-const SCRYPT_N = 16_384
+const SCRYPT_N = 32_768
 const SCRYPT_R = 8
 const SCRYPT_P = 1
 const KEY_LEN = 32
@@ -147,7 +143,7 @@ const SALT_LEN = 16
  */
 export function hashPassword(password: string): string {
   const salt = randomBytes(SALT_LEN)
-  const hash = scryptSync(password, salt, KEY_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P })
+  const hash = scryptSync(password, salt, KEY_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, maxmem: 256 * 1024 * 1024 })
   return `scrypt$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64url')}$${hash.toString('base64url')}`
 }
 
@@ -159,28 +155,30 @@ export function hashPassword(password: string): string {
 export function verifyPassword(password: string, stored: string): boolean {
   try {
     const parts = stored.split('$')
-    if (parts.length !== 6 || parts[0] !== 'scrypt')
-      return false
+    if (parts.length !== 6 || parts[0] !== 'scrypt') return false
 
     const [, nRaw, rRaw, pRaw, saltRaw, hashRaw] = parts
     const N = Number(nRaw)
     const r = Number(rRaw)
     const p = Number(pRaw)
-    if (!Number.isFinite(N) || !Number.isFinite(r) || !Number.isFinite(p))
-      return false
+    if (!Number.isFinite(N) || !Number.isFinite(r) || !Number.isFinite(p)) return false
 
     const salt = Buffer.from(saltRaw, 'base64url')
     const expected = Buffer.from(hashRaw, 'base64url')
-    if (salt.length === 0 || expected.length === 0)
-      return false
+    if (salt.length === 0 || expected.length === 0) return false
 
     // scrypt needs maxmem raised for larger N; 256MB covers N up to ~1M.
     const actual = scryptSync(password, salt, expected.length, { N, r, p, maxmem: 256 * 1024 * 1024 })
     return timingSafeEqual(actual, expected)
-  }
-  catch {
+  } catch {
     return false
   }
+}
+
+/** Whether a valid legacy hash should be transparently upgraded after login. */
+export function passwordNeedsRehash(stored: string): boolean {
+  const [algorithm, nRaw, rRaw, pRaw] = stored.split('$')
+  return algorithm !== 'scrypt' || Number(nRaw) !== SCRYPT_N || Number(rRaw) !== SCRYPT_R || Number(pRaw) !== SCRYPT_P
 }
 
 /** A URL-safe generated password, for invites and the bootstrap admin. */

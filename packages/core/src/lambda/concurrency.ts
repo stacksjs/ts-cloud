@@ -64,10 +64,7 @@ export class LambdaConcurrencyManager {
   /**
    * Set reserved concurrency
    */
-  setReservedConcurrency(options: {
-    functionName: string
-    reservedConcurrency: number
-  }): ConcurrencyConfig {
+  setReservedConcurrency(options: { functionName: string; reservedConcurrency: number }): ConcurrencyConfig {
     const id = `concurrency-${Date.now()}-${this.configCounter++}`
 
     const config: ConcurrencyConfig = {

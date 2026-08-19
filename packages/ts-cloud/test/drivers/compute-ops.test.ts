@@ -1,10 +1,6 @@
 import type { CloudDriver } from '@ts-cloud/core'
 import { describe, expect, it, mock } from 'bun:test'
-import {
-  getComputeDeployHistory,
-  rollbackComputeSite,
-  runComputeRecipe,
-} from '../../src/drivers/shared/compute-ops'
+import { getComputeDeployHistory, rollbackComputeSite, runComputeRecipe } from '../../src/drivers/shared/compute-ops'
 
 function mockDriver(targets = [{ id: 'srv-1', publicIp: '203.0.113.1', status: 'running' }]) {
   return {
@@ -16,7 +12,7 @@ function mockDriver(targets = [{ id: 'srv-1', publicIp: '203.0.113.1', status: '
     runRemoteDeploy: mock(async () => ({
       success: true,
       instanceCount: targets.length,
-      perInstance: targets.map(t => ({ instanceId: t.id, status: 'Success', output: 'ok' })),
+      perInstance: targets.map((t) => ({ instanceId: t.id, status: 'Success', output: 'ok' })),
     })),
   } as unknown as CloudDriver
 }
@@ -46,7 +42,7 @@ describe('rollbackComputeSite', () => {
     const driver = mockDriver([])
     const res = await rollbackComputeSite(ctx(driver), { siteName: 'main' })
     expect(res.success).toBe(false)
-    expect(res.error).toContain('No \'app\' servers found')
+    expect(res.error).toContain("No 'app' servers found")
   })
 })
 
@@ -63,7 +59,11 @@ describe('getComputeDeployHistory', () => {
 describe('runComputeRecipe', () => {
   it('runs the recipe body across servers with markers', async () => {
     const driver = mockDriver()
-    const res = await runComputeRecipe(ctx(driver), { name: 'clear-cache', script: ['php artisan cache:clear'], user: 'www-data' })
+    const res = await runComputeRecipe(ctx(driver), {
+      name: 'clear-cache',
+      script: ['php artisan cache:clear'],
+      user: 'www-data',
+    })
     expect(res.success).toBe(true)
     const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
     expect(cmd).toContain('__TS_CLOUD_RECIPE_BEGIN__ clear-cache (user=www-data)')

@@ -14,8 +14,7 @@ export interface DeploymentPoint {
 }
 
 function clampPercent(value: number): number {
-  if (!Number.isFinite(value))
-    return 0
+  if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.min(100, Math.round(value)))
 }
 
@@ -28,12 +27,9 @@ function esc(value: unknown): string {
 }
 
 function toneClass(value: ResourcePoint): string {
-  if (value.tone)
-    return value.tone
-  if (value.value >= 90)
-    return 'bad'
-  if (value.value >= 70)
-    return 'warn'
+  if (value.tone) return value.tone
+  if (value.value >= 90) return 'bad'
+  if (value.value >= 70) return 'warn'
   return 'ok'
 }
 
@@ -43,9 +39,15 @@ export function renderResourceBars(points: ResourcePoint[], options: { disabled?
   const margin = { top: 18, right: 20, bottom: 44, left: 38 }
   const innerW = width - margin.left - margin.right
   const innerH = height - margin.top - margin.bottom
-  const labels = points.map(point => point.label)
-  const x = scaleBand().domain(labels).range([margin.left, margin.left + innerW]).paddingInner(0.28).paddingOuter(0.12)
-  const y = scaleLinear().domain([0, 100]).range([margin.top + innerH, margin.top])
+  const labels = points.map((point) => point.label)
+  const x = scaleBand()
+    .domain(labels)
+    .range([margin.left, margin.left + innerW])
+    .paddingInner(0.28)
+    .paddingOuter(0.12)
+  const y = scaleLinear()
+    .domain([0, 100])
+    .range([margin.top + innerH, margin.top])
   const bandwidth = Math.max(12, x.bandwidth?.() ?? 28)
 
   if (options.disabled) {
@@ -56,23 +58,27 @@ export function renderResourceBars(points: ResourcePoint[], options: { disabled?
     </svg>`
   }
 
-  const grid = [0, 25, 50, 75, 100].map((tick) => {
-    const gy = y(tick)
-    return `<line x1="${margin.left}" x2="${margin.left + innerW}" y1="${gy}" y2="${gy}" class="chart-grid"></line><text x="${margin.left - 10}" y="${gy + 4}" text-anchor="end" class="chart-axis">${tick}</text>`
-  }).join('')
+  const grid = [0, 25, 50, 75, 100]
+    .map((tick) => {
+      const gy = y(tick)
+      return `<line x1="${margin.left}" x2="${margin.left + innerW}" y1="${gy}" y2="${gy}" class="chart-grid"></line><text x="${margin.left - 10}" y="${gy + 4}" text-anchor="end" class="chart-axis">${tick}</text>`
+    })
+    .join('')
 
-  const bars = points.map((point) => {
-    const value = clampPercent(point.value)
-    const bx = x(point.label) ?? margin.left
-    const by = y(value)
-    const bh = margin.top + innerH - by
-    return `<g class="bar-mark ${toneClass(point)}">
+  const bars = points
+    .map((point) => {
+      const value = clampPercent(point.value)
+      const bx = x(point.label) ?? margin.left
+      const by = y(value)
+      const bh = margin.top + innerH - by
+      return `<g class="bar-mark ${toneClass(point)}">
       <rect x="${bx}" y="${by}" width="${bandwidth}" height="${bh}" rx="7"></rect>
       <text x="${bx + bandwidth / 2}" y="${by - 8}" text-anchor="middle" class="chart-value">${value}%</text>
       <text x="${bx + bandwidth / 2}" y="${height - 20}" text-anchor="middle" class="chart-label">${esc(point.label)}</text>
       ${point.detail ? `<title>${esc(point.detail)}</title>` : ''}
     </g>`
-  }).join('')
+    })
+    .join('')
 
   return `<svg class="chart resource-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Server resource chart">
     <rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="14" class="chart-shell"></rect>
@@ -88,7 +94,7 @@ export function renderDeploymentSparkline(records: DeploymentPoint[]): string {
   const innerW = width - margin.left - margin.right
   const innerH = height - margin.top - margin.bottom
   const sorted = [...records]
-    .filter(record => record.timestamp)
+    .filter((record) => record.timestamp)
     .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)))
 
   if (sorted.length === 0) {
@@ -105,12 +111,18 @@ export function renderDeploymentSparkline(records: DeploymentPoint[]): string {
     record,
   }))
 
-  const path = line<any>()
-    .x((d: any) => d.x)
-    .y((d: any) => d.y)
-    .curve(curveMonotoneX)(buckets) ?? ''
+  const path =
+    line<any>()
+      .x((d: any) => d.x)
+      .y((d: any) => d.y)
+      .curve(curveMonotoneX)(buckets) ?? ''
 
-  const dots = buckets.map(({ x, y, record }) => `<circle cx="${x}" cy="${y}" r="5" class="${record.status === 'failed' ? 'bad' : 'ok'}"><title>${esc(record.site)} · ${esc(record.status)}</title></circle>`).join('')
+  const dots = buckets
+    .map(
+      ({ x, y, record }) =>
+        `<circle cx="${x}" cy="${y}" r="5" class="${record.status === 'failed' ? 'bad' : 'ok'}"><title>${esc(record.site)} · ${esc(record.status)}</title></circle>`,
+    )
+    .join('')
 
   return `<svg class="chart deployment-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Deployment history chart">
     <rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="14" class="chart-shell"></rect>

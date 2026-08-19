@@ -118,10 +118,14 @@ describe('Messaging Module', () => {
 
   describe('subscribeLambda', () => {
     it('should create Lambda subscription', () => {
-      const { subscription } = Messaging.subscribeLambda('topic-id', 'arn:aws:lambda:us-east-1:123456789:function:handler', {
-        slug: 'my-app',
-        environment: 'production',
-      })
+      const { subscription } = Messaging.subscribeLambda(
+        'topic-id',
+        'arn:aws:lambda:us-east-1:123456789:function:handler',
+        {
+          slug: 'my-app',
+          environment: 'production',
+        },
+      )
 
       expect(subscription.Properties.Protocol).toBe('lambda')
       expect(subscription.Properties.Endpoint).toBe('arn:aws:lambda:us-east-1:123456789:function:handler')

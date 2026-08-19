@@ -30,16 +30,15 @@ export function registerNetworkCommands(app: CLI): void {
 
         cli.table(
           ['VPC ID', 'Name', 'CIDR', 'State', 'Default'],
-          vpcs.map(vpc => [
+          vpcs.map((vpc) => [
             vpc.VpcId || 'N/A',
-            vpc.Tags?.find(t => t.Key === 'Name')?.Value || '-',
+            vpc.Tags?.find((t) => t.Key === 'Name')?.Value || '-',
             vpc.CidrBlock || 'N/A',
             vpc.State || 'N/A',
             vpc.IsDefault ? 'Yes' : 'No',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list VPCs: ${error.message}`)
         process.exit(1)
       }
@@ -73,9 +72,9 @@ export function registerNetworkCommands(app: CLI): void {
 
         cli.table(
           ['Subnet ID', 'Name', 'VPC', 'CIDR', 'AZ', 'IPs Available', 'Public'],
-          subnets.map(subnet => [
+          subnets.map((subnet) => [
             subnet.SubnetId || 'N/A',
-            subnet.Tags?.find(t => t.Key === 'Name')?.Value || '-',
+            subnet.Tags?.find((t) => t.Key === 'Name')?.Value || '-',
             subnet.VpcId || 'N/A',
             subnet.CidrBlock || 'N/A',
             subnet.AvailabilityZone || 'N/A',
@@ -83,8 +82,7 @@ export function registerNetworkCommands(app: CLI): void {
             subnet.MapPublicIpOnLaunch ? 'Yes' : 'No',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list subnets: ${error.message}`)
         process.exit(1)
       }
@@ -118,7 +116,7 @@ export function registerNetworkCommands(app: CLI): void {
 
         cli.table(
           ['Group ID', 'Name', 'VPC', 'Description', 'Inbound Rules', 'Outbound Rules'],
-          groups.map(sg => [
+          groups.map((sg) => [
             sg.GroupId || 'N/A',
             sg.GroupName || 'N/A',
             sg.VpcId || 'N/A',
@@ -127,8 +125,7 @@ export function registerNetworkCommands(app: CLI): void {
             (sg.IpPermissionsEgress?.length || 0).toString(),
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list security groups: ${error.message}`)
         process.exit(1)
       }
@@ -171,20 +168,22 @@ export function registerNetworkCommands(app: CLI): void {
           cli.info('\nInbound Rules:')
           for (const rule of sg.IpPermissions) {
             const protocol = rule.IpProtocol === '-1' ? 'All' : rule.IpProtocol?.toUpperCase()
-            const ports = rule.FromPort === rule.ToPort
-              ? rule.FromPort?.toString() || 'All'
-              : `${rule.FromPort}-${rule.ToPort}`
+            const ports =
+              rule.FromPort === rule.ToPort ? rule.FromPort?.toString() || 'All' : `${rule.FromPort}-${rule.ToPort}`
 
             for (const range of rule.IpRanges || []) {
-              cli.info(`  - ${protocol} ${ports} from ${range.CidrIp}${range.Description ? ` (${range.Description})` : ''}`)
+              cli.info(
+                `  - ${protocol} ${ports} from ${range.CidrIp}${range.Description ? ` (${range.Description})` : ''}`,
+              )
             }
 
             for (const group of rule.UserIdGroupPairs || []) {
-              cli.info(`  - ${protocol} ${ports} from ${group.GroupId}${group.Description ? ` (${group.Description})` : ''}`)
+              cli.info(
+                `  - ${protocol} ${ports} from ${group.GroupId}${group.Description ? ` (${group.Description})` : ''}`,
+              )
             }
           }
-        }
-        else {
+        } else {
           cli.info('\nNo inbound rules configured.')
         }
 
@@ -192,20 +191,22 @@ export function registerNetworkCommands(app: CLI): void {
           cli.info('\nOutbound Rules:')
           for (const rule of sg.IpPermissionsEgress) {
             const protocol = rule.IpProtocol === '-1' ? 'All' : rule.IpProtocol?.toUpperCase()
-            const ports = rule.FromPort === rule.ToPort
-              ? rule.FromPort?.toString() || 'All'
-              : `${rule.FromPort}-${rule.ToPort}`
+            const ports =
+              rule.FromPort === rule.ToPort ? rule.FromPort?.toString() || 'All' : `${rule.FromPort}-${rule.ToPort}`
 
             for (const range of rule.IpRanges || []) {
-              cli.info(`  - ${protocol} ${ports} to ${range.CidrIp}${range.Description ? ` (${range.Description})` : ''}`)
+              cli.info(
+                `  - ${protocol} ${ports} to ${range.CidrIp}${range.Description ? ` (${range.Description})` : ''}`,
+              )
             }
 
             for (const group of rule.UserIdGroupPairs || []) {
-              cli.info(`  - ${protocol} ${ports} to ${group.GroupId}${group.Description ? ` (${group.Description})` : ''}`)
+              cli.info(
+                `  - ${protocol} ${ports} to ${group.GroupId}${group.Description ? ` (${group.Description})` : ''}`,
+              )
             }
           }
-        }
-        else {
+        } else {
           cli.info('\nNo outbound rules configured.')
         }
 
@@ -215,8 +216,7 @@ export function registerNetworkCommands(app: CLI): void {
             cli.info(`  ${tag.Key}: ${tag.Value}`)
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get security group: ${error.message}`)
         process.exit(1)
       }
@@ -252,10 +252,14 @@ export function registerNetworkCommands(app: CLI): void {
         const result = await ec2.createVpc({
           CidrBlock: cidr,
           InstanceTenancy: options.tenancy,
-          TagSpecifications: options.name ? [{
-            ResourceType: 'vpc',
-            Tags: [{ Key: 'Name', Value: options.name }],
-          }] : undefined,
+          TagSpecifications: options.name
+            ? [
+                {
+                  ResourceType: 'vpc',
+                  Tags: [{ Key: 'Name', Value: options.name }],
+                },
+              ]
+            : undefined,
         })
 
         spinner.succeed('VPC created')
@@ -263,8 +267,7 @@ export function registerNetworkCommands(app: CLI): void {
         cli.success(`\nVPC ID: ${result.Vpc?.VpcId}`)
         cli.info(`CIDR: ${result.Vpc?.CidrBlock}`)
         cli.info(`State: ${result.Vpc?.State}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to create VPC: ${error.message}`)
         process.exit(1)
       }
@@ -276,60 +279,69 @@ export function registerNetworkCommands(app: CLI): void {
     .option('--name <name>', 'Subnet name tag')
     .option('--az <zone>', 'Availability zone')
     .option('--public', 'Auto-assign public IPs')
-    .action(async (vpcId: string, cidr: string, options: { region: string; name?: string; az?: string; public?: boolean }) => {
-      cli.header('Create Subnet')
+    .action(
+      async (
+        vpcId: string,
+        cidr: string,
+        options: { region: string; name?: string; az?: string; public?: boolean },
+      ) => {
+        cli.header('Create Subnet')
 
-      try {
-        const ec2 = new EC2Client(options.region)
+        try {
+          const ec2 = new EC2Client(options.region)
 
-        cli.info(`VPC: ${vpcId}`)
-        cli.info(`CIDR Block: ${cidr}`)
-        if (options.az) {
-          cli.info(`Availability Zone: ${options.az}`)
-        }
-        if (options.name) {
-          cli.info(`Name: ${options.name}`)
-        }
-        cli.info(`Auto-assign Public IP: ${options.public ? 'Yes' : 'No'}`)
+          cli.info(`VPC: ${vpcId}`)
+          cli.info(`CIDR Block: ${cidr}`)
+          if (options.az) {
+            cli.info(`Availability Zone: ${options.az}`)
+          }
+          if (options.name) {
+            cli.info(`Name: ${options.name}`)
+          }
+          cli.info(`Auto-assign Public IP: ${options.public ? 'Yes' : 'No'}`)
 
-        const confirmed = await cli.confirm('\nCreate this subnet?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
+          const confirmed = await cli.confirm('\nCreate this subnet?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
 
-        const spinner = new cli.Spinner('Creating subnet...')
-        spinner.start()
+          const spinner = new cli.Spinner('Creating subnet...')
+          spinner.start()
 
-        const result = await ec2.createSubnet({
-          VpcId: vpcId,
-          CidrBlock: cidr,
-          AvailabilityZone: options.az,
-          TagSpecifications: options.name ? [{
-            ResourceType: 'subnet',
-            Tags: [{ Key: 'Name', Value: options.name }],
-          }] : undefined,
-        })
-
-        if (options.public && result.Subnet?.SubnetId) {
-          spinner.text = 'Enabling auto-assign public IP...'
-          await ec2.modifySubnetAttribute({
-            SubnetId: result.Subnet.SubnetId,
-            MapPublicIpOnLaunch: { Value: true },
+          const result = await ec2.createSubnet({
+            VpcId: vpcId,
+            CidrBlock: cidr,
+            AvailabilityZone: options.az,
+            TagSpecifications: options.name
+              ? [
+                  {
+                    ResourceType: 'subnet',
+                    Tags: [{ Key: 'Name', Value: options.name }],
+                  },
+                ]
+              : undefined,
           })
+
+          if (options.public && result.Subnet?.SubnetId) {
+            spinner.text = 'Enabling auto-assign public IP...'
+            await ec2.modifySubnetAttribute({
+              SubnetId: result.Subnet.SubnetId,
+              MapPublicIpOnLaunch: { Value: true },
+            })
+          }
+
+          spinner.succeed('Subnet created')
+
+          cli.success(`\nSubnet ID: ${result.Subnet?.SubnetId}`)
+          cli.info(`CIDR: ${result.Subnet?.CidrBlock}`)
+          cli.info(`Availability Zone: ${result.Subnet?.AvailabilityZone}`)
+        } catch (error: any) {
+          cli.error(`Failed to create subnet: ${error.message}`)
+          process.exit(1)
         }
-
-        spinner.succeed('Subnet created')
-
-        cli.success(`\nSubnet ID: ${result.Subnet?.SubnetId}`)
-        cli.info(`CIDR: ${result.Subnet?.CidrBlock}`)
-        cli.info(`Availability Zone: ${result.Subnet?.AvailabilityZone}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to create subnet: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('network:create-sg <vpcId> <name>', 'Create a new security group')
@@ -360,10 +372,12 @@ export function registerNetworkCommands(app: CLI): void {
           GroupName: name,
           Description: description,
           VpcId: vpcId,
-          TagSpecifications: [{
-            ResourceType: 'security-group',
-            Tags: [{ Key: 'Name', Value: name }],
-          }],
+          TagSpecifications: [
+            {
+              ResourceType: 'security-group',
+              Tags: [{ Key: 'Name', Value: name }],
+            },
+          ],
         })
 
         spinner.succeed('Security group created')
@@ -371,8 +385,7 @@ export function registerNetworkCommands(app: CLI): void {
         cli.success(`\nGroup ID: ${result.GroupId}`)
         cli.info('\nTo add rules:')
         cli.info(`  cloud network:sg-rule ${result.GroupId} --inbound --port 443 --cidr 0.0.0.0/0`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to create security group: ${error.message}`)
         process.exit(1)
       }
@@ -388,109 +401,114 @@ export function registerNetworkCommands(app: CLI): void {
     .option('--cidr <cidr>', 'CIDR block (e.g., 0.0.0.0/0)')
     .option('--source-group <groupId>', 'Source security group')
     .option('--description <desc>', 'Rule description')
-    .action(async (groupId: string, options: {
-      region: string
-      inbound?: boolean
-      outbound?: boolean
-      protocol: string
-      port?: string
-      cidr?: string
-      sourceGroup?: string
-      description?: string
-    }) => {
-      cli.header('Add Security Group Rule')
+    .action(
+      async (
+        groupId: string,
+        options: {
+          region: string
+          inbound?: boolean
+          outbound?: boolean
+          protocol: string
+          port?: string
+          cidr?: string
+          sourceGroup?: string
+          description?: string
+        },
+      ) => {
+        cli.header('Add Security Group Rule')
 
-      try {
-        const ec2 = new EC2Client(options.region)
+        try {
+          const ec2 = new EC2Client(options.region)
 
-        if (!options.inbound && !options.outbound) {
-          cli.error('Specify --inbound or --outbound')
-          return
-        }
-
-        if (!options.cidr && !options.sourceGroup) {
-          cli.error('Specify --cidr or --source-group')
-          return
-        }
-
-        // Parse port range
-        let fromPort: number | undefined
-        let toPort: number | undefined
-
-        if (options.port) {
-          if (options.port.includes('-')) {
-            const [from, to] = options.port.split('-')
-            fromPort = Number.parseInt(from)
-            toPort = Number.parseInt(to)
+          if (!options.inbound && !options.outbound) {
+            cli.error('Specify --inbound or --outbound')
+            return
           }
-          else {
-            fromPort = Number.parseInt(options.port)
-            toPort = fromPort
+
+          if (!options.cidr && !options.sourceGroup) {
+            cli.error('Specify --cidr or --source-group')
+            return
           }
+
+          // Parse port range
+          let fromPort: number | undefined
+          let toPort: number | undefined
+
+          if (options.port) {
+            if (options.port.includes('-')) {
+              const [from, to] = options.port.split('-')
+              fromPort = Number.parseInt(from)
+              toPort = Number.parseInt(to)
+            } else {
+              fromPort = Number.parseInt(options.port)
+              toPort = fromPort
+            }
+          } else if (options.protocol !== '-1') {
+            cli.error('Port is required for TCP/UDP protocols')
+            return
+          }
+
+          const direction = options.inbound ? 'Inbound' : 'Outbound'
+          const portStr = options.protocol === '-1' ? 'All' : fromPort === toPort ? fromPort : `${fromPort}-${toPort}`
+
+          cli.info(`Security Group: ${groupId}`)
+          cli.info(`Direction: ${direction}`)
+          cli.info(`Protocol: ${options.protocol}`)
+          cli.info(`Port(s): ${portStr}`)
+          cli.info(`Source: ${options.cidr || options.sourceGroup}`)
+
+          const confirmed = await cli.confirm('\nAdd this rule?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Adding rule...')
+          spinner.start()
+
+          const ipPermission: any = {
+            IpProtocol: options.protocol,
+            FromPort: fromPort,
+            ToPort: toPort,
+          }
+
+          if (options.cidr) {
+            ipPermission.IpRanges = [
+              {
+                CidrIp: options.cidr,
+                Description: options.description,
+              },
+            ]
+          }
+
+          if (options.sourceGroup) {
+            ipPermission.UserIdGroupPairs = [
+              {
+                GroupId: options.sourceGroup,
+                Description: options.description,
+              },
+            ]
+          }
+
+          if (options.inbound) {
+            await ec2.authorizeSecurityGroupIngress({
+              GroupId: groupId,
+              IpPermissions: [ipPermission],
+            })
+          } else {
+            await ec2.authorizeSecurityGroupEgress({
+              GroupId: groupId,
+              IpPermissions: [ipPermission],
+            })
+          }
+
+          spinner.succeed('Rule added')
+        } catch (error: any) {
+          cli.error(`Failed to add rule: ${error.message}`)
+          process.exit(1)
         }
-        else if (options.protocol !== '-1') {
-          cli.error('Port is required for TCP/UDP protocols')
-          return
-        }
-
-        const direction = options.inbound ? 'Inbound' : 'Outbound'
-        const portStr = options.protocol === '-1' ? 'All' : (fromPort === toPort ? fromPort : `${fromPort}-${toPort}`)
-
-        cli.info(`Security Group: ${groupId}`)
-        cli.info(`Direction: ${direction}`)
-        cli.info(`Protocol: ${options.protocol}`)
-        cli.info(`Port(s): ${portStr}`)
-        cli.info(`Source: ${options.cidr || options.sourceGroup}`)
-
-        const confirmed = await cli.confirm('\nAdd this rule?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Adding rule...')
-        spinner.start()
-
-        const ipPermission: any = {
-          IpProtocol: options.protocol,
-          FromPort: fromPort,
-          ToPort: toPort,
-        }
-
-        if (options.cidr) {
-          ipPermission.IpRanges = [{
-            CidrIp: options.cidr,
-            Description: options.description,
-          }]
-        }
-
-        if (options.sourceGroup) {
-          ipPermission.UserIdGroupPairs = [{
-            GroupId: options.sourceGroup,
-            Description: options.description,
-          }]
-        }
-
-        if (options.inbound) {
-          await ec2.authorizeSecurityGroupIngress({
-            GroupId: groupId,
-            IpPermissions: [ipPermission],
-          })
-        }
-        else {
-          await ec2.authorizeSecurityGroupEgress({
-            GroupId: groupId,
-            IpPermissions: [ipPermission],
-          })
-        }
-
-        spinner.succeed('Rule added')
-      }
-      catch (error: any) {
-        cli.error(`Failed to add rule: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('network:elastic-ips', 'List Elastic IP addresses')
@@ -518,16 +536,15 @@ export function registerNetworkCommands(app: CLI): void {
 
         cli.table(
           ['Public IP', 'Allocation ID', 'Association ID', 'Instance', 'Name'],
-          addresses.map(addr => [
+          addresses.map((addr) => [
             addr.PublicIp || 'N/A',
             addr.AllocationId || 'N/A',
             addr.AssociationId || '-',
             addr.InstanceId || '-',
-            addr.Tags?.find(t => t.Key === 'Name')?.Value || '-',
+            addr.Tags?.find((t) => t.Key === 'Name')?.Value || '-',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list Elastic IPs: ${error.message}`)
         process.exit(1)
       }
@@ -561,17 +578,16 @@ export function registerNetworkCommands(app: CLI): void {
 
         cli.table(
           ['Route Table ID', 'VPC', 'Name', 'Main', 'Associations', 'Routes'],
-          tables.map(rt => [
+          tables.map((rt) => [
             rt.RouteTableId || 'N/A',
             rt.VpcId || 'N/A',
-            rt.Tags?.find(t => t.Key === 'Name')?.Value || '-',
-            rt.Associations?.some(a => a.Main) ? 'Yes' : 'No',
+            rt.Tags?.find((t) => t.Key === 'Name')?.Value || '-',
+            rt.Associations?.some((a) => a.Main) ? 'Yes' : 'No',
             (rt.Associations?.length || 0).toString(),
             (rt.Routes?.length || 0).toString(),
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list route tables: ${error.message}`)
         process.exit(1)
       }

@@ -1,0 +1,517 @@
+<script server>
+import { topologyGeometry } from '../../src/topology.ts'
+
+// Infrastructure diagram. The topology model is resolved alongside every other
+// dashboard slice (see `dashboard-topology.ts`) and laid out with ts-charts'
+// layered graph layout — the same layout runs again in <script client> when a
+// poll brings a changed topology, so both paints agree.
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') }
+catch { __d = null }
+
+// Representative shape so the page renders as designed before any data is
+// injected. It is badged as a sample in the header — never passed off as real.
+const sampleTopology = {
+  mode: 'server',
+  project: 'sample-project',
+  environment: 'production',
+  provider: 'hetzner',
+  region: 'fsn1',
+  generatedAt: '',
+  layers: [
+    { index: 0, id: 'clients', label: 'Clients' },
+    { index: 1, id: 'dns', label: 'DNS & TLS' },
+    { index: 2, id: 'edge', label: 'Edge' },
+    { index: 3, id: 'routing', label: 'Routing' },
+    { index: 4, id: 'apps', label: 'Applications' },
+    { index: 5, id: 'runtime', label: 'Background runtime' },
+    { index: 6, id: 'data', label: 'Data services' },
+    { index: 7, id: 'durability', label: 'Durability' },
+  ],
+  groups: [{ id: 'box', label: 'sample-production-app', sub: 'hetzner · fsn1' }],
+  nodes: [
+    { id: 'internet', label: 'Internet', kind: 'internet', layer: 0, status: 'ok', sub: 'Public traffic', facts: [], external: true },
+    { id: 'dns', label: 'example.com', kind: 'dns', layer: 1, status: 'ok', sub: 'DNS & certificates', facts: [], external: true },
+    { id: 'firewall', label: 'Host firewall', kind: 'firewall', layer: 2, status: 'ok', sub: 'Inbound filtering', facts: [], group: 'box' },
+    { id: 'proxy', label: 'rpx-gateway', kind: 'proxy', layer: 3, status: 'ok', sub: 'TLS termination & routing', facts: [], group: 'box' },
+    { id: 'site:main', label: 'main', kind: 'site', layer: 4, status: 'ok', sub: 'bun', facts: [], group: 'box' },
+    { id: 'site:docs', label: 'docs', kind: 'site', layer: 4, status: 'ok', sub: 'static/bun', facts: [], group: 'box' },
+    { id: 'worker:default', label: 'default', kind: 'worker', layer: 5, status: 'ok', sub: '2 processes', facts: [], group: 'box' },
+    { id: 'data:redis', label: 'Redis', kind: 'cache', layer: 6, status: 'ok', sub: 'redis', facts: [], group: 'box' },
+    { id: 'data:mysql', label: 'MySQL', kind: 'database', layer: 6, status: 'ok', sub: 'mysql', facts: [], group: 'box' },
+    { id: 'backup', label: 'Backups', kind: 'backup', layer: 7, status: 'ok', sub: 'off-box', facts: [] },
+  ],
+  links: [
+    { source: 'internet', target: 'dns', flow: 'request', label: 'https' },
+    { source: 'dns', target: 'firewall', flow: 'request', label: '443/80' },
+    { source: 'firewall', target: 'proxy', flow: 'request' },
+    { source: 'proxy', target: 'site:main', flow: 'request' },
+    { source: 'proxy', target: 'site:docs', flow: 'request' },
+    { source: 'site:main', target: 'worker:default', flow: 'async', label: 'queue' },
+    { source: 'site:main', target: 'data:redis', flow: 'data', label: 'localhost' },
+    { source: 'site:main', target: 'data:mysql', flow: 'data', label: 'localhost' },
+    { source: 'worker:default', target: 'data:mysql', flow: 'data', label: 'localhost' },
+    { source: 'data:mysql', target: 'backup', flow: 'backup', label: 'snapshot' },
+  ],
+  notes: [],
+}
+
+const liveTopology = __d?.topology ?? null
+const initialTopology = liveTopology ?? sampleTopology
+const initialGeometry = topologyGeometry(initialTopology)
+const initialIsSample = !liveTopology
+
+// The svg's coordinate system is a fixed literal — a `:viewBox` binding is
+// lowercased to `viewbox` by the HTML parser and silently ignored, so it cannot
+// track the drawing. Instead the stage is deliberately over-tall and the
+// wrapper crops it to the band actually in use; that crop IS bindable, so a
+// client-side re-layout (taller topology than the one baked in) still fills the
+// panel rather than shrinking to fit a stale stage.
+const stageWidth = 1600
+const stageHeight = 1200
+const stageViewBox = `0 0 ${stageWidth} ${stageHeight}`
+</script>
+<script client>
+import { requestJson } from '../../functions/requestJson.ts'
+import { usePolling } from '../../functions/usePolling.ts'
+import { highlightFor, matchTopology, topologyGeometry } from '../../src/topology.ts'
+
+// Everything below is signal-driven: the SVG is bound to `geo()`, and pan/zoom
+// is expressed as a viewBox rather than by touching the DOM, so the diagram
+// stays declarative and re-renders from data alone.
+const model = state(initialTopology)
+const geo = state(initialGeometry)
+const isSample = state(initialIsSample)
+const selectedId = state('')
+const hoveredId = state('')
+const query = state('')
+const flows = state({ request: true, async: true, data: true, backup: true })
+const animate = state(true)
+const zoom = state(1)
+const panX = state(0)
+const panY = state(0)
+let dragging = null
+
+async function load() {
+  // requestJson raises a DashboardRequestError carrying the HTTP status, which
+  // is how usePolling can tell "exported without an API" from "the API broke".
+  const body = await requestJson('/api/dashboard-data')
+  if (!body?.topology?.nodes?.length) throw new Error('This deployment reported no topology to draw.')
+  // Re-laying out only when the shape changed keeps positions stable across
+  // polls — a diagram that reshuffles every 30s is unreadable.
+  if (shapeOf(body.topology) !== shapeOf(model())) geo.set(topologyGeometry(body.topology))
+  else geo.set(restatus(geo(), body.topology))
+  model.set(body.topology)
+  isSample.set(false)
+}
+function shapeOf(value) {
+  return [
+    (value?.nodes || []).map(node => node.id + ':' + node.layer).sort().join(','),
+    (value?.links || []).map(link => link.source + '>' + link.target).sort().join(','),
+  ].join('|')
+}
+/** Same shape, fresh state: keep the geometry, swap statuses and facts in. */
+function restatus(geometry, next) {
+  const byId = new Map((next.nodes || []).map(node => [node.id, node]))
+  return {
+    ...geometry,
+    nodes: geometry.nodes.map(node => {
+      const fresh = byId.get(node.id)
+      return fresh ? { ...node, status: fresh.status, sub: fresh.sub, facts: fresh.facts } : node
+    }),
+  }
+}
+// The map is a read-only view of a payload that is fully baked in at build
+// time, so a deploy without a control plane costs it nothing but freshness.
+const { pollingState, pollingError, lastUpdatedAt, isSnapshot, refresh } = usePolling(load, 30000, {
+  snapshotWhenApiMissing: true,
+})
+// When there is no API to poll, the honest timestamp is when the payload was
+// resolved, not when the browser last asked.
+const builtAtLabel = derived(() => {
+  const at = model().generatedAt
+  if (!at) return 'build time unknown'
+  const when = new Date(at)
+  return Number.isNaN(when.getTime()) ? 'build time unknown' : `built ${when.toLocaleString()}`
+})
+
+const visible = derived(() => matchTopology(geo().nodes, query()))
+const focus = derived(() => highlightFor(geo(), hoveredId() || selectedId() || null))
+const selected = derived(() => geo().nodes.find(node => node.id === selectedId()) || null)
+const counts = derived(() => {
+  const tally = { ok: 0, warn: 0, bad: 0, idle: 0, unknown: 0 }
+  for (const node of geo().nodes) tally[node.status] = (tally[node.status] || 0) + 1
+  return tally
+})
+// Every `:for` binds a bare derived: stx auto-unwraps signals inside loop
+// expressions, so `geo().nodes` there would evaluate to nothing.
+const nodes = derived(() => geo().nodes)
+const links = derived(() => geo().links)
+const lanes = derived(() => geo().lanes)
+const groups = derived(() => geo().groups)
+const labelledLinks = derived(() => geo().links.filter(link => !!link.label))
+const notes = derived(() => model().notes || [])
+const selectedFacts = derived(() => selected()?.facts || [])
+// Resolved to plain values here rather than in the template: `:for` item
+// expressions run under the auto-unwrap proxy, where calling a signal throws.
+const selectedLinks = derived(() => {
+  const id = selectedId()
+  const { nodes: all, links: edges } = geo()
+  const nameOf = other => all.find(node => node.id === other)?.label || other
+  return edges
+    .filter(link => link.source === id || link.target === id)
+    .map(link => ({
+      flow: link.flow,
+      arrow: link.source === id ? '→' : '←',
+      other: nameOf(link.source === id ? link.target : link.source),
+      note: link.label || '',
+    }))
+})
+
+// Pan and zoom live in one transform on the canvas group rather than on the
+// svg's viewBox, which cannot be bound (see the server block).
+const STAGE_W = stageWidth
+const STAGE_H = stageHeight
+// Fit to the stage WIDTH and anchor at the top, then crop the stage to the band
+// the drawing actually occupies. Fitting to both axes would shrink a tall
+// topology to nothing inside the fixed-height stage.
+const fitScale = derived(() => STAGE_W / Math.max(1, geo().width))
+const canvasScale = derived(() => fitScale() * zoom())
+const stageCrop = derived(() => Math.round(Math.min(STAGE_H, Math.max(240, geo().height * fitScale()))))
+const canvasTransform = derived(() => {
+  const scale = canvasScale()
+  const x = (STAGE_W - geo().width * scale) / 2 + panX()
+  return `translate(${x.toFixed(2)},${panY().toFixed(2)}) scale(${scale.toFixed(4)})`
+})
+
+function dim(id) { return !visible().has(id) || (!!focus() && !focus().has(id)) }
+function linkOn(link) { return flows()[link.flow] !== false }
+function linkOff(link) { return !linkOn(link) || dim(link.source) || dim(link.target) }
+// SVG `class` is a read-only SVGAnimatedString, so `:class` must use the
+// object form throughout the diagram — that path goes through classList.
+function nodeClasses(node) {
+  return {
+    ok: node.status === 'ok',
+    warn: node.status === 'warn',
+    bad: node.status === 'bad',
+    idle: node.status === 'idle',
+    external: !!node.external,
+    dim: dim(node.id),
+    selected: selectedId() === node.id,
+  }
+}
+function linkClasses(link) {
+  const off = linkOff(link)
+  return {
+    async: link.flow === 'async',
+    data: link.flow === 'data',
+    backup: link.flow === 'backup',
+    dim: off,
+    animate: animate() && !off,
+  }
+}
+function toggleFlow(name) { flows.set({ ...flows(), [name]: !flows()[name] }) }
+function select(node) { selectedId.set(selectedId() === node.id ? '' : node.id) }
+
+// Pointer maths in geometry units, derived from the event's own target box —
+// no element refs, no measuring the document.
+/** Client pixels → stage units, and the diagram point currently under them. */
+function atPointer(event) {
+  const box = event.currentTarget.getBoundingClientRect()
+  // The svg fills the panel's width exactly (width:100%, height:auto), so one
+  // stage unit is a constant fraction of the element — no letterboxing to undo.
+  const unit = (box.width / STAGE_W) || 1
+  const stageX = (event.clientX - box.left) / unit
+  const stageY = (event.clientY - box.top) / unit
+  const scale = canvasScale()
+  const originX = (STAGE_W - geo().width * scale) / 2 + panX()
+  return { unit, stageX, stageY, contentX: (stageX - originX) / scale, contentY: (stageY - panY()) / scale }
+}
+/** Re-scale while holding one diagram point under the same stage position. */
+function zoomTo(next, point) {
+  const level = Math.min(4, Math.max(0.4, next))
+  const scale = fitScale() * level
+  panX.set(point.stageX - point.contentX * scale - (STAGE_W - geo().width * scale) / 2)
+  panY.set(point.stageY - point.contentY * scale)
+  zoom.set(level)
+}
+function onWheel(event) {
+  event.preventDefault()
+  zoomTo(zoom() * (event.deltaY < 0 ? 1.12 : 1 / 1.12), atPointer(event))
+}
+function onDown(event) {
+  const point = atPointer(event)
+  dragging = { x: event.clientX, y: event.clientY, panX: panX(), panY: panY(), unit: point.unit }
+}
+function onMove(event) {
+  if (!dragging) return
+  panX.set(dragging.panX + (event.clientX - dragging.x) / dragging.unit)
+  panY.set(dragging.panY + (event.clientY - dragging.y) / dragging.unit)
+}
+function onUp() { dragging = null }
+function zoomBy(factor) {
+  // Anchor on the middle of what is actually visible, which is the cropped
+  // band rather than the full stage.
+  const scale = canvasScale()
+  const originX = (STAGE_W - geo().width * scale) / 2 + panX()
+  const midY = stageCrop() / 2
+  zoomTo(zoom() * factor, {
+    stageX: STAGE_W / 2,
+    stageY: midY,
+    contentX: (STAGE_W / 2 - originX) / scale,
+    contentY: (midY - panY()) / scale,
+  })
+}
+function fit() { zoom.set(1); panX.set(0); panY.set(0) }
+/** Carry the environment across, the way every nav link does. */
+function manageHref(node) {
+  if (!node?.href) return '#'
+  const env = new URLSearchParams(location.search).get('env')
+  return env ? `${node.href}${node.href.includes('?') ? '&' : '?'}env=${encodeURIComponent(env)}` : node.href
+}
+function clear() { selectedId.set(''); hoveredId.set(''); query.set('') }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark"><head>@include('../partials/head', { title: 'ts-cloud - Infrastructure map' })</head><body>
+  @include('../partials/nav', { active: 'topology', env: 'production' })
+  <main class="topo-wrap wrap" id="main-content">
+    <div class="crumbs">Infrastructure <span class="sep">/</span> Map</div>
+    <header class="page">
+      <div>
+        <h1>Infrastructure map</h1>
+        <p>Every resource this environment deploys, in the order a request meets them. Hover to trace a path, click to inspect.</p>
+      </div>
+      <div class="header-actions">
+        <span class="pill warn" @show="isSample()">sample topology</span>
+        <span class="pill" :class="pollingState() === 'live' ? 'ok' : 'warn'">{{ pollingState() }}</span>
+        <small>{{ isSnapshot() ? builtAtLabel() : lastUpdatedAt() ? lastUpdatedAt().toLocaleTimeString() : 'connecting' }}</small>
+        <button class="btn ghost sm" type="button" @show="!isSnapshot()" @click="refresh()">Refresh</button>
+      </div>
+    </header>
+
+    <p class="topo-notice bad" role="alert" @show="!!pollingError()">{{ pollingError() }}</p>
+    <p class="topo-notice" role="status" @show="isSample() && !pollingError()">Showing a representative topology until this deployment reports one.</p>
+    <p class="topo-notice" role="status" @show="isSnapshot() && !isSample()">This cockpit was exported without its control plane, so the map cannot refresh. It shows the infrastructure as it stood when the dashboard was built.</p>
+    <p class="topo-notice" :for="note in notes">{{ note }}</p>
+
+    <section class="topo-summary" aria-label="Topology summary">
+      <article class="panel"><b>{{ model().mode === 'serverless' ? 'Serverless' : 'Server' }}</b><small>{{ model().provider }} · {{ model().region }}</small></article>
+      <article class="panel"><b>{{ geo().nodes.length }} resources</b><small>{{ geo().lanes.length }} layers · {{ geo().links.length }} connections</small></article>
+      <article class="panel"><b>{{ counts().ok }} healthy</b><small>{{ counts().warn }} attention · {{ counts().bad }} failing · {{ counts().idle }} idle</small></article>
+      <article class="panel"><b>{{ model().environment }}</b><small>{{ model().project }}</small></article>
+    </section>
+
+    <section class="topo-controls panel" aria-label="Diagram controls">
+      <label class="topo-search">
+        <span class="sr-only">Filter resources</span>
+        <input type="search" placeholder="Filter resources (name, kind, value)" :value="query()" @input="query.set($event.target.value)">
+      </label>
+      <div class="topo-flows" role="group" aria-label="Connection types">
+        <button type="button" class="chip request" :class="flows().request ? '' : 'off'" @click="toggleFlow('request')">Requests</button>
+        <button type="button" class="async chip" :class="flows().async ? '' : 'off'" @click="toggleFlow('async')">Async</button>
+        <button type="button" class="chip data" :class="flows().data ? '' : 'off'" @click="toggleFlow('data')">Data</button>
+        <button type="button" class="backup chip" :class="flows().backup ? '' : 'off'" @click="toggleFlow('backup')">Backup</button>
+      </div>
+      <div class="topo-zoom">
+        <button class="btn ghost sm" type="button" @click="animate.set(!animate())">{{ animate() ? 'Pause flow' : 'Animate flow' }}</button>
+        <button class="btn ghost sm" type="button" aria-label="Zoom out" @click="zoomBy(1 / 1.2)">−</button>
+        <span class="topo-level">{{ Math.round(zoom() * 100) }}%</span>
+        <button class="btn ghost sm" type="button" aria-label="Zoom in" @click="zoomBy(1.2)">+</button>
+        <button class="btn ghost sm" type="button" @click="fit()">Fit</button>
+        <button class="btn ghost sm" type="button" @click="clear()">Reset</button>
+      </div>
+    </section>
+
+    <div class="topo-stage">
+      <section class="topo-panel panel">
+        <div class="topo-viewport" :style="'aspect-ratio: 1600 / ' + stageCrop()">
+        <svg class="topo-canvas" viewBox="{{ stageViewBox }}"
+            preserveAspectRatio="xMidYMin meet" role="img"
+            aria-label="Infrastructure topology diagram"
+            @wheel="onWheel($event)" @pointerdown="onDown($event)" @pointermove="onMove($event)"
+            @pointerup="onUp()" @pointerleave="onUp()">
+          <defs>
+            <marker id="topo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+            </marker>
+          </defs>
+
+          <!-- Text is bound with :text, never {{ }}: stx wraps interpolations in
+              a <span>, which an SVG <text> will not render. -->
+          <g class="topo-canvas-inner" :transform="canvasTransform()">
+            <g class="topo-lanes">
+              <g :for="lane in lanes">
+                <rect class="topo-lane" :x="lane.x" :y="lane.y" :width="lane.width" :height="lane.height" rx="18"></rect>
+                <text class="topo-lane-label" :x="lane.x + lane.width / 2" :y="lane.y - 24" text-anchor="middle" :text="lane.label"></text>
+                <text class="topo-lane-count" :x="lane.x + lane.width / 2" :y="lane.y - 8" text-anchor="middle" :text="lane.count + (lane.count === 1 ? ' resource' : ' resources')"></text>
+              </g>
+            </g>
+
+            <g class="topo-groups">
+              <g :for="group in groups">
+                <rect class="topo-group" :x="group.x" :y="group.y" :width="group.width" :height="group.height" rx="20"></rect>
+                <text class="topo-group-label" :x="group.x + 16" :y="group.y + 22" :text="group.sub ? group.label + '  ·  ' + group.sub : group.label"></text>
+              </g>
+            </g>
+
+            <g class="topo-edges">
+              <path :for="link in links" class="topo-link" :class="linkClasses(link)" :d="link.d" marker-end="url(#topo-arrow)"></path>
+            </g>
+
+            <g class="topo-edge-labels">
+              <text :for="link in labelledLinks" class="topo-edge-label" :class="{ dim: linkOff(link) }"
+                    :x="link.labelX" :y="link.labelY" text-anchor="middle" :text="link.label"></text>
+            </g>
+
+            <g class="topo-nodes">
+              <g :for="node in nodes" class="topo-node" :class="nodeClasses(node)" :transform="'translate(' + node.x + ',' + node.y + ')'"
+                tabindex="0" role="button" :aria-label="node.label + ', ' + node.kind + ', ' + node.status"
+                @pointerenter="hoveredId.set(node.id)" @pointerleave="hoveredId.set('')"
+                @focus="hoveredId.set(node.id)" @blur="hoveredId.set('')"
+                @click="select(node)" @keydown.enter="select(node)">
+                <rect class="topo-box" :width="node.width" :height="node.height" rx="14"></rect>
+                <g class="topo-icon" transform="translate(15,20) scale(0.83)"><path :d="node.icon"></path></g>
+                <text class="topo-label" x="48" y="27" :text="node.label"></text>
+                <text class="topo-sub" x="48" y="45" :text="node.sub || node.kind"></text>
+                <circle class="topo-dot" :cx="node.width - 17" cy="20" r="4.5"></circle>
+              </g>
+            </g>
+          </g>
+        </svg>
+        </div>
+        <p class="topo-hint">Drag to pan · scroll to zoom · Tab to walk the graph. Hovering a resource keeps its upstream path lit.</p>
+      </section>
+
+      <aside class="topo-detail panel" @show="!!selected()" aria-label="Resource detail">
+        <div class="topo-detail-head">
+          <div>
+            <span class="pill" :class="selected()?.status === 'ok' ? 'ok' : selected()?.status === 'bad' ? 'bad' : 'warn'">{{ selected()?.status }}</span>
+            <h2>{{ selected()?.label }}</h2>
+            <p>{{ selected()?.kind }} · {{ selected()?.sub }}</p>
+          </div>
+          <button class="btn ghost sm" type="button" @click="selectedId.set('')">Close</button>
+        </div>
+        <div class="kv" :for="fact in selectedFacts"><span>{{ fact.label }}</span><b>{{ fact.value }}</b></div>
+        <p class="topo-empty-facts" @show="!selectedFacts().length">No further detail is reported for this resource.</p>
+        <h3>Connections</h3>
+        <div class="topo-conn" :for="link in selectedLinks">
+          <span class="chip" :class="link.flow">{{ link.flow }}</span>
+          <span>{{ link.arrow }} {{ link.other }}</span>
+          <small>{{ link.note }}</small>
+        </div>
+        <a class="btn sm" :href="manageHref(selected())" @show="!!selected()?.href">Manage this resource</a>
+      </aside>
+    </div>
+
+    <section class="topo-legend" aria-label="Legend">
+      <span><i class="ok swatch"></i>healthy</span>
+      <span><i class="swatch warn"></i>needs attention</span>
+      <span><i class="bad swatch"></i>failing</span>
+      <span><i class="idle swatch"></i>idle</span>
+      <span><i class="swatch unknown"></i>not reported</span>
+      <span class="topo-legend-sep"></span>
+      <span><i class="stroke request"></i>request</span>
+      <span><i class="stroke async"></i>async</span>
+      <span><i class="stroke data"></i>data</span>
+      <span><i class="stroke backup"></i>backup</span>
+    </section>
+  </main>
+  <style>
+    .topo-wrap { max-width: 1560px; }
+    .topo-notice { margin: 10px 0; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--panel-br); color: var(--txt2); font-size: 13px; }
+    .topo-notice.bad { background: var(--badbg); border-color: rgba(240,115,110,0.3); color: var(--bad); }
+    .topo-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0 12px; }
+    .topo-summary article { display: grid; gap: 5px; }
+    .topo-summary b { font-size: 19px; }
+    .topo-summary small { color: var(--txt3); }
+    .topo-controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 14px; }
+    .topo-search { flex: 1 1 260px; }
+    .topo-search input { width: 100%; background: var(--bg2); border: 1px solid var(--panel-br); border-radius: 10px; color: var(--txt); padding: 8px 12px; }
+    .topo-flows, .topo-zoom { display: flex; align-items: center; gap: 7px; }
+    .topo-level { min-width: 46px; text-align: center; color: var(--txt3); font: 600 12px var(--mono); }
+    .chip { border: 1px solid var(--panel-br); background: rgba(255,255,255,0.04); color: var(--txt2); border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .chip::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; vertical-align: 0; background: currentColor; }
+    .chip.request { color: var(--accent); }
+    .chip.async { color: #c08ae8; }
+    .chip.data { color: var(--ok); }
+    .chip.backup { color: var(--txt3); }
+    .chip.off { opacity: .38; }
+
+    .topo-stage { position: relative; }
+    .topo-panel { padding: 8px; min-width: 0; }
+    /* The svg is a fixed, over-tall stage; the viewport crops it to the band the
+      drawing occupies. That crop is bound to the live geometry, so the diagram
+      fills the panel even when a re-layout is taller than the baked stage. */
+    .topo-viewport { position: relative; width: 100%; max-height: 78vh; overflow: hidden; }
+    .topo-canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: grab; color: var(--txt3); }
+    .topo-canvas:active { cursor: grabbing; }
+    .topo-hint { padding: 6px 12px 4px; color: var(--txt3); font-size: 11.5px; }
+
+    .topo-lane { fill: rgba(255,255,255,0.016); stroke: rgba(255,255,255,0.05); }
+    .topo-lane-label { fill: var(--txt3); font: 700 13px 'Inter', sans-serif; letter-spacing: .09em; text-transform: uppercase; }
+    .topo-lane-count { fill: var(--txt3); font: 600 12px var(--mono); opacity: .6; }
+    .topo-group { fill: none; stroke: rgba(90,139,224,0.34); stroke-dasharray: 6 6; }
+    .topo-group-label { fill: var(--accent); font: 700 13px 'Inter', sans-serif; }
+    .topo-group-sub { fill: var(--txt3); font-weight: 500; }
+
+    .topo-link { fill: none; stroke: var(--accent); stroke-width: 1.7; opacity: .55; color: var(--accent); transition: opacity .18s ease; }
+    .topo-link.async { stroke: #c08ae8; color: #c08ae8; stroke-dasharray: 7 5; }
+    .topo-link.data { stroke: var(--ok); color: var(--ok); }
+    .topo-link.backup { stroke: var(--txt3); color: var(--txt3); stroke-dasharray: 2 6; }
+    .topo-link.animate { stroke-dasharray: 9 7; animation: topo-flow 1.5s linear infinite; }
+    .topo-link.dim { opacity: .07; animation: none; }
+    @keyframes topo-flow { to { stroke-dashoffset: -32; } }
+    @media (prefers-reduced-motion: reduce) { .topo-link.animate { animation: none; } }
+    .topo-edge-label { fill: var(--txt3); font: 600 11.5px var(--mono); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+    .topo-edge-label.dim { opacity: .06; }
+
+    .topo-node { cursor: pointer; }
+    .topo-node .topo-box { fill: rgba(20,26,38,0.94); stroke: var(--panel-br); stroke-width: 1.2; transition: stroke .18s ease, fill .18s ease; }
+    .topo-node .topo-icon { fill: none; stroke: var(--txt2); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .topo-node .topo-label { fill: var(--txt); font: 700 15px 'Inter', sans-serif; }
+    .topo-node .topo-sub { fill: var(--txt3); font: 500 12px var(--mono); }
+    .topo-node .topo-dot { fill: var(--txt3); }
+    .topo-node.ok .topo-dot { fill: var(--ok); }
+    .topo-node.warn .topo-dot { fill: var(--warn); }
+    .topo-node.bad .topo-dot { fill: var(--bad); }
+    .topo-node.idle .topo-dot { fill: var(--txt3); opacity: .5; }
+    .topo-node.bad .topo-box { stroke: rgba(240,115,110,0.5); }
+    .topo-node.warn .topo-box { stroke: rgba(237,185,73,0.42); }
+    .topo-node.external .topo-box { fill: rgba(255,255,255,0.02); stroke-dasharray: 5 5; }
+    .topo-node:hover .topo-box, .topo-node:focus-visible .topo-box { stroke: var(--accent); fill: rgba(28,38,58,0.98); }
+    .topo-node:focus { outline: none; }
+    .topo-node:focus-visible .topo-box { stroke-width: 2; }
+    .topo-node.selected .topo-box { stroke: var(--accent); stroke-width: 2; }
+    .topo-node.selected .topo-icon { stroke: var(--accent); }
+    .topo-node.dim { opacity: .16; }
+
+    /* Opaque: it floats over the diagram, and a translucent panel over moving
+      edges is unreadable. */
+    .topo-detail { position: absolute; z-index: 5; top: 12px; right: 12px; width: 340px; display: grid; gap: 4px; max-height: calc(100% - 24px); overflow: auto; background: #0e131d; box-shadow: 0 22px 60px rgba(0,0,0,0.6); }
+    .topo-detail-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 8px; }
+    .topo-detail-head h2 { font-size: 19px; margin-top: 6px; }
+    .topo-detail-head p { color: var(--txt3); font-size: 12px; }
+    .topo-detail h3 { margin: 16px 0 4px; font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--txt3); }
+    .topo-detail .kv b { font-family: var(--mono); font-size: 12.5px; text-align: right; word-break: break-all; }
+    .topo-empty-facts { color: var(--txt3); font-size: 12px; padding: 8px 0; }
+    .topo-conn { display: flex; align-items: center; gap: 9px; padding: 6px 0; color: var(--txt2); font-size: 12px; }
+    .topo-conn .chip { cursor: default; padding: 2px 9px; font-size: 11px; }
+    .topo-detail .btn { margin-top: 14px; text-align: center; text-decoration: none; }
+
+    .topo-legend { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px 4px 0; color: var(--txt3); font-size: 12px; }
+    .topo-legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .topo-legend .swatch { width: 9px; height: 9px; border-radius: 50%; background: var(--txt3); }
+    .topo-legend .swatch.ok { background: var(--ok); }
+    .topo-legend .swatch.warn { background: var(--warn); }
+    .topo-legend .swatch.bad { background: var(--bad); }
+    .topo-legend .swatch.idle { background: var(--txt3); opacity: .5; }
+    .topo-legend .stroke { width: 20px; height: 0; border-top: 2px solid var(--accent); }
+    .topo-legend .stroke.async { border-top-style: dashed; border-color: #c08ae8; }
+    .topo-legend .stroke.data { border-color: var(--ok); }
+    .topo-legend .stroke.backup { border-top-style: dotted; border-color: var(--txt3); }
+    .topo-legend-sep { width: 1px; height: 14px; background: var(--panel-br); }
+
+    @media (max-width: 1100px) { .topo-detail { position: static; width: auto; max-height: none; margin-top: 12px; } .topo-summary { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .topo-summary { grid-template-columns: 1fr; } .topo-controls > * { width: 100%; } }
+  </style>
+</body></html>

@@ -2,7 +2,6 @@
  * AWS STS Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient } from './client'
 
 export interface CallerIdentity {
@@ -20,7 +19,7 @@ export class STSClient {
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.client = new AWSClient()
+    this.client = new AWSClient(undefined, { profile })
   }
 
   /**
@@ -63,8 +62,7 @@ export class STSClient {
     // Handle parsed XML response - the structure can be either:
     // 1. { GetCallerIdentityResponse: { GetCallerIdentityResult: { Account, UserId, Arn } } }
     // 2. { GetCallerIdentityResult: { Account, UserId, Arn } }  (more common)
-    const identityResult = result?.GetCallerIdentityResponse?.GetCallerIdentityResult
-      || result?.GetCallerIdentityResult
+    const identityResult = result?.GetCallerIdentityResponse?.GetCallerIdentityResult || result?.GetCallerIdentityResult
 
     if (identityResult) {
       return {

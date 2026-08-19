@@ -109,16 +109,16 @@ describe('AWS Config Manager', () => {
       const rules = manager.createCompliancePreset('hipaa')
 
       expect(rules.length).toBeGreaterThan(5)
-      expect(rules.some(r => r.name.includes('encryption'))).toBe(true)
-      expect(rules.some(r => r.name.includes('cloudtrail'))).toBe(true)
+      expect(rules.some((r) => r.name.includes('encryption'))).toBe(true)
+      expect(rules.some((r) => r.name.includes('cloudtrail'))).toBe(true)
     })
 
     it('should create PCI-DSS preset', () => {
       const rules = manager.createCompliancePreset('pci-dss')
 
       expect(rules.length).toBeGreaterThan(7)
-      expect(rules.some(r => r.name.includes('mfa'))).toBe(true)
-      expect(rules.some(r => r.name.includes('encryption'))).toBe(true)
+      expect(rules.some((r) => r.name.includes('mfa'))).toBe(true)
+      expect(rules.some((r) => r.name.includes('encryption'))).toBe(true)
     })
 
     it('should create basic preset', () => {
@@ -279,11 +279,7 @@ describe('GuardDuty Manager', () => {
 
     it('should create finding type filter', () => {
       const detector = manager.createBasicDetector()
-      const filter = manager.createFindingTypeFilter(
-        detector.id,
-        ['Recon:EC2/PortProbeUnprotectedPort'],
-        'ARCHIVE',
-      )
+      const filter = manager.createFindingTypeFilter(detector.id, ['Recon:EC2/PortProbeUnprotectedPort'], 'ARCHIVE')
 
       expect(filter.action).toBe('ARCHIVE')
       expect(filter.findingCriteria.criterion.type.eq).toContain('Recon:EC2/PortProbeUnprotectedPort')

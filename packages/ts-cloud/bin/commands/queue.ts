@@ -43,8 +43,7 @@ export function registerQueueCommands(app: CLI): void {
               messages: attrs.Attributes?.ApproximateNumberOfMessages || '0',
               type: attrs.Attributes?.FifoQueue === 'true' ? 'FIFO' : 'Standard',
             })
-          }
-          catch {
+          } catch {
             const name = queueUrl.split('/').pop() || queueUrl
             queueData.push({
               url: queueUrl,
@@ -57,10 +56,9 @@ export function registerQueueCommands(app: CLI): void {
 
         cli.table(
           ['Queue Name', 'Messages', 'Type'],
-          queueData.map(q => [q.name, q.messages, q.type]),
+          queueData.map((q) => [q.name, q.messages, q.type]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list queues: ${error.message}`)
         process.exit(1)
       }
@@ -74,61 +72,65 @@ export function registerQueueCommands(app: CLI): void {
     .option('--max-retries <number>', 'Max receive count before DLQ', { default: '3' })
     .option('--visibility <seconds>', 'Visibility timeout in seconds', { default: '30' })
     .option('--retention <days>', 'Message retention in days', { default: '4' })
-    .action(async (name: string, options: {
-      region: string
-      fifo?: boolean
-      dlq?: string
-      maxRetries: string
-      visibility: string
-      retention: string
-    }) => {
-      cli.header('Create SQS Queue')
+    .action(
+      async (
+        name: string,
+        options: {
+          region: string
+          fifo?: boolean
+          dlq?: string
+          maxRetries: string
+          visibility: string
+          retention: string
+        },
+      ) => {
+        cli.header('Create SQS Queue')
 
-      try {
-        const sqs = new SQSClient(options.region)
+        try {
+          const sqs = new SQSClient(options.region)
 
-        // FIFO queues must end with .fifo
-        const queueName = options.fifo && !name.endsWith('.fifo') ? `${name}.fifo` : name
+          // FIFO queues must end with .fifo
+          const queueName = options.fifo && !name.endsWith('.fifo') ? `${name}.fifo` : name
 
-        cli.info(`Queue name: ${queueName}`)
-        cli.info(`Type: ${options.fifo ? 'FIFO' : 'Standard'}`)
-        cli.info(`Visibility timeout: ${options.visibility} seconds`)
-        cli.info(`Message retention: ${options.retention} days`)
-        if (options.dlq) {
-          cli.info(`Dead letter queue: ${options.dlq}`)
-          cli.info(`Max retries: ${options.maxRetries}`)
+          cli.info(`Queue name: ${queueName}`)
+          cli.info(`Type: ${options.fifo ? 'FIFO' : 'Standard'}`)
+          cli.info(`Visibility timeout: ${options.visibility} seconds`)
+          cli.info(`Message retention: ${options.retention} days`)
+          if (options.dlq) {
+            cli.info(`Dead letter queue: ${options.dlq}`)
+            cli.info(`Max retries: ${options.maxRetries}`)
+          }
+
+          const confirmed = await cli.confirm('\nCreate this queue?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Creating queue...')
+          spinner.start()
+
+          const result = await sqs.createQueue({
+            queueName,
+            fifo: options.fifo,
+            visibilityTimeout: Number.parseInt(options.visibility),
+            messageRetentionPeriod: Number.parseInt(options.retention) * 24 * 60 * 60,
+            contentBasedDeduplication: options.fifo ? true : undefined,
+            deadLetterTargetArn: options.dlq,
+            maxReceiveCount: options.dlq ? Number.parseInt(options.maxRetries) : undefined,
+          })
+
+          spinner.succeed('Queue created')
+
+          cli.success(`\nQueue URL: ${result.QueueUrl}`)
+          cli.info('\nTo send a message:')
+          cli.info(`  cloud queue:send ${queueName} --message "Hello World"`)
+        } catch (error: any) {
+          cli.error(`Failed to create queue: ${error.message}`)
+          process.exit(1)
         }
-
-        const confirmed = await cli.confirm('\nCreate this queue?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Creating queue...')
-        spinner.start()
-
-        const result = await sqs.createQueue({
-          queueName,
-          fifo: options.fifo,
-          visibilityTimeout: Number.parseInt(options.visibility),
-          messageRetentionPeriod: Number.parseInt(options.retention) * 24 * 60 * 60,
-          contentBasedDeduplication: options.fifo ? true : undefined,
-          deadLetterTargetArn: options.dlq,
-          maxReceiveCount: options.dlq ? Number.parseInt(options.maxRetries) : undefined,
-        })
-
-        spinner.succeed('Queue created')
-
-        cli.success(`\nQueue URL: ${result.QueueUrl}`)
-        cli.info('\nTo send a message:')
-        cli.info(`  cloud queue:send ${queueName} --message "Hello World"`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to create queue: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('queue:delete <name>', 'Delete an SQS queue')
@@ -163,8 +165,7 @@ export function registerQueueCommands(app: CLI): void {
         await sqs.deleteQueue(urlResult.QueueUrl)
 
         spinner.succeed('Queue deleted')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete queue: ${error.message}`)
         process.exit(1)
       }
@@ -178,67 +179,69 @@ export function registerQueueCommands(app: CLI): void {
     .option('--group <id>', 'Message group ID (for FIFO queues)')
     .option('--dedup <id>', 'Deduplication ID (for FIFO queues)')
     .option('--delay <seconds>', 'Delay delivery in seconds', { default: '0' })
-    .action(async (name: string, options: {
-      region: string
-      message?: string
-      file?: string
-      group?: string
-      dedup?: string
-      delay: string
-    }) => {
-      cli.header('Send SQS Message')
+    .action(
+      async (
+        name: string,
+        options: {
+          region: string
+          message?: string
+          file?: string
+          group?: string
+          dedup?: string
+          delay: string
+        },
+      ) => {
+        cli.header('Send SQS Message')
 
-      try {
-        const sqs = new SQSClient(options.region)
+        try {
+          const sqs = new SQSClient(options.region)
 
-        // Get message body
-        let messageBody: string
+          // Get message body
+          let messageBody: string
 
-        if (options.file) {
-          const file = Bun.file(options.file)
-          messageBody = await file.text()
+          if (options.file) {
+            const file = Bun.file(options.file)
+            messageBody = await file.text()
+          } else if (options.message) {
+            messageBody = options.message
+          } else {
+            messageBody = await cli.prompt('Message body')
+          }
+
+          if (!messageBody) {
+            cli.error('Message body is required')
+            return
+          }
+
+          const spinner = new cli.Spinner('Getting queue URL...')
+          spinner.start()
+
+          const urlResult = await sqs.getQueueUrl(name)
+
+          if (!urlResult.QueueUrl) {
+            spinner.fail('Queue not found')
+            return
+          }
+
+          spinner.text = 'Sending message...'
+
+          const result = await sqs.sendMessage({
+            queueUrl: urlResult.QueueUrl,
+            messageBody,
+            delaySeconds: Number.parseInt(options.delay),
+            messageGroupId: options.group,
+            messageDeduplicationId: options.dedup,
+          })
+
+          spinner.succeed('Message sent')
+
+          cli.success(`\nMessage ID: ${result.MessageId}`)
+        } catch (error: any) {
+          cli.error(`Failed to send message: ${error.message}`)
+          process.exit(1)
         }
-        else if (options.message) {
-          messageBody = options.message
-        }
-        else {
-          messageBody = await cli.prompt('Message body')
-        }
-
-        if (!messageBody) {
-          cli.error('Message body is required')
-          return
-        }
-
-        const spinner = new cli.Spinner('Getting queue URL...')
-        spinner.start()
-
-        const urlResult = await sqs.getQueueUrl(name)
-
-        if (!urlResult.QueueUrl) {
-          spinner.fail('Queue not found')
-          return
-        }
-
-        spinner.text = 'Sending message...'
-
-        const result = await sqs.sendMessage({
-          queueUrl: urlResult.QueueUrl,
-          messageBody,
-          delaySeconds: Number.parseInt(options.delay),
-          messageGroupId: options.group,
-          messageDeduplicationId: options.dedup,
-        })
-
-        spinner.succeed('Message sent')
-
-        cli.success(`\nMessage ID: ${result.MessageId}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to send message: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('queue:receive <name>', 'Receive messages from an SQS queue')
@@ -246,64 +249,70 @@ export function registerQueueCommands(app: CLI): void {
     .option('--max <number>', 'Maximum number of messages', { default: '1' })
     .option('--wait <seconds>', 'Long polling wait time', { default: '0' })
     .option('--delete', 'Delete messages after receiving')
-    .action(async (name: string, options: {
-      region: string
-      max: string
-      wait: string
-      delete?: boolean
-    }) => {
-      cli.header('Receive SQS Messages')
+    .action(
+      async (
+        name: string,
+        options: {
+          region: string
+          max: string
+          wait: string
+          delete?: boolean
+        },
+      ) => {
+        cli.header('Receive SQS Messages')
 
-      try {
-        const sqs = new SQSClient(options.region)
+        try {
+          const sqs = new SQSClient(options.region)
 
-        const spinner = new cli.Spinner('Getting queue URL...')
-        spinner.start()
+          const spinner = new cli.Spinner('Getting queue URL...')
+          spinner.start()
 
-        const urlResult = await sqs.getQueueUrl(name)
+          const urlResult = await sqs.getQueueUrl(name)
 
-        if (!urlResult.QueueUrl) {
-          spinner.fail('Queue not found')
-          return
-        }
-
-        spinner.text = 'Receiving messages...'
-
-        const result = await sqs.receiveMessages({
-          queueUrl: urlResult.QueueUrl,
-          maxMessages: Number.parseInt(options.max),
-          waitTimeSeconds: Number.parseInt(options.wait),
-        })
-
-        const messages = result.Messages || []
-
-        spinner.succeed(`Received ${messages.length} message(s)`)
-
-        if (messages.length === 0) {
-          cli.info('No messages available')
-          return
-        }
-
-        for (const msg of messages) {
-          cli.info(`\n--- Message: ${msg.MessageId} ---`)
-          cli.info(`Body: ${msg.Body}`)
-
-          if (msg.Attributes) {
-            cli.info(`Sent: ${msg.Attributes.SentTimestamp ? new Date(Number.parseInt(msg.Attributes.SentTimestamp)).toISOString() : 'N/A'}`)
-            cli.info(`Receive Count: ${msg.Attributes.ApproximateReceiveCount || 'N/A'}`)
+          if (!urlResult.QueueUrl) {
+            spinner.fail('Queue not found')
+            return
           }
 
-          if (options.delete && msg.ReceiptHandle) {
-            await sqs.deleteMessage(urlResult.QueueUrl, msg.ReceiptHandle)
-            cli.info('(Deleted)')
+          spinner.text = 'Receiving messages...'
+
+          const result = await sqs.receiveMessages({
+            queueUrl: urlResult.QueueUrl,
+            maxMessages: Number.parseInt(options.max),
+            waitTimeSeconds: Number.parseInt(options.wait),
+          })
+
+          const messages = result.Messages || []
+
+          spinner.succeed(`Received ${messages.length} message(s)`)
+
+          if (messages.length === 0) {
+            cli.info('No messages available')
+            return
           }
+
+          for (const msg of messages) {
+            cli.info(`\n--- Message: ${msg.MessageId} ---`)
+            cli.info(`Body: ${msg.Body}`)
+
+            if (msg.Attributes) {
+              cli.info(
+                `Sent: ${msg.Attributes.SentTimestamp ? new Date(Number.parseInt(msg.Attributes.SentTimestamp)).toISOString() : 'N/A'}`,
+              )
+              cli.info(`Receive Count: ${msg.Attributes.ApproximateReceiveCount || 'N/A'}`)
+            }
+
+            if (options.delete && msg.ReceiptHandle) {
+              await sqs.deleteMessage(urlResult.QueueUrl, msg.ReceiptHandle)
+              cli.info('(Deleted)')
+            }
+          }
+        } catch (error: any) {
+          cli.error(`Failed to receive messages: ${error.message}`)
+          process.exit(1)
         }
-      }
-      catch (error: any) {
-        cli.error(`Failed to receive messages: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('queue:purge <name>', 'Purge all messages from an SQS queue')
@@ -340,8 +349,7 @@ export function registerQueueCommands(app: CLI): void {
         spinner.succeed('Queue purged')
 
         cli.info('\nNote: It may take up to 60 seconds for the purge to complete.')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to purge queue: ${error.message}`)
         process.exit(1)
       }
@@ -396,10 +404,13 @@ export function registerQueueCommands(app: CLI): void {
         }
 
         cli.info('\nTimestamps:')
-        cli.info(`  Created: ${a.CreatedTimestamp ? new Date(Number.parseInt(a.CreatedTimestamp) * 1000).toISOString() : 'N/A'}`)
-        cli.info(`  Last Modified: ${a.LastModifiedTimestamp ? new Date(Number.parseInt(a.LastModifiedTimestamp) * 1000).toISOString() : 'N/A'}`)
-      }
-      catch (error: any) {
+        cli.info(
+          `  Created: ${a.CreatedTimestamp ? new Date(Number.parseInt(a.CreatedTimestamp) * 1000).toISOString() : 'N/A'}`,
+        )
+        cli.info(
+          `  Last Modified: ${a.LastModifiedTimestamp ? new Date(Number.parseInt(a.LastModifiedTimestamp) * 1000).toISOString() : 'N/A'}`,
+        )
+      } catch (error: any) {
         cli.error(`Failed to get queue stats: ${error.message}`)
         process.exit(1)
       }

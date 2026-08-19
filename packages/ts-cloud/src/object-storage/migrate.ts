@@ -16,9 +16,7 @@
  * prefix lists so an operator can clearly see what was migrated vs. deliberately
  * left behind.
  */
-
-import type { S3Object } from '../aws/s3'
-import type { S3Client } from '../aws/s3'
+import type { S3Client, S3Object } from '../aws/s3'
 import type { ObjectStorageProvider } from './index'
 import { createObjectStorageClient } from './index'
 
@@ -33,7 +31,7 @@ export interface MigrateEndpoint {
   /** Key prefix. On the source it scopes/strips; on the dest it is prepended. */
   prefix?: string
   /** Explicit credentials. When omitted, resolved from the provider's env vars. */
-  credentials?: { accessKeyId: string, secretAccessKey: string, sessionToken?: string }
+  credentials?: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
   /** Pre-built client (used by tests to inject an in-memory mock). */
   client?: S3Client
 }
@@ -105,13 +103,12 @@ export interface MigrateVerification {
   /** Copied keys missing at the destination. */
   missing: string[]
   /** Copied keys present at the destination but with a different size. */
-  sizeMismatches: Array<{ key: string, expected: number, actual: number }>
+  sizeMismatches: Array<{ key: string; expected: number; actual: number }>
 }
 
 /** Strip a leading prefix from a key (no-op when prefix is empty or absent). */
 function stripPrefix(key: string, prefix?: string): string {
-  if (!prefix)
-    return key
+  if (!prefix) return key
   return key.startsWith(prefix) ? key.slice(prefix.length) : key
 }
 
@@ -130,34 +127,36 @@ export function remapKey(sourceKey: string, fromPrefix?: string, toPrefix?: stri
  * unit testing.
  */
 export function keyMatchesFilters(key: string, include?: string[], exclude?: string[]): boolean {
-  if (exclude && exclude.some(p => key.startsWith(p)))
-    return false
-  if (include && include.length > 0)
-    return include.some(p => key.startsWith(p))
+  if (exclude && exclude.some((p) => key.startsWith(p))) return false
+  if (include && include.length > 0) return include.some((p) => key.startsWith(p))
   return true
 }
 
 /** Run an async mapper over items with bounded concurrency, preserving order of side effects. */
-async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
   let cursor = 0
   const runners: Promise<void>[] = []
   const size = Math.max(1, Math.min(limit, items.length || 1))
   for (let i = 0; i < size; i++) {
-    runners.push((async () => {
-      while (true) {
-        const index = cursor++
-        if (index >= items.length)
-          return
-        await worker(items[index], index)
-      }
-    })())
+    runners.push(
+      (async () => {
+        while (true) {
+          const index = cursor++
+          if (index >= items.length) return
+          await worker(items[index], index)
+        }
+      })(),
+    )
   }
   await Promise.all(runners)
 }
 
 function clientFor(endpoint: MigrateEndpoint): S3Client {
-  if (endpoint.client)
-    return endpoint.client
+  if (endpoint.client) return endpoint.client
   return createObjectStorageClient({
     provider: endpoint.provider,
     region: endpoint.region,
@@ -195,7 +194,7 @@ export async function migrateObjectStorage(options: MigrateOptions): Promise<Mig
   }
 
   // Partition into "to copy" vs "excluded" via the include/exclude filters.
-  const toCopy: Array<{ source: S3Object, destKey: string }> = []
+  const toCopy: Array<{ source: S3Object; destKey: string }> = []
   for (const obj of sourceObjects) {
     if (!keyMatchesFilters(obj.Key, options.include, options.exclude)) {
       result.excluded++
@@ -235,7 +234,14 @@ export async function migrateObjectStorage(options: MigrateOptions): Promise<Mig
         const head = await toClient.headObject(options.to.bucket, destKey)
         if (head && head.ContentLength === source.Size) {
           result.skipped++
-          options.onProgress?.({ key: source.Key, destKey, size: source.Size, action: 'skipped', index: myIndex, total })
+          options.onProgress?.({
+            key: source.Key,
+            destKey,
+            size: source.Size,
+            action: 'skipped',
+            index: myIndex,
+            total,
+          })
           return
         }
       }
@@ -250,25 +256,23 @@ export async function migrateObjectStorage(options: MigrateOptions): Promise<Mig
       result.copied++
       result.bytesCopied += body.byteLength
       options.onProgress?.({ key: source.Key, destKey, size: source.Size, action: 'copied', index: myIndex, total })
-    }
-    catch (err: any) {
+    } catch (err: any) {
       result.errors.push({ key: source.Key, message: err?.message ?? String(err) })
       options.onProgress?.({ key: source.Key, destKey, size: source.Size, action: 'error', index: myIndex, total })
     }
   })
 
-  const copiedDestKeys = new Set(toCopy.map(c => c.destKey))
+  const copiedDestKeys = new Set(toCopy.map((c) => c.destKey))
 
   // Optionally remove destination keys (within the dest prefix) not in the copied set.
   if (options.deleteExtraneous) {
     const destObjects = await toClient.listAllObjects({ bucket: options.to.bucket, prefix: options.to.prefix })
-    const extraneous = destObjects.filter(o => !copiedDestKeys.has(o.Key)).map(o => o.Key)
+    const extraneous = destObjects.filter((o) => !copiedDestKeys.has(o.Key)).map((o) => o.Key)
     for (const key of extraneous) {
       try {
         await toClient.deleteObject(options.to.bucket, key)
         result.deleted.push(key)
-      }
-      catch (err: any) {
+      } catch (err: any) {
         result.errors.push({ key, message: `delete failed: ${err?.message ?? String(err)}` })
       }
     }
@@ -277,9 +281,9 @@ export async function migrateObjectStorage(options: MigrateOptions): Promise<Mig
   // Optionally verify: re-list the destination and assert the copied set is present with matching sizes.
   if (options.verify) {
     const destObjects = await toClient.listAllObjects({ bucket: options.to.bucket, prefix: options.to.prefix })
-    const destBySizeKey = new Map(destObjects.map(o => [o.Key, o.Size]))
+    const destBySizeKey = new Map(destObjects.map((o) => [o.Key, o.Size]))
     const missing: string[] = []
-    const sizeMismatches: Array<{ key: string, expected: number, actual: number }> = []
+    const sizeMismatches: Array<{ key: string; expected: number; actual: number }> = []
     let matched = 0
     for (const { source, destKey } of toCopy) {
       if (!destBySizeKey.has(destKey)) {

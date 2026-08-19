@@ -11,12 +11,7 @@ export function createWordPressPreset(options: {
   domain: string
   instanceType?: string
 }): Partial<CloudConfig> {
-  const {
-    name,
-    slug,
-    domain,
-    instanceType = 't3.small',
-  } = options
+  const { name, slug, domain, instanceType = 't3.small' } = options
 
   return {
     project: {
@@ -58,7 +53,16 @@ export function createWordPressPreset(options: {
             },
           },
           userData: {
-            packages: ['nginx', 'php8.1-fpm', 'php8.1-mysql', 'php8.1-curl', 'php8.1-gd', 'php8.1-mbstring', 'php8.1-xml', 'php8.1-zip'],
+            packages: [
+              'nginx',
+              'php8.1-fpm',
+              'php8.1-mysql',
+              'php8.1-curl',
+              'php8.1-gd',
+              'php8.1-mbstring',
+              'php8.1-xml',
+              'php8.1-zip',
+            ],
             commands: [
               // Download WordPress
               'cd /var/www',
@@ -117,10 +121,12 @@ export function createWordPressPreset(options: {
           maxTTL: 31536000,
         },
         compress: true,
-        origins: [{
-          type: 'alb',
-          pathPattern: '/wp-content/*',
-        }],
+        origins: [
+          {
+            type: 'alb',
+            pathPattern: '/wp-content/*',
+          },
+        ],
       },
       security: {
         certificate: {

@@ -1,48 +1,26 @@
 <script server>
 // ts-cloud serverless (Vapor-style) dashboard. Real data is injected at build
-// time via TSCLOUD_DASHBOARD_DATA (run `cloud dashboard:build`); the sample
-// values below render the design when nothing is injected. Sections drill into
+// time via TSCLOUD_DASHBOARD_DATA (run `cloud dashboard:build`). Missing data
+// remains explicit and is never replaced by samples. Sections drill into
 // dedicated pages under /serverless/*, and the header operations run live
 // against AWS via /api/serverless/*.
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') }
 catch { __d = null }
 
-const app = __d?.app ?? {
-  name: 'acme', env: 'production', region: 'us-east-1', runtime: 'php-8.3 (fpm)',
-  url: 'https://acme.com', build: 'a4d63d2', deployedAt: '12m ago',
-}
+const dataLive = !!__d
+const app = __d?.app ?? { name: 'Project', env: 'production', region: 'unavailable', runtime: 'unavailable', url: '#', build: 'unavailable', deployedAt: 'unavailable' }
 const maintenance = __d?.maintenance ?? { enabled: false }
-const metrics = __d?.metrics ?? { invocations: 184320, errorRatePct: 0.12, p95Ms: 86, coldStartPct: 1.8, concurrency: 42, estCostUsd: 7.4 }
-const functions = __d?.functions ?? [
-  { key: 'http', name: 'acme-production-http', memory: 1024, timeout: 28, runtime: 'provided.al2023', invocations: 171200, errors: 21, p95: 86, status: 'active' },
-  { key: 'queue', name: 'acme-production-queue', memory: 1024, timeout: 120, runtime: 'provided.al2023', invocations: 12840, errors: 3, p95: 240, status: 'active' },
-  { key: 'cli', name: 'acme-production-cli', memory: 1024, timeout: 900, runtime: 'provided.al2023', invocations: 1440, errors: 0, p95: 1100, status: 'active' },
-]
-const queues = __d?.queues ?? [
-  { name: 'default', visible: 0, inFlight: 2, processed: 12830, dlq: 0 },
-  { name: 'emails', visible: 4, inFlight: 1, processed: 9210, dlq: 1 },
-]
-const scheduler = __d?.scheduler ?? { enabled: true, expression: 'rate(1 minute)', lastRun: '36s ago' }
-const dataServices = __d?.dataServices ?? [
-  { name: 'Aurora Serverless v2', detail: 'acme-production-db · 0.5-4 ACU', status: 'available' },
-  { name: 'RDS Proxy', detail: 'acme-production-proxy', status: 'available' },
-  { name: 'ElastiCache (redis)', detail: 'cache.t4g.micro', status: 'available' },
-]
-const assets = __d?.assetsInfo ?? { bucket: 'acme-production-assets', cdn: 'd2x1.cloudfront.net', assetUrl: 'https://d2x1.cloudfront.net/a4d63d2' }
-const waf = __d?.waf ?? { enabled: true, rules: ['rate-limit', 'common', 'sqlInjection'], blocked24h: 318 }
+const metrics = __d?.metrics ?? { invocations: 0, errorRatePct: 0, p95Ms: 0, coldStartPct: undefined, concurrency: 0, estCostUsd: undefined }
+const functions = __d?.functions ?? []
+const queues = __d?.queues ?? []
+const scheduler = __d?.scheduler ?? { enabled: false, expression: 'unavailable', lastRun: 'unavailable' }
+const dataServices = __d?.dataServices ?? []
+const assets = __d?.assetsInfo ?? { bucket: 'unavailable', cdn: 'unavailable', assetUrl: '#' }
+const waf = __d?.waf ?? { enabled: false, rules: [], blocked24h: 0 }
 const wafRules = __d?.wafRules ?? []
-const deployments = __d?.deploymentsDetail ?? [
-  { sha: 'a4d63d2', status: 'success', when: '12m ago', took: '41s', by: 'chris' },
-  { sha: '9557430', status: 'success', when: '2h ago', took: '38s', by: 'ci' },
-  { sha: 'c38fc09', status: 'success', when: '1d ago', took: '44s', by: 'ci' },
-  { sha: '5a2b284', status: 'rolled-back', when: '1d ago', took: '12s', by: 'chris' },
-]
-const secrets = (__d?.secretsList ?? [
-  { key: 'APP_KEY', updated: '14d ago' },
-  { key: 'DB_PASSWORD', updated: '14d ago' },
-  { key: 'STRIPE_SECRET', updated: '3d ago' },
-])
+const deployments = __d?.deploymentsDetail ?? []
+const secrets = __d?.secretsList ?? []
 const wafRuleText = waf.rules ? waf.rules.join(', ') : (wafRules.length ? wafRules.map(r => r.name).join(', ') : '-')
 function statusTone(status) {
   if (status === 'active' || status === 'available' || status === 'success' || status === 'on') return 'ok'
@@ -55,32 +33,19 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
 const initialMaintenance = !!maintenance.enabled
 </script>
 <script client>
+import { useOpConfirm } from '../functions/useOpConfirm.ts'
+
 // Live serverless operations: maintenance toggle, redeploy, and rollback run
 // against AWS through /api/serverless/operations/run. Mutating ops stage a
 // typed-confirm via the shared op-confirm bar, then stream their output.
 const maint = state(initialMaintenance)
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
-  try {
-    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm }) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
-    if (body.ok && p.operation === 'maintenance:on') maint.set(true)
-    if (body.ok && p.operation === 'maintenance:off') maint.set(false)
-  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.apiConfirm }) })
+  const body = await res.json()
+  if (body.ok && p.operation === 'maintenance:on') maint.set(true)
+  if (body.ok && p.operation === 'maintenance:off') maint.set(false)
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : '')
+})
 
 // Command console (Vapor-style): invoke an app command through the CLI function.
 const appCmd = state('')
@@ -136,11 +101,11 @@ async function runAppCmd() {
         </div>
       </div>
       <div class="header-actions">
-        <span class="pill" :class="maint() ? 'warn' : 'ok'">{{ maint() ? 'maintenance' : 'live' }}</span>
-        <button class="btn ghost sm" type="button" @show="!maint()" @click="askOp('maintenance:on', 'maintenance', 'enable maintenance mode')">Maintenance</button>
-        <button class="btn ghost sm" type="button" @show="maint()" @click="askOp('maintenance:off', 'live', 'bring the app back live')">Go live</button>
-        <button class="btn ghost sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back</button>
-        <button class="btn sm" type="button" @click="askOp('redeploy', 'redeploy', 'redeploy the current build')">Redeploy</button>
+        @if (dataLive)<span class="pill" :class="maint() ? 'warn' : 'ok'">{{ maint() ? 'maintenance' : 'live' }}</span>@else<span class="pill warn">data unavailable</span>@endif
+        <button class="btn ghost sm" type="button" @show="!maint()" @click="askOp('maintenance:on', '{{ app.name }}', 'enable maintenance mode for {{ app.name }}', 'maintenance')">Maintenance</button>
+        <button class="btn ghost sm" type="button" @show="maint()" @click="askOp('maintenance:off', '{{ app.name }}', 'bring {{ app.name }} back live', 'live')">Go live</button>
+        <button class="btn ghost sm" type="button" @click="askOp('rollback', '{{ app.name }}', 'roll back {{ app.name }} to the previous build', 'rollback')">Roll back</button>
+        <button class="btn sm" type="button" @click="askOp('redeploy', '{{ app.name }}', 'redeploy {{ app.name }}', 'redeploy')">Redeploy</button>
       </div>
     </header>
 
@@ -151,22 +116,22 @@ async function runAppCmd() {
     <div class="grid cards">
       <a class="panel" href="/serverless/metrics">
         <h3>Invocations (24h)</h3>
-        <div class="stat">{{ fmt(metrics.invocations) }}</div>
-        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ metrics.concurrency }} concurrent now</p>
+        <div class="stat">{{ dataLive ? fmt(metrics.invocations) : 'Unavailable' }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ dataLive ? metrics.concurrency + ' concurrent now' : 'No sample data shown' }}</p>
       </a>
       <a class="panel" href="/serverless/metrics">
         <h3>Error Rate</h3>
-        <div class="stat">{{ metrics.errorRatePct }}%</div>
-        <div class="bar"><i style="width: {{ Math.min(100, metrics.errorRatePct * 10) }}%"></i></div>
+        <div class="stat">{{ dataLive ? metrics.errorRatePct + '%' : 'Unavailable' }}</div>
+        <div class="bar"><i style="width: {{ dataLive ? Math.min(100, metrics.errorRatePct * 10) : 0 }}%"></i></div>
       </a>
       <a class="panel" href="/serverless/metrics">
         <h3>p95 Latency</h3>
-        <div class="stat">{{ metrics.p95Ms }} <small>ms</small></div>
-        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ metrics.coldStartPct }}% cold starts</p>
+        <div class="stat">{{ dataLive ? metrics.p95Ms + ' ms' : 'Unavailable' }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ dataLive && metrics.coldStartPct != null ? metrics.coldStartPct + '% cold starts' : 'Cold-start signal unavailable' }}</p>
       </a>
       <a class="panel" href="/serverless/cost">
         <h3>Est. Cost (24h)</h3>
-        <div class="stat">${{ metrics.estCostUsd }}</div>
+        <div class="stat">{{ dataLive && metrics.estCostUsd != null ? '$' + metrics.estCostUsd : 'Unavailable' }}</div>
         <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">cost analysis →</p>
       </a>
     </div>
@@ -176,7 +141,7 @@ async function runAppCmd() {
       <div class="panel">
         <table>
           <thead>
-            <tr><th>Function</th><th>Name</th><th>Memory</th><th>Timeout</th><th>Invocations</th><th>Errors</th><th>p95</th><th>Status</th></tr>
+            <tr><th scope="col">Function</th><th scope="col">Name</th><th scope="col">Memory</th><th scope="col">Timeout</th><th scope="col">Invocations</th><th scope="col">Errors</th><th scope="col">p95</th><th scope="col">Status</th></tr>
           </thead>
           <tbody>
             @foreach (functions as fn)
@@ -202,7 +167,7 @@ async function runAppCmd() {
         <div class="panel">
           <table>
             <thead>
-              <tr><th>Queue</th><th>Visible</th><th>In-flight</th><th>Processed</th><th>DLQ</th></tr>
+              <tr><th scope="col">Queue</th><th scope="col">Visible</th><th scope="col">In-flight</th><th scope="col">Processed</th><th scope="col">DLQ</th></tr>
             </thead>
             <tbody>
               @foreach (queues as q)
@@ -261,7 +226,7 @@ async function runAppCmd() {
             </div>
           @endforeach
           <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-br);">
-            <button class="btn danger sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back to previous</button>
+            <button class="btn danger sm" type="button" @click="askOp('rollback', '{{ app.name }}', 'roll back {{ app.name }} to the previous build', 'rollback')">Roll back to previous</button>
           </div>
         </div>
       </div>
@@ -290,7 +255,8 @@ async function runAppCmd() {
       <h2>Run a command</h2>
       <div class="panel">
         <div class="field">
-          <input :value="appCmd()" @input="appCmd.set($event.target.value)" @keydown.enter="askAppCmd()" placeholder="e.g. migrate --force, cache:clear, queue:retry all" autocomplete="off" aria-label="App command to run">
+          <label class="sr-only" for="app-command">Application command to run</label>
+          <input id="app-command" :value="appCmd()" @input="appCmd.set($event.target.value)" @keydown.enter="askAppCmd()" placeholder="e.g. migrate --force, cache:clear, queue:retry all" autocomplete="off">
           <button class="btn" type="button" :disabled="cmdBusy()" @click="askAppCmd()">Run</button>
         </div>
         <div class="op-confirm" @show="cmdPending() !== null" style="margin-top:14px">
@@ -299,7 +265,7 @@ async function runAppCmd() {
           <button type="button" class="btn danger sm" :disabled="!cmdCanRun()" @click="runAppCmd()">Run command</button>
           <button type="button" class="btn ghost sm" @click="cancelAppCmd()">Cancel</button>
         </div>
-        <pre class="action-output" @show="cmdShown()">{{ cmdOut() }}</pre>
+        <pre class="action-output" @show="cmdShown()" aria-live="polite">{{ cmdOut() }}</pre>
         <p class="note">Invokes the app command through the CLI Lambda function (RequestResponse), the same path as <span class="mono">cloud command "..."</span>. Output is clamped.</p>
       </div>
     </div>

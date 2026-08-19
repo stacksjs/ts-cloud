@@ -2,7 +2,6 @@
  * Route53 Domains Client - Domain registration management without AWS SDK
  * Uses direct AWS API calls with Signature V4
  */
-
 import { AWSClient } from './client'
 
 export interface Nameserver {
@@ -37,23 +36,257 @@ export interface DomainDetail {
 export type ContactType = 'PERSON' | 'COMPANY' | 'ASSOCIATION' | 'PUBLIC_BODY' | 'RESELLER'
 
 export type CountryCode =
-  | 'AC' | 'AD' | 'AE' | 'AF' | 'AG' | 'AI' | 'AL' | 'AM' | 'AN' | 'AO' | 'AQ' | 'AR' | 'AS' | 'AT' | 'AU'
-  | 'AW' | 'AX' | 'AZ' | 'BA' | 'BB' | 'BD' | 'BE' | 'BF' | 'BG' | 'BH' | 'BI' | 'BJ' | 'BL' | 'BM' | 'BN'
-  | 'BO' | 'BQ' | 'BR' | 'BS' | 'BT' | 'BV' | 'BW' | 'BY' | 'BZ' | 'CA' | 'CC' | 'CD' | 'CF' | 'CG' | 'CH'
-  | 'CI' | 'CK' | 'CL' | 'CM' | 'CN' | 'CO' | 'CR' | 'CU' | 'CV' | 'CW' | 'CX' | 'CY' | 'CZ' | 'DE' | 'DJ'
-  | 'DK' | 'DM' | 'DO' | 'DZ' | 'EC' | 'EE' | 'EG' | 'EH' | 'ER' | 'ES' | 'ET' | 'FI' | 'FJ' | 'FK' | 'FM'
-  | 'FO' | 'FR' | 'GA' | 'GB' | 'GD' | 'GE' | 'GF' | 'GG' | 'GH' | 'GI' | 'GL' | 'GM' | 'GN' | 'GP' | 'GQ'
-  | 'GR' | 'GS' | 'GT' | 'GU' | 'GW' | 'GY' | 'HK' | 'HM' | 'HN' | 'HR' | 'HT' | 'HU' | 'ID' | 'IE' | 'IL'
-  | 'IM' | 'IN' | 'IO' | 'IQ' | 'IR' | 'IS' | 'IT' | 'JE' | 'JM' | 'JO' | 'JP' | 'KE' | 'KG' | 'KH' | 'KI'
-  | 'KM' | 'KN' | 'KP' | 'KR' | 'KW' | 'KY' | 'KZ' | 'LA' | 'LB' | 'LC' | 'LI' | 'LK' | 'LR' | 'LS' | 'LT'
-  | 'LU' | 'LV' | 'LY' | 'MA' | 'MC' | 'MD' | 'ME' | 'MF' | 'MG' | 'MH' | 'MK' | 'ML' | 'MM' | 'MN' | 'MO'
-  | 'MP' | 'MQ' | 'MR' | 'MS' | 'MT' | 'MU' | 'MV' | 'MW' | 'MX' | 'MY' | 'MZ' | 'NA' | 'NC' | 'NE' | 'NF'
-  | 'NG' | 'NI' | 'NL' | 'NO' | 'NP' | 'NR' | 'NU' | 'NZ' | 'OM' | 'PA' | 'PE' | 'PF' | 'PG' | 'PH' | 'PK'
-  | 'PL' | 'PM' | 'PN' | 'PR' | 'PS' | 'PT' | 'PW' | 'PY' | 'QA' | 'RE' | 'RO' | 'RS' | 'RU' | 'RW' | 'SA'
-  | 'SB' | 'SC' | 'SD' | 'SE' | 'SG' | 'SH' | 'SI' | 'SJ' | 'SK' | 'SL' | 'SM' | 'SN' | 'SO' | 'SR' | 'SS'
-  | 'ST' | 'SV' | 'SX' | 'SY' | 'SZ' | 'TC' | 'TD' | 'TF' | 'TG' | 'TH' | 'TJ' | 'TK' | 'TL' | 'TM' | 'TN'
-  | 'TO' | 'TP' | 'TR' | 'TT' | 'TV' | 'TW' | 'TZ' | 'UA' | 'UG' | 'US' | 'UY' | 'UZ' | 'VA' | 'VC' | 'VE'
-  | 'VG' | 'VI' | 'VN' | 'VU' | 'WF' | 'WS' | 'YE' | 'YT' | 'ZA' | 'ZM' | 'ZW'
+  | 'AC'
+  | 'AD'
+  | 'AE'
+  | 'AF'
+  | 'AG'
+  | 'AI'
+  | 'AL'
+  | 'AM'
+  | 'AN'
+  | 'AO'
+  | 'AQ'
+  | 'AR'
+  | 'AS'
+  | 'AT'
+  | 'AU'
+  | 'AW'
+  | 'AX'
+  | 'AZ'
+  | 'BA'
+  | 'BB'
+  | 'BD'
+  | 'BE'
+  | 'BF'
+  | 'BG'
+  | 'BH'
+  | 'BI'
+  | 'BJ'
+  | 'BL'
+  | 'BM'
+  | 'BN'
+  | 'BO'
+  | 'BQ'
+  | 'BR'
+  | 'BS'
+  | 'BT'
+  | 'BV'
+  | 'BW'
+  | 'BY'
+  | 'BZ'
+  | 'CA'
+  | 'CC'
+  | 'CD'
+  | 'CF'
+  | 'CG'
+  | 'CH'
+  | 'CI'
+  | 'CK'
+  | 'CL'
+  | 'CM'
+  | 'CN'
+  | 'CO'
+  | 'CR'
+  | 'CU'
+  | 'CV'
+  | 'CW'
+  | 'CX'
+  | 'CY'
+  | 'CZ'
+  | 'DE'
+  | 'DJ'
+  | 'DK'
+  | 'DM'
+  | 'DO'
+  | 'DZ'
+  | 'EC'
+  | 'EE'
+  | 'EG'
+  | 'EH'
+  | 'ER'
+  | 'ES'
+  | 'ET'
+  | 'FI'
+  | 'FJ'
+  | 'FK'
+  | 'FM'
+  | 'FO'
+  | 'FR'
+  | 'GA'
+  | 'GB'
+  | 'GD'
+  | 'GE'
+  | 'GF'
+  | 'GG'
+  | 'GH'
+  | 'GI'
+  | 'GL'
+  | 'GM'
+  | 'GN'
+  | 'GP'
+  | 'GQ'
+  | 'GR'
+  | 'GS'
+  | 'GT'
+  | 'GU'
+  | 'GW'
+  | 'GY'
+  | 'HK'
+  | 'HM'
+  | 'HN'
+  | 'HR'
+  | 'HT'
+  | 'HU'
+  | 'ID'
+  | 'IE'
+  | 'IL'
+  | 'IM'
+  | 'IN'
+  | 'IO'
+  | 'IQ'
+  | 'IR'
+  | 'IS'
+  | 'IT'
+  | 'JE'
+  | 'JM'
+  | 'JO'
+  | 'JP'
+  | 'KE'
+  | 'KG'
+  | 'KH'
+  | 'KI'
+  | 'KM'
+  | 'KN'
+  | 'KP'
+  | 'KR'
+  | 'KW'
+  | 'KY'
+  | 'KZ'
+  | 'LA'
+  | 'LB'
+  | 'LC'
+  | 'LI'
+  | 'LK'
+  | 'LR'
+  | 'LS'
+  | 'LT'
+  | 'LU'
+  | 'LV'
+  | 'LY'
+  | 'MA'
+  | 'MC'
+  | 'MD'
+  | 'ME'
+  | 'MF'
+  | 'MG'
+  | 'MH'
+  | 'MK'
+  | 'ML'
+  | 'MM'
+  | 'MN'
+  | 'MO'
+  | 'MP'
+  | 'MQ'
+  | 'MR'
+  | 'MS'
+  | 'MT'
+  | 'MU'
+  | 'MV'
+  | 'MW'
+  | 'MX'
+  | 'MY'
+  | 'MZ'
+  | 'NA'
+  | 'NC'
+  | 'NE'
+  | 'NF'
+  | 'NG'
+  | 'NI'
+  | 'NL'
+  | 'NO'
+  | 'NP'
+  | 'NR'
+  | 'NU'
+  | 'NZ'
+  | 'OM'
+  | 'PA'
+  | 'PE'
+  | 'PF'
+  | 'PG'
+  | 'PH'
+  | 'PK'
+  | 'PL'
+  | 'PM'
+  | 'PN'
+  | 'PR'
+  | 'PS'
+  | 'PT'
+  | 'PW'
+  | 'PY'
+  | 'QA'
+  | 'RE'
+  | 'RO'
+  | 'RS'
+  | 'RU'
+  | 'RW'
+  | 'SA'
+  | 'SB'
+  | 'SC'
+  | 'SD'
+  | 'SE'
+  | 'SG'
+  | 'SH'
+  | 'SI'
+  | 'SJ'
+  | 'SK'
+  | 'SL'
+  | 'SM'
+  | 'SN'
+  | 'SO'
+  | 'SR'
+  | 'SS'
+  | 'ST'
+  | 'SV'
+  | 'SX'
+  | 'SY'
+  | 'SZ'
+  | 'TC'
+  | 'TD'
+  | 'TF'
+  | 'TG'
+  | 'TH'
+  | 'TJ'
+  | 'TK'
+  | 'TL'
+  | 'TM'
+  | 'TN'
+  | 'TO'
+  | 'TP'
+  | 'TR'
+  | 'TT'
+  | 'TV'
+  | 'TW'
+  | 'TZ'
+  | 'UA'
+  | 'UG'
+  | 'US'
+  | 'UY'
+  | 'UZ'
+  | 'VA'
+  | 'VC'
+  | 'VE'
+  | 'VG'
+  | 'VI'
+  | 'VN'
+  | 'VU'
+  | 'WF'
+  | 'WS'
+  | 'YE'
+  | 'YT'
+  | 'ZA'
+  | 'ZM'
+  | 'ZW'
 
 export interface ContactDetail {
   FirstName?: string
@@ -69,7 +302,7 @@ export interface ContactDetail {
   PhoneNumber?: string
   Email?: string
   Fax?: string
-  ExtraParams?: { Name: string, Value: string }[]
+  ExtraParams?: { Name: string; Value: string }[]
 }
 
 export interface UpdateDomainNameserversResult {
@@ -93,9 +326,7 @@ export class Route53DomainsClient {
   /**
    * Get details about a specific domain
    */
-  async getDomainDetail(params: {
-    DomainName: string
-  }): Promise<GetDomainDetailResult> {
+  async getDomainDetail(params: { DomainName: string }): Promise<GetDomainDetailResult> {
     const body = JSON.stringify({
       DomainName: params.DomainName,
     })
@@ -120,11 +351,11 @@ export class Route53DomainsClient {
    */
   async updateDomainNameservers(params: {
     DomainName: string
-    Nameservers: { Name: string, GlueIps?: string[] }[]
+    Nameservers: { Name: string; GlueIps?: string[] }[]
   }): Promise<UpdateDomainNameserversResult> {
     const body = JSON.stringify({
       DomainName: params.DomainName,
-      Nameservers: params.Nameservers.map(ns => ({
+      Nameservers: params.Nameservers.map((ns) => ({
         Name: ns.Name,
         ...(ns.GlueIps && { GlueIps: ns.GlueIps }),
       })),
@@ -158,7 +389,7 @@ export class Route53DomainsClient {
       SortOrder: 'ASC' | 'DESC'
     }
   }): Promise<{
-    Domains: { DomainName: string, AutoRenew?: boolean, TransferLock?: boolean, Expiry?: string }[]
+    Domains: { DomainName: string; AutoRenew?: boolean; TransferLock?: boolean; Expiry?: string }[]
     NextPageMarker?: string
   }> {
     const requestBody: Record<string, any> = {}
@@ -190,10 +421,16 @@ export class Route53DomainsClient {
   /**
    * Check domain availability
    */
-  async checkDomainAvailability(params: {
-    DomainName: string
-  }): Promise<{
-    Availability: 'AVAILABLE' | 'AVAILABLE_RESERVED' | 'AVAILABLE_PREORDER' | 'UNAVAILABLE' | 'UNAVAILABLE_PREMIUM' | 'UNAVAILABLE_RESTRICTED' | 'RESERVED' | 'DONT_KNOW'
+  async checkDomainAvailability(params: { DomainName: string }): Promise<{
+    Availability:
+      | 'AVAILABLE'
+      | 'AVAILABLE_RESERVED'
+      | 'AVAILABLE_PREORDER'
+      | 'UNAVAILABLE'
+      | 'UNAVAILABLE_PREMIUM'
+      | 'UNAVAILABLE_RESTRICTED'
+      | 'RESERVED'
+      | 'DONT_KNOW'
   }> {
     const body = JSON.stringify({
       DomainName: params.DomainName,
@@ -219,12 +456,10 @@ export class Route53DomainsClient {
   /**
    * Get domain pricing information
    */
-  async getDomainPrice(params: {
-    DomainName: string
-  }): Promise<{
-    RegistrationPrice?: { Price: number, Currency: string }
-    RenewalPrice?: { Price: number, Currency: string }
-    TransferPrice?: { Price: number, Currency: string }
+  async getDomainPrice(params: { DomainName: string }): Promise<{
+    RegistrationPrice?: { Price: number; Currency: string }
+    RenewalPrice?: { Price: number; Currency: string }
+    TransferPrice?: { Price: number; Currency: string }
   }> {
     // Extract TLD from domain name
     const tld = params.DomainName.split('.').slice(1).join('.')
@@ -247,18 +482,24 @@ export class Route53DomainsClient {
 
     const prices = result.Prices?.[0] || {}
     return {
-      RegistrationPrice: prices.RegistrationPrice ? {
-        Price: prices.RegistrationPrice.Price,
-        Currency: prices.RegistrationPrice.Currency,
-      } : undefined,
-      RenewalPrice: prices.RenewalPrice ? {
-        Price: prices.RenewalPrice.Price,
-        Currency: prices.RenewalPrice.Currency,
-      } : undefined,
-      TransferPrice: prices.TransferPrice ? {
-        Price: prices.TransferPrice.Price,
-        Currency: prices.TransferPrice.Currency,
-      } : undefined,
+      RegistrationPrice: prices.RegistrationPrice
+        ? {
+            Price: prices.RegistrationPrice.Price,
+            Currency: prices.RegistrationPrice.Currency,
+          }
+        : undefined,
+      RenewalPrice: prices.RenewalPrice
+        ? {
+            Price: prices.RenewalPrice.Price,
+            Currency: prices.RenewalPrice.Currency,
+          }
+        : undefined,
+      TransferPrice: prices.TransferPrice
+        ? {
+            Price: prices.TransferPrice.Price,
+            Currency: prices.TransferPrice.Currency,
+          }
+        : undefined,
     }
   }
 
@@ -310,9 +551,7 @@ export class Route53DomainsClient {
   /**
    * Get operation details (for tracking domain registration status)
    */
-  async getOperationDetail(params: {
-    OperationId: string
-  }): Promise<{
+  async getOperationDetail(params: { OperationId: string }): Promise<{
     OperationId: string
     Status: 'SUBMITTED' | 'IN_PROGRESS' | 'ERROR' | 'SUCCESSFUL' | 'FAILED'
     Message?: string

@@ -1,7 +1,7 @@
 import type { CloudConfig } from '@ts-cloud/core'
+import type { DnsProvider, DnsProviderConfig } from '../../src/dns/types'
 import { loadCloudConfig } from '../../src/config'
 import { createDnsProvider, DnsProviderFactory } from '../../src/dns'
-import type { DnsProviderConfig, DnsProvider } from '../../src/dns/types'
 
 /**
  * Load and validate the cloud config, ensuring project config exists.
@@ -26,7 +26,9 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
         const apiKey = process.env.PORKBUN_API_KEY
         const secretKey = process.env.PORKBUN_SECRET_KEY
         if (!apiKey || !secretKey) {
-          throw new Error('PORKBUN_API_KEY and PORKBUN_SECRET_KEY environment variables are required for Porkbun provider')
+          throw new Error(
+            'PORKBUN_API_KEY and PORKBUN_SECRET_KEY environment variables are required for Porkbun provider',
+          )
         }
         return { provider: 'porkbun', apiKey, secretKey }
       }
@@ -34,7 +36,9 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
         const apiKey = process.env.GODADDY_API_KEY
         const apiSecret = process.env.GODADDY_API_SECRET
         if (!apiKey || !apiSecret) {
-          throw new Error('GODADDY_API_KEY and GODADDY_API_SECRET environment variables are required for GoDaddy provider')
+          throw new Error(
+            'GODADDY_API_KEY and GODADDY_API_SECRET environment variables are required for GoDaddy provider',
+          )
         }
         const environment = (process.env.GODADDY_ENVIRONMENT as 'production' | 'ote') || 'production'
         return { provider: 'godaddy', apiKey, apiSecret, environment }
@@ -49,7 +53,12 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
         if (!apiToken) {
           throw new Error('CLOUDFLARE_API_TOKEN environment variable is required for Cloudflare provider')
         }
-        return { provider: 'cloudflare', apiToken }
+        return {
+          provider: 'cloudflare',
+          apiToken,
+          zoneId: process.env.CLOUDFLARE_ZONE_ID,
+          accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+        }
       }
       default:
         throw new Error(`Unknown DNS provider: ${providerName}. Supported: porkbun, godaddy, route53, cloudflare`)
@@ -91,6 +100,8 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
     return {
       provider: 'cloudflare',
       apiToken: process.env.CLOUDFLARE_API_TOKEN,
+      zoneId: process.env.CLOUDFLARE_ZONE_ID,
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     }
   }
 
@@ -103,7 +114,9 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
 export function getDnsProvider(providerName?: string): DnsProvider {
   const config = resolveDnsProviderConfig(providerName)
   if (!config) {
-    throw new Error('No DNS provider configured. Set environment variables for Porkbun (PORKBUN_API_KEY, PORKBUN_SECRET_KEY), GoDaddy (GODADDY_API_KEY, GODADDY_API_SECRET), Cloudflare (CLOUDFLARE_API_TOKEN), or Route53 (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)')
+    throw new Error(
+      'No DNS provider configured. Set environment variables for Porkbun (PORKBUN_API_KEY, PORKBUN_SECRET_KEY), GoDaddy (GODADDY_API_KEY, GODADDY_API_SECRET), Cloudflare (CLOUDFLARE_API_TOKEN), or Route53 (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)',
+    )
   }
   return createDnsProvider(config)
 }

@@ -4,12 +4,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import type { AWSCredentials } from '../aws/credentials'
-import {
-  validateCredentials,
-  checkIAMPermissions,
-  getRequiredPermissions,
-  suggestIAMPolicy,
-} from './credentials'
+import { validateCredentials, checkIAMPermissions, getRequiredPermissions, suggestIAMPolicy } from './credentials'
 
 describe('getRequiredPermissions', () => {
   it('should always include CloudFormation permissions', () => {
@@ -219,10 +214,7 @@ describe('checkIAMPermissions', () => {
       region: 'us-east-1',
     }
 
-    const result = await checkIAMPermissions(credentials, [
-      'cloudformation:CreateStack',
-      's3:PutObject',
-    ])
+    const result = await checkIAMPermissions(credentials, ['cloudformation:CreateStack', 's3:PutObject'])
 
     expect(result).toHaveProperty('allowed')
     expect(result).toHaveProperty('denied')
@@ -237,10 +229,7 @@ describe('checkIAMPermissions', () => {
       region: 'us-east-1',
     }
 
-    const result = await checkIAMPermissions(credentials, [
-      'cloudformation:CreateStack',
-      's3:PutObject',
-    ])
+    const result = await checkIAMPermissions(credentials, ['cloudformation:CreateStack', 's3:PutObject'])
 
     // TODO: This will change when we implement actual IAM policy simulation
     expect(result.allowed).toContain('cloudformation:CreateStack')
@@ -262,12 +251,10 @@ describe('validateCredentials', () => {
       if (result.valid) {
         expect(result.accountId).toBeDefined()
         expect(result.region).toBeDefined()
-      }
-else {
+      } else {
         expect(result.error).toBeDefined()
       }
-    }
-catch (error) {
+    } catch (error) {
       // If validation throws, it means credentials are invalid or missing
       // This is expected behavior in test environment
       expect(error).toBeDefined()

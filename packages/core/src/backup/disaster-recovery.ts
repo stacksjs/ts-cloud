@@ -97,7 +97,7 @@ export class DisasterRecoveryManager {
       primaryRegion,
       secondaryRegion,
       rto = 60, // 1 hour
-      rpo = 5,  // 5 minutes
+      rpo = 5, // 5 minutes
     } = options
 
     return this.createDRPlan({
@@ -133,7 +133,7 @@ export class DisasterRecoveryManager {
       tableArn,
       regions,
       rto = 15, // 15 minutes
-      rpo = 1,  // 1 minute (global tables)
+      rpo = 1, // 1 minute (global tables)
     } = options
 
     return this.createDRPlan({
@@ -279,7 +279,10 @@ export class DisasterRecoveryManager {
   /**
    * Execute failover
    */
-  async executeFailover(planId: string, dryRun: boolean = false): Promise<{
+  async executeFailover(
+    planId: string,
+    dryRun: boolean = false,
+  ): Promise<{
     success: boolean
     duration: number
     completedSteps: number
@@ -307,13 +310,11 @@ export class DisasterRecoveryManager {
 
       if (dryRun) {
         console.log('  [SKIPPED - DRY RUN]')
-      }
-      else {
+      } else {
         // In real implementation, would execute the actual step
         if (step.automatable) {
           console.log('  [AUTOMATED]')
-        }
-        else {
+        } else {
           console.log('  [MANUAL - WAITING]')
         }
       }
@@ -471,7 +472,7 @@ export class DisasterRecoveryManager {
     }
 
     // Check for manual steps
-    const manualSteps = plan.runbook.steps.filter(s => !s.automatable)
+    const manualSteps = plan.runbook.steps.filter((s) => !s.automatable)
     if (manualSteps.length > 0) {
       warnings.push(`${manualSteps.length} manual steps in runbook - consider automation`)
     }

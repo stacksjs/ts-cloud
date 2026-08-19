@@ -327,7 +327,7 @@ export class Route53RoutingManager {
 
     // Calculate health based on child health checks
     const updateCalculatedHealth = () => {
-      const healthyChildren = options.childHealthChecks.filter(childId => {
+      const healthyChildren = options.childHealthChecks.filter((childId) => {
         const child = this.healthChecks.get(childId)
         return child?.healthCheckStatus === 'Healthy'
       }).length
@@ -497,8 +497,7 @@ export class Route53RoutingManager {
       const calculated = healthCheck as CalculatedHealthCheck
       config.Properties.HealthCheckConfig.ChildHealthChecks = calculated.childHealthChecks
       config.Properties.HealthCheckConfig.HealthThreshold = calculated.healthThreshold
-    }
-else {
+    } else {
       if (healthCheck.ipAddress) {
         config.Properties.HealthCheckConfig.IPAddress = healthCheck.ipAddress
       }

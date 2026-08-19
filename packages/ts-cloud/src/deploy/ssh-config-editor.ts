@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto'
 import type { SshKeyConfig } from '@ts-cloud/core'
+import { createHash } from 'node:crypto'
 
 export interface AddSshKeyInput {
   configText: string
@@ -31,14 +31,14 @@ export function addSshKeyToCloudConfig(input: AddSshKeyInput): string {
 
 export function removeSshKeyFromCloudConfig(input: RemoveSshKeyInput): string {
   const name = normalizeKeyName(input.name)
-  const keys = (input.existingKeys ?? []).filter(key => key.name !== name)
+  const keys = (input.existingKeys ?? []).filter((key) => key.name !== name)
   if ((input.existingKeys ?? []).length === keys.length)
     throw new Error(`SSH key '${name}' does not exist in compute.sshKeys`)
   return updateComputeSshKeys(input.configText, keys)
 }
 
 export function describeSshKeys(keys: SshKeyConfig[] = []): ManagedSshKey[] {
-  return keys.map(key => ({
+  return keys.map((key) => ({
     name: key.name,
     publicKey: key.publicKey,
     type: sshKeyType(key.publicKey),
@@ -61,8 +61,7 @@ function updateComputeSshKeys(configText: string, keys: SshKeyConfig[]): string 
     // Back the start up over the line's leading whitespace so the renderer's own
     // indentation replaces it rather than stacking on top of it each edit.
     let lineStart = existing.propertyStart
-    while (lineStart > 0 && configText[lineStart - 1] !== '\n' && /\s/.test(configText[lineStart - 1]!))
-      lineStart--
+    while (lineStart > 0 && configText[lineStart - 1] !== '\n' && /\s/.test(configText[lineStart - 1]!)) lineStart--
     return `${configText.slice(0, lineStart)}${rendered}${configText.slice(existing.end + 1)}`
   }
 
@@ -77,15 +76,18 @@ function updateComputeSshKeys(configText: string, keys: SshKeyConfig[]): string 
 
 function renderSshKeys(keys: SshKeyConfig[]): string {
   // No trailing comma: callers preserve or add the separating comma themselves.
-  if (keys.length === 0)
-    return '      sshKeys: []'
+  if (keys.length === 0) return '      sshKeys: []'
 
-  const body = keys.map(key => [
-    '        {',
-    `          name: '${escapeString(key.name)}',`,
-    `          publicKey: '${escapeString(normalizePublicKey(key.publicKey))}',`,
-    '        },',
-  ].join('\n')).join('\n')
+  const body = keys
+    .map((key) =>
+      [
+        '        {',
+        `          name: '${escapeString(key.name)}',`,
+        `          publicKey: '${escapeString(normalizePublicKey(key.publicKey))}',`,
+        '        },',
+      ].join('\n'),
+    )
+    .join('\n')
 
   return `      sshKeys: [\n${body}\n      ]`
 }
@@ -94,8 +96,7 @@ function dedupeKeys(keys: SshKeyConfig[]): SshKeyConfig[] {
   const seen = new Map<string, SshKeyConfig>()
   for (const key of keys) {
     const name = normalizeKeyName(key.name)
-    if (seen.has(name))
-      throw new Error(`SSH key '${name}' already exists in compute.sshKeys`)
+    if (seen.has(name)) throw new Error(`SSH key '${name}' already exists in compute.sshKeys`)
     seen.set(name, { name, publicKey: normalizePublicKey(key.publicKey) })
   }
   return [...seen.values()]
@@ -122,18 +123,16 @@ function sshKeyType(publicKey: string): string {
 
 function sshFingerprint(publicKey: string): string {
   const body = publicKey.trim().split(/\s+/)[1]
-  if (!body)
-    return '-'
+  if (!body) return '-'
   try {
     return `SHA256:${createHash('sha256').update(Buffer.from(body, 'base64')).digest('base64').replace(/=+$/, '')}`
-  }
-  catch {
+  } catch {
     return '-'
   }
 }
 
 function escapeString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replaceAll(String.fromCharCode(39), '\\\'')
+  return value.replace(/\\/g, '\\\\').replaceAll(String.fromCharCode(39), "\\'")
 }
 
 interface ObjectBounds {
@@ -144,8 +143,7 @@ interface ObjectBounds {
 
 function findPropertyObject(configText: string, property: string): ObjectBounds {
   const match = new RegExp(`\\b${property}\\s*:\\s*{`, 'g').exec(configText)
-  if (!match)
-    throw new Error(`Could not find ${property}: { ... } in cloud config.`)
+  if (!match) throw new Error(`Could not find ${property}: { ... } in cloud config.`)
   const start = configText.indexOf('{', match.index)
   return { propertyStart: match.index, start, end: findMatching(configText, start, '{', '}') }
 }
@@ -153,8 +151,7 @@ function findPropertyObject(configText: string, property: string): ObjectBounds 
 function findPropertyArray(configText: string, start: number, end: number, property: string): ObjectBounds | null {
   const body = configText.slice(start + 1, end)
   const match = new RegExp(`\\b${property}\\s*:\\s*\\[`, 'g').exec(body)
-  if (!match)
-    return null
+  if (!match) return null
   const propertyStart = start + 1 + match.index
   const arrayStart = configText.indexOf('[', propertyStart)
   return { propertyStart, start: arrayStart, end: findMatching(configText, arrayStart, '[', ']') }
@@ -162,7 +159,7 @@ function findPropertyArray(configText: string, start: number, end: number, prope
 
 export function findMatching(text: string, start: number, open: string, close: string): number {
   let depth = 0
-  let quote: '"' | '\'' | '`' | undefined
+  let quote: '"' | "'" | '`' | undefined
   let escaped = false
   let lineComment = false
   let blockComment = false
@@ -209,7 +206,7 @@ export function findMatching(text: string, start: number, open: string, close: s
       continue
     }
 
-    if (char === '"' || char === '\'' || char === '`') {
+    if (char === '"' || char === "'" || char === '`') {
       quote = char
       continue
     }

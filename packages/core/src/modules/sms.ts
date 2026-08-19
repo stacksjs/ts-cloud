@@ -3,10 +3,9 @@
  *
  * Provides CloudFormation resources for AWS Pinpoint SMS infrastructure
  */
-
-import { handler as sendHandler } from '../sms/handlers/send'
-import { handler as receiveHandler } from '../sms/handlers/receive'
 import { handler as deliveryStatusHandler } from '../sms/handlers/delivery-status'
+import { handler as receiveHandler } from '../sms/handlers/receive'
+import { handler as sendHandler } from '../sms/handlers/send'
 
 export interface SmsConfig {
   slug: string
@@ -22,7 +21,11 @@ export class SMS {
   /**
    * Lambda code for SMS handlers
    */
-  static LambdaCode: { send: typeof sendHandler; receive: typeof receiveHandler; deliveryStatus: typeof deliveryStatusHandler } = {
+  static LambdaCode: {
+    send: typeof sendHandler
+    receive: typeof receiveHandler
+    deliveryStatus: typeof deliveryStatusHandler
+  } = {
     send: sendHandler,
     receive: receiveHandler,
     deliveryStatus: deliveryStatusHandler,

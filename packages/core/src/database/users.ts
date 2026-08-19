@@ -22,16 +22,7 @@ export interface DatabasePrivilege {
 }
 
 export type PrivilegeType =
-  | 'SELECT'
-  | 'INSERT'
-  | 'UPDATE'
-  | 'DELETE'
-  | 'CREATE'
-  | 'DROP'
-  | 'ALTER'
-  | 'INDEX'
-  | 'EXECUTE'
-  | 'ALL'
+  'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'CREATE' | 'DROP' | 'ALTER' | 'INDEX' | 'EXECUTE' | 'ALL'
 
 export interface UserRole {
   id: string
@@ -91,7 +82,7 @@ export class DatabaseUserManager {
     tables?: string[]
   }): DatabaseUser {
     const privileges: DatabasePrivilege[] = options.tables
-      ? options.tables.map(table => ({
+      ? options.tables.map((table) => ({
           database: options.database,
           table,
           privileges: ['SELECT' as PrivilegeType],
@@ -123,7 +114,7 @@ export class DatabaseUserManager {
     tables?: string[]
   }): DatabaseUser {
     const privileges: DatabasePrivilege[] = options.tables
-      ? options.tables.map(table => ({
+      ? options.tables.map((table) => ({
           database: options.database,
           table,
           privileges: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as PrivilegeType[],
@@ -148,11 +139,7 @@ export class DatabaseUserManager {
   /**
    * Create admin user
    */
-  createAdminUser(options: {
-    username: string
-    database: string
-    passwordSecretArn?: string
-  }): DatabaseUser {
+  createAdminUser(options: { username: string; database: string; passwordSecretArn?: string }): DatabaseUser {
     return this.createUser({
       username: options.username,
       database: options.database,
@@ -177,7 +164,7 @@ export class DatabaseUserManager {
     tables: { name: string; privileges: PrivilegeType[] }[]
     passwordSecretArn?: string
   }): DatabaseUser {
-    const privileges: DatabasePrivilege[] = options.tables.map(table => ({
+    const privileges: DatabasePrivilege[] = options.tables.map((table) => ({
       database: options.database,
       table: table.name,
       privileges: table.privileges,
@@ -230,16 +217,13 @@ export class DatabaseUserManager {
     // Merge role privileges with user privileges
     for (const privilege of role.privileges) {
       const existingPrivilege = user.privileges.find(
-        p => p.database === privilege.database && p.table === privilege.table
+        (p) => p.database === privilege.database && p.table === privilege.table,
       )
 
       if (existingPrivilege) {
         // Merge privileges
-        existingPrivilege.privileges = Array.from(
-          new Set([...existingPrivilege.privileges, ...privilege.privileges])
-        )
-      }
-else {
+        existingPrivilege.privileges = Array.from(new Set([...existingPrivilege.privileges, ...privilege.privileges]))
+      } else {
         user.privileges.push({ ...privilege })
       }
     }
@@ -248,10 +232,7 @@ else {
   /**
    * Grant privileges to user
    */
-  grantPrivileges(
-    userId: string,
-    privileges: DatabasePrivilege[]
-  ): { success: boolean; message: string } {
+  grantPrivileges(userId: string, privileges: DatabasePrivilege[]): { success: boolean; message: string } {
     const user = this.users.get(userId)
 
     if (!user) {
@@ -259,14 +240,11 @@ else {
     }
 
     for (const privilege of privileges) {
-      const existing = user.privileges.find(
-        p => p.database === privilege.database && p.table === privilege.table
-      )
+      const existing = user.privileges.find((p) => p.database === privilege.database && p.table === privilege.table)
 
       if (existing) {
         existing.privileges = Array.from(new Set([...existing.privileges, ...privilege.privileges]))
-      }
-else {
+      } else {
         user.privileges.push(privilege)
       }
     }
@@ -285,10 +263,7 @@ else {
   /**
    * Revoke privileges from user
    */
-  revokePrivileges(
-    userId: string,
-    privileges: DatabasePrivilege[]
-  ): { success: boolean; message: string } {
+  revokePrivileges(userId: string, privileges: DatabasePrivilege[]): { success: boolean; message: string } {
     const user = this.users.get(userId)
 
     if (!user) {
@@ -297,14 +272,12 @@ else {
 
     for (const privilege of privileges) {
       const existingIndex = user.privileges.findIndex(
-        p => p.database === privilege.database && p.table === privilege.table
+        (p) => p.database === privilege.database && p.table === privilege.table,
       )
 
       if (existingIndex !== -1) {
         const existing = user.privileges[existingIndex]
-        existing.privileges = existing.privileges.filter(
-          p => !privilege.privileges.includes(p)
-        )
+        existing.privileges = existing.privileges.filter((p) => !privilege.privileges.includes(p))
 
         // Remove privilege entry if no privileges left
         if (existing.privileges.length === 0) {
@@ -355,8 +328,7 @@ else {
       return false
     }
 
-    const daysSinceRotation =
-      (Date.now() - user.lastRotated.getTime()) / (1000 * 60 * 60 * 24)
+    const daysSinceRotation = (Date.now() - user.lastRotated.getTime()) / (1000 * 60 * 60 * 24)
 
     return daysSinceRotation >= user.rotationDays
   }
@@ -383,7 +355,7 @@ else {
    */
   getUserAccessHistory(username: string, limit: number = 100): AccessAudit[] {
     return Array.from(this.audits.values())
-      .filter(audit => audit.username === username)
+      .filter((audit) => audit.username === username)
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, limit)
   }
@@ -395,11 +367,11 @@ else {
     const cutoffTime = Date.now() - hours * 60 * 60 * 1000
 
     return Array.from(this.audits.values()).filter(
-      audit =>
+      (audit) =>
         audit.username === username &&
         audit.action === 'LOGIN' &&
         !audit.success &&
-        audit.timestamp.getTime() > cutoffTime
+        audit.timestamp.getTime() > cutoffTime,
     )
   }
 
@@ -415,33 +387,22 @@ else {
       for (const privilege of user.privileges) {
         if (privilege.privileges.includes('ALL')) {
           statements.push(`GRANT ALL PRIVILEGES ON DATABASE ${privilege.database} TO ${user.username};`)
-        }
-else {
+        } else {
           const privs = privilege.privileges.join(', ')
           if (privilege.table) {
-            statements.push(
-              `GRANT ${privs} ON ${privilege.database}.${privilege.table} TO ${user.username};`
-            )
-          }
-else {
+            statements.push(`GRANT ${privs} ON ${privilege.database}.${privilege.table} TO ${user.username};`)
+          } else {
             statements.push(`GRANT ${privs} ON DATABASE ${privilege.database} TO ${user.username};`)
           }
         }
       }
-    }
-else {
+    } else {
       // MySQL
-      statements.push(
-        `CREATE USER '${user.username}'@'%' IDENTIFIED BY '${user.passwordSecretArn}';`
-      )
+      statements.push(`CREATE USER '${user.username}'@'%' IDENTIFIED BY '${user.passwordSecretArn}';`)
 
       for (const privilege of user.privileges) {
-        const privs = privilege.privileges.includes('ALL')
-          ? 'ALL PRIVILEGES'
-          : privilege.privileges.join(', ')
-        const target = privilege.table
-          ? `${privilege.database}.${privilege.table}`
-          : `${privilege.database}.*`
+        const privs = privilege.privileges.includes('ALL') ? 'ALL PRIVILEGES' : privilege.privileges.join(', ')
+        const target = privilege.table ? `${privilege.database}.${privilege.table}` : `${privilege.database}.*`
 
         statements.push(`GRANT ${privs} ON ${target} TO '${user.username}'@'%';`)
       }

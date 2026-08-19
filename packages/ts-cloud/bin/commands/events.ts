@@ -32,15 +32,14 @@ export function registerEventsCommands(app: CLI): void {
 
         cli.table(
           ['Name', 'State', 'Schedule/Pattern', 'Description'],
-          rules.map(rule => [
+          rules.map((rule) => [
             rule.Name || 'N/A',
             rule.State || 'N/A',
             rule.ScheduleExpression || (rule.EventPattern ? 'Event Pattern' : 'N/A'),
             (rule.Description || '').substring(0, 40),
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list rules: ${error.message}`)
         process.exit(1)
       }
@@ -55,76 +54,79 @@ export function registerEventsCommands(app: CLI): void {
     .option('--pattern-file <path>', 'Event pattern from JSON file')
     .option('--description <text>', 'Rule description')
     .option('--disabled', 'Create in disabled state')
-    .action(async (name: string, options: {
-      region: string
-      bus: string
-      schedule?: string
-      pattern?: string
-      patternFile?: string
-      description?: string
-      disabled?: boolean
-    }) => {
-      cli.header('Create EventBridge Rule')
+    .action(
+      async (
+        name: string,
+        options: {
+          region: string
+          bus: string
+          schedule?: string
+          pattern?: string
+          patternFile?: string
+          description?: string
+          disabled?: boolean
+        },
+      ) => {
+        cli.header('Create EventBridge Rule')
 
-      try {
-        if (!options.schedule && !options.pattern && !options.patternFile) {
-          cli.error('Either --schedule or --pattern/--pattern-file is required')
-          cli.info('\nExamples:')
-          cli.info('  Schedule: --schedule "rate(5 minutes)"')
-          cli.info('  Pattern:  --pattern \'{"source": ["aws.ec2"]}\'')
-          return
+        try {
+          if (!options.schedule && !options.pattern && !options.patternFile) {
+            cli.error('Either --schedule or --pattern/--pattern-file is required')
+            cli.info('\nExamples:')
+            cli.info('  Schedule: --schedule "rate(5 minutes)"')
+            cli.info('  Pattern:  --pattern \'{"source": ["aws.ec2"]}\'')
+            return
+          }
+
+          const eventbridge = new EventBridgeClient(options.region)
+
+          let eventPattern: string | undefined
+
+          if (options.patternFile) {
+            const file = Bun.file(options.patternFile)
+            eventPattern = await file.text()
+          } else if (options.pattern) {
+            eventPattern = options.pattern
+          }
+
+          cli.info(`Name: ${name}`)
+          cli.info(`Event Bus: ${options.bus}`)
+          if (options.schedule) {
+            cli.info(`Schedule: ${options.schedule}`)
+          }
+          if (eventPattern) {
+            cli.info(`Event Pattern: ${eventPattern}`)
+          }
+          cli.info(`State: ${options.disabled ? 'DISABLED' : 'ENABLED'}`)
+
+          const confirmed = await cli.confirm('\nCreate this rule?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Creating rule...')
+          spinner.start()
+
+          const result = await eventbridge.putRule({
+            Name: name,
+            EventBusName: options.bus,
+            ScheduleExpression: options.schedule,
+            EventPattern: eventPattern,
+            Description: options.description,
+            State: options.disabled ? 'DISABLED' : 'ENABLED',
+          })
+
+          spinner.succeed('Rule created')
+
+          cli.success(`\nRule ARN: ${result.RuleArn}`)
+          cli.info('\nNote: Add targets to the rule with `cloud events:target`')
+        } catch (error: any) {
+          cli.error(`Failed to create rule: ${error.message}`)
+          process.exit(1)
         }
-
-        const eventbridge = new EventBridgeClient(options.region)
-
-        let eventPattern: string | undefined
-
-        if (options.patternFile) {
-          const file = Bun.file(options.patternFile)
-          eventPattern = await file.text()
-        }
-        else if (options.pattern) {
-          eventPattern = options.pattern
-        }
-
-        cli.info(`Name: ${name}`)
-        cli.info(`Event Bus: ${options.bus}`)
-        if (options.schedule) {
-          cli.info(`Schedule: ${options.schedule}`)
-        }
-        if (eventPattern) {
-          cli.info(`Event Pattern: ${eventPattern}`)
-        }
-        cli.info(`State: ${options.disabled ? 'DISABLED' : 'ENABLED'}`)
-
-        const confirmed = await cli.confirm('\nCreate this rule?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Creating rule...')
-        spinner.start()
-
-        const result = await eventbridge.putRule({
-          Name: name,
-          EventBusName: options.bus,
-          ScheduleExpression: options.schedule,
-          EventPattern: eventPattern,
-          Description: options.description,
-          State: options.disabled ? 'DISABLED' : 'ENABLED',
-        })
-
-        spinner.succeed('Rule created')
-
-        cli.success(`\nRule ARN: ${result.RuleArn}`)
-        cli.info('\nNote: Add targets to the rule with `cloud events:target`')
-      }
-      catch (error: any) {
-        cli.error(`Failed to create rule: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('events:delete <name>', 'Delete an EventBridge rule')
@@ -167,7 +169,7 @@ export function registerEventsCommands(app: CLI): void {
           await eventbridge.removeTargets({
             Rule: name,
             EventBusName: options.bus,
-            Ids: targets.Targets.map(t => t.Id!),
+            Ids: targets.Targets.map((t) => t.Id!),
           })
         }
 
@@ -179,8 +181,7 @@ export function registerEventsCommands(app: CLI): void {
         })
 
         spinner.succeed('Rule deleted')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete rule: ${error.message}`)
         process.exit(1)
       }
@@ -244,12 +245,10 @@ export function registerEventsCommands(app: CLI): void {
               cli.info(`    Input: ${target.Input}`)
             }
           }
-        }
-        else {
+        } else {
           cli.info('\nNo targets configured.')
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get rule: ${error.message}`)
         process.exit(1)
       }
@@ -264,72 +263,76 @@ export function registerEventsCommands(app: CLI): void {
     .option('--role <arn>', 'IAM role ARN (for some targets)')
     .option('--input <json>', 'Constant JSON input')
     .option('--input-path <path>', 'JSONPath expression for input')
-    .action(async (ruleName: string, options: {
-      region: string
-      bus: string
-      id?: string
-      arn?: string
-      role?: string
-      input?: string
-      inputPath?: string
-    }) => {
-      cli.header('Add EventBridge Target')
+    .action(
+      async (
+        ruleName: string,
+        options: {
+          region: string
+          bus: string
+          id?: string
+          arn?: string
+          role?: string
+          input?: string
+          inputPath?: string
+        },
+      ) => {
+        cli.header('Add EventBridge Target')
 
-      try {
-        if (!options.arn) {
-          cli.error('--arn is required')
-          return
+        try {
+          if (!options.arn) {
+            cli.error('--arn is required')
+            return
+          }
+
+          const eventbridge = new EventBridgeClient(options.region)
+
+          const targetId = options.id || `target-${Date.now()}`
+
+          cli.info(`Rule: ${ruleName}`)
+          cli.info(`Target ID: ${targetId}`)
+          cli.info(`Target ARN: ${options.arn}`)
+
+          const confirmed = await cli.confirm('\nAdd this target?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Adding target...')
+          spinner.start()
+
+          const target: any = {
+            Id: targetId,
+            Arn: options.arn,
+          }
+
+          if (options.role) {
+            target.RoleArn = options.role
+          }
+
+          if (options.input) {
+            target.Input = options.input
+          }
+
+          if (options.inputPath) {
+            target.InputPath = options.inputPath
+          }
+
+          await eventbridge.putTargets({
+            Rule: ruleName,
+            EventBusName: options.bus,
+            Targets: [target],
+          })
+
+          spinner.succeed('Target added')
+
+          cli.success(`\nTarget ${targetId} added to rule ${ruleName}`)
+        } catch (error: any) {
+          cli.error(`Failed to add target: ${error.message}`)
+          process.exit(1)
         }
-
-        const eventbridge = new EventBridgeClient(options.region)
-
-        const targetId = options.id || `target-${Date.now()}`
-
-        cli.info(`Rule: ${ruleName}`)
-        cli.info(`Target ID: ${targetId}`)
-        cli.info(`Target ARN: ${options.arn}`)
-
-        const confirmed = await cli.confirm('\nAdd this target?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Adding target...')
-        spinner.start()
-
-        const target: any = {
-          Id: targetId,
-          Arn: options.arn,
-        }
-
-        if (options.role) {
-          target.RoleArn = options.role
-        }
-
-        if (options.input) {
-          target.Input = options.input
-        }
-
-        if (options.inputPath) {
-          target.InputPath = options.inputPath
-        }
-
-        await eventbridge.putTargets({
-          Rule: ruleName,
-          EventBusName: options.bus,
-          Targets: [target],
-        })
-
-        spinner.succeed('Target added')
-
-        cli.success(`\nTarget ${targetId} added to rule ${ruleName}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to add target: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('events:buses', 'List event buses')
@@ -357,14 +360,9 @@ export function registerEventsCommands(app: CLI): void {
 
         cli.table(
           ['Name', 'ARN', 'Policy'],
-          buses.map(bus => [
-            bus.Name || 'N/A',
-            bus.Arn || 'N/A',
-            bus.Policy ? 'Custom' : 'Default',
-          ]),
+          buses.map((bus) => [bus.Name || 'N/A', bus.Arn || 'N/A', bus.Policy ? 'Custom' : 'Default']),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list event buses: ${error.message}`)
         process.exit(1)
       }
@@ -389,8 +387,7 @@ export function registerEventsCommands(app: CLI): void {
         })
 
         spinner.succeed('Rule enabled')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to enable rule: ${error.message}`)
         process.exit(1)
       }
@@ -415,8 +412,7 @@ export function registerEventsCommands(app: CLI): void {
         })
 
         spinner.succeed('Rule disabled')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to disable rule: ${error.message}`)
         process.exit(1)
       }

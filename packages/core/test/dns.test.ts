@@ -78,11 +78,7 @@ describe('DNS Module', () => {
 
   describe('createCloudFrontAlias', () => {
     it('should create CloudFront alias record', () => {
-      const { record } = DNS.createCloudFrontAlias(
-        'www.example.com',
-        'd123.cloudfront.net',
-        'Z1234567890ABC',
-      )
+      const { record } = DNS.createCloudFrontAlias('www.example.com', 'd123.cloudfront.net', 'Z1234567890ABC')
 
       expect(record.Properties.Type).toBe('A')
       expect(record.Properties.AliasTarget?.DNSName).toBe('d123.cloudfront.net')
@@ -108,11 +104,7 @@ describe('DNS Module', () => {
 
   describe('createCname', () => {
     it('should create CNAME record', () => {
-      const { record } = DNS.createCname(
-        'blog.example.com',
-        'myblog.wordpress.com',
-        'Z1234567890ABC',
-      )
+      const { record } = DNS.createCname('blog.example.com', 'myblog.wordpress.com', 'Z1234567890ABC')
 
       expect(record.Properties.Type).toBe('CNAME')
       expect(record.Properties.ResourceRecords).toContain('myblog.wordpress.com')
@@ -120,12 +112,7 @@ describe('DNS Module', () => {
     })
 
     it('should create CNAME with custom TTL', () => {
-      const { record } = DNS.createCname(
-        'cdn.example.com',
-        'd123.cloudfront.net',
-        'Z1234567890ABC',
-        600,
-      )
+      const { record } = DNS.createCname('cdn.example.com', 'd123.cloudfront.net', 'Z1234567890ABC', 600)
 
       expect(record.Properties.TTL).toBe(600)
     })
@@ -160,11 +147,7 @@ describe('DNS Module', () => {
 
   describe('createTxtRecord', () => {
     it('should create TXT record with quoted value', () => {
-      const { record } = DNS.createTxtRecord(
-        'example.com',
-        'v=spf1 include:_spf.example.com ~all',
-        'Z1234567890ABC',
-      )
+      const { record } = DNS.createTxtRecord('example.com', 'v=spf1 include:_spf.example.com ~all', 'Z1234567890ABC')
 
       expect(record.Properties.Type).toBe('TXT')
       expect(record.Properties.ResourceRecords?.[0]).toBe('"v=spf1 include:_spf.example.com ~all"')
@@ -173,11 +156,7 @@ describe('DNS Module', () => {
 
   describe('createSpfRecord', () => {
     it('should create SPF record', () => {
-      const { record } = DNS.createSpfRecord(
-        'example.com',
-        'v=spf1 include:_spf.google.com ~all',
-        'Z1234567890ABC',
-      )
+      const { record } = DNS.createSpfRecord('example.com', 'v=spf1 include:_spf.google.com ~all', 'Z1234567890ABC')
 
       expect(record.Properties.Type).toBe('TXT')
       expect(record.Properties.ResourceRecords?.[0]).toContain('v=spf1')
@@ -186,12 +165,7 @@ describe('DNS Module', () => {
 
   describe('createDmarcRecord', () => {
     it('should create DMARC record with policy', () => {
-      const { record } = DNS.createDmarcRecord(
-        'example.com',
-        'quarantine',
-        'dmarc@example.com',
-        'Z1234567890ABC',
-      )
+      const { record } = DNS.createDmarcRecord('example.com', 'quarantine', 'dmarc@example.com', 'Z1234567890ABC')
 
       expect(record.Properties.Name).toBe('_dmarc.example.com')
       expect(record.Properties.Type).toBe('TXT')
@@ -203,12 +177,7 @@ describe('DNS Module', () => {
       const policies: Array<'none' | 'quarantine' | 'reject'> = ['none', 'quarantine', 'reject']
 
       for (const policy of policies) {
-        const { record } = DNS.createDmarcRecord(
-          'example.com',
-          policy,
-          'dmarc@example.com',
-          'Z1234567890ABC',
-        )
+        const { record } = DNS.createDmarcRecord('example.com', policy, 'dmarc@example.com', 'Z1234567890ABC')
 
         expect(record.Properties.ResourceRecords?.[0]).toContain(`p=${policy}`)
       }
@@ -236,10 +205,7 @@ describe('DNS Module', () => {
       template.addResource(apexId, apexRecord)
 
       // Create www redirect
-      const { record: wwwRecord, logicalId: wwwId } = DNS.createWwwRedirect(
-        'example.com',
-        'Z1234567890ABC',
-      )
+      const { record: wwwRecord, logicalId: wwwId } = DNS.createWwwRedirect('example.com', 'Z1234567890ABC')
       template.addResource(wwwId, wwwRecord)
 
       const result = template.build()

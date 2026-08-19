@@ -2,7 +2,6 @@
  * AWS EventBridge Scheduler Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient } from './client'
 
 export interface Schedule {
@@ -140,8 +139,7 @@ export class SchedulerClient {
 
     if (options.state) {
       params.State = options.state
-    }
-    else {
+    } else {
       params.State = 'ENABLED'
     }
 
@@ -267,10 +265,12 @@ export class SchedulerClient {
       try {
         const targets = await this.listTargetsByRule(name)
         if (targets.Targets && targets.Targets.length > 0) {
-          await this.removeTargets(name, targets.Targets.map(t => t.Id))
+          await this.removeTargets(
+            name,
+            targets.Targets.map((t) => t.Id),
+          )
         }
-      }
-      catch {
+      } catch {
         // Ignore errors when removing targets
       }
     }
@@ -420,7 +420,11 @@ export class SchedulerClient {
   /**
    * List schedules (EventBridge Scheduler API)
    */
-  async listSchedules(options?: { GroupName?: string; NamePrefix?: string; State?: string }): Promise<{ Schedules: Schedule[] }> {
+  async listSchedules(options?: {
+    GroupName?: string
+    NamePrefix?: string
+    State?: string
+  }): Promise<{ Schedules: Schedule[] }> {
     const queryParams: Record<string, string> = {}
     if (options?.NamePrefix) {
       queryParams.NamePrefix = options.NamePrefix
@@ -463,8 +467,7 @@ export class SchedulerClient {
       })
 
       return result as Schedule
-    }
-    catch (error: any) {
+    } catch (error: any) {
       if (error.statusCode === 404 || error.code === 'ResourceNotFoundException') {
         return null
       }

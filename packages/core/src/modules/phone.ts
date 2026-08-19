@@ -3,10 +3,9 @@
  *
  * Provides CloudFormation resources for Amazon Connect phone infrastructure
  */
-
 import { handler as incomingCallHandler } from '../phone/handlers/incoming-call'
-import { handler as voicemailHandler } from '../phone/handlers/voicemail'
 import { handler as missedCallHandler } from '../phone/handlers/missed-call'
+import { handler as voicemailHandler } from '../phone/handlers/voicemail'
 
 export interface PhoneConfig {
   slug: string
@@ -25,9 +24,9 @@ export class Phone {
    * Lambda code for phone handlers
    */
   static LambdaCode: {
-    incomingCall: string;
-    voicemail: string;
-    missedCall: string;
+    incomingCall: string
+    voicemail: string
+    missedCall: string
   } = {
     incomingCall: incomingCallHandler,
     voicemail: voicemailHandler,
@@ -38,7 +37,13 @@ export class Phone {
    * Create Amazon Connect instance CloudFormation resource
    */
   static createConnectInstance(config: PhoneConfig): Record<string, any> {
-    const { slug, environment: _environment, instanceAlias, inboundCallsEnabled = true, outboundCallsEnabled = true } = config
+    const {
+      slug,
+      environment: _environment,
+      instanceAlias,
+      inboundCallsEnabled = true,
+      outboundCallsEnabled = true,
+    } = config
 
     return {
       [`${slug}ConnectInstance`]: {
@@ -83,7 +88,7 @@ export class Phone {
           InstanceArn: config.instanceArn,
           Name: config.name,
           TimeZone: config.timezone,
-          Config: config.schedule.map(s => ({
+          Config: config.schedule.map((s) => ({
             Day: s.day,
             StartTime: { Hours: s.startHour, Minutes: s.startMinute },
             EndTime: { Hours: s.endHour, Minutes: s.endMinute },
@@ -123,7 +128,16 @@ export class Phone {
     slug: string
     instanceArn: string
     name: string
-    type: 'CONTACT_FLOW' | 'CUSTOMER_QUEUE' | 'CUSTOMER_HOLD' | 'CUSTOMER_WHISPER' | 'AGENT_HOLD' | 'AGENT_WHISPER' | 'OUTBOUND_WHISPER' | 'AGENT_TRANSFER' | 'QUEUE_TRANSFER'
+    type:
+      | 'CONTACT_FLOW'
+      | 'CUSTOMER_QUEUE'
+      | 'CUSTOMER_HOLD'
+      | 'CUSTOMER_WHISPER'
+      | 'AGENT_HOLD'
+      | 'AGENT_WHISPER'
+      | 'OUTBOUND_WHISPER'
+      | 'AGENT_TRANSFER'
+      | 'QUEUE_TRANSFER'
     content: string
   }): Record<string, any> {
     return {
@@ -142,11 +156,7 @@ export class Phone {
   /**
    * Create basic IVR contact flow content
    */
-  static createBasicIvrFlow(config: {
-    greeting: string
-    queueArn: string
-    voicemailLambdaArn?: string
-  }): string {
+  static createBasicIvrFlow(config: { greeting: string; queueArn: string; voicemailLambdaArn?: string }): string {
     const flow = {
       Version: '2019-10-30',
       StartAction: 'greeting',

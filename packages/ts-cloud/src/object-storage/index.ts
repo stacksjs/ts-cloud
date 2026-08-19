@@ -22,7 +22,6 @@
  * const s3 = createObjectStorageClient()
  * ```
  */
-
 import type { S3ClientOptions } from '../aws/s3'
 import { S3Client } from '../aws/s3'
 
@@ -85,8 +84,7 @@ export function providerEndpoint(provider: ObjectStorageProvider, region: string
 function env(...names: string[]): string | undefined {
   for (const name of names) {
     const value = process.env[name]
-    if (value)
-      return value
+    if (value) return value
   }
   return undefined
 }
@@ -96,9 +94,11 @@ function env(...names: string[]): string | undefined {
  * env vars, falling back to the generic `S3_*` / AWS chain. Returns undefined
  * when nothing is set so the AWS provider can use its profile/instance-role chain.
  */
-function resolveCredentials(provider: ObjectStorageProvider, explicit?: ObjectStorageCredentials): ObjectStorageCredentials | undefined {
-  if (explicit?.accessKeyId && explicit.secretAccessKey)
-    return explicit
+function resolveCredentials(
+  provider: ObjectStorageProvider,
+  explicit?: ObjectStorageCredentials,
+): ObjectStorageCredentials | undefined {
+  if (explicit?.accessKeyId && explicit.secretAccessKey) return explicit
 
   let accessKeyId: string | undefined
   let secretAccessKey: string | undefined
@@ -106,12 +106,15 @@ function resolveCredentials(provider: ObjectStorageProvider, explicit?: ObjectSt
   if (provider === 'backblaze') {
     accessKeyId = env('B2_APPLICATION_KEY_ID', 'B2_KEY_ID', 'S3_ACCESS_KEY_ID', 'AWS_ACCESS_KEY_ID')
     secretAccessKey = env('B2_APPLICATION_KEY', 'B2_SECRET_KEY', 'S3_SECRET_ACCESS_KEY', 'AWS_SECRET_ACCESS_KEY')
-  }
-  else if (provider === 'hetzner') {
+  } else if (provider === 'hetzner') {
     accessKeyId = env('HETZNER_S3_ACCESS_KEY', 'HETZNER_ACCESS_KEY', 'S3_ACCESS_KEY_ID', 'AWS_ACCESS_KEY_ID')
-    secretAccessKey = env('HETZNER_S3_SECRET_KEY', 'HETZNER_SECRET_KEY', 'S3_SECRET_ACCESS_KEY', 'AWS_SECRET_ACCESS_KEY')
-  }
-  else {
+    secretAccessKey = env(
+      'HETZNER_S3_SECRET_KEY',
+      'HETZNER_SECRET_KEY',
+      'S3_SECRET_ACCESS_KEY',
+      'AWS_SECRET_ACCESS_KEY',
+    )
+  } else {
     // AWS: let S3Client's own profile/env/instance-role chain handle it.
     accessKeyId = env('S3_ACCESS_KEY_ID')
     secretAccessKey = env('S3_SECRET_ACCESS_KEY')
@@ -129,20 +132,22 @@ function resolveCredentials(provider: ObjectStorageProvider, explicit?: ObjectSt
  * client and the public URLs consistently.
  */
 export function resolveObjectStorage(config: ObjectStorageConfig = {}): ResolvedObjectStorage {
-  const provider = (config.provider
-    || (env('OBJECT_STORAGE_PROVIDER', 'STORAGE_PROVIDER') as ObjectStorageProvider | undefined)
-    || 'aws')
+  const provider =
+    config.provider ||
+    (env('OBJECT_STORAGE_PROVIDER', 'STORAGE_PROVIDER') as ObjectStorageProvider | undefined) ||
+    'aws'
 
-  const region = config.region
-    || (provider === 'backblaze' ? env('B2_REGION') : undefined)
-    || (provider === 'hetzner' ? env('HETZNER_S3_REGION', 'HETZNER_REGION') : undefined)
-    || env('S3_REGION', 'AWS_REGION', 'AWS_DEFAULT_REGION')
-    || DEFAULT_REGION[provider]
+  const region =
+    config.region ||
+    (provider === 'backblaze' ? env('B2_REGION') : undefined) ||
+    (provider === 'hetzner' ? env('HETZNER_S3_REGION', 'HETZNER_REGION') : undefined) ||
+    env('S3_REGION', 'AWS_REGION', 'AWS_DEFAULT_REGION') ||
+    DEFAULT_REGION[provider]
 
   const endpoint = config.endpoint || env('S3_ENDPOINT') || providerEndpoint(provider, region)
 
   // Virtual-hosted by default. Env opt-in for path-style (e.g. S3_FORCE_PATH_STYLE=true).
-  const forcePathStyle = config.forcePathStyle ?? (env('S3_FORCE_PATH_STYLE') === 'true')
+  const forcePathStyle = config.forcePathStyle ?? env('S3_FORCE_PATH_STYLE') === 'true'
 
   const credentials = resolveCredentials(provider, config.credentials)
 

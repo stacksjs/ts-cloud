@@ -106,8 +106,12 @@ describe('auth Module - User Pool', () => {
       },
     })
 
-    expect(userPool.Properties?.LambdaConfig?.PreSignUp).toBe('arn:aws:lambda:us-east-1:123456789012:function:pre-signup')
-    expect(userPool.Properties?.LambdaConfig?.PostConfirmation).toBe('arn:aws:lambda:us-east-1:123456789012:function:post-confirmation')
+    expect(userPool.Properties?.LambdaConfig?.PreSignUp).toBe(
+      'arn:aws:lambda:us-east-1:123456789012:function:pre-signup',
+    )
+    expect(userPool.Properties?.LambdaConfig?.PostConfirmation).toBe(
+      'arn:aws:lambda:us-east-1:123456789012:function:post-confirmation',
+    )
   })
 
   test('should create a user pool with advanced security mode', () => {
@@ -382,7 +386,9 @@ describe('auth Module - Identity Pool Roles', () => {
 
     expect(role.Type).toBe('AWS::IAM::Role')
     expect(role.Properties?.RoleName).toContain('cognito-authenticated-role')
-    expect(role.Properties?.AssumeRolePolicyDocument?.Statement?.[0].Principal?.Federated).toBe('cognito-identity.amazonaws.com')
+    expect(role.Properties?.AssumeRolePolicyDocument?.Statement?.[0].Principal?.Federated).toBe(
+      'cognito-identity.amazonaws.com',
+    )
     expect(logicalId).toBeTruthy()
   })
 
@@ -606,15 +612,12 @@ describe('auth Module - Integration with TemplateBuilder', () => {
       identityPoolLogicalId: identityPoolId,
     })
 
-    const { attachment, logicalId: attachmentId } = Auth.createIdentityPoolRoleAttachment(
-      identityPoolId,
-      {
-        slug,
-        environment,
-        authenticatedRole: `\${${authRoleId}.Arn}`,
-        unauthenticatedRole: `\${${unauthRoleId}.Arn}`,
-      },
-    )
+    const { attachment, logicalId: attachmentId } = Auth.createIdentityPoolRoleAttachment(identityPoolId, {
+      slug,
+      environment,
+      authenticatedRole: `\${${authRoleId}.Arn}`,
+      unauthenticatedRole: `\${${unauthRoleId}.Arn}`,
+    })
 
     builder.addResource(identityPoolId, identityPool)
     builder.addResource(authRoleId, authRole)

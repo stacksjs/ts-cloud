@@ -108,9 +108,7 @@ describe('Compute Module', () => {
         const { securityGroup } = Compute.createSecurityGroup({
           slug: 'my-app',
           environment: 'production',
-          egress: [
-            { protocol: '-1', cidr: '0.0.0.0/0' },
-          ],
+          egress: [{ protocol: '-1', cidr: '0.0.0.0/0' }],
         })
 
         expect(securityGroup.Properties.SecurityGroupEgress).toHaveLength(1)
@@ -127,9 +125,9 @@ describe('Compute Module', () => {
         expect(securityGroup.Properties.SecurityGroupEgress).toHaveLength(1)
 
         const ingress = securityGroup.Properties.SecurityGroupIngress!
-        expect(ingress.find(r => r.FromPort === 80)).toBeDefined() // HTTP
-        expect(ingress.find(r => r.FromPort === 443)).toBeDefined() // HTTPS
-        expect(ingress.find(r => r.FromPort === 22)).toBeDefined() // SSH
+        expect(ingress.find((r) => r.FromPort === 80)).toBeDefined() // HTTP
+        expect(ingress.find((r) => r.FromPort === 443)).toBeDefined() // HTTPS
+        expect(ingress.find((r) => r.FromPort === 22)).toBeDefined() // SSH
       })
     })
   })
@@ -249,7 +247,9 @@ describe('Compute Module', () => {
 
         expect(listener.Properties.Protocol).toBe('HTTPS')
         expect(listener.Properties.Certificates).toHaveLength(1)
-        expect(listener.Properties.Certificates?.[0].CertificateArn).toBe('arn:aws:acm:us-east-1:123456789:certificate/abc')
+        expect(listener.Properties.Certificates?.[0].CertificateArn).toBe(
+          'arn:aws:acm:us-east-1:123456789:certificate/abc',
+        )
         expect(listener.Properties.SslPolicy).toBeDefined()
       })
     })
@@ -326,8 +326,8 @@ describe('Compute Module', () => {
 
         const container = result.taskDefinition.Properties.ContainerDefinitions[0]
         expect(container.Environment).toHaveLength(2)
-        expect(container.Environment?.find(e => e.Name === 'NODE_ENV')?.Value).toBe('production')
-        expect(container.Environment?.find(e => e.Name === 'API_KEY')?.Value).toBe('secret')
+        expect(container.Environment?.find((e) => e.Name === 'NODE_ENV')?.Value).toBe('production')
+        expect(container.Environment?.find((e) => e.Name === 'API_KEY')?.Value).toBe('secret')
       })
 
       it('should include secrets', () => {
@@ -337,9 +337,7 @@ describe('Compute Module', () => {
           image: 'my-image',
           subnets: ['subnet-123'],
           securityGroups: ['sg-123'],
-          secrets: [
-            { name: 'DB_PASSWORD', valueFrom: 'arn:aws:secretsmanager:us-east-1:123:secret:db-pass' },
-          ],
+          secrets: [{ name: 'DB_PASSWORD', valueFrom: 'arn:aws:secretsmanager:us-east-1:123:secret:db-pass' }],
         })
 
         const container = result.taskDefinition.Properties.ContainerDefinitions[0]
@@ -396,7 +394,9 @@ describe('Compute Module', () => {
         })
 
         expect(result.service.Properties.LoadBalancers).toHaveLength(1)
-        expect(result.service.Properties.LoadBalancers?.[0].TargetGroupArn).toBe('arn:aws:elasticloadbalancing:us-east-1:123:targetgroup/my-tg')
+        expect(result.service.Properties.LoadBalancers?.[0].TargetGroupArn).toBe(
+          'arn:aws:elasticloadbalancing:us-east-1:123:targetgroup/my-tg',
+        )
       })
     })
   })
@@ -422,7 +422,9 @@ describe('Compute Module', () => {
         expect(logicalId).toBeDefined()
 
         expect(role.Type).toBe('AWS::IAM::Role')
-        expect(role.Properties.ManagedPolicyArns).toContain('arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole')
+        expect(role.Properties.ManagedPolicyArns).toContain(
+          'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
+        )
         expect(roleLogicalId).toBeDefined()
       })
 
@@ -478,7 +480,9 @@ describe('Compute Module', () => {
         expect(lambdaFunction.Properties.VpcConfig?.SubnetIds).toEqual(['subnet-123', 'subnet-456'])
 
         // Should include VPC execution role
-        expect(role.Properties.ManagedPolicyArns).toContain('arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole')
+        expect(role.Properties.ManagedPolicyArns).toContain(
+          'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole',
+        )
       })
     })
   })
@@ -838,7 +842,9 @@ describe('Compute Module', () => {
         expect(scalingPolicy.Properties.AutoScalingGroupName).toEqual({ Ref: 'MyASG' })
         expect(scalingPolicy.Properties.TargetTrackingConfiguration).toBeDefined()
         expect(scalingPolicy.Properties.TargetTrackingConfiguration?.TargetValue).toBe(70)
-        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ASGAverageCPUUtilization')
+        expect(
+          scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType,
+        ).toBe('ASGAverageCPUUtilization')
         expect(logicalId).toBe('TestAppProductionScalingPolicy')
       })
 
@@ -861,7 +867,9 @@ describe('Compute Module', () => {
           predefinedMetricType: 'ALBRequestCountPerTarget',
         })
 
-        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ALBRequestCountPerTarget')
+        expect(
+          scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType,
+        ).toBe('ALBRequestCountPerTarget')
       })
     })
 
@@ -906,14 +914,11 @@ describe('Compute Module', () => {
       })
 
       it('should create CPU scaling policy', () => {
-        const { scalingPolicy } = Compute.AutoScaling.cpuScaling(
-          'test-app',
-          'production',
-          { Ref: 'MyASG' },
-          75,
-        )
+        const { scalingPolicy } = Compute.AutoScaling.cpuScaling('test-app', 'production', { Ref: 'MyASG' }, 75)
 
-        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ASGAverageCPUUtilization')
+        expect(
+          scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType,
+        ).toBe('ASGAverageCPUUtilization')
         expect(scalingPolicy.Properties.TargetTrackingConfiguration?.TargetValue).toBe(75)
       })
 
@@ -925,7 +930,9 @@ describe('Compute Module', () => {
           500,
         )
 
-        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ALBRequestCountPerTarget')
+        expect(
+          scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType,
+        ).toBe('ALBRequestCountPerTarget')
         expect(scalingPolicy.Properties.TargetTrackingConfiguration?.TargetValue).toBe(500)
       })
     })

@@ -2,10 +2,10 @@
  * Caching utilities for performance optimization
  * Caches CloudFormation templates, credentials, and other data
  */
-
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { statePath } from '../state-dir'
 
 export interface CacheOptions {
   ttl?: number // Time to live in milliseconds
@@ -99,7 +99,7 @@ export class Cache<T = any> {
   /**
    * Get cache stats
    */
-  stats(): { size: number, ttl: number, maxSize: number } {
+  stats(): { size: number; ttl: number; maxSize: number } {
     return {
       size: this.cache.size,
       ttl: this.ttl,
@@ -118,11 +118,19 @@ export class FileCache<T = any> {
   constructor(cacheDir: string, options: CacheOptions = {}) {
     this.cacheDir = cacheDir
     this.ttl = options.ttl || 24 * 60 * 60 * 1000 // Default: 24 hours
+  }
 
-    // Create cache directory if it doesn't exist
-    if (!existsSync(cacheDir)) {
-      mkdirSync(cacheDir, { recursive: true })
-    }
+  /**
+   * Create the cache directory, on the first write rather than on construction.
+   *
+   * Constructing a cache must not touch the filesystem: these objects get built
+   * eagerly at import time, before anything has had a chance to configure where
+   * state lives, and a directory created then lands in the wrong place and
+   * sticks around empty.
+   */
+  private ensureCacheDir(): void {
+    if (!existsSync(this.cacheDir))
+      mkdirSync(this.cacheDir, { recursive: true })
   }
 
   /**
@@ -154,8 +162,7 @@ export class FileCache<T = any> {
       }
 
       return entry.value
-    }
-    catch {
+    } catch {
       // If cache file is corrupted, delete it
       unlinkSync(cachePath)
       return undefined
@@ -166,6 +173,7 @@ export class FileCache<T = any> {
    * Set value in cache
    */
   set(key: string, value: T, hash?: string): void {
+    this.ensureCacheDir()
     const cachePath = this.getCachePath(key)
 
     const entry: CacheEntry<T> = {
@@ -188,6 +196,7 @@ export class FileCache<T = any> {
    * Clear all cache files
    */
   clear(): void {
+    if (!existsSync(this.cacheDir)) return
     const files = readdirSync(this.cacheDir)
     for (const file of files) {
       unlinkSync(join(this.cacheDir, file))
@@ -198,6 +207,7 @@ export class FileCache<T = any> {
    * Remove expired entries
    */
   prune(): void {
+    if (!existsSync(this.cacheDir)) return
     const files = readdirSync(this.cacheDir)
     const now = Date.now()
 
@@ -211,8 +221,7 @@ export class FileCache<T = any> {
         if (now - entry.timestamp > this.ttl) {
           unlinkSync(filePath)
         }
-      }
-      catch {
+      } catch {
         // If file is corrupted, delete it
         unlinkSync(filePath)
       }
@@ -226,7 +235,7 @@ export class FileCache<T = any> {
 export class TemplateCache {
   private cache: FileCache<string>
 
-  constructor(cacheDir: string = '.ts-cloud/cache/templates') {
+  constructor(cacheDir: string = statePath('cache', 'templates')) {
     this.cache = new FileCache<string>(cacheDir, {
       ttl: 24 * 60 * 60 * 1000, // 24 hours
     })
@@ -286,6 +295,15 @@ export class TemplateCache {
 }
 
 /**
- * Global template cache instance
+ * The shared template cache.
+ *
+ * A function rather than an eagerly-constructed export: the cache directory
+ * comes from the configured state directory, and building the instance at
+ * import time would freeze it before `cloud.config.ts` (or
+ * `TS_CLOUD_STATE_DIR`) has been read.
  */
-export const templateCache: TemplateCache = new TemplateCache()
+let sharedTemplateCache: TemplateCache | null = null
+export function templateCache(): TemplateCache {
+  if (!sharedTemplateCache) sharedTemplateCache = new TemplateCache()
+  return sharedTemplateCache
+}

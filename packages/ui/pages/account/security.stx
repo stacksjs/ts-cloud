@@ -1,0 +1,249 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const project = __d?.project ?? { name: 'Project' }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud - Sign-in & security' })
+  <style>
+    .security-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .7fr); gap: 18px; align-items: start; }
+    .security-stack { display: grid; gap: 18px; }
+    .security-summary { display: grid; gap: 10px; }
+    .security-summary .kv { padding: 8px 0; }
+    .session-list { display: grid; gap: 10px; }
+    .session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 13px; border: 1px solid var(--panel-br); border-radius: 11px; }
+    .session-copy { display: grid; gap: 4px; min-width: 0; }
+    .session-copy strong, .session-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-copy span { color: var(--txt3); font-size: 11px; }
+    .security-form { display: grid; gap: 13px; }
+    .security-form label { display: grid; gap: 6px; color: var(--txt3); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    .security-form input { width: 100%; }
+    .security-status { min-height: 20px; color: var(--txt2); font-size: 12px; }
+    .mfa-secret { display: block; margin: 9px 0; padding: 10px; overflow-wrap: anywhere; border: 1px solid var(--panel-br); border-radius: 9px; background: rgba(255,255,255,.025); color: var(--accent); font: 700 12px var(--mono); }
+    .recovery-codes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .recovery-codes code { padding: 7px; border: 1px solid var(--panel-br); border-radius: 7px; text-align: center; }
+    .hidden { display: none !important; }
+    @media (max-width: 900px) { .security-layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  @include('../partials/nav', { active: 'account-security', name: project.name, env: 'production' })
+  <main class="wrap" id="main-content">
+    <div class="crumbs"><a href="/">Account</a> <span class="sep">/</span> Sign-in & security</div>
+    <header class="page">
+      <div><h1>Sign-in & security</h1><p>Manage your password and review every browser session with access to this account.</p></div>
+    </header>
+
+    <div class="security-layout">
+      <div class="security-stack">
+        <section class="panel" aria-labelledby="sessions-title">
+          <div class="section-heading"><div><h2 id="sessions-title">Active sessions</h2><p class="note">Last-used times and device details help you spot unfamiliar access.</p></div><button class="btn ghost sm" id="revoke-others" type="button">Sign out other sessions</button></div>
+          <div class="session-list" id="session-list" aria-live="polite"><div class="compact empty"><strong>Loading sessions…</strong></div></div>
+        </section>
+      </div>
+
+      <div class="security-stack">
+        <section class="panel security-summary" aria-labelledby="identity-title">
+          <h2 id="identity-title">Identity</h2>
+          <div class="kv"><span>Username</span><b id="identity-username">—</b></div>
+          <div class="kv"><span>Email</span><b id="identity-email">Not configured</b></div>
+          <div class="kv"><span>Last sign-in</span><b id="identity-login">—</b></div>
+          <div class="kv"><span>Multi-factor authentication</span><b id="identity-mfa">Loading…</b></div>
+          <details>
+            <summary>Confirm identity for sensitive changes</summary>
+            <form class="security-form" id="step-up-form">
+              <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+              <label>Authenticator or recovery code (when enabled)<input name="code" autocomplete="one-time-code"></label>
+              <button class="btn ghost" type="submit">Confirm identity</button>
+              <div class="security-status" id="step-up-status" role="status"></div>
+            </form>
+          </details>
+        </section>
+
+        <section class="panel" aria-labelledby="mfa-title">
+          <h2 id="mfa-title">Authenticator app</h2>
+          <p class="note" id="mfa-copy">Add a time-based code as a second sign-in factor.</p>
+          <form class="security-form" id="mfa-enroll-form">
+            <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+            <button class="btn" type="submit">Set up authenticator</button>
+          </form>
+          <form class="hidden security-form" id="mfa-verify-form">
+            <p class="note">Add this secret or setup URI to your authenticator app, then enter its six-digit code.</p>
+            <code class="mfa-secret" id="mfa-secret"></code>
+            <details><summary>Show full setup URI</summary><code class="mfa-secret" id="mfa-uri"></code></details>
+            <label>Six-digit code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required></label>
+            <button class="btn" type="submit">Verify and enable</button>
+          </form>
+          <form class="hidden security-form" id="mfa-disable-form">
+            <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+            <label>Authenticator or recovery code<input name="code" autocomplete="one-time-code" required></label>
+            <button class="btn danger" type="submit">Disable MFA</button>
+          </form>
+          <div class="hidden recovery-codes" id="recovery-codes" aria-label="Recovery codes"></div>
+          <div class="security-status" id="mfa-status" role="status"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="password-title">
+          <h2 id="password-title">Change password</h2>
+          <p class="note">Changing your password rotates this session and immediately signs out every other session.</p>
+          <form class="security-form" id="password-form">
+            <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+            <label>New password<input name="password" type="password" autocomplete="new-password" minlength="12" required></label>
+            <label>Confirm new password<input name="confirmation" type="password" autocomplete="new-password" minlength="12" required></label>
+            <button class="btn" type="submit">Change password</button>
+            <div class="security-status" id="password-status" role="status"></div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  (() => {
+    const list = document.querySelector('#session-list')
+    const status = document.querySelector('#password-status')
+    const mfaStatus = document.querySelector('#mfa-status')
+    let currentSessionId = ''
+
+    const when = value => value ? new Date(value).toLocaleString() : 'Never'
+    const request = async (path, options) => {
+      const response = await fetch(path, options)
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'The request failed.')
+      return result
+    }
+    const renderSessions = sessions => {
+      list.replaceChildren()
+      const active = sessions.filter(session => session.state === 'active')
+      if (!active.length) {
+        list.innerHTML = '<div class="compact empty"><strong>No active sessions</strong></div>'
+        return
+      }
+      for (const session of active) {
+        const row = document.createElement('div')
+        row.className = 'session-row'
+        const copy = document.createElement('div')
+        copy.className = 'session-copy'
+        const title = document.createElement('strong')
+        title.textContent = `${session.userAgent || 'Unknown browser'}${session.id === currentSessionId ? ' · This session' : ''}`
+        const meta = document.createElement('span')
+        meta.textContent = `Last used ${when(session.lastUsedAt)} · Network ${session.networkHint || 'unknown'} · ${session.authMethod}`
+        copy.append(title, meta)
+        const button = document.createElement('button')
+        button.className = 'btn ghost sm'
+        button.type = 'button'
+        button.textContent = session.id === currentSessionId ? 'Sign out' : 'Revoke'
+        button.addEventListener('click', async () => {
+          button.disabled = true
+          const result = await request('/api/auth/sessions', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session.id }) }).catch(error => ({ error }))
+          if (result.error) { button.disabled = false; button.textContent = result.error.message; return }
+          if (result.signedOut) { location.assign('/login'); return }
+          await load()
+        })
+        row.append(copy, button)
+        list.append(row)
+      }
+    }
+    const load = async () => {
+      const data = await request('/api/auth/security')
+      currentSessionId = data.currentSessionId || ''
+      document.querySelector('#identity-username').textContent = data.identity?.username || '—'
+      document.querySelector('#identity-email').textContent = data.identity?.email ? `${data.identity.email}${data.identity.emailVerifiedAt ? ' · Verified' : ' · Unverified'}` : 'Not configured'
+      document.querySelector('#identity-login').textContent = when(data.identity?.lastLoginAt)
+      const mfaActive = data.mfa?.factor?.state === 'active'
+      document.querySelector('#identity-mfa').textContent = mfaActive ? `Enabled · ${data.mfa.recoveryCodesRemaining} recovery codes left` : 'Not enabled'
+      document.querySelector('#mfa-enroll-form').classList.toggle('hidden', mfaActive)
+      document.querySelector('#mfa-disable-form').classList.toggle('hidden', !mfaActive)
+      renderSessions(data.sessions || [])
+    }
+    document.querySelector('#revoke-others').addEventListener('click', async event => {
+      event.currentTarget.disabled = true
+      await request('/api/auth/sessions/revoke-others', { method: 'POST' }).catch(() => undefined)
+      event.currentTarget.disabled = false
+      await load()
+    })
+    document.querySelector('#password-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      if (data.get('password') !== data.get('confirmation')) { status.textContent = 'The new passwords do not match.'; return }
+      status.textContent = 'Changing password…'
+      try {
+        const result = await request('/api/auth/password/change', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ currentPassword: data.get('currentPassword'), password: data.get('password') }) })
+        status.textContent = result.message
+        form.reset()
+        await load()
+      }
+      catch (error) { status.textContent = error.message }
+    })
+    document.querySelector('#step-up-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      const stepStatus = document.querySelector('#step-up-status')
+      try {
+        await request('/api/auth/step-up', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: data.get('password'), code: data.get('code') }) })
+        form.reset()
+        stepStatus.textContent = 'Identity confirmed for the next 10 minutes.'
+      }
+      catch (error) { stepStatus.textContent = error.message }
+    })
+    document.querySelector('#mfa-enroll-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      mfaStatus.textContent = 'Starting enrollment…'
+      try {
+        const result = await request('/api/auth/mfa/enroll', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: data.get('password') }) })
+        document.querySelector('#mfa-secret').textContent = result.secret
+        document.querySelector('#mfa-uri').textContent = result.uri
+        form.classList.add('hidden')
+        document.querySelector('#mfa-verify-form').classList.remove('hidden')
+        mfaStatus.textContent = 'Enter the code from your authenticator app.'
+      }
+      catch (error) { mfaStatus.textContent = error.message }
+    })
+    document.querySelector('#mfa-verify-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      try {
+        const result = await request('/api/auth/mfa/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: data.get('code') }) })
+        const recovery = document.querySelector('#recovery-codes')
+        recovery.replaceChildren()
+        for (const code of result.recoveryCodes) { const item = document.createElement('code'); item.textContent = code; recovery.append(item) }
+        recovery.classList.remove('hidden')
+        form.classList.add('hidden')
+        mfaStatus.textContent = 'MFA enabled. Save these recovery codes now; they are shown once.'
+        await load()
+      }
+      catch (error) { mfaStatus.textContent = error.message }
+    })
+    document.querySelector('#mfa-disable-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      try {
+        await request('/api/auth/mfa', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: data.get('password'), code: data.get('code') }) })
+        form.reset()
+        document.querySelector('#recovery-codes').classList.add('hidden')
+        mfaStatus.textContent = 'MFA disabled and other sessions signed out.'
+        await load()
+      }
+      catch (error) { mfaStatus.textContent = error.message }
+    })
+    load().catch(error => {
+      list.replaceChildren()
+      const empty = document.createElement('div')
+      empty.className = 'compact empty'
+      const message = document.createElement('strong')
+      message.textContent = error.message
+      empty.append(message)
+      list.append(empty)
+    })
+  })()
+  </script>
+</body>
+</html>

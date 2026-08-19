@@ -46,19 +46,14 @@ export class CrossRegionReferenceManager {
 
     if (!regionExports) return undefined
 
-    const export_ = regionExports.find(e => e.exportName === exportName)
+    const export_ = regionExports.find((e) => e.exportName === exportName)
     return export_?.value
   }
 
   /**
    * Create cross-region reference
    */
-  createReference(
-    sourceRegion: string,
-    targetRegion: string,
-    resourceType: string,
-    resourceId: string,
-  ): string {
+  createReference(sourceRegion: string, targetRegion: string, resourceType: string, resourceId: string): string {
     // In real implementation, this would:
     // 1. Store reference in SSM Parameter Store or Systems Manager
     // 2. Enable cross-region access
@@ -80,18 +75,13 @@ export class CrossRegionReferenceManager {
   /**
    * Resolve cross-region reference
    */
-  async resolveReference(
-    targetRegion: string,
-    parameterName: string,
-  ): Promise<string> {
+  async resolveReference(targetRegion: string, parameterName: string): Promise<string> {
     // In real implementation, this would:
     // 1. Fetch parameter from SSM Parameter Store
     // 2. Handle cross-region access
     // 3. Return actual value
 
-    const reference = this.references.find(
-      ref => ref.targetRegion === targetRegion && ref.value === parameterName,
-    )
+    const reference = this.references.find((ref) => ref.targetRegion === targetRegion && ref.value === parameterName)
 
     if (!reference) {
       throw new Error(`Reference not found: ${parameterName}`)
@@ -105,9 +95,7 @@ export class CrossRegionReferenceManager {
    * Get all references for a region
    */
   getReferencesForRegion(region: string): CrossRegionReference[] {
-    return this.references.filter(
-      ref => ref.sourceRegion === region || ref.targetRegion === region,
-    )
+    return this.references.filter((ref) => ref.sourceRegion === region || ref.targetRegion === region)
   }
 
   /**
@@ -154,7 +142,7 @@ export class GlobalResourceManager {
    * Get global resources by type
    */
   getByType(type: GlobalResource['type']): GlobalResource[] {
-    return Array.from(this.resources.values()).filter(r => r.type === type)
+    return Array.from(this.resources.values()).filter((r) => r.type === type)
   }
 
   /**
@@ -228,7 +216,7 @@ export class RegionPairManager {
    * Get paired region
    */
   getPairedRegion(region: string): string | undefined {
-    const pair = this.pairs.find(p => p.primary === region || p.secondary === region)
+    const pair = this.pairs.find((p) => p.primary === region || p.secondary === region)
 
     if (!pair) return undefined
 
@@ -246,14 +234,14 @@ export class RegionPairManager {
    * Get pairs with replication enabled
    */
   getReplicatedPairs(): RegionPair[] {
-    return this.pairs.filter(p => p.replicationConfig)
+    return this.pairs.filter((p) => p.replicationConfig)
   }
 
   /**
    * Get pairs with failover enabled
    */
   getFailoverPairs(): RegionPair[] {
-    return this.pairs.filter(p => p.failoverConfig?.automatic)
+    return this.pairs.filter((p) => p.failoverConfig?.automatic)
   }
 
   /**
@@ -261,9 +249,7 @@ export class RegionPairManager {
    */
   arePaired(region1: string, region2: string): boolean {
     return this.pairs.some(
-      p =>
-        (p.primary === region1 && p.secondary === region2)
-        || (p.primary === region2 && p.secondary === region1),
+      (p) => (p.primary === region1 && p.secondary === region2) || (p.primary === region2 && p.secondary === region1),
     )
   }
 
@@ -303,18 +289,14 @@ export class StackDependencyManager {
    * Get dependencies for a stack
    */
   getDependencies(stackName: string, region: string): StackDependency[] {
-    return this.dependencies.filter(
-      d => d.dependentStack === stackName && d.dependentRegion === region,
-    )
+    return this.dependencies.filter((d) => d.dependentStack === stackName && d.dependentRegion === region)
   }
 
   /**
    * Get dependents of a stack
    */
   getDependents(stackName: string, region: string): StackDependency[] {
-    return this.dependencies.filter(
-      d => d.dependsOnStack === stackName && d.dependsOnRegion === region,
-    )
+    return this.dependencies.filter((d) => d.dependsOnStack === stackName && d.dependsOnRegion === region)
   }
 
   /**

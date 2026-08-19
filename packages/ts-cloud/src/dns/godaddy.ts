@@ -2,16 +2,7 @@
  * GoDaddy DNS Provider
  * API documentation: https://developer.godaddy.com/doc/endpoint/domains
  */
-
-import type {
-  CreateRecordResult,
-  DeleteRecordResult,
-  DnsProvider,
-  DnsRecord,
-  DnsRecordResult,
-  DnsRecordType,
-  ListRecordsResult,
-} from './types'
+import type { CreateRecordResult, DeleteRecordResult, DnsProvider, DnsRecord, DnsRecordResult, DnsRecordType, ListRecordsResult } from './types'
 
 const GODADDY_API_URL = 'https://api.godaddy.com'
 const GODADDY_OTE_API_URL = 'https://api.ote-godaddy.com' // Test environment
@@ -30,11 +21,7 @@ export class GoDaddyProvider implements DnsProvider {
   private apiSecret: string
   private baseUrl: string
 
-  constructor(
-    apiKey: string,
-    apiSecret: string,
-    environment: 'production' | 'ote' = 'production',
-  ) {
+  constructor(apiKey: string, apiSecret: string, environment: 'production' | 'ote' = 'production') {
     this.apiKey = apiKey
     this.apiSecret = apiSecret
     this.baseUrl = environment === 'ote' ? GODADDY_OTE_API_URL : GODADDY_API_URL
@@ -43,17 +30,13 @@ export class GoDaddyProvider implements DnsProvider {
   /**
    * Make an authenticated API request to GoDaddy
    */
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    body?: any,
-  ): Promise<T> {
+  private async request<T>(method: string, endpoint: string, body?: any): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
 
     const headers: Record<string, string> = {
-      'Authorization': `sso-key ${this.apiKey}:${this.apiSecret}`,
+      Authorization: `sso-key ${this.apiKey}:${this.apiSecret}`,
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
     }
 
     const options: RequestInit = {
@@ -84,15 +67,14 @@ export class GoDaddyProvider implements DnsProvider {
     // Handle errors
     let errorMessage = `GoDaddy API error: ${response.status} ${response.statusText}`
     try {
-      const errorData = await response.json() as Record<string, any>
+      const errorData = (await response.json()) as Record<string, any>
       if (errorData.message) {
         errorMessage = `GoDaddy API error: ${errorData.message}`
       }
       if (errorData.fields) {
         errorMessage += ` - Fields: ${JSON.stringify(errorData.fields)}`
       }
-    }
-    catch {
+    } catch {
       // Ignore JSON parse errors for error response
     }
 
@@ -164,8 +146,7 @@ export class GoDaddyProvider implements DnsProvider {
     // Convert @ to domain name and subdomain to full name
     if (name === '@') {
       name = rootDomain
-    }
-    else if (!name.endsWith(rootDomain)) {
+    } else if (!name.endsWith(rootDomain)) {
       name = `${name}.${rootDomain}`
     }
 
@@ -184,18 +165,13 @@ export class GoDaddyProvider implements DnsProvider {
       const gdRecord = this.toGoDaddyRecord(record, domain)
 
       // GoDaddy's PATCH endpoint adds records
-      await this.request(
-        'PATCH',
-        `/v1/domains/${rootDomain}/records`,
-        [gdRecord],
-      )
+      await this.request('PATCH', `/v1/domains/${rootDomain}/records`, [gdRecord])
 
       return {
         success: true,
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -209,18 +185,13 @@ export class GoDaddyProvider implements DnsProvider {
       const gdRecord = this.toGoDaddyRecord(record, domain)
 
       // GoDaddy's PUT replaces all records of a specific type/name
-      await this.request(
-        'PUT',
-        `/v1/domains/${rootDomain}/records/${record.type}/${gdRecord.name}`,
-        [gdRecord],
-      )
+      await this.request('PUT', `/v1/domains/${rootDomain}/records/${record.type}/${gdRecord.name}`, [gdRecord])
 
       return {
         success: true,
         message: 'Record upserted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       // If PUT fails (record doesn't exist), try PATCH
       return this.createRecord(domain, record)
     }
@@ -240,9 +211,7 @@ export class GoDaddyProvider implements DnsProvider {
       )
 
       // Filter out the record to delete
-      const remainingRecords = existingRecords.filter(
-        r => r.data !== record.content,
-      )
+      const remainingRecords = existingRecords.filter((r) => r.data !== record.content)
 
       if (remainingRecords.length === existingRecords.length) {
         // Record not found
@@ -256,30 +225,20 @@ export class GoDaddyProvider implements DnsProvider {
         // GoDaddy doesn't allow empty record sets for some types
         // Use DELETE endpoint if available, otherwise PUT an empty array
         try {
-          await this.request(
-            'DELETE',
-            `/v1/domains/${rootDomain}/records/${record.type}/${subdomain}`,
-          )
-        }
-        catch {
+          await this.request('DELETE', `/v1/domains/${rootDomain}/records/${record.type}/${subdomain}`)
+        } catch {
           // Some record types can't be fully deleted, that's OK
         }
-      }
-      else {
+      } else {
         // Replace with remaining records
-        await this.request(
-          'PUT',
-          `/v1/domains/${rootDomain}/records/${record.type}/${subdomain}`,
-          remainingRecords,
-        )
+        await this.request('PUT', `/v1/domains/${rootDomain}/records/${record.type}/${subdomain}`, remainingRecords)
       }
 
       return {
         success: true,
         message: 'Record deleted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -300,10 +259,9 @@ export class GoDaddyProvider implements DnsProvider {
 
       return {
         success: true,
-        records: records.map(r => this.fromGoDaddyRecord(r, domain)),
+        records: records.map((r) => this.fromGoDaddyRecord(r, domain)),
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         records: [],
@@ -318,8 +276,7 @@ export class GoDaddyProvider implements DnsProvider {
       // Try to get domain details
       await this.request('GET', `/v1/domains/${rootDomain}`)
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -330,9 +287,8 @@ export class GoDaddyProvider implements DnsProvider {
   async listDomains(): Promise<string[]> {
     try {
       const response = await this.request<Array<{ domain: string }>>('GET', '/v1/domains')
-      return response.map(d => d.domain)
-    }
-    catch {
+      return response.map((d) => d.domain)
+    } catch {
       return []
     }
   }
@@ -356,8 +312,7 @@ export class GoDaddyProvider implements DnsProvider {
         nameServers: details.nameServers,
         expires: details.expires,
       }
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -371,7 +326,7 @@ export class GoDaddyProvider implements DnsProvider {
       await this.request(
         'PUT',
         `/v1/domains/${rootDomain}/records/NS`,
-        nameservers.map(ns => ({
+        nameservers.map((ns) => ({
           type: 'NS',
           name: '@',
           data: ns,
@@ -379,8 +334,7 @@ export class GoDaddyProvider implements DnsProvider {
         })),
       )
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -394,18 +348,14 @@ export class GoDaddyProvider implements DnsProvider {
     currency?: string
   }> {
     try {
-      const result = await this.request<any>(
-        'GET',
-        `/v1/domains/available?domain=${encodeURIComponent(domain)}`,
-      )
+      const result = await this.request<any>('GET', `/v1/domains/available?domain=${encodeURIComponent(domain)}`)
 
       return {
         available: result.available,
         price: result.price,
         currency: result.currency,
       }
-    }
-    catch {
+    } catch {
       return { available: false }
     }
   }

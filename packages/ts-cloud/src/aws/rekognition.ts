@@ -3,7 +3,6 @@
  * Image and video analysis - face detection, object detection, celebrity recognition
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -76,7 +75,24 @@ export interface FaceDetail {
 
 export interface DetectFacesCommandInput {
   Image: Image
-  Attributes?: ('DEFAULT' | 'ALL' | 'AGE_RANGE' | 'BEARD' | 'EMOTIONS' | 'EYE_DIRECTION' | 'EYEGLASSES' | 'EYES_OPEN' | 'FACE_OCCLUDED' | 'GENDER' | 'MOUTH_OPEN' | 'MUSTACHE' | 'POSE' | 'QUALITY' | 'SMILE' | 'SUNGLASSES')[]
+  Attributes?: (
+    | 'DEFAULT'
+    | 'ALL'
+    | 'AGE_RANGE'
+    | 'BEARD'
+    | 'EMOTIONS'
+    | 'EYE_DIRECTION'
+    | 'EYEGLASSES'
+    | 'EYES_OPEN'
+    | 'FACE_OCCLUDED'
+    | 'GENDER'
+    | 'MOUTH_OPEN'
+    | 'MUSTACHE'
+    | 'POSE'
+    | 'QUALITY'
+    | 'SMILE'
+    | 'SUNGLASSES'
+  )[]
 }
 
 export interface DetectFacesCommandOutput {
@@ -348,7 +364,15 @@ export interface IndexFacesCommandOutput {
   OrientationCorrection?: string
   FaceModelVersion?: string
   UnindexedFaces?: Array<{
-    Reasons?: ('EXCEEDS_MAX_FACES' | 'EXTREME_POSE' | 'LOW_BRIGHTNESS' | 'LOW_SHARPNESS' | 'LOW_CONFIDENCE' | 'SMALL_BOUNDING_BOX' | 'LOW_FACE_QUALITY')[]
+    Reasons?: (
+      | 'EXCEEDS_MAX_FACES'
+      | 'EXTREME_POSE'
+      | 'LOW_BRIGHTNESS'
+      | 'LOW_SHARPNESS'
+      | 'LOW_CONFIDENCE'
+      | 'SMALL_BOUNDING_BOX'
+      | 'LOW_FACE_QUALITY'
+    )[]
     FaceDetail?: FaceDetail
   }>
 }
@@ -614,7 +638,9 @@ export class RekognitionClient {
   /**
    * Detect moderation labels (unsafe content)
    */
-  async detectModerationLabels(params: DetectModerationLabelsCommandInput): Promise<DetectModerationLabelsCommandOutput> {
+  async detectModerationLabels(
+    params: DetectModerationLabelsCommandInput,
+  ): Promise<DetectModerationLabelsCommandOutput> {
     return this.request('DetectModerationLabels', params as unknown as Record<string, unknown>)
   }
 
@@ -713,7 +739,9 @@ export class RekognitionClient {
   /**
    * Start async content moderation on video
    */
-  async startContentModeration(params: StartContentModerationCommandInput): Promise<StartContentModerationCommandOutput> {
+  async startContentModeration(
+    params: StartContentModerationCommandInput,
+  ): Promise<StartContentModerationCommandOutput> {
     return this.request('StartContentModeration', params as unknown as Record<string, unknown>)
   }
 
@@ -731,7 +759,11 @@ export class RekognitionClient {
   /**
    * Analyze an image from S3 and get all labels
    */
-  async analyzeS3Image(bucket: string, key: string, options?: { maxLabels?: number; minConfidence?: number }): Promise<Label[]> {
+  async analyzeS3Image(
+    bucket: string,
+    key: string,
+    options?: { maxLabels?: number; minConfidence?: number },
+  ): Promise<Label[]> {
     const result = await this.detectLabels({
       Image: { S3Object: { Bucket: bucket, Name: key } },
       MaxLabels: options?.maxLabels,
@@ -743,7 +775,10 @@ export class RekognitionClient {
   /**
    * Analyze image bytes and get all labels
    */
-  async analyzeImageBytes(bytes: Uint8Array, options?: { maxLabels?: number; minConfidence?: number }): Promise<Label[]> {
+  async analyzeImageBytes(
+    bytes: Uint8Array,
+    options?: { maxLabels?: number; minConfidence?: number },
+  ): Promise<Label[]> {
     const result = await this.detectLabels({
       Image: { Bytes: bytes },
       MaxLabels: options?.maxLabels,
@@ -779,7 +814,7 @@ export class RekognitionClient {
    */
   async extractText(image: Image): Promise<string[]> {
     const result = await this.detectText({ Image: image })
-    return result.TextDetections?.filter(t => t.Type === 'LINE').map(t => t.DetectedText || '') || []
+    return result.TextDetections?.filter((t) => t.Type === 'LINE').map((t) => t.DetectedText || '') || []
   }
 
   /**
@@ -794,8 +829,7 @@ export class RekognitionClient {
         MaxFaces: 1,
       })
       return result.FaceMatches?.[0] || null
-    }
-catch (error: unknown) {
+    } catch (error: unknown) {
       // Face not found
       if (error instanceof Error && error.message.includes('InvalidParameterException')) {
         return null
@@ -819,17 +853,13 @@ export async function detectLabelsFromS3(
 ): Promise<string[]> {
   const client = new RekognitionClient(options?.region || 'us-east-1')
   const labels = await client.analyzeS3Image(bucket, key, { maxLabels: options?.maxLabels })
-  return labels.map(l => l.Name || '').filter(Boolean)
+  return labels.map((l) => l.Name || '').filter(Boolean)
 }
 
 /**
  * Quick face count from S3 image
  */
-export async function countFacesInS3Image(
-  bucket: string,
-  key: string,
-  region?: string,
-): Promise<number> {
+export async function countFacesInS3Image(bucket: string, key: string, region?: string): Promise<number> {
   const client = new RekognitionClient(region || 'us-east-1')
   return client.countFaces({ S3Object: { Bucket: bucket, Name: key } })
 }

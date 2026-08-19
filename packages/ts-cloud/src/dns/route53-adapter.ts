@@ -2,17 +2,8 @@
  * Route53 DNS Provider Adapter
  * Wraps the existing Route53Client to implement the DnsProvider interface
  */
-
+import type { CreateRecordResult, DeleteRecordResult, DnsProvider, DnsRecord, DnsRecordResult, DnsRecordType, ListRecordsResult } from './types'
 import { Route53Client } from '../aws/route53'
-import type {
-  CreateRecordResult,
-  DeleteRecordResult,
-  DnsProvider,
-  DnsRecord,
-  DnsRecordResult,
-  DnsRecordType,
-  ListRecordsResult,
-} from './types'
 
 export class Route53Provider implements DnsProvider {
   readonly name = 'route53'
@@ -67,8 +58,12 @@ export class Route53Provider implements DnsProvider {
   /**
    * Ensure domain name ends with a dot (Route53 requirement)
    */
-  private normalizeName(name: string): string {
-    return name.endsWith('.') ? name : `${name}.`
+  private normalizeName(domain: string, name: string): string {
+    const zone = domain.replace(/\.$/, '')
+    const record = name.replace(/\.$/, '')
+    if (!record || record === '@') return `${zone}.`
+    if (record === zone || record.endsWith(`.${zone}`)) return `${record}.`
+    return `${record}.${zone}.`
   }
 
   async createRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult> {
@@ -81,7 +76,7 @@ export class Route53Provider implements DnsProvider {
         }
       }
 
-      const recordName = this.normalizeName(record.name)
+      const recordName = this.normalizeName(domain, record.name)
       let recordValue = record.content
 
       // TXT records need to be quoted
@@ -98,15 +93,17 @@ export class Route53Provider implements DnsProvider {
         HostedZoneId: hostedZoneId,
         ChangeBatch: {
           Comment: `Created by ts-cloud DNS provider`,
-          Changes: [{
-            Action: 'CREATE',
-            ResourceRecordSet: {
-              Name: recordName,
-              Type: record.type,
-              TTL: record.ttl || 300,
-              ResourceRecords: [{ Value: recordValue }],
+          Changes: [
+            {
+              Action: 'CREATE',
+              ResourceRecordSet: {
+                Name: recordName,
+                Type: record.type,
+                TTL: record.ttl || 300,
+                ResourceRecords: [{ Value: recordValue }],
+              },
             },
-          }],
+          ],
         },
       })
 
@@ -115,8 +112,7 @@ export class Route53Provider implements DnsProvider {
         id: result.ChangeInfo?.Id,
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -134,7 +130,7 @@ export class Route53Provider implements DnsProvider {
         }
       }
 
-      const recordName = this.normalizeName(record.name)
+      const recordName = this.normalizeName(domain, record.name)
       let recordValue = record.content
 
       // TXT records need to be quoted
@@ -151,15 +147,17 @@ export class Route53Provider implements DnsProvider {
         HostedZoneId: hostedZoneId,
         ChangeBatch: {
           Comment: `Upserted by ts-cloud DNS provider`,
-          Changes: [{
-            Action: 'UPSERT',
-            ResourceRecordSet: {
-              Name: recordName,
-              Type: record.type,
-              TTL: record.ttl || 300,
-              ResourceRecords: [{ Value: recordValue }],
+          Changes: [
+            {
+              Action: 'UPSERT',
+              ResourceRecordSet: {
+                Name: recordName,
+                Type: record.type,
+                TTL: record.ttl || 300,
+                ResourceRecords: [{ Value: recordValue }],
+              },
             },
-          }],
+          ],
         },
       })
 
@@ -168,8 +166,7 @@ export class Route53Provider implements DnsProvider {
         id: result.ChangeInfo?.Id,
         message: 'Record upserted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -187,7 +184,7 @@ export class Route53Provider implements DnsProvider {
         }
       }
 
-      const recordName = this.normalizeName(record.name)
+      const recordName = this.normalizeName(domain, record.name)
       let recordValue = record.content
 
       // TXT records need to be quoted
@@ -204,15 +201,17 @@ export class Route53Provider implements DnsProvider {
         HostedZoneId: hostedZoneId,
         ChangeBatch: {
           Comment: `Deleted by ts-cloud DNS provider`,
-          Changes: [{
-            Action: 'DELETE',
-            ResourceRecordSet: {
-              Name: recordName,
-              Type: record.type,
-              TTL: record.ttl || 300,
-              ResourceRecords: [{ Value: recordValue }],
+          Changes: [
+            {
+              Action: 'DELETE',
+              ResourceRecordSet: {
+                Name: recordName,
+                Type: record.type,
+                TTL: record.ttl || 300,
+                ResourceRecords: [{ Value: recordValue }],
+              },
             },
-          }],
+          ],
         },
       })
 
@@ -220,8 +219,7 @@ export class Route53Provider implements DnsProvider {
         success: true,
         message: 'Record deleted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -290,8 +288,7 @@ export class Route53Provider implements DnsProvider {
         success: true,
         records,
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         records: [],
@@ -311,9 +308,8 @@ export class Route53Provider implements DnsProvider {
   async listDomains(): Promise<string[]> {
     try {
       const result = await this.client.listHostedZones()
-      return result.HostedZones.map(z => z.Name.replace(/\.$/, ''))
-    }
-    catch {
+      return result.HostedZones.map((z) => z.Name.replace(/\.$/, ''))
+    } catch {
       return []
     }
   }
@@ -348,7 +344,7 @@ export class Route53Provider implements DnsProvider {
 
       const result = await this.client.createAliasRecord({
         HostedZoneId: hostedZoneId,
-        Name: this.normalizeName(params.name),
+        Name: this.normalizeName(params.domain, params.name),
         TargetHostedZoneId: params.targetHostedZoneId,
         TargetDNSName: params.targetDnsName,
         EvaluateTargetHealth: params.evaluateTargetHealth,
@@ -360,8 +356,7 @@ export class Route53Provider implements DnsProvider {
         id: result.ChangeInfo?.Id,
         message: 'Alias record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',

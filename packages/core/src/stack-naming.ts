@@ -4,10 +4,7 @@ import type { CloudConfig, EnvironmentType, SiteConfig } from './types'
  * CloudFormation stack for project-wide infrastructure (VPC, compute, shared storage).
  * Convention: `{slug}-{environment}` (e.g. `pantry-production`).
  */
-export function resolveProjectStackName(
-  config: Pick<CloudConfig, 'project'>,
-  environment: EnvironmentType,
-): string {
+export function resolveProjectStackName(config: Pick<CloudConfig, 'project'>, environment: EnvironmentType): string {
   return config.project.stackName ?? `${config.project.slug}-${environment}`
 }
 
@@ -28,10 +25,7 @@ export function resolveSiteStackName(
  * Prefix for site-scoped AWS resource names (deploy tarball paths, systemd units, etc.).
  * Convention: `{slug}-{siteKey}` (e.g. `pantry-main`).
  */
-export function resolveSiteResourceName(
-  config: Pick<CloudConfig, 'project'>,
-  siteKey: string,
-): string {
+export function resolveSiteResourceName(config: Pick<CloudConfig, 'project'>, siteKey: string): string {
   return `${config.project.slug}-${siteKey}`
 }
 

@@ -62,7 +62,12 @@ describe('ssh config editor', () => {
     // Reproduces the dashboard flow: add a key, add another, then remove them.
     // The previous renderer left a trailing comma that doubled on every edit
     // (`],` → `],,` → `],,,`), eventually making cloud.config.ts unparseable.
-    const step1 = addSshKeyToCloudConfig({ configText: configText(), name: 'chris@macbook', publicKey, existingKeys: [] })
+    const step1 = addSshKeyToCloudConfig({
+      configText: configText(),
+      name: 'chris@macbook',
+      publicKey,
+      existingKeys: [],
+    })
     assertValidTs(step1)
 
     const step2 = addSshKeyToCloudConfig({
@@ -77,7 +82,10 @@ describe('ssh config editor', () => {
     const step3 = removeSshKeyFromCloudConfig({
       configText: step2,
       name: 'deploy@ci',
-      existingKeys: [{ name: 'chris@macbook', publicKey }, { name: 'deploy@ci', publicKey: publicKey2 }],
+      existingKeys: [
+        { name: 'chris@macbook', publicKey },
+        { name: 'deploy@ci', publicKey: publicKey2 },
+      ],
     })
     assertValidTs(step3)
     expect(step3).toContain('chris@macbook')
@@ -105,25 +113,34 @@ describe('ssh config editor', () => {
   },
 }
 `
-    const updated = addSshKeyToCloudConfig({ configText: noTrailingComma, name: 'chris@macbook', publicKey, existingKeys: [] })
+    const updated = addSshKeyToCloudConfig({
+      configText: noTrailingComma,
+      name: 'chris@macbook',
+      publicKey,
+      existingKeys: [],
+    })
     assertValidTs(updated)
     expect(updated).toContain("name: 'chris@macbook'")
   })
 
   it('rejects duplicate names and invalid public keys', () => {
-    expect(() => addSshKeyToCloudConfig({
-      configText: configText(),
-      name: 'chris@macbook',
-      publicKey,
-      existingKeys: [{ name: 'chris@macbook', publicKey }],
-    })).toThrow('already exists')
+    expect(() =>
+      addSshKeyToCloudConfig({
+        configText: configText(),
+        name: 'chris@macbook',
+        publicKey,
+        existingKeys: [{ name: 'chris@macbook', publicKey }],
+      }),
+    ).toThrow('already exists')
 
-    expect(() => addSshKeyToCloudConfig({
-      configText: configText(),
-      name: 'bad-key',
-      publicKey: 'nope',
-      existingKeys: [],
-    })).toThrow('OpenSSH public key')
+    expect(() =>
+      addSshKeyToCloudConfig({
+        configText: configText(),
+        name: 'bad-key',
+        publicKey: 'nope',
+        existingKeys: [],
+      }),
+    ).toThrow('OpenSSH public key')
   })
 
   it('describes keys with type and SHA256 fingerprint', () => {

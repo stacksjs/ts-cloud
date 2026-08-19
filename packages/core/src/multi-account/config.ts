@@ -2,7 +2,6 @@
  * Multi-Account Configuration
  * Best practices and configuration for multi-account setups
  */
-
 import type { AWSAccount, CrossAccountRole } from './manager'
 
 /**
@@ -60,10 +59,7 @@ export const RECOMMENDED_ACCOUNT_STRUCTURES: Record<string, AccountStructure> = 
         description: 'Development and testing',
       },
     ],
-    organizationalUnits: [
-      { name: 'root' },
-      { name: 'workloads', parent: 'root' },
-    ],
+    organizationalUnits: [{ name: 'root' }, { name: 'workloads', parent: 'root' }],
   },
 
   standard: {
@@ -247,21 +243,11 @@ export const RECOMMENDED_SCPS = {
         {
           Sid: 'DenyNonApprovedRegions',
           Effect: 'Deny',
-          NotAction: [
-            'iam:*',
-            'organizations:*',
-            'route53:*',
-            'cloudfront:*',
-            'support:*',
-            's3:*',
-          ],
+          NotAction: ['iam:*', 'organizations:*', 'route53:*', 'cloudfront:*', 'support:*', 's3:*'],
           Resource: '*',
           Condition: {
             StringNotEquals: {
-              'aws:RequestedRegion': [
-                'us-east-1',
-                'us-west-2',
-              ],
+              'aws:RequestedRegion': ['us-east-1', 'us-west-2'],
             },
           },
         },
@@ -298,10 +284,7 @@ export const RECOMMENDED_SCPS = {
           Resource: '*',
           Condition: {
             StringNotEquals: {
-              's3:x-amz-server-side-encryption': [
-                'AES256',
-                'aws:kms',
-              ],
+              's3:x-amz-server-side-encryption': ['AES256', 'aws:kms'],
             },
           },
         },
@@ -382,10 +365,7 @@ export function getRecommendedStructure(size: 'basic' | 'standard' | 'enterprise
 /**
  * Generate cross-account role CloudFormation
  */
-export function generateCrossAccountRoleCF(
-  role: CrossAccountRole,
-  managedPolicies?: string[],
-): any {
+export function generateCrossAccountRoleCF(role: CrossAccountRole, managedPolicies?: string[]): any {
   return {
     Type: 'AWS::IAM::Role',
     Properties: {
@@ -448,7 +428,7 @@ export function validateAccountStructure(structure: AccountStructure): {
   const warnings: string[] = []
 
   // Check for management account
-  const managementAccounts = structure.accounts.filter(a => a.role === 'management')
+  const managementAccounts = structure.accounts.filter((a) => a.role === 'management')
   if (managementAccounts.length === 0) {
     errors.push('No management account defined')
   }
@@ -457,21 +437,21 @@ export function validateAccountStructure(structure: AccountStructure): {
   }
 
   // Check for duplicate emails
-  const emails = structure.accounts.map(a => a.email)
+  const emails = structure.accounts.map((a) => a.email)
   const duplicates = emails.filter((email, index) => emails.indexOf(email) !== index)
   if (duplicates.length > 0) {
     errors.push(`Duplicate email addresses: ${duplicates.join(', ')}`)
   }
 
   // Check for duplicate aliases
-  const aliases = structure.accounts.map(a => a.alias)
+  const aliases = structure.accounts.map((a) => a.alias)
   const duplicateAliases = aliases.filter((alias, index) => aliases.indexOf(alias) !== index)
   if (duplicateAliases.length > 0) {
     errors.push(`Duplicate aliases: ${duplicateAliases.join(', ')}`)
   }
 
   // Warnings for best practices
-  if (!structure.accounts.some(a => a.role === 'security')) {
+  if (!structure.accounts.some((a) => a.role === 'security')) {
     warnings.push('No dedicated security account - consider adding one for audit logs')
   }
 
@@ -479,7 +459,7 @@ export function validateAccountStructure(structure: AccountStructure): {
     warnings.push('Less than 3 accounts - consider separating environments')
   }
 
-  if (!structure.accounts.some(a => a.role === 'production')) {
+  if (!structure.accounts.some((a) => a.role === 'production')) {
     warnings.push('No production account defined')
   }
 

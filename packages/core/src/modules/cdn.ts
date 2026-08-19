@@ -1,7 +1,7 @@
-import type { CloudFrontDistribution, CloudFrontOriginAccessControl, LambdaFunction, IAMRole } from '@ts-cloud/aws-types'
+import type { CloudFrontDistribution, CloudFrontOriginAccessControl, IAMRole, LambdaFunction } from '@ts-cloud/aws-types'
+import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import type { EnvironmentType } from '../types'
 
 export interface DistributionOptions {
   slug: string
@@ -104,8 +104,7 @@ export class CDN {
       }
 
       originConfig.OriginAccessControlId = Fn.Ref(oacLogicalId)
-    }
-    else if (origin.type === 'alb' || origin.type === 'custom') {
+    } else if (origin.type === 'alb' || origin.type === 'custom') {
       originConfig.CustomOriginConfig = {
         HTTPPort: 80,
         HTTPSPort: 443,
@@ -147,7 +146,7 @@ export class CDN {
 
     // Configure error pages (for SPA routing)
     if (errorPages && errorPages.length > 0) {
-      distribution.Properties.DistributionConfig.CustomErrorResponses = errorPages.map(page => ({
+      distribution.Properties.DistributionConfig.CustomErrorResponses = errorPages.map((page) => ({
         ErrorCode: page.errorCode,
         ResponseCode: page.responseCode,
         ResponsePagePath: page.responsePagePath,
@@ -156,11 +155,12 @@ export class CDN {
 
     // Configure Lambda@Edge functions
     if (edgeFunctions && edgeFunctions.length > 0) {
-      distribution.Properties.DistributionConfig.DefaultCacheBehavior.LambdaFunctionAssociations =
-        edgeFunctions.map(fn => ({
+      distribution.Properties.DistributionConfig.DefaultCacheBehavior.LambdaFunctionAssociations = edgeFunctions.map(
+        (fn) => ({
           EventType: fn.event,
           LambdaFunctionARN: fn.functionArn,
-        }))
+        }),
+      )
     }
 
     return {
@@ -191,11 +191,8 @@ export class CDN {
   /**
    * Set error pages for SPA routing (404 → index.html)
    */
-  static setErrorPages(
-    distribution: CloudFrontDistribution,
-    mappings: ErrorPageMapping[],
-  ): CloudFrontDistribution {
-    distribution.Properties.DistributionConfig.CustomErrorResponses = mappings.map(page => ({
+  static setErrorPages(distribution: CloudFrontDistribution, mappings: ErrorPageMapping[]): CloudFrontDistribution {
+    distribution.Properties.DistributionConfig.CustomErrorResponses = mappings.map((page) => ({
       ErrorCode: page.errorCode,
       ResponseCode: page.responseCode,
       ResponsePagePath: page.responsePagePath,
@@ -237,12 +234,11 @@ export class CDN {
    */
   static setCachePolicy(
     distribution: CloudFrontDistribution,
-    ttl: { min?: number, max?: number, default?: number },
+    ttl: { min?: number; max?: number; default?: number },
   ): CloudFrontDistribution {
     // Note: For full cache policy support, we'd need to create a CachePolicy resource
     // For now, we'll just set the comment to indicate the desired TTL
-    distribution.Properties.DistributionConfig.Comment =
-      `${distribution.Properties.DistributionConfig.Comment || ''} (TTL: ${ttl.default || 86400}s)`
+    distribution.Properties.DistributionConfig.Comment = `${distribution.Properties.DistributionConfig.Comment || ''} (TTL: ${ttl.default || 86400}s)`
 
     return distribution
   }
@@ -251,7 +247,9 @@ export class CDN {
    * Create standard SPA (Single Page Application) configuration
    * Routes all 404/403 errors to index.html
    */
-  static createSpaDistribution(options: Omit<DistributionOptions, 'errorPages'>): ReturnType<typeof CDN.createDistribution> {
+  static createSpaDistribution(
+    options: Omit<DistributionOptions, 'errorPages'>,
+  ): ReturnType<typeof CDN.createDistribution> {
     return CDN.createDistribution({
       ...options,
       errorPages: [
@@ -268,10 +266,7 @@ export class CDN {
    * - Trailing slashes normalization
    * - Default document serving (index.html)
    */
-  static createDocsOriginRequestFunction(options: {
-    slug: string
-    environment: EnvironmentType
-  }): {
+  static createDocsOriginRequestFunction(options: { slug: string; environment: EnvironmentType }): {
     lambdaFunction: LambdaFunction
     role: IAMRole
     functionLogicalId: string
@@ -307,9 +302,7 @@ export class CDN {
             },
           ],
         },
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-        ],
+        ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
       },
     }
 
@@ -391,14 +384,7 @@ exports.handler = async (event) => {
     originAccessControl?: CloudFrontOriginAccessControl
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      origin,
-      customDomain,
-      certificateArn,
-      lambdaEdgeFunctionArn,
-    } = options
+    const { slug, environment, origin, customDomain, certificateArn, lambdaEdgeFunctionArn } = options
 
     // Create base distribution
     const result = CDN.createDistribution({
@@ -691,7 +677,7 @@ exports.handler = async (event) => {
       pathPattern: string
       customHeaders?: Record<string, string>
       forwardHeaders?: string[]
-      cacheTtl?: { default: number, max: number, min: number }
+      cacheTtl?: { default: number; max: number; min: number }
     },
   ): CloudFrontDistribution {
     const {
@@ -767,9 +753,7 @@ exports.handler = async (event) => {
     headerName: string,
     headerValue: string,
   ): CloudFrontDistribution {
-    const origin = distribution.Properties.DistributionConfig.Origins?.find(
-      (o: any) => o.Id === originId,
-    )
+    const origin = distribution.Properties.DistributionConfig.Origins?.find((o: any) => o.Id === originId)
 
     if (origin) {
       if (!origin.OriginCustomHeaders) {
@@ -791,7 +775,7 @@ exports.handler = async (event) => {
     /**
      * Origin request handler for docs/BunPress routing
      */
-    docsOriginRequest: (`
+    docsOriginRequest: `
 'use strict';
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -806,12 +790,12 @@ else if (!uri.includes('.')) {
 
   return request;
 };
-`).trim() as string,
+`.trim() as string,
 
     /**
      * Viewer response handler for security headers
      */
-    securityHeaders: (`
+    securityHeaders: `
 'use strict';
 exports.handler = async (event) => {
   const response = event.Records[0].cf.response;
@@ -825,12 +809,13 @@ exports.handler = async (event) => {
 
   return response;
 };
-`).trim() as string,
+`.trim() as string,
 
     /**
      * Viewer request handler for basic auth (staging/preview environments)
      */
-    basicAuth: (username: string, password: string): string => `
+    basicAuth: (username: string, password: string): string =>
+      `
 'use strict';
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -856,7 +841,8 @@ exports.handler = async (event) => {
     /**
      * Origin request handler for path-based routing (e.g., /api to different origin)
      */
-    pathBasedRouting: (pathPrefix: string, targetOriginId: string): string => `
+    pathBasedRouting: (pathPrefix: string, targetOriginId: string): string =>
+      `
 'use strict';
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -899,11 +885,7 @@ exports.handler = async (event) => {
       MaxTTL: number
       DefaultTTL: number
     } => {
-      const {
-        min = 0,
-        max = 86400,
-        default: defaultTtl = 86400,
-      } = options
+      const { min = 0, max = 86400, default: defaultTtl = 86400 } = options
 
       return {
         MinTTL: min,
@@ -915,7 +897,10 @@ exports.handler = async (event) => {
     /**
      * Cookie behavior configuration
      */
-    cookies: (behavior: 'none' | 'all' | 'allowList', allowedCookies?: string[]): {
+    cookies: (
+      behavior: 'none' | 'all' | 'allowList',
+      allowedCookies?: string[],
+    ): {
       Forward: string
       WhitelistedNames?: string[]
     } => {
@@ -969,7 +954,7 @@ exports.handler = async (event) => {
      * Create cache behavior configuration
      */
     cacheBehavior: (options: {
-      ttl?: { min: number, max: number, default: number }
+      ttl?: { min: number; max: number; default: number }
       cookies?: 'none' | 'all' | 'allowList'
       allowedCookies?: string[]
       allowedMethods?: 'ALL' | 'GET_HEAD' | 'GET_HEAD_OPTIONS'
@@ -987,7 +972,7 @@ exports.handler = async (event) => {
       ForwardedValues: {
         QueryString: boolean
         Headers: string[]
-        Cookies: { Forward: string, WhitelistedNames?: string[] }
+        Cookies: { Forward: string; WhitelistedNames?: string[] }
       }
     } => {
       const {
@@ -1023,7 +1008,7 @@ exports.handler = async (event) => {
   static applyConfig(
     distribution: CloudFrontDistribution,
     config: {
-      ttl?: { min: number, max: number, default: number }
+      ttl?: { min: number; max: number; default: number }
       cookies?: 'none' | 'all' | 'allowList'
       allowedCookies?: string[]
       allowedMethods?: 'ALL' | 'GET_HEAD' | 'GET_HEAD_OPTIONS'

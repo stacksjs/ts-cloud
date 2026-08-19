@@ -72,8 +72,12 @@ export class StaticSiteManager {
     return prerenderConfig
   }
 
-  listOptimizations(): AssetOptimization[] { return Array.from(this.optimizations.values()) }
-  listImageConfigs(): ImageOptimization[] { return Array.from(this.imageConfigs.values()) }
+  listOptimizations(): AssetOptimization[] {
+    return Array.from(this.optimizations.values())
+  }
+  listImageConfigs(): ImageOptimization[] {
+    return Array.from(this.imageConfigs.values())
+  }
   clear(): void {
     this.optimizations.clear()
     this.imageConfigs.clear()

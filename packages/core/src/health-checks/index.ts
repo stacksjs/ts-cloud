@@ -2,9 +2,27 @@
  * Health Checks & Monitoring - Endpoint monitoring, synthetic monitoring, uptime tracking
  */
 
-export interface HealthCheck { id: string; url: string; interval: number; timeout: number; status: 'healthy' | 'unhealthy' }
-export interface SyntheticMonitor { id: string; name: string; script: string; frequency: number; locations: string[] }
-export interface UptimeTracker { id: string; resource: string; uptime: number; downtime: number; availability: number }
+export interface HealthCheck {
+  id: string
+  url: string
+  interval: number
+  timeout: number
+  status: 'healthy' | 'unhealthy'
+}
+export interface SyntheticMonitor {
+  id: string
+  name: string
+  script: string
+  frequency: number
+  locations: string[]
+}
+export interface UptimeTracker {
+  id: string
+  resource: string
+  uptime: number
+  downtime: number
+  availability: number
+}
 
 export class HealthCheckManager {
   private checks = new Map<string, HealthCheck>()
@@ -34,7 +52,11 @@ export class HealthCheckManager {
     return tracker
   }
 
-  clear(): void { this.checks.clear(); this.synthetics.clear(); this.uptimeTrackers.clear() }
+  clear(): void {
+    this.checks.clear()
+    this.synthetics.clear()
+    this.uptimeTrackers.clear()
+  }
 }
 
 export const healthCheckManager: HealthCheckManager = new HealthCheckManager()

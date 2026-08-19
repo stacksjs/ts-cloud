@@ -107,7 +107,7 @@ export class Route53ResolverManager {
       resolverEndpoint.status = 'OPERATIONAL'
 
       // Assign IPs to addresses without explicit IPs
-      resolverEndpoint.ipAddresses.forEach(addr => {
+      resolverEndpoint.ipAddresses.forEach((addr) => {
         if (!addr.ip) {
           addr.ip = `10.0.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
         }
@@ -120,15 +120,11 @@ export class Route53ResolverManager {
   /**
    * Create inbound endpoint
    */
-  createInboundEndpoint(options: {
-    name: string
-    subnetIds: string[]
-    securityGroupIds: string[]
-  }): ResolverEndpoint {
+  createInboundEndpoint(options: { name: string; subnetIds: string[]; securityGroupIds: string[] }): ResolverEndpoint {
     return this.createResolverEndpoint({
       name: options.name,
       direction: 'INBOUND',
-      ipAddresses: options.subnetIds.map(subnetId => ({ subnetId })),
+      ipAddresses: options.subnetIds.map((subnetId) => ({ subnetId })),
       securityGroupIds: options.securityGroupIds,
     })
   }
@@ -136,15 +132,11 @@ export class Route53ResolverManager {
   /**
    * Create outbound endpoint
    */
-  createOutboundEndpoint(options: {
-    name: string
-    subnetIds: string[]
-    securityGroupIds: string[]
-  }): ResolverEndpoint {
+  createOutboundEndpoint(options: { name: string; subnetIds: string[]; securityGroupIds: string[] }): ResolverEndpoint {
     return this.createResolverEndpoint({
       name: options.name,
       direction: 'OUTBOUND',
-      ipAddresses: options.subnetIds.map(subnetId => ({ subnetId })),
+      ipAddresses: options.subnetIds.map((subnetId) => ({ subnetId })),
       securityGroupIds: options.securityGroupIds,
     })
   }
@@ -191,10 +183,7 @@ export class Route53ResolverManager {
   /**
    * Create system rule
    */
-  createSystemRule(options: {
-    name: string
-    domainName: string
-  }): ResolverRule {
+  createSystemRule(options: { name: string; domainName: string }): ResolverRule {
     return this.createResolverRule({
       name: options.name,
       ruleType: 'SYSTEM',
@@ -205,10 +194,7 @@ export class Route53ResolverManager {
   /**
    * Create firewall domain list
    */
-  createFirewallDomainList(options: {
-    name: string
-    domains: string[]
-  }): FirewallDomainList {
+  createFirewallDomainList(options: { name: string; domains: string[] }): FirewallDomainList {
     const id = `domain-list-${Date.now()}-${this.domainListCounter++}`
 
     const domainList: FirewallDomainList = {
@@ -229,10 +215,7 @@ export class Route53ResolverManager {
   /**
    * Create firewall rule group
    */
-  createFirewallRuleGroup(options: {
-    name: string
-    rules: Omit<FirewallRule, 'id'>[]
-  }): FirewallRuleGroup {
+  createFirewallRuleGroup(options: { name: string; rules: Omit<FirewallRule, 'id'>[] }): FirewallRuleGroup {
     const id = `rule-group-${Date.now()}-${this.ruleGroupCounter++}`
 
     const ruleGroup: FirewallRuleGroup = {
@@ -278,11 +261,7 @@ export class Route53ResolverManager {
   /**
    * Create allow rule
    */
-  createAllowRule(options: {
-    name: string
-    priority: number
-    domainListId: string
-  }): FirewallRuleGroup {
+  createAllowRule(options: { name: string; priority: number; domainListId: string }): FirewallRuleGroup {
     return this.createFirewallRuleGroup({
       name: options.name,
       rules: [
@@ -331,11 +310,7 @@ export class Route53ResolverManager {
   /**
    * Create malware protection firewall
    */
-  createMalwareProtectionFirewall(options: {
-    name: string
-    vpcId: string
-    maliciousDomains: string[]
-  }): DNSFirewall {
+  createMalwareProtectionFirewall(options: { name: string; vpcId: string; maliciousDomains: string[] }): DNSFirewall {
     // Create domain list
     const domainList = this.createFirewallDomainList({
       name: `${options.name}-malware-domains`,
@@ -376,7 +351,7 @@ export class Route53ResolverManager {
    */
   listEndpoints(direction?: 'INBOUND' | 'OUTBOUND'): ResolverEndpoint[] {
     const endpoints = Array.from(this.endpoints.values())
-    return direction ? endpoints.filter(e => e.direction === direction) : endpoints
+    return direction ? endpoints.filter((e) => e.direction === direction) : endpoints
   }
 
   /**
@@ -416,7 +391,7 @@ export class Route53ResolverManager {
       Properties: {
         Name: endpoint.name,
         Direction: endpoint.direction,
-        IpAddresses: endpoint.ipAddresses.map(addr => ({
+        IpAddresses: endpoint.ipAddresses.map((addr) => ({
           SubnetId: addr.subnetId,
           ...(addr.ip && { Ip: addr.ip }),
         })),
@@ -436,7 +411,7 @@ export class Route53ResolverManager {
         RuleType: rule.ruleType,
         DomainName: rule.domainName,
         ...(rule.targetIps && {
-          TargetIps: rule.targetIps.map(target => ({
+          TargetIps: rule.targetIps.map((target) => ({
             Ip: target.ip,
             Port: target.port || 53,
           })),
@@ -456,7 +431,7 @@ export class Route53ResolverManager {
       Type: 'AWS::Route53Resolver::FirewallRuleGroup',
       Properties: {
         Name: ruleGroup.name,
-        FirewallRules: ruleGroup.rules.map(rule => ({
+        FirewallRules: ruleGroup.rules.map((rule) => ({
           Name: rule.name,
           Priority: rule.priority,
           Action: rule.action,

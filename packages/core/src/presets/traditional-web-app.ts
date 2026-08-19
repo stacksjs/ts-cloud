@@ -95,38 +95,48 @@ export function createTraditionalWebAppPreset(options: {
           public: false,
           versioning: true,
           encryption: true,
-          lifecycleRules: [{
-            id: 'ArchiveOldBackups',
-            enabled: true,
-            transitions: [{
-              days: 90,
-              storageClass: 'GLACIER',
-            }],
-          }],
+          lifecycleRules: [
+            {
+              id: 'ArchiveOldBackups',
+              enabled: true,
+              transitions: [
+                {
+                  days: 90,
+                  storageClass: 'GLACIER',
+                },
+              ],
+            },
+          ],
         },
         static: {
           // S3 for static assets with CloudFront CDN
           public: true,
           versioning: false,
           encryption: false,
-          cors: [{
-            allowedOrigins: [domain || '*'],
-            allowedMethods: ['GET', 'HEAD'],
-          }],
+          cors: [
+            {
+              allowedOrigins: [domain || '*'],
+              allowedMethods: ['GET', 'HEAD'],
+            },
+          ],
         },
       },
       cdn: {
         enabled: true,
-        origins: [{
-          // Static assets from S3
-          originId: 'static-assets',
-          domainName: `${slug}-static.s3.amazonaws.com`,
-          pathPattern: '/static/*',
-        }],
-        customDomain: domain ? {
-          domain,
-          certificateArn: 'TO_BE_GENERATED',
-        } : undefined,
+        origins: [
+          {
+            // Static assets from S3
+            originId: 'static-assets',
+            domainName: `${slug}-static.s3.amazonaws.com`,
+            pathPattern: '/static/*',
+          },
+        ],
+        customDomain: domain
+          ? {
+              domain,
+              certificateArn: 'TO_BE_GENERATED',
+            }
+          : undefined,
         cachePolicy: {
           minTTL: 0,
           defaultTTL: 86400, // 1 day for static assets
@@ -135,64 +145,70 @@ export function createTraditionalWebAppPreset(options: {
         compress: true,
         http3: true,
       },
-      databases: databaseEngine === 'mysql' ? {
-        mysql: {
-          engine: 'mysql',
-          version: '8.0',
-          instanceClass: 'db.t3.medium',
-          allocatedStorage: 100,
-          maxAllocatedStorage: 500, // Auto-scaling storage
-          multiAZ: true,
-          backupRetentionDays: 14,
-          preferredBackupWindow: '03:00-04:00',
-          preferredMaintenanceWindow: 'sun:04:00-sun:05:00',
-          enablePerformanceInsights: true,
-          performanceInsightsRetention: 7,
-          deletionProtection: true,
-          parameters: {
-            max_connections: '500',
-            innodb_buffer_pool_size: '{DBInstanceClassMemory*3/4}',
-            slow_query_log: '1',
-            long_query_time: '2',
-          },
-        },
-      } : {
-        postgres: {
-          engine: 'postgres',
-          version: '15',
-          instanceClass: 'db.t3.medium',
-          allocatedStorage: 100,
-          maxAllocatedStorage: 500,
-          multiAZ: true,
-          backupRetentionDays: 14,
-          preferredBackupWindow: '03:00-04:00',
-          preferredMaintenanceWindow: 'sun:04:00-sun:05:00',
-          enablePerformanceInsights: true,
-          performanceInsightsRetention: 7,
-          deletionProtection: true,
-          parameters: {
-            max_connections: '500',
-            shared_buffers: '{DBInstanceClassMemory/4}',
-            log_min_duration_statement: '2000', // Log slow queries > 2s
-          },
-        },
-      },
-      cache: sessionStore === 'redis' ? {
-        redis: {
-          nodeType: 'cache.t3.medium',
-          numCacheNodes: 2,
-          engine: 'redis',
-          engineVersion: '7.0',
-          port: 6379,
-          parameterGroup: {
-            maxmemoryPolicy: 'allkeys-lru',
-            timeout: '300',
-          },
-          snapshotRetentionLimit: 5,
-          snapshotWindow: '03:00-05:00',
-          automaticFailoverEnabled: true,
-        },
-      } : undefined,
+      databases:
+        databaseEngine === 'mysql'
+          ? {
+              mysql: {
+                engine: 'mysql',
+                version: '8.0',
+                instanceClass: 'db.t3.medium',
+                allocatedStorage: 100,
+                maxAllocatedStorage: 500, // Auto-scaling storage
+                multiAZ: true,
+                backupRetentionDays: 14,
+                preferredBackupWindow: '03:00-04:00',
+                preferredMaintenanceWindow: 'sun:04:00-sun:05:00',
+                enablePerformanceInsights: true,
+                performanceInsightsRetention: 7,
+                deletionProtection: true,
+                parameters: {
+                  max_connections: '500',
+                  innodb_buffer_pool_size: '{DBInstanceClassMemory*3/4}',
+                  slow_query_log: '1',
+                  long_query_time: '2',
+                },
+              },
+            }
+          : {
+              postgres: {
+                engine: 'postgres',
+                version: '15',
+                instanceClass: 'db.t3.medium',
+                allocatedStorage: 100,
+                maxAllocatedStorage: 500,
+                multiAZ: true,
+                backupRetentionDays: 14,
+                preferredBackupWindow: '03:00-04:00',
+                preferredMaintenanceWindow: 'sun:04:00-sun:05:00',
+                enablePerformanceInsights: true,
+                performanceInsightsRetention: 7,
+                deletionProtection: true,
+                parameters: {
+                  max_connections: '500',
+                  shared_buffers: '{DBInstanceClassMemory/4}',
+                  log_min_duration_statement: '2000', // Log slow queries > 2s
+                },
+              },
+            },
+      cache:
+        sessionStore === 'redis'
+          ? {
+              redis: {
+                nodeType: 'cache.t3.medium',
+                numCacheNodes: 2,
+                engine: 'redis',
+                engineVersion: '7.0',
+                port: 6379,
+                parameterGroup: {
+                  maxmemoryPolicy: 'allkeys-lru',
+                  timeout: '300',
+                },
+                snapshotRetentionLimit: 5,
+                snapshotWindow: '03:00-05:00',
+                automaticFailoverEnabled: true,
+              },
+            }
+          : undefined,
       queues: {
         jobs: {
           // Background job processing
@@ -218,11 +234,13 @@ export function createTraditionalWebAppPreset(options: {
           handler: 'dist/workers/jobs.handler',
           memory: 2048,
           timeout: 900, // 15 minutes
-          events: [{
-            type: 'sqs',
-            queueName: `${slug}-jobs`,
-            batchSize: 10,
-          }],
+          events: [
+            {
+              type: 'sqs',
+              queueName: `${slug}-jobs`,
+              batchSize: 10,
+            },
+          ],
         },
         // Email sender
         'email-sender': {
@@ -230,11 +248,13 @@ export function createTraditionalWebAppPreset(options: {
           handler: 'dist/workers/email.handler',
           memory: 512,
           timeout: 60,
-          events: [{
-            type: 'sqs',
-            queueName: `${slug}-emails`,
-            batchSize: 10,
-          }],
+          events: [
+            {
+              type: 'sqs',
+              queueName: `${slug}-emails`,
+              batchSize: 10,
+            },
+          ],
         },
         // Cleanup task
         cleanup: {
@@ -242,71 +262,74 @@ export function createTraditionalWebAppPreset(options: {
           handler: 'dist/tasks/cleanup.handler',
           memory: 512,
           timeout: 300,
-          events: [{
-            type: 'schedule',
-            expression: 'cron(0 2 * * ? *)', // Daily at 2 AM
-          }],
+          events: [
+            {
+              type: 'schedule',
+              expression: 'cron(0 2 * * ? *)', // Daily at 2 AM
+            },
+          ],
         },
       },
       monitoring: {
         dashboard: {
           name: `${slug}-web-app`,
-          widgets: [{
-            type: 'metric',
-            metrics: [
-              'EC2CPUUtilization',
-              'ALBRequestCount',
-              'ALBTargetResponseTime',
-              'RDSCPUUtilization',
-              'RDSDatabaseConnections',
-              'RDSReadLatency',
-              'RDSWriteLatency',
-            ],
-          }],
+          widgets: [
+            {
+              type: 'metric',
+              metrics: [
+                'EC2CPUUtilization',
+                'ALBRequestCount',
+                'ALBTargetResponseTime',
+                'RDSCPUUtilization',
+                'RDSDatabaseConnections',
+                'RDSReadLatency',
+                'RDSWriteLatency',
+              ],
+            },
+          ],
         },
-        alarms: [{
-          metric: 'EC2CPUUtilization',
-          threshold: 80,
-          evaluationPeriods: 2,
-        }, {
-          metric: 'RDSCPUUtilization',
-          threshold: 80,
-          evaluationPeriods: 2,
-        }, {
-          metric: 'RDSDatabaseConnections',
-          threshold: 400, // Alert at 80% of max connections
-          evaluationPeriods: 1,
-        }, {
-          metric: 'ALBTargetResponseTime',
-          threshold: 2000, // 2 seconds
-          evaluationPeriods: 2,
-        }, {
-          metric: 'ALBUnhealthyHostCount',
-          threshold: 1,
-          evaluationPeriods: 1,
-        }],
+        alarms: [
+          {
+            metric: 'EC2CPUUtilization',
+            threshold: 80,
+            evaluationPeriods: 2,
+          },
+          {
+            metric: 'RDSCPUUtilization',
+            threshold: 80,
+            evaluationPeriods: 2,
+          },
+          {
+            metric: 'RDSDatabaseConnections',
+            threshold: 400, // Alert at 80% of max connections
+            evaluationPeriods: 1,
+          },
+          {
+            metric: 'ALBTargetResponseTime',
+            threshold: 2000, // 2 seconds
+            evaluationPeriods: 2,
+          },
+          {
+            metric: 'ALBUnhealthyHostCount',
+            threshold: 1,
+            evaluationPeriods: 1,
+          },
+        ],
         logs: {
           retention: 14, // Days
-          groups: [
-            `${slug}-app`,
-            `${slug}-nginx`,
-            `${slug}-workers`,
-          ],
+          groups: [`${slug}-app`, `${slug}-nginx`, `${slug}-workers`],
         },
       },
       security: {
-        certificate: domain ? {
-          domain,
-          validationMethod: 'DNS',
-        } : undefined,
+        certificate: domain
+          ? {
+              domain,
+              validationMethod: 'DNS',
+            }
+          : undefined,
         waf: {
           enabled: true,
-          rules: [
-            'rateLimit',
-            'sqlInjection',
-            'xss',
-            'knownBadInputs',
-          ],
+          rules: ['rateLimit', 'sqlInjection', 'xss', 'knownBadInputs'],
         },
         securityGroups: {
           alb: {
@@ -316,20 +339,14 @@ export function createTraditionalWebAppPreset(options: {
             ],
           },
           app: {
-            ingress: [
-              { port: 3000, protocol: 'tcp', source: 'alb-sg' },
-            ],
+            ingress: [{ port: 3000, protocol: 'tcp', source: 'alb-sg' }],
           },
           database: {
-            ingress: [
-              { port: databaseEngine === 'mysql' ? 3306 : 5432, protocol: 'tcp', source: 'app-sg' },
-            ],
+            ingress: [{ port: databaseEngine === 'mysql' ? 3306 : 5432, protocol: 'tcp', source: 'app-sg' }],
           },
           ...(sessionStore === 'redis' && {
             cache: {
-              ingress: [
-                { port: 6379, protocol: 'tcp', source: 'app-sg' },
-              ],
+              ingress: [{ port: 6379, protocol: 'tcp', source: 'app-sg' }],
             },
           }),
         },

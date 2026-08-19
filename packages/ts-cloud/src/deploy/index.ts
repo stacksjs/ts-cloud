@@ -4,9 +4,15 @@
  */
 
 export * from './site-target'
+export * from './server-dns'
+export * from './dashboard-control-plane'
+export * from './dashboard-route-manifest'
 export * from './static-site'
 export * from './static-site-external-dns'
 export * from './static-site-helper'
+export * from './static-api-origin'
+export * from './fullstack-container'
+export * from './container-image'
 
 // Serverless application pipeline (Laravel-Vapor-equivalent) — orchestrator API.
 export {
@@ -21,15 +27,36 @@ export {
   runRemoteCommand,
   setMaintenance,
 } from './serverless-app'
+export { buildAndPushServerlessImage, type BuildImageOptions, type BuiltImage } from './serverless-image'
+export { type DashboardData, resolveDashboardData } from './dashboard-data'
+// The infrastructure diagram's data model. Exported because the dashboard UI
+// package renders it and needs the same types the resolvers produce.
 export {
-  buildAndPushServerlessImage,
-  type BuildImageOptions,
-  type BuiltImage,
-} from './serverless-image'
+  buildServerlessTopology,
+  buildServerTopology,
+  buildTopology,
+  type TopologyContext,
+  type TopologyFact,
+  type TopologyFlow,
+  type TopologyGroup,
+  type TopologyKind,
+  type TopologyLayer,
+  type TopologyLink,
+  type TopologyModel,
+  type TopologyNode,
+  type TopologyStatus,
+} from './dashboard-topology'
+// Object-storage egress. Exported because the interesting half of this contract
+// lives outside ts-cloud: applications implement the EgressReport shape (see
+// @ts-cloud/core) and this is what reads it, so both sides need to be able to
+// reference and test against the same code.
 export {
-  type DashboardData,
-  resolveDashboardData,
-} from './dashboard-data'
+  collectEgressMetrics,
+  type EgressCollectionResult,
+  egressReportMetrics,
+  type EgressMetric,
+  fetchEgressReport,
+} from './egress-collection'
 export {
   dashboardActions,
   resolveDashboardAction,
@@ -44,7 +71,7 @@ export {
 // buddy) can inject it BEFORE provisioning, when rpx routes + DNS are derived.
 export {
   buildManagementDashboardArtifact,
-  DASHBOARD_CREDENTIALS_FILE,
+  dashboardCredentialsFile,
   ensureManagementDashboard,
   type EnsureDashboardLogger,
   MANAGEMENT_DASHBOARD_SITE,

@@ -19,6 +19,8 @@ const initialPresets = presetsList
 function tone(s) { return s === 'ALARM' ? 'bad' : (s === 'OK' ? 'ok' : 'warn') }
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Alarms manager: list/create/delete CloudWatch alarms via /api/serverless/alarms.
 const rows = state(initialAlarms)
 const presets = state(initialPresets)
@@ -26,14 +28,14 @@ const preset = state(initialPresets[0] ? initialPresets[0].key : '')
 const threshold = state('')
 const msg = state('')
 const msgOk = state(false)
-const busy = state(false)
 
-// Delete flow uses a typed-confirm (the alarm name) before firing.
-const pending = state(null)
-const typed = state('')
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p })
-const confirmTok = derived(() => pending() ?? '')
-const confirmVerb = derived(() => 'delete this alarm')
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const res = await fetch('/api/serverless/alarms', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, confirm: p.apiConfirm }) })
+  const body = await res.json()
+  msg.set(body.ok ? (body.stdout || 'Deleted.') : (body.error || 'Failed to delete.')); msgOk.set(!!body.ok)
+  if (body.ok) refresh()
+  return msg()
+})
 
 function toneOf(s) { return s === 'ALARM' ? 'bad' : (s === 'OK' ? 'ok' : 'warn') }
 
@@ -62,20 +64,7 @@ async function createAlarm() {
   finally { busy.set(false) }
 }
 
-function askDelete(name) { pending.set(name); typed.set('') }
-function cancelOp() { pending.set(null); typed.set('') }
-async function runOp() {
-  const name = pending()
-  if (!name || typed() !== name) return
-  pending.set(null); typed.set('')
-  msg.set('Deleting ' + name + '...'); msgOk.set(false)
-  try {
-    const res = await fetch('/api/serverless/alarms', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, confirm: name }) })
-    const body = await res.json()
-    msg.set(body.ok ? (body.stdout || 'Deleted.') : (body.error || 'Failed to delete.')); msgOk.set(!!body.ok)
-    if (body.ok) refresh()
-  } catch (e) { msg.set('Failed: ' + ((e && e.message) || e)); msgOk.set(false) }
-}
+function askDelete(name) { askOp('alarm:delete:' + name, name, 'delete alarm ' + name, null, name, { name, danger: true, label: 'Delete alarm' }) }
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -96,7 +85,7 @@ async function runOp() {
     <div class="section">
       <div class="panel">
         <table>
-          <thead><tr><th>Alarm</th><th>Metric</th><th>Condition</th><th>State</th><th class="table-actions">Actions</th></tr></thead>
+          <thead><tr><th scope="col">Alarm</th><th scope="col">Metric</th><th scope="col">Condition</th><th scope="col">State</th><th scope="col" class="table-actions">Actions</th></tr></thead>
           <tbody>
             <template :for="a in rows()">
               <tr>
@@ -106,7 +95,7 @@ async function runOp() {
                 <td><span class="pill {{ toneOf(a.StateValue) }}">{{ a.StateValue }}</span></td>
                 <td class="table-actions">
                   <div class="row-actions" style="justify-content:flex-end">
-                    <button class="btn danger sm" type="button" @click="askDelete(a.AlarmName)">Delete</button>
+                    <button class="btn danger sm" type="button" :aria-label="'Delete alarm ' + a.AlarmName" @click="askDelete(a.AlarmName)">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -117,7 +106,7 @@ async function runOp() {
           </tbody>
         </table>
 
-        @include('../partials/op-confirm', { label: 'Delete', danger: true, output: false })
+        @include('../partials/op-confirm')
       </div>
     </div>
 
@@ -126,16 +115,16 @@ async function runOp() {
       <div class="panel">
         <div class="form-grid">
           <div class="field-block">
-            <label>Metric preset</label>
-            <select :value="preset()" @change="preset.set($event.target.value)">
+            <label for="alarm-preset">Metric preset</label>
+            <select id="alarm-preset" :value="preset()" @change="preset.set($event.target.value)">
               <template :for="p in presets()">
                 <option value="{{ p.key }}">{{ p.label }}</option>
               </template>
             </select>
           </div>
           <div class="field-block">
-            <label>Threshold</label>
-            <input type="number" :value="threshold()" @input="threshold.set($event.target.value)" placeholder="5" autocomplete="off">
+            <label for="alarm-threshold">Threshold</label>
+            <input id="alarm-threshold" type="number" :value="threshold()" @input="threshold.set($event.target.value)" placeholder="5" autocomplete="off">
           </div>
           <div class="form-actions">
             <button class="btn" type="button" :disabled="busy()" @click="createAlarm()">Create</button>

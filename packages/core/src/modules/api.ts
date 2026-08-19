@@ -1,10 +1,4 @@
-import type {
-  ApiGatewayAuthorizer,
-  ApiGatewayDeployment,
-  ApiGatewayHttpApi,
-  ApiGatewayRestApi,
-  ApiGatewayStage,
-} from '@ts-cloud/aws-types'
+import type { ApiGatewayAuthorizer, ApiGatewayDeployment, ApiGatewayHttpApi, ApiGatewayRestApi, ApiGatewayStage } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -87,11 +81,13 @@ export class ApiGateway {
       compressionSize,
     } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'rest-api',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'rest-api',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -141,11 +137,13 @@ export class ApiGateway {
       corsAllowCredentials = false,
     } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'http-api',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'http-api',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -182,18 +180,15 @@ export class ApiGateway {
     webSocketApi: ApiGatewayHttpApi
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      name,
-      description,
-    } = options
+    const { slug, environment, name, description } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'ws-api',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'ws-api',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -224,9 +219,9 @@ export class ApiGateway {
       description?: string
     },
   ): {
-      deployment: ApiGatewayDeployment
-      logicalId: string
-    } {
+    deployment: ApiGatewayDeployment
+    logicalId: string
+  } {
     const { slug, environment, description } = options
 
     const resourceName = generateResourceName({
@@ -256,9 +251,9 @@ export class ApiGateway {
     deploymentLogicalId: string,
     options: StageOptions,
   ): {
-      stage: ApiGatewayStage
-      logicalId: string
-    } {
+    stage: ApiGatewayStage
+    logicalId: string
+  } {
     const {
       slug,
       environment,
@@ -322,25 +317,18 @@ export class ApiGateway {
     restApiLogicalId: string,
     options: AuthorizerOptions,
   ): {
-      authorizer: ApiGatewayAuthorizer
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      name,
-      type,
-      functionArn,
-      identitySource,
-      userPoolArns,
-      ttl = 300,
-    } = options
+    authorizer: ApiGatewayAuthorizer
+    logicalId: string
+  } {
+    const { slug, environment, name, type, functionArn, identitySource, userPoolArns, ttl = 300 } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'api-authorizer',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'api-authorizer',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -408,11 +396,7 @@ export class ApiGateway {
   /**
    * Add throttling to stage
    */
-  static addThrottling(
-    stage: ApiGatewayStage,
-    burstLimit: number = 5000,
-    rateLimit: number = 10000,
-  ): ApiGatewayStage {
+  static addThrottling(stage: ApiGatewayStage, burstLimit: number = 5000, rateLimit: number = 10000): ApiGatewayStage {
     if (!stage.Properties.MethodSettings) {
       stage.Properties.MethodSettings = []
     }

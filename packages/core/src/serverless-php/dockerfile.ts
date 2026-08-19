@@ -39,7 +39,7 @@ export const PHP_LAYER_EXTENSIONS: string[] = [
 /** Full Remi SCL package names for a given PHP version (e.g. '8.3' → php83-php-*). */
 export function phpLayerPackages(phpVersion: string): string[] {
   const scl = `php${phpVersion.replace('.', '')}`
-  return PHP_LAYER_EXTENSIONS.map(ext => `${scl}-php-${ext}`)
+  return PHP_LAYER_EXTENSIONS.map((ext) => `${scl}-php-${ext}`)
 }
 
 export interface PhpDockerfileOptions {

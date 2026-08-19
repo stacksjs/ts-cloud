@@ -1,9 +1,4 @@
-import type {
-  EventBridgeEcsParameters,
-  EventBridgeRule,
-  EventBridgeTarget,
-  SQSQueue,
-} from '@ts-cloud/aws-types'
+import type { EventBridgeEcsParameters, EventBridgeRule, EventBridgeTarget, SQSQueue } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -91,11 +86,13 @@ export class Queue {
       kmsKeyId,
     } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'queue',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'queue',
+      })
 
     const queueName = fifo ? `${resourceName}.fifo` : resourceName
     const logicalId = generateLogicalId(resourceName)
@@ -124,8 +121,7 @@ export class Queue {
     if (encrypted) {
       if (kmsKeyId) {
         queue.Properties!.KmsMasterKeyId = kmsKeyId
-      }
-      else {
+      } else {
         queue.Properties!.SqsManagedSseEnabled = true
       }
     }
@@ -140,15 +136,11 @@ export class Queue {
     sourceQueueLogicalId: string,
     options: DeadLetterQueueOptions,
   ): {
-      deadLetterQueue: SQSQueue
-      updatedSourceQueue: SQSQueue
-      deadLetterLogicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      maxReceiveCount = 3,
-    } = options
+    deadLetterQueue: SQSQueue
+    updatedSourceQueue: SQSQueue
+    deadLetterLogicalId: string
+  } {
+    const { slug, environment, maxReceiveCount = 3 } = options
 
     // Create DLQ
     const dlqResourceName = generateResourceName({
@@ -197,22 +189,18 @@ export class Queue {
     cronExpression: string,
     options: ScheduleOptions,
   ): {
-      rule: EventBridgeRule
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      name,
-      description,
-      enabled = true,
-    } = options
+    rule: EventBridgeRule
+    logicalId: string
+  } {
+    const { slug, environment, name, description, enabled = true } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'schedule',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'schedule',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -238,9 +226,9 @@ export class Queue {
     roleArn: string,
     options: EcsScheduleOptions,
   ): {
-      rule: EventBridgeRule
-      logicalId: string
-    } {
+    rule: EventBridgeRule
+    logicalId: string
+  } {
     const {
       slug,
       environment,
@@ -256,11 +244,13 @@ export class Queue {
       containerOverrides,
     } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'ecs-schedule',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'ecs-schedule',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -313,24 +303,18 @@ export class Queue {
     cronExpression: string,
     options: LambdaScheduleOptions,
   ): {
-      rule: EventBridgeRule
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      name,
-      description,
-      enabled = true,
-      functionArn,
-      input,
-    } = options
+    rule: EventBridgeRule
+    logicalId: string
+  } {
+    const { slug, environment, name, description, enabled = true, functionArn, input } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'lambda-schedule',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'lambda-schedule',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -364,24 +348,18 @@ export class Queue {
     cronExpression: string,
     options: SqsTargetOptions,
   ): {
-      rule: EventBridgeRule
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      name,
-      description,
-      enabled = true,
-      queueArn,
-      messageGroupId,
-    } = options
+    rule: EventBridgeRule
+    logicalId: string
+  } {
+    const { slug, environment, name, description, enabled = true, queueArn, messageGroupId } = options
 
-    const resourceName = name || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'sqs-schedule',
-    })
+    const resourceName =
+      name ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'sqs-schedule',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -524,12 +502,12 @@ export class Queue {
       'every minute': 'rate(1 minute)',
       'every hour': 'rate(1 hour)',
       'every day': 'rate(1 day)',
-      'hourly': 'cron(0 * * * ? *)',
-      'daily': 'cron(0 0 * * ? *)',
+      hourly: 'cron(0 * * * ? *)',
+      daily: 'cron(0 0 * * ? *)',
       'daily at midnight': 'cron(0 0 * * ? *)',
-      'weekly': 'cron(0 0 ? * SUN *)',
-      'monthly': 'cron(0 0 1 * ? *)',
-      'yearly': 'cron(0 0 1 1 ? *)',
+      weekly: 'cron(0 0 ? * SUN *)',
+      monthly: 'cron(0 0 1 * ? *)',
+      yearly: 'cron(0 0 1 1 ? *)',
     }
 
     if (timePatterns[normalized]) {
@@ -544,8 +522,7 @@ export class Queue {
 
       if (meridiem === 'pm' && hour !== 12) {
         hour += 12
-      }
-      else if (meridiem === 'am' && hour === 12) {
+      } else if (meridiem === 'am' && hour === 12) {
         hour = 0
       }
 
@@ -728,13 +705,11 @@ export class Queue {
   }): {
     name: string
     command: string[]
-    environment: Array<{ name: string, value: string }>
+    environment: Array<{ name: string; value: string }>
   } {
     const { containerName, jobClass, jobData, environment = {} } = options
 
-    const envVars: Array<{ name: string, value: string }> = [
-      { name: 'JOB_CLASS', value: jobClass },
-    ]
+    const envVars: Array<{ name: string; value: string }> = [{ name: 'JOB_CLASS', value: jobClass }]
 
     if (jobData) {
       envVars.push({ name: 'JOB_DATA', value: JSON.stringify(jobData) })
@@ -814,7 +789,10 @@ export class Queue {
     /**
      * High-throughput queue with short visibility
      */
-    highThroughput: (slug: string, environment: EnvironmentType): {
+    highThroughput: (
+      slug: string,
+      environment: EnvironmentType,
+    ): {
       queue: SQSQueue
       logicalId: string
     } =>
@@ -829,7 +807,10 @@ export class Queue {
     /**
      * Long-running job queue
      */
-    longRunning: (slug: string, environment: EnvironmentType): {
+    longRunning: (
+      slug: string,
+      environment: EnvironmentType,
+    ): {
       queue: SQSQueue
       logicalId: string
     } =>
@@ -843,7 +824,10 @@ export class Queue {
     /**
      * FIFO queue for ordered processing
      */
-    fifo: (slug: string, environment: EnvironmentType): {
+    fifo: (
+      slug: string,
+      environment: EnvironmentType,
+    ): {
       queue: SQSQueue
       logicalId: string
     } =>
@@ -857,7 +841,11 @@ export class Queue {
     /**
      * Delayed queue for scheduled messages
      */
-    delayed: (slug: string, environment: EnvironmentType, delaySeconds: number = 60): {
+    delayed: (
+      slug: string,
+      environment: EnvironmentType,
+      delaySeconds: number = 60,
+    ): {
       queue: SQSQueue
       logicalId: string
     } =>
@@ -916,10 +904,7 @@ export class JobLoader {
    * Discover jobs from app/Jobs directory
    * Scans *.ts files and extracts job metadata from exports
    */
-  static async discoverJobs(options: {
-    projectRoot: string
-    jobsPath?: string
-  }): Promise<DiscoveredJob[]> {
+  static async discoverJobs(options: { projectRoot: string; jobsPath?: string }): Promise<DiscoveredJob[]> {
     const { projectRoot, jobsPath = 'app/Jobs' } = options
     const fullPath = `${projectRoot}/${jobsPath}`
     const jobs: DiscoveredJob[] = []
@@ -933,7 +918,8 @@ export class JobLoader {
         return []
       }
 
-      const files = fs.readdirSync(fullPath)
+      const files = fs
+        .readdirSync(fullPath)
         .filter((f: string) => f.endsWith('.ts') && !f.startsWith('_') && f !== 'runner.ts')
 
       for (const file of files) {
@@ -948,8 +934,7 @@ export class JobLoader {
           jobs.push(metadata)
         }
       }
-    }
-    catch {
+    } catch {
       // File system not available (browser context), return empty
       return []
     }
@@ -961,39 +946,37 @@ export class JobLoader {
    * Parse job metadata from file content
    * Looks for exported schedule, handle function, and config
    */
-  static parseJobMetadata(
-    content: string,
-    name: string,
-    path: string,
-  ): DiscoveredJob | null {
+  static parseJobMetadata(content: string, name: string, path: string): DiscoveredJob | null {
     // Look for schedule export
-    const scheduleMatch = content.match(/export\s+const\s+schedule\s*=\s*['"`]([^'"`]+)['"`]/)
-      || content.match(/schedule:\s*['"`]([^'"`]+)['"`]/)
+    const scheduleMatch =
+      content.match(/export\s + const\s + schedule\s*=\s*['"`]([^'"`]+)['"`]/) ||
+      content.match(/schedule:\s*['"`]([^'"`]+)['"`]/)
 
     // Look for enabled flag
-    const enabledMatch = content.match(/export\s+const\s+enabled\s*=\s*(true|false)/)
-      || content.match(/enabled:\s*(true|false)/)
+    const enabledMatch =
+      content.match(/export\s+const\s+enabled\s*=\s*(true|false)/) || content.match(/enabled:\s*(true|false)/)
 
     // Look for retries
-    const retriesMatch = content.match(/export\s+const\s+retries\s*=\s*(\d+)/)
-      || content.match(/retries:\s*(\d+)/)
+    const retriesMatch = content.match(/export\s+const\s+retries\s*=\s*(\d+)/) || content.match(/retries:\s*(\d+)/)
 
     // Look for timeout
-    const timeoutMatch = content.match(/export\s+const\s+timeout\s*=\s*(\d+)/)
-      || content.match(/timeout:\s*(\d+)/)
+    const timeoutMatch = content.match(/export\s+const\s+timeout\s*=\s*(\d+)/) || content.match(/timeout:\s*(\d+)/)
 
     // Look for backoff strategy
-    const backoffMatch = content.match(/export\s+const\s+backoff\s*=\s*['"`](linear|exponential|fixed)['"`]/)
-      || content.match(/backoff:\s*['"`](linear|exponential|fixed)['"`]/)
+    const backoffMatch =
+      content.match(/export\s+const\s+backoff\s*=\s*['"`](linear|exponential|fixed)['"`]/) ||
+      content.match(/backoff:\s*['"`](linear|exponential|fixed)['"`]/)
 
     // Look for description
-    const descriptionMatch = content.match(/export\s+const\s+description\s*=\s*['"`]([^'"`]+)['"`]/)
-      || content.match(/description:\s*['"`]([^'"`]+)['"`]/)
+    const descriptionMatch =
+      content.match(/export\s + const\s + description\s*=\s*['"`]([^'"`]+)['"`]/) ||
+      content.match(/description:\s*['"`]([^'"`]+)['"`]/)
 
     // Check if there's a handle function or default export
-    const hasHandle = content.includes('export async function handle')
-      || content.includes('export function handle')
-      || content.includes('export default')
+    const hasHandle =
+      content.includes('export async function handle') ||
+      content.includes('export function handle') ||
+      content.includes('export default')
 
     if (!hasHandle) {
       return null
@@ -1016,10 +999,7 @@ export class JobLoader {
    * Discover actions from app/Actions directory
    * Scans *.ts files and extracts action metadata
    */
-  static async discoverActions(options: {
-    projectRoot: string
-    actionsPath?: string
-  }): Promise<DiscoveredAction[]> {
+  static async discoverActions(options: { projectRoot: string; actionsPath?: string }): Promise<DiscoveredAction[]> {
     const { projectRoot, actionsPath = 'app/Actions' } = options
     const fullPath = `${projectRoot}/${actionsPath}`
     const actions: DiscoveredAction[] = []
@@ -1032,8 +1012,7 @@ export class JobLoader {
         return []
       }
 
-      const files = fs.readdirSync(fullPath)
-        .filter((f: string) => f.endsWith('.ts') && !f.startsWith('_'))
+      const files = fs.readdirSync(fullPath).filter((f: string) => f.endsWith('.ts') && !f.startsWith('_'))
 
       for (const file of files) {
         const filePath = path.join(fullPath, file)
@@ -1046,8 +1025,7 @@ export class JobLoader {
           actions.push(metadata)
         }
       }
-    }
-    catch {
+    } catch {
       return []
     }
 
@@ -1057,23 +1035,21 @@ export class JobLoader {
   /**
    * Parse action metadata from file content
    */
-  static parseActionMetadata(
-    content: string,
-    name: string,
-    path: string,
-  ): DiscoveredAction | null {
+  static parseActionMetadata(content: string, name: string, path: string): DiscoveredAction | null {
     // Check if there's a handle function or default export
-    const hasHandle = content.includes('export async function handle')
-      || content.includes('export function handle')
-      || content.includes('export default')
+    const hasHandle =
+      content.includes('export async function handle') ||
+      content.includes('export function handle') ||
+      content.includes('export default')
 
     if (!hasHandle) {
       return null
     }
 
     // Look for description
-    const descriptionMatch = content.match(/export\s+const\s+description\s*=\s*['"`]([^'"`]+)['"`]/)
-      || content.match(/description:\s*['"`]([^'"`]+)['"`]/)
+    const descriptionMatch =
+      content.match(/export\s + const\s + description\s*=\s*['"`]([^'"`]+)['"`]/) ||
+      content.match(/description:\s*['"`]([^'"`]+)['"`]/)
 
     return {
       name,
@@ -1196,17 +1172,14 @@ run()
   /**
    * Generate job manifest file for CI/CD deployments
    */
-  static async generateJobManifest(options: {
-    projectRoot: string
-    jobsPath?: string
-  }): Promise<{
+  static async generateJobManifest(options: { projectRoot: string; jobsPath?: string }): Promise<{
     jobs: DiscoveredJob[]
     scheduledCount: number
     totalCount: number
   }> {
     const jobs = await JobLoader.discoverJobs(options)
 
-    const scheduledJobs = jobs.filter(j => j.schedule && j.enabled)
+    const scheduledJobs = jobs.filter((j) => j.schedule && j.enabled)
 
     return {
       jobs,

@@ -12,13 +12,10 @@
  * Note: Phone number provisioning requires AWS End User Messaging console.
  * SNS uses a shared pool for sending unless you configure an origination number.
  */
-
-import { SNSClient } from './sns'
-import { S3Client } from './s3'
-import { IAMClient } from './iam'
-import { LambdaClient } from './lambda'
-import { SupportClient, SupportTemplates } from './support'
 import { AWSClient } from './client'
+import { S3Client } from './s3'
+import { SNSClient } from './sns'
+import { SupportClient, SupportTemplates } from './support'
 
 export interface SmsSetupConfig {
   region?: string
@@ -133,8 +130,7 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
           result.supportCaseId = caseResult.caseId
           result.sandboxStatus = 'EXIT_REQUESTED'
           console.log(`  Support case created: ${caseResult.caseId}`)
-        }
-catch (err: any) {
+        } catch (err: any) {
           result.warnings.push(`Failed to create sandbox exit support case: ${err.message}`)
           console.log(`  Warning: Could not create support case: ${err.message}`)
         }
@@ -157,8 +153,7 @@ catch (err: any) {
         await setSnsSpendingLimit(awsClient, region, config.spending.monthlyLimit)
         result.spendingLimit = config.spending.monthlyLimit
         console.log('  Spending limit updated successfully')
-      }
-catch (err: any) {
+      } catch (err: any) {
         // If direct update fails, file a support ticket
         if (config.sandbox?.companyName) {
           try {
@@ -172,18 +167,15 @@ catch (err: any) {
             result.supportCaseId = caseResult.caseId
             result.warnings.push(`Spending limit increase requested via support case: ${caseResult.caseId}`)
             console.log(`  Support case created for limit increase: ${caseResult.caseId}`)
-          }
-catch (supportErr: any) {
+          } catch (supportErr: any) {
             result.warnings.push(`Failed to request spending limit increase: ${supportErr.message}`)
           }
-        }
-else {
+        } else {
           result.warnings.push('Spending limit increase requires AWS Support ticket. Provide companyName in config.')
         }
       }
     }
-  }
-catch (err: any) {
+  } catch (err: any) {
     result.errors.push(`Failed to check SMS account status: ${err.message}`)
     console.log(`  Error checking status: ${err.message}`)
   }
@@ -200,8 +192,7 @@ catch (err: any) {
       result.inboxBucket = config.inbox.bucket
       result.inboxPrefix = config.inbox.prefix || 'sms/inbox/'
       console.log(`  Inbox configured: s3://${config.inbox.bucket}/${result.inboxPrefix}`)
-    }
-catch (err: any) {
+    } catch (err: any) {
       result.errors.push(`Failed to set up S3 inbox: ${err.message}`)
       console.log(`  Error setting up inbox: ${err.message}`)
     }
@@ -215,8 +206,7 @@ catch (err: any) {
       const topicArn = await setupTwoWayTopic(sns, awsClient, region, topicName, config.accountId)
       result.twoWayTopicArn = topicArn
       console.log(`  Two-way topic: ${topicArn}`)
-    }
-catch (err: any) {
+    } catch (err: any) {
       result.errors.push(`Failed to set up two-way SMS topic: ${err.message}`)
       console.log(`  Error setting up two-way: ${err.message}`)
     }
@@ -230,8 +220,7 @@ catch (err: any) {
       const topicArn = await setupDeliveryReceiptsTopic(sns, awsClient, region, topicName, config.accountId)
       result.deliveryReceiptTopicArn = topicArn
       console.log(`  Delivery receipts topic: ${topicArn}`)
-    }
-catch (err: any) {
+    } catch (err: any) {
       result.errors.push(`Failed to set up delivery receipts: ${err.message}`)
       console.log(`  Error setting up delivery receipts: ${err.message}`)
     }
@@ -268,8 +257,7 @@ async function checkSmsAccountStatus(sns: SNSClient): Promise<{
   try {
     const sandboxStatus = await sns.getSMSSandboxAccountStatus()
     inSandbox = sandboxStatus.IsInSandbox
-  }
-catch {
+  } catch {
     // Assume sandbox if we can't check
     inSandbox = true
   }
@@ -280,8 +268,7 @@ catch {
     if (smsAttrs.MonthlySpendLimit) {
       spendingLimit = parseFloat(smsAttrs.MonthlySpendLimit)
     }
-  }
-catch {
+  } catch {
     // Ignore
   }
 
@@ -325,7 +312,7 @@ async function setupS3Inbox(
   // Check if bucket exists
   try {
     const buckets = await s3.listBuckets()
-    const bucketExists = buckets.Buckets?.some(b => b.Name === config.bucket)
+    const bucketExists = buckets.Buckets?.some((b) => b.Name === config.bucket)
 
     if (!bucketExists) {
       // Create bucket
@@ -350,8 +337,7 @@ async function setupS3Inbox(
           body: `SMS folder created ${new Date().toISOString()}`,
           contentType: 'text/plain',
         })
-      }
-catch {
+      } catch {
         // Ignore if already exists
       }
     }
@@ -373,14 +359,12 @@ catch {
             Expiration: { Days: config.retentionDays },
           },
         ])
-      }
-catch (err: any) {
+      } catch (err: any) {
         // Lifecycle configuration might fail if not owner, continue anyway
         console.log(`  Note: Could not set lifecycle rules: ${err.message}`)
       }
     }
-  }
-catch (err: any) {
+  } catch (err: any) {
     throw new Error(`Failed to set up S3 inbox: ${err.message}`)
   }
 }
@@ -397,7 +381,7 @@ async function setupTwoWayTopic(
 ): Promise<string> {
   // Check if topic exists
   const topics = await sns.listTopics()
-  const existingTopic = topics.Topics?.find(t => t.TopicArn?.endsWith(`:${topicName}`))
+  const existingTopic = topics.Topics?.find((t) => t.TopicArn?.endsWith(`:${topicName}`))
 
   if (existingTopic) {
     return existingTopic.TopicArn!
@@ -480,10 +464,7 @@ async function setupDeliveryReceiptsTopic(
  * Get complete SMS infrastructure status
  */
 // pickier-disable-next-line no-unused-vars
-export async function getSmsInfrastructureStatus(config: {
-  region?: string
-  accountName?: string
-}): Promise<{
+export async function getSmsInfrastructureStatus(config: { region?: string; accountName?: string }): Promise<{
   sandboxStatus: 'IN_SANDBOX' | 'OUT_OF_SANDBOX' | 'UNKNOWN'
   spendingLimit: number
   topics: Array<{
@@ -500,8 +481,8 @@ export async function getSmsInfrastructureStatus(config: {
   // Get topics
   const topicsResult = await sns.listTopics()
   const smsTopics = (topicsResult.Topics || [])
-    .filter(t => t.TopicArn?.includes('sms'))
-    .map(t => ({
+    .filter((t) => t.TopicArn?.includes('sms'))
+    .map((t) => ({
       name: t.TopicArn?.split(':').pop() || '',
       arn: t.TopicArn || '',
     }))

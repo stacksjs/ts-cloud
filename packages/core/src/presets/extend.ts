@@ -17,19 +17,17 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>)
     if (Array.isArray(sourceValue) && Array.isArray(targetValue)) {
       // Merge arrays by concatenating
       result[key] = [...targetValue, ...sourceValue] as any
-    }
-    else if (
-      typeof sourceValue === 'object'
-      && sourceValue !== null
-      && !Array.isArray(sourceValue)
-      && typeof targetValue === 'object'
-      && targetValue !== null
-      && !Array.isArray(targetValue)
+    } else if (
+      typeof sourceValue === 'object' &&
+      sourceValue !== null &&
+      !Array.isArray(sourceValue) &&
+      typeof targetValue === 'object' &&
+      targetValue !== null &&
+      !Array.isArray(targetValue)
     ) {
       // Recursively merge objects
       result[key] = deepMerge(targetValue, sourceValue)
-    }
-    else {
+    } else {
       // Override primitive values
       result[key] = sourceValue as any
     }
@@ -65,10 +63,7 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>)
  * )
  * ```
  */
-export function extendPreset(
-  basePreset: Partial<CloudConfig>,
-  extensions: Partial<CloudConfig>,
-): Partial<CloudConfig> {
+export function extendPreset(basePreset: Partial<CloudConfig>, extensions: Partial<CloudConfig>): Partial<CloudConfig> {
   return deepMerge(basePreset as Record<string, any>, extensions as Record<string, any>) as Partial<CloudConfig>
 }
 
@@ -92,9 +87,7 @@ export function extendPreset(
  * )
  * ```
  */
-export function composePresets(
-  ...presets: Partial<CloudConfig>[]
-): Partial<CloudConfig> {
+export function composePresets(...presets: Partial<CloudConfig>[]): Partial<CloudConfig> {
   return presets.reduce(
     (acc, preset) => deepMerge(acc as Record<string, any>, preset as Record<string, any>),
     {} as Record<string, any>,
@@ -160,9 +153,7 @@ export function createPreset<TOptions extends Record<string, any>>(
  * )
  * ```
  */
-export function mergeInfrastructure(
-  infrastructure: Partial<CloudConfig['infrastructure']>,
-): Partial<CloudConfig> {
+export function mergeInfrastructure(infrastructure: Partial<CloudConfig['infrastructure']>): Partial<CloudConfig> {
   return {
     infrastructure,
   }
@@ -201,9 +192,7 @@ export function withMonitoring(
  * )
  * ```
  */
-export function withSecurity(
-  security: NonNullable<CloudConfig['infrastructure']>['security'],
-): Partial<CloudConfig> {
+export function withSecurity(security: NonNullable<CloudConfig['infrastructure']>['security']): Partial<CloudConfig> {
   return mergeInfrastructure({ security })
 }
 
@@ -225,9 +214,7 @@ export function withSecurity(
  * )
  * ```
  */
-export function withDatabase(
-  databases: NonNullable<CloudConfig['infrastructure']>['databases'],
-): Partial<CloudConfig> {
+export function withDatabase(databases: NonNullable<CloudConfig['infrastructure']>['databases']): Partial<CloudConfig> {
   return mergeInfrastructure({ databases })
 }
 
@@ -247,9 +234,7 @@ export function withDatabase(
  * )
  * ```
  */
-export function withCache(
-  cache: NonNullable<CloudConfig['infrastructure']>['cache'],
-): Partial<CloudConfig> {
+export function withCache(cache: NonNullable<CloudConfig['infrastructure']>['cache']): Partial<CloudConfig> {
   return mergeInfrastructure({ cache })
 }
 
@@ -268,9 +253,7 @@ export function withCache(
  * )
  * ```
  */
-export function withCDN(
-  cdn: NonNullable<CloudConfig['infrastructure']>['cdn'],
-): Partial<CloudConfig> {
+export function withCDN(cdn: NonNullable<CloudConfig['infrastructure']>['cdn']): Partial<CloudConfig> {
   return mergeInfrastructure({ cdn })
 }
 
@@ -290,8 +273,6 @@ export function withCDN(
  * )
  * ```
  */
-export function withQueue(
-  queues: NonNullable<CloudConfig['infrastructure']>['queues'],
-): Partial<CloudConfig> {
+export function withQueue(queues: NonNullable<CloudConfig['infrastructure']>['queues']): Partial<CloudConfig> {
   return mergeInfrastructure({ queues })
 }

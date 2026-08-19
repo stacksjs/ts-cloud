@@ -96,7 +96,7 @@ describe('GitHub Workflow Generation', () => {
       const workflow = generatePreviewWorkflow()
 
       expect(workflow).toContain('Destroy preview environment')
-      expect(workflow).toContain('github.event.action == \'closed\'')
+      expect(workflow).toContain("github.event.action == 'closed'")
       expect(workflow).toContain('--destroy')
     })
 
@@ -138,7 +138,7 @@ describe('GitHub Workflow Generation', () => {
     it('should use default schedule', () => {
       const workflow = generateCleanupWorkflow()
 
-      expect(workflow).toContain('cron: \'0 0 * * *\'') // Daily at midnight
+      expect(workflow).toContain("cron: '0 0 * * *'") // Daily at midnight
     })
 
     it('should configure custom schedule', () => {
@@ -146,7 +146,7 @@ describe('GitHub Workflow Generation', () => {
         schedule: '0 2 * * *', // 2am daily
       })
 
-      expect(workflow).toContain('cron: \'0 2 * * *\'')
+      expect(workflow).toContain("cron: '0 2 * * *'")
     })
 
     it('should configure max age', () => {
@@ -199,7 +199,7 @@ describe('GitHub Workflow Generation', () => {
     it('should use default schedule', () => {
       const workflow = generateCostReportWorkflow()
 
-      expect(workflow).toContain('cron: \'0 8 * * 1\'') // Monday at 8am
+      expect(workflow).toContain("cron: '0 8 * * 1'") // Monday at 8am
     })
 
     it('should configure custom schedule', () => {
@@ -207,7 +207,7 @@ describe('GitHub Workflow Generation', () => {
         schedule: '0 9 * * 5', // Friday at 9am
       })
 
-      expect(workflow).toContain('cron: \'0 9 * * 5\'')
+      expect(workflow).toContain("cron: '0 9 * * 5'")
     })
 
     it('should include cost generation step', () => {

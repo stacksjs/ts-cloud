@@ -31,7 +31,7 @@ export function registerCacheCommands(app: CLI): void {
 
         cli.table(
           ['Cluster ID', 'Engine', 'Node Type', 'Nodes', 'Status'],
-          clusters.map(cluster => [
+          clusters.map((cluster) => [
             cluster.CacheClusterId || 'N/A',
             `${cluster.Engine || 'N/A'} ${cluster.EngineVersion || ''}`,
             cluster.CacheNodeType || 'N/A',
@@ -39,8 +39,7 @@ export function registerCacheCommands(app: CLI): void {
             cluster.CacheClusterStatus || 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list clusters: ${error.message}`)
         process.exit(1)
       }
@@ -53,47 +52,51 @@ export function registerCacheCommands(app: CLI): void {
     .option('--nodes <number>', 'Number of cache nodes', { default: '1' })
     .option('--region <region>', 'AWS region', { default: 'us-east-1' })
     .option('--version <version>', 'Engine version')
-    .action(async (name: string, options: { engine: string; nodeType: string; nodes: string; region: string; version?: string }) => {
-      cli.header('Create ElastiCache Cluster')
+    .action(
+      async (
+        name: string,
+        options: { engine: string; nodeType: string; nodes: string; region: string; version?: string },
+      ) => {
+        cli.header('Create ElastiCache Cluster')
 
-      try {
-        const elasticache = new ElastiCacheClient(options.region)
+        try {
+          const elasticache = new ElastiCacheClient(options.region)
 
-        cli.info(`Cluster ID: ${name}`)
-        cli.info(`Engine: ${options.engine}`)
-        cli.info(`Node Type: ${options.nodeType}`)
-        cli.info(`Number of Nodes: ${options.nodes}`)
-        cli.info(`Region: ${options.region}`)
+          cli.info(`Cluster ID: ${name}`)
+          cli.info(`Engine: ${options.engine}`)
+          cli.info(`Node Type: ${options.nodeType}`)
+          cli.info(`Number of Nodes: ${options.nodes}`)
+          cli.info(`Region: ${options.region}`)
 
-        const confirmed = await cli.confirm('\nCreate this cluster?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
+          const confirmed = await cli.confirm('\nCreate this cluster?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Creating cluster...')
+          spinner.start()
+
+          await elasticache.createCacheCluster({
+            cacheClusterId: name,
+            engine: options.engine as 'redis' | 'memcached',
+            cacheNodeType: options.nodeType,
+            numCacheNodes: Number.parseInt(options.nodes),
+            engineVersion: options.version,
+          })
+
+          spinner.succeed('Cluster creation initiated')
+
+          cli.success(`\nCluster: ${name}`)
+          cli.info('Status: creating')
+          cli.info('\nNote: Cluster creation may take several minutes.')
+          cli.info('Use `cloud cache:list` to check status.')
+        } catch (error: any) {
+          cli.error(`Failed to create cluster: ${error.message}`)
+          process.exit(1)
         }
-
-        const spinner = new cli.Spinner('Creating cluster...')
-        spinner.start()
-
-        await elasticache.createCacheCluster({
-          cacheClusterId: name,
-          engine: options.engine as 'redis' | 'memcached',
-          cacheNodeType: options.nodeType,
-          numCacheNodes: Number.parseInt(options.nodes),
-          engineVersion: options.version,
-        })
-
-        spinner.succeed('Cluster creation initiated')
-
-        cli.success(`\nCluster: ${name}`)
-        cli.info('Status: creating')
-        cli.info('\nNote: Cluster creation may take several minutes.')
-        cli.info('Use `cloud cache:list` to check status.')
-      }
-      catch (error: any) {
-        cli.error(`Failed to create cluster: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('cache:delete <clusterId>', 'Delete an ElastiCache cluster')
@@ -121,8 +124,7 @@ export function registerCacheCommands(app: CLI): void {
         spinner.succeed('Cluster deletion initiated')
 
         cli.info('\nNote: Cluster deletion may take several minutes.')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete cluster: ${error.message}`)
         process.exit(1)
       }
@@ -168,8 +170,7 @@ export function registerCacheCommands(app: CLI): void {
             }
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get cluster stats: ${error.message}`)
         process.exit(1)
       }
@@ -226,8 +227,7 @@ export function registerCacheCommands(app: CLI): void {
         cli.info(`  redis-cli -h ${endpoint.Address} -p ${endpoint.Port} FLUSHALL`)
         cli.info('\nNote: Direct FLUSHALL via AWS API is not supported.')
         cli.info('You must connect to the cluster directly to execute this command.')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get cluster info: ${error.message}`)
         process.exit(1)
       }
@@ -260,7 +260,7 @@ export function registerCacheCommands(app: CLI): void {
 
         const nodeIds = options.node
           ? [options.node]
-          : cluster.CacheNodes?.map(n => n.CacheNodeId).filter(Boolean) || []
+          : cluster.CacheNodes?.map((n) => n.CacheNodeId).filter(Boolean) || []
 
         if (nodeIds.length === 0) {
           cli.error('No nodes found to reboot')
@@ -285,8 +285,7 @@ export function registerCacheCommands(app: CLI): void {
 
         cli.info('\nNote: Reboot may take several minutes to complete.')
         cli.info('Use `cloud cache:stats` to check status.')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to reboot cluster: ${error.message}`)
         process.exit(1)
       }

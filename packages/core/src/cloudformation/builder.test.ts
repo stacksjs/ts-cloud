@@ -59,11 +59,16 @@ describe('CloudFormationBuilder', () => {
     })
 
     builder.addResource('Bucket', 'AWS::S3::Bucket', { BucketName: 'bucket' })
-    builder.addResource('BucketPolicy', 'AWS::S3::BucketPolicy', {
-      Bucket: Fn.ref('Bucket'),
-    }, {
-      dependsOn: 'Bucket',
-    })
+    builder.addResource(
+      'BucketPolicy',
+      'AWS::S3::BucketPolicy',
+      {
+        Bucket: Fn.ref('Bucket'),
+      },
+      {
+        dependsOn: 'Bucket',
+      },
+    )
 
     const template = builder.build()
 
@@ -78,9 +83,14 @@ describe('CloudFormationBuilder', () => {
 
     builder.addResource('Resource1', 'AWS::S3::Bucket', {})
     builder.addResource('Resource2', 'AWS::S3::Bucket', {})
-    builder.addResource('Resource3', 'AWS::S3::Bucket', {}, {
-      dependsOn: ['Resource1', 'Resource2'],
-    })
+    builder.addResource(
+      'Resource3',
+      'AWS::S3::Bucket',
+      {},
+      {
+        dependsOn: ['Resource1', 'Resource2'],
+      },
+    )
 
     const template = builder.build()
 
@@ -93,11 +103,16 @@ describe('CloudFormationBuilder', () => {
       environments: { production: { type: 'production' } },
     })
 
-    builder.addResource('Database', 'AWS::RDS::DBInstance', {
-      DBInstanceIdentifier: 'mydb',
-    }, {
-      deletionPolicy: 'Snapshot',
-    })
+    builder.addResource(
+      'Database',
+      'AWS::RDS::DBInstance',
+      {
+        DBInstanceIdentifier: 'mydb',
+      },
+      {
+        deletionPolicy: 'Snapshot',
+      },
+    )
 
     const template = builder.build()
 
@@ -255,10 +270,7 @@ describe('CloudFormation Intrinsic Functions', () => {
   })
 
   it('should create And function', () => {
-    const and = Fn.and(
-      Fn.equals('a', 'a'),
-      Fn.equals('b', 'b'),
-    )
+    const and = Fn.and(Fn.equals('a', 'a'), Fn.equals('b', 'b'))
 
     expect(and).toEqual({
       'Fn::And': [{ 'Fn::Equals': ['a', 'a'] }, { 'Fn::Equals': ['b', 'b'] }],
@@ -266,10 +278,7 @@ describe('CloudFormation Intrinsic Functions', () => {
   })
 
   it('should create Or function', () => {
-    const or = Fn.or(
-      Fn.equals('a', 'b'),
-      Fn.equals('c', 'c'),
-    )
+    const or = Fn.or(Fn.equals('a', 'b'), Fn.equals('c', 'c'))
 
     expect(or).toEqual({
       'Fn::Or': [{ 'Fn::Equals': ['a', 'b'] }, { 'Fn::Equals': ['c', 'c'] }],
@@ -307,21 +316,10 @@ describe('CloudFormation Intrinsic Functions', () => {
   })
 
   it('should nest intrinsic functions', () => {
-    const nested = Fn.join('-', [
-      Fn.ref('AWS::StackName'),
-      'bucket',
-      Fn.select(0, Fn.getAZs()),
-    ])
+    const nested = Fn.join('-', [Fn.ref('AWS::StackName'), 'bucket', Fn.select(0, Fn.getAZs())])
 
     expect(nested).toEqual({
-      'Fn::Join': [
-        '-',
-        [
-          { Ref: 'AWS::StackName' },
-          'bucket',
-          { 'Fn::Select': [0, { 'Fn::GetAZs': '' }] },
-        ],
-      ],
+      'Fn::Join': ['-', [{ Ref: 'AWS::StackName' }, 'bucket', { 'Fn::Select': [0, { 'Fn::GetAZs': '' }] }]],
     })
   })
 })

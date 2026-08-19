@@ -34,9 +34,7 @@ function laravelConfig(): CloudConfig {
   // Augment with the rest of the Forge surface.
   base.notifications = { slack: { webhookUrl: 'https://hooks.slack.com/services/x' } }
   base.infrastructure!.compute!.managedServices = { mysql: true, redis: true, meilisearch: true }
-  base.infrastructure!.compute!.sshKeys = [
-    { name: 'chris@laptop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5key' },
-  ]
+  base.infrastructure!.compute!.sshKeys = [{ name: 'chris@laptop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5key' }]
   base.infrastructure!.compute!.backups = { enabled: true, bucket: 'acme-backups', schedule: '0 2 * * *' }
   base.sites!.main.queues = [{ connection: 'redis', queue: 'default', processes: 2 }]
   base.sites!.main.scheduler = true
@@ -53,7 +51,11 @@ function mockDriver() {
     getComputeOutputs: mock(async () => ({ deployStoragePath: '/var/ts-cloud/staging' })),
     uploadRelease: mock(async () => ({ artifactRef: '/var/ts-cloud/staging/x.tar.gz' })),
     findComputeTargets: mock(async () => [{ id: 'srv-1', publicIp: '203.0.113.9', status: 'running' }]),
-    runRemoteDeploy: mock(async () => ({ success: true, instanceCount: 1, perInstance: [{ instanceId: 'srv-1', status: 'Success' }] })),
+    runRemoteDeploy: mock(async () => ({
+      success: true,
+      instanceCount: 1,
+      perInstance: [{ instanceId: 'srv-1', status: 'Success' }],
+    })),
   } as any
 }
 
@@ -131,7 +133,9 @@ describe('Laravel end-to-end: app deploy', () => {
 
     const cmd = driver.runRemoteDeploy.mock.calls[0][0].commands.join('\n')
     // git clone into an atomic release
-    expect(cmd).toContain('git clone -q --depth 1 --branch \'main\' \'git@github.com:acme/app.git\' /var/www/acme-main/releases/deadbeef')
+    expect(cmd).toContain(
+      "git clone -q --depth 1 --branch 'main' 'git@github.com:acme/app.git' /var/www/acme-main/releases/deadbeef",
+    )
     expect(cmd).toContain('ln -sfn /var/www/acme-main/shared/storage /var/www/acme-main/releases/deadbeef/storage')
     // Laravel build steps with the versioned php binary
     expect(cmd).toContain('composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev')

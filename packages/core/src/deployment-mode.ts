@@ -19,10 +19,12 @@ export interface DeploymentTargets {
 }
 
 /** What deployment targets the config declares. Pure and side-effect free. */
-export function detectDeploymentTargets(config: Pick<CloudConfig, 'infrastructure' | 'environments'>): DeploymentTargets {
+export function detectDeploymentTargets(
+  config: Pick<CloudConfig, 'infrastructure' | 'environments'>,
+): DeploymentTargets {
   const server = config.infrastructure?.compute != null
   const serverless = Object.values(config.environments ?? {}).some(
-    env => (env as { app?: unknown } | undefined)?.app != null,
+    (env) => (env as { app?: unknown } | undefined)?.app != null,
   )
   return { server, serverless }
 }
@@ -34,9 +36,10 @@ export function detectDeploymentTargets(config: Pick<CloudConfig, 'infrastructur
  * are configured this still returns a value, but {@link deploymentCoexistenceError}
  * is non-null and callers should abort first.
  */
-export function resolveDeploymentMode(config: Pick<CloudConfig, 'infrastructure' | 'environments' | 'mode'>): DeploymentMode {
-  if (config.mode === 'server' || config.mode === 'serverless')
-    return config.mode
+export function resolveDeploymentMode(
+  config: Pick<CloudConfig, 'infrastructure' | 'environments' | 'mode'>,
+): DeploymentMode {
+  if (config.mode === 'server' || config.mode === 'serverless') return config.mode
   const { serverless } = detectDeploymentTargets(config)
   return serverless ? 'serverless' : 'server'
 }
@@ -46,20 +49,28 @@ export function resolveDeploymentMode(config: Pick<CloudConfig, 'infrastructure'
  * app (they cannot coexist), or when an explicit `config.mode` contradicts the
  * configured resources. Returns null when the config is consistent.
  */
-export function deploymentCoexistenceError(config: Pick<CloudConfig, 'infrastructure' | 'environments' | 'mode'>): string | null {
+export function deploymentCoexistenceError(
+  config: Pick<CloudConfig, 'infrastructure' | 'environments' | 'mode'>,
+): string | null {
   const { server, serverless } = detectDeploymentTargets(config)
   if (server && serverless) {
-    return 'A project cannot be both a server and a serverless deployment. '
-      + 'Found `infrastructure.compute` (server) AND `environments.<env>.app` (serverless Lambda). '
-      + 'Keep one: remove `infrastructure.compute` for a serverless app, or remove `environments.<env>.app` for a server.'
+    return (
+      'A project cannot be both a server and a serverless deployment. ' +
+      'Found `infrastructure.compute` (server) AND `environments.<env>.app` (serverless Lambda). ' +
+      'Keep one: remove `infrastructure.compute` for a serverless app, or remove `environments.<env>.app` for a server.'
+    )
   }
   if (config.mode === 'server' && serverless && !server) {
-    return 'Config sets `mode: \'server\'` but declares a serverless app (`environments.<env>.app`). '
-      + 'Remove the app or change the mode.'
+    return (
+      "Config sets `mode: 'server'` but declares a serverless app (`environments.<env>.app`). " +
+      'Remove the app or change the mode.'
+    )
   }
   if (config.mode === 'serverless' && server && !serverless) {
-    return 'Config sets `mode: \'serverless\'` but declares a server (`infrastructure.compute`). '
-      + 'Remove the compute block or change the mode.'
+    return (
+      "Config sets `mode: 'serverless'` but declares a server (`infrastructure.compute`). " +
+      'Remove the compute block or change the mode.'
+    )
   }
   return null
 }

@@ -7,13 +7,13 @@
  * same way Laravel/PHP does. Unlike the PHP layer these need no Docker: the
  * official binary is downloaded and zipped directly.
  */
-
+import type { ZipEntry } from '../zip'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createZip, type ZipEntry } from '../zip'
+import { createZip } from '../zip'
 
 export type RuntimeArch = 'x86_64' | 'arm64'
 
@@ -79,8 +79,7 @@ export function buildNodeRuntimeLayerZip(options: BuildRuntimeLayerOptions): Run
       { name: 'bin/node', data: nodeBin, mode: 0o755 },
     ]
     return { zip: createZip(entries), architecture, version: exact, fileCount: entries.length }
-  }
-  finally {
+  } finally {
     rmSync(stage, { recursive: true, force: true })
   }
 }
@@ -117,8 +116,7 @@ export function buildBunRuntimeLayerZip(options: BuildRuntimeLayerOptions): Runt
       { name: 'bin/bun', data: bunBin, mode: 0o755 },
     ]
     return { zip: createZip(entries), architecture, version: version || 'latest', fileCount: entries.length }
-  }
-  finally {
+  } finally {
     rmSync(stage, { recursive: true, force: true })
   }
 }
@@ -132,8 +130,7 @@ function fetchToFile(url: string, dest: string): void {
 function resolveLatestNode(major: string): string {
   const indexJson = execFileSync('curl', ['-fsSL', 'https://nodejs.org/dist/index.json'], { encoding: 'utf-8' })
   const releases = JSON.parse(indexJson) as Array<{ version: string }>
-  const match = releases.find(r => r.version.startsWith(`v${major}.`))
-  if (!match)
-    throw new Error(`No Node release found for major version ${major}`)
+  const match = releases.find((r) => r.version.startsWith(`v${major}.`))
+  if (!match) throw new Error(`No Node release found for major version ${major}`)
   return match.version.replace(/^v/, '')
 }

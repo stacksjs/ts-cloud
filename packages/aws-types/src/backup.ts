@@ -2,7 +2,6 @@
  * AWS Backup Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_Backup.html
  */
-
 import type { Tag } from './common'
 
 /**
@@ -16,7 +15,25 @@ export interface BackupVault {
     EncryptionKeyArn?: string
     Notifications?: {
       SNSTopicArn: string
-      BackupVaultEvents: Array<'BACKUP_JOB_STARTED' | 'BACKUP_JOB_COMPLETED' | 'BACKUP_JOB_SUCCESSFUL' | 'BACKUP_JOB_FAILED' | 'BACKUP_JOB_EXPIRED' | 'RESTORE_JOB_STARTED' | 'RESTORE_JOB_COMPLETED' | 'RESTORE_JOB_SUCCESSFUL' | 'RESTORE_JOB_FAILED' | 'COPY_JOB_STARTED' | 'COPY_JOB_SUCCESSFUL' | 'COPY_JOB_FAILED' | 'RECOVERY_POINT_MODIFIED' | 'BACKUP_PLAN_CREATED' | 'BACKUP_PLAN_MODIFIED' | 'S3_BACKUP_OBJECT_FAILED' | 'S3_RESTORE_OBJECT_FAILED'>
+      BackupVaultEvents: Array<
+        | 'BACKUP_JOB_STARTED'
+        | 'BACKUP_JOB_COMPLETED'
+        | 'BACKUP_JOB_SUCCESSFUL'
+        | 'BACKUP_JOB_FAILED'
+        | 'BACKUP_JOB_EXPIRED'
+        | 'RESTORE_JOB_STARTED'
+        | 'RESTORE_JOB_COMPLETED'
+        | 'RESTORE_JOB_SUCCESSFUL'
+        | 'RESTORE_JOB_FAILED'
+        | 'COPY_JOB_STARTED'
+        | 'COPY_JOB_SUCCESSFUL'
+        | 'COPY_JOB_FAILED'
+        | 'RECOVERY_POINT_MODIFIED'
+        | 'BACKUP_PLAN_CREATED'
+        | 'BACKUP_PLAN_MODIFIED'
+        | 'S3_BACKUP_OBJECT_FAILED'
+        | 'S3_RESTORE_OBJECT_FAILED'
+      >
     }
     AccessPolicy?: {
       Version: string
@@ -175,13 +192,17 @@ export interface BackupVaultNotifications {
   Properties: {
     BackupVaultName: string
     SNSTopicArn: string
-    BackupVaultEvents: Array<'BACKUP_JOB_STARTED' | 'BACKUP_JOB_COMPLETED' | 'RESTORE_JOB_STARTED' | 'RESTORE_JOB_COMPLETED' | 'COPY_JOB_STARTED' | 'COPY_JOB_SUCCESSFUL' | 'COPY_JOB_FAILED' | 'RECOVERY_POINT_MODIFIED'>
+    BackupVaultEvents: Array<
+      | 'BACKUP_JOB_STARTED'
+      | 'BACKUP_JOB_COMPLETED'
+      | 'RESTORE_JOB_STARTED'
+      | 'RESTORE_JOB_COMPLETED'
+      | 'COPY_JOB_STARTED'
+      | 'COPY_JOB_SUCCESSFUL'
+      | 'COPY_JOB_FAILED'
+      | 'RECOVERY_POINT_MODIFIED'
+    >
   }
 }
 
-export type BackupResource =
-  | BackupVault
-  | BackupPlan
-  | BackupSelection
-  | BackupFramework
-  | BackupReportPlan
+export type BackupResource = BackupVault | BackupPlan | BackupSelection | BackupFramework | BackupReportPlan

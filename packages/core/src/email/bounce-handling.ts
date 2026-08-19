@@ -138,10 +138,7 @@ export class BounceComplaintHandler {
   /**
    * Create automatic bounce handler
    */
-  createAutomaticBounceHandler(options: {
-    name: string
-    notificationTopicArn: string
-  }): BounceHandler {
+  createAutomaticBounceHandler(options: { name: string; notificationTopicArn: string }): BounceHandler {
     return this.createBounceHandler({
       name: options.name,
       bounceThreshold: 5, // 5% bounce rate
@@ -210,20 +207,21 @@ export class BounceComplaintHandler {
   /**
    * Get bounce statistics
    */
-  getBounceStatistics(startDate: Date, endDate: Date): {
+  getBounceStatistics(
+    startDate: Date,
+    endDate: Date,
+  ): {
     totalBounces: number
     permanentBounces: number
     transientBounces: number
     bounceRate: number
     topRecipients: Array<{ email: string; count: number }>
   } {
-    const bounces = Array.from(this.bounces.values()).filter(
-      b => b.timestamp >= startDate && b.timestamp <= endDate
-    )
+    const bounces = Array.from(this.bounces.values()).filter((b) => b.timestamp >= startDate && b.timestamp <= endDate)
 
     const totalBounces = bounces.length
-    const permanentBounces = bounces.filter(b => b.bounceType === 'Permanent').length
-    const transientBounces = bounces.filter(b => b.bounceType === 'Transient').length
+    const permanentBounces = bounces.filter((b) => b.bounceType === 'Permanent').length
+    const transientBounces = bounces.filter((b) => b.bounceType === 'Transient').length
 
     // Calculate bounce rate (would need sent count in real implementation)
     const estimatedSent = totalBounces * 10 // Placeholder
@@ -252,13 +250,16 @@ export class BounceComplaintHandler {
   /**
    * Get complaint statistics
    */
-  getComplaintStatistics(startDate: Date, endDate: Date): {
+  getComplaintStatistics(
+    startDate: Date,
+    endDate: Date,
+  ): {
     totalComplaints: number
     uniqueComplainters: number
     complaintRate: number
   } {
     const complaints = Array.from(this.complaints.values()).filter(
-      c => c.timestamp >= startDate && c.timestamp <= endDate
+      (c) => c.timestamp >= startDate && c.timestamp <= endDate,
     )
 
     const totalComplaints = complaints.length
@@ -299,14 +300,11 @@ export class BounceComplaintHandler {
 
     if (stats.bounceRate > 10 || complaintStats.complaintRate > 0.5) {
       reputationStatus = 'Shutdown'
-    }
-else if (stats.bounceRate > 5 || complaintStats.complaintRate > 0.1) {
+    } else if (stats.bounceRate > 5 || complaintStats.complaintRate > 0.1) {
       reputationStatus = 'Probation'
-    }
-else if (stats.bounceRate > 2 || complaintStats.complaintRate > 0.05) {
+    } else if (stats.bounceRate > 2 || complaintStats.complaintRate > 0.05) {
       reputationStatus = 'Warning'
-    }
-else {
+    } else {
       reputationStatus = 'Good'
     }
 
@@ -331,7 +329,7 @@ else {
    */
   getBounces(messageId?: string): BounceEvent[] {
     const bounces = Array.from(this.bounces.values())
-    return messageId ? bounces.filter(b => b.messageId === messageId) : bounces
+    return messageId ? bounces.filter((b) => b.messageId === messageId) : bounces
   }
 
   /**
@@ -339,7 +337,7 @@ else {
    */
   getComplaints(messageId?: string): ComplaintEvent[] {
     const complaints = Array.from(this.complaints.values())
-    return messageId ? complaints.filter(c => c.messageId === messageId) : complaints
+    return messageId ? complaints.filter((c) => c.messageId === messageId) : complaints
   }
 
   /**
@@ -347,7 +345,7 @@ else {
    */
   listSuppressionList(reason?: 'BOUNCE' | 'COMPLAINT'): SuppressionListEntry[] {
     const entries = Array.from(this.suppressionList.values())
-    return reason ? entries.filter(e => e.reason === reason) : entries
+    return reason ? entries.filter((e) => e.reason === reason) : entries
   }
 
   /**

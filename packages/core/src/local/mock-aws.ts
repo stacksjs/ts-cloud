@@ -233,7 +233,7 @@ export class MockS3 {
       throw new Error(`Bucket ${params.Bucket} does not exist`)
     }
 
-    const objects = Array.from(bucket.keys()).map(key => ({
+    const objects = Array.from(bucket.keys()).map((key) => ({
       Key: key,
       Size: bucket.get(key)!.length,
       LastModified: new Date().toISOString(),

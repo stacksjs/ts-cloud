@@ -243,7 +243,11 @@ describe('Security Module', () => {
         environment: 'production',
       })
 
-      const { webAcl: updated, ipSet, ipSetLogicalId } = Security.blockIpAddresses(
+      const {
+        webAcl: updated,
+        ipSet,
+        ipSetLogicalId,
+      } = Security.blockIpAddresses(
         webAcl,
         {
           name: 'BlockedIPs',
@@ -302,7 +306,9 @@ describe('Security Module', () => {
 
       expect(updated.Properties.Rules).toHaveLength(1)
       expect(updated.Properties.Rules?.[0].Statement.ManagedRuleGroupStatement?.VendorName).toBe('AWS')
-      expect(updated.Properties.Rules?.[0].Statement.ManagedRuleGroupStatement?.Name).toBe('AWSManagedRulesCommonRuleSet')
+      expect(updated.Properties.Rules?.[0].Statement.ManagedRuleGroupStatement?.Name).toBe(
+        'AWSManagedRulesCommonRuleSet',
+      )
     })
 
     it('should support excluding rules from managed rule group', () => {
@@ -320,7 +326,9 @@ describe('Security Module', () => {
       })
 
       expect(updated.Properties.Rules?.[0].Statement.ManagedRuleGroupStatement?.ExcludedRules).toHaveLength(2)
-      expect(updated.Properties.Rules?.[0].Statement.ManagedRuleGroupStatement?.ExcludedRules?.[0].Name).toBe('SizeRestrictions_BODY')
+      expect(updated.Properties.Rules?.[0].Statement.ManagedRuleGroupStatement?.ExcludedRules?.[0].Name).toBe(
+        'SizeRestrictions_BODY',
+      )
     })
 
     it('should have predefined managed rule groups', () => {
@@ -346,7 +354,12 @@ describe('Security Module', () => {
       template.addResource(certId, certificate)
 
       // 2. Create KMS key
-      const { key, alias, logicalId: keyId, aliasId } = Security.createKmsKey({
+      const {
+        key,
+        alias,
+        logicalId: keyId,
+        aliasId,
+      } = Security.createKmsKey({
         description: 'Application encryption key',
         slug: 'my-app',
         environment: 'production',
@@ -385,7 +398,11 @@ describe('Security Module', () => {
       })
 
       // Add IP blocking
-      const { webAcl: finalWebAcl, ipSet, ipSetLogicalId } = Security.blockIpAddresses(
+      const {
+        webAcl: finalWebAcl,
+        ipSet,
+        ipSetLogicalId,
+      } = Security.blockIpAddresses(
         webAcl,
         {
           name: 'IPBlock',

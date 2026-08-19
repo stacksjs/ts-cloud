@@ -6,7 +6,10 @@
  * the golden-image bake). `generateUbuntuAppCloudInit` is kept as a back-compat
  * alias for the shared builder.
  */
-export { buildUbuntuBootstrapScript as generateUbuntuAppCloudInit, type UbuntuBootstrapOptions } from '../shared/ubuntu-bootstrap'
+export {
+  buildUbuntuBootstrapScript as generateUbuntuAppCloudInit,
+  type UbuntuBootstrapOptions,
+} from '../shared/ubuntu-bootstrap'
 
 /**
  * Wrap a bash bootstrap script as Hetzner cloud-init user_data (#cloud-config).
@@ -22,7 +25,7 @@ export function wrapCloudInitUserData(bootstrapScript: string): string {
   const scriptPath = '/var/lib/cloud/ts-cloud-bootstrap.sh'
   const indented = bootstrapScript
     .split('\n')
-    .map(line => `      ${line}`)
+    .map((line) => `      ${line}`)
     .join('\n')
 
   return `#cloud-config

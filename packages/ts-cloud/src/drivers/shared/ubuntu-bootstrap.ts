@@ -48,6 +48,16 @@ export interface UbuntuBootstrapOptions {
    * boot near-instant. @default false
    */
   baked?: boolean
+  /**
+   * Swapfile size in GB, from `compute.swapGb`. Small shared boxes run several
+   * tenants + services with no swap at all, so a memory spike (deploy, bun
+   * install, on-box builds) leaves the kernel OOM killer picking victims
+   * box-wide. Provisioned at the very top of the bootstrap — BEFORE the
+   * memory-hungry installs — on cold and baked boots alike (a golden image
+   * deliberately bakes no swap; see the image recipe). Idempotent: skipped
+   * when `/swapfile` is already active. `0` disables. @default 2
+   */
+  swapGb?: number
 }
 
 /**
@@ -64,6 +74,7 @@ export function buildUbuntuBootstrapScript(options: UbuntuBootstrapOptions = {})
     caddyfile,
     rpxProvision,
     baked = false,
+    swapGb = 2,
   } = options
 
   const packages = new Set(systemPackages)
@@ -74,6 +85,30 @@ export function buildUbuntuBootstrapScript(options: UbuntuBootstrapOptions = {})
   let script = `#!/bin/bash
 set -euo pipefail
 `
+
+  // Swap FIRST, on cold and baked boots alike, before the memory-hungry
+  // installs below: a small box with no swap lets the OOM killer pick victims
+  // box-wide the moment apt/bun install/postgres spike memory. The guard makes
+  // it idempotent (cloud-init may re-run; a baked image re-creates it per boot).
+  const swapSizeGb = Math.floor(swapGb)
+  if (swapSizeGb > 0) {
+    script += `
+# Swap: a swapless box under memory pressure lets the kernel OOM killer choose
+# victims box-wide (the gateway, a tenant app, postgres). A modest swapfile
+# with low swappiness gives the kernel headroom without hurting responsiveness.
+if ! swapon --show=NAME --noheadings 2>/dev/null | grep -qx '/swapfile'; then
+  if [ ! -f /swapfile ]; then
+    fallocate -l ${swapSizeGb}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=${swapSizeGb * 1024} status=none
+    chmod 600 /swapfile
+    mkswap /swapfile >/dev/null
+  fi
+  swapon /swapfile
+fi
+grep -qE '^/swapfile\\s' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+echo 'vm.swappiness=10' > /etc/sysctl.d/99-ts-cloud-swap.conf
+sysctl -w vm.swappiness=10 >/dev/null
+`
+  }
 
   // Install-heavy steps — skipped on a baked image (already provisioned).
   if (!baked) {
@@ -130,17 +165,15 @@ ln -sf /root/.bun/bin/bun /usr/local/bin/bun
 echo 'export BUN_INSTALL="/root/.bun"' > /etc/profile.d/bun.sh
 echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> /etc/profile.d/bun.sh
 `
-    }
-    else if (runtime === 'node') {
-      const nodeMajor = (runtimeVersion === 'latest' || !runtimeVersion) ? '20' : runtimeVersion.split('.')[0]
+    } else if (runtime === 'node') {
+      const nodeMajor = runtimeVersion === 'latest' || !runtimeVersion ? '20' : runtimeVersion.split('.')[0]
       script += `
 curl -fsSL https://deb.nodesource.com/setup_${nodeMajor}.x | bash -
 apt-get install -y nodejs
 ln -sf /usr/bin/node /usr/local/bin/node
 ln -sf /usr/bin/npm /usr/local/bin/npm
 `
-    }
-    else if (runtime === 'deno') {
+    } else if (runtime === 'deno') {
       script += `
 curl -fsSL https://deno.land/install.sh | sh
 ln -sf /root/.deno/bin/deno /usr/local/bin/deno
@@ -208,9 +241,7 @@ systemctl start caddy
   if (rpxProvision && rpxProvision.length > 0) {
     // The provision script carries its own `set -euo pipefail`; strip a leading
     // duplicate so the embedded block is clean.
-    const body = rpxProvision[0] === 'set -euo pipefail'
-      ? rpxProvision.slice(1)
-      : rpxProvision
+    const body = rpxProvision[0] === 'set -euo pipefail' ? rpxProvision.slice(1) : rpxProvision
     script += `
 ${body.join('\n')}
 `

@@ -9,27 +9,15 @@
  * Plus the operational verbs: redeploy (no rebuild), rollback (previous
  * release), and maintenance mode (down/up).
  */
-
 import type { CloudConfig, EnvironmentType, ServerlessAppConfig } from '@ts-cloud/core'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import {
-  artifactKey,
-  composeServerlessAppTemplate,
-  laravelServerlessEnvDefaults,
-  packagePhpApp,
-  packageServerlessApp,
-  resolveQueueNames,
-  resolveServerlessAppStackName,
-  resolveServerlessRuntime,
-  resolveServerlessArtifactBucketName,
-  resolveServerlessAssetBucketName,
-} from '@ts-cloud/core'
+import { artifactKey, composeServerlessAppTemplate, laravelServerlessEnvDefaults, packagePhpApp, packageServerlessApp, resolveQueueNames, resolveServerlessAppStackName, resolveServerlessArtifactBucketName, resolveServerlessAssetBucketName, resolveServerlessRuntime } from '@ts-cloud/core'
+import * as cli from '../utils/cli'
 import { CloudFormationClient } from '../aws/cloudformation'
 import { LambdaClient } from '../aws/lambda'
 import { S3Client } from '../aws/s3'
 import { SecretsManagerClient } from '../aws/secrets-manager'
-import * as cli from '../utils/cli'
 
 export interface DeployServerlessOptions {
   /** Project root for entry resolution + build hooks. @default process.cwd() */
@@ -66,7 +54,7 @@ interface ReleaseRecord {
   functionVersions?: Record<string, string>
   /** Prior release's published versions, so alias rollback can flip back. */
   previousFunctionVersions?: Record<string, string>
-  functionNames: { http: string, queue?: string, cli: string }
+  functionNames: { http: string; queue?: string; cli: string }
   assetUrl?: string
   timestamp: string
 }
@@ -76,7 +64,9 @@ interface ReleaseRecord {
 function resolveContext(config: CloudConfig, environment: EnvironmentType): ResolvedContext {
   const app = config.environments?.[environment]?.app
   if (!app)
-    throw new Error(`No serverless app configured for environment '${environment}'. Add environments.${environment}.app to your config.`)
+    throw new Error(
+      `No serverless app configured for environment '${environment}'. Add environments.${environment}.app to your config.`,
+    )
   const slug = config.project.slug
   const region = config.environments?.[environment]?.region || config.project.region || 'us-east-1'
   return {
@@ -94,11 +84,14 @@ function resolveContext(config: CloudConfig, environment: EnvironmentType): Reso
  * shared by the logs/metrics/env/warming CLI commands. Throws if the env has no
  * serverless app configured.
  */
-export function resolveServerlessFunctions(config: CloudConfig, environment: EnvironmentType): {
+export function resolveServerlessFunctions(
+  config: CloudConfig,
+  environment: EnvironmentType,
+): {
   region: string
   slug: string
   stackName: string
-  functions: { http: string, queue: string, cli: string }
+  functions: { http: string; queue: string; cli: string }
 } {
   const ctx = resolveContext(config, environment)
   const base = `${ctx.slug}-${environment}`
@@ -116,13 +109,12 @@ async function withConflictRetry<T>(fn: () => Promise<T>, attempts = 8): Promise
   for (let i = 0; i < attempts; i++) {
     try {
       return await fn()
-    }
-    catch (err: any) {
+    } catch (err: any) {
       const code = err?.code || err?.name || ''
       const msg = String(err?.message || '')
       if (code === 'ResourceConflictException' || /update is in progress|currently in the following state/i.test(msg)) {
         lastErr = err
-        await new Promise(r => setTimeout(r, 3000))
+        await new Promise((r) => setTimeout(r, 3000))
         continue
       }
       throw err
@@ -136,13 +128,18 @@ const RELEASE_KEY = (slug: string, env: string): string => `releases/${slug}/${e
 async function readRelease(s3: S3Client, bucket: string, slug: string, env: string): Promise<ReleaseRecord | null> {
   try {
     return await s3.getObjectJson<ReleaseRecord>(bucket, RELEASE_KEY(slug, env))
-  }
-  catch {
+  } catch {
     return null
   }
 }
 
-async function writeRelease(s3: S3Client, bucket: string, slug: string, env: string, record: ReleaseRecord): Promise<void> {
+async function writeRelease(
+  s3: S3Client,
+  bucket: string,
+  slug: string,
+  env: string,
+  record: ReleaseRecord,
+): Promise<void> {
   await s3.putObjectJson(bucket, RELEASE_KEY(slug, env), record)
 }
 
@@ -152,8 +149,15 @@ export async function resolveSecrets(app: ServerlessAppConfig, region: string): 
   const sm = new SecretsManagerClient(region)
   const out: Record<string, string> = {}
 
-  const entries: Array<{ envName: string, secretId: string }> = Array.isArray(app.secrets)
-    ? app.secrets.map(name => ({ envName: name.split('/').pop()!.toUpperCase().replace(/[^A-Z0-9_]/g, '_'), secretId: name }))
+  const entries: Array<{ envName: string; secretId: string }> = Array.isArray(app.secrets)
+    ? app.secrets.map((name) => ({
+        envName: name
+          .split('/')
+          .pop()!
+          .toUpperCase()
+          .replace(/[^A-Z0-9_]/g, '_'),
+        secretId: name,
+      }))
     : Object.entries(app.secrets).map(([envName, secretId]) => ({ envName, secretId }))
 
   // Array-form secrets derive their env name from the last path segment, so two
@@ -161,12 +165,13 @@ export async function resolveSecrets(app: ServerlessAppConfig, region: string): 
   // collide. Fail loudly and tell the user to use the map form to disambiguate.
   if (Array.isArray(app.secrets)) {
     const byName = new Map<string, string[]>()
-    for (const { envName, secretId } of entries)
-      byName.set(envName, [...(byName.get(envName) ?? []), secretId])
+    for (const { envName, secretId } of entries) byName.set(envName, [...(byName.get(envName) ?? []), secretId])
     const clashes = [...byName.entries()].filter(([, ids]) => ids.length > 1)
     if (clashes.length) {
       const detail = clashes.map(([name, ids]) => `${name} ← ${ids.join(', ')}`).join('; ')
-      throw new Error(`serverless secrets: multiple secrets map to the same env var (${detail}). Use the map form { ENV_NAME: 'secret/id' } to disambiguate.`)
+      throw new Error(
+        `serverless secrets: multiple secrets map to the same env var (${detail}). Use the map form { ENV_NAME: 'secret/id' } to disambiguate.`,
+      )
     }
   }
 
@@ -180,8 +185,7 @@ export async function resolveSecrets(app: ServerlessAppConfig, region: string): 
         for (const [k, v] of Object.entries(parsed)) out[k] = String(v)
         continue
       }
-    }
-    catch {}
+    } catch {}
     out[envName] = str
   }
   return out
@@ -225,9 +229,10 @@ export function buildFunctionEnv(
   queueName: string | undefined,
   infraEnv: Record<string, string> = {},
 ): Record<string, string> {
-  const laravelDefaults = app.kind === 'php'
-    ? laravelServerlessEnvDefaults({ cacheDriver: app.cache?.driver === 'elasticache' ? 'redis' : 'dynamodb' })
-    : {}
+  const laravelDefaults =
+    app.kind === 'php'
+      ? laravelServerlessEnvDefaults({ cacheDriver: app.cache?.driver === 'elasticache' ? 'redis' : 'dynamodb' })
+      : {}
 
   return {
     TSCLOUD_LAMBDA_MODE: mode,
@@ -272,18 +277,23 @@ function contentType(file: string): string {
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
-    if (statSync(full).isDirectory()) yield * walk(full)
+    if (statSync(full).isDirectory()) yield* walk(full)
     else yield full
   }
 }
 
-async function uploadAssets(s3: S3Client, bucket: string, dir: string, prefix: string, includeDotfiles = false): Promise<number> {
+async function uploadAssets(
+  s3: S3Client,
+  bucket: string,
+  dir: string,
+  prefix: string,
+  includeDotfiles = false,
+): Promise<number> {
   let count = 0
   for (const file of walk(dir)) {
     const rel = relative(dir, file).replace(/\\/g, '/')
     // Vapor excludes dotfiles by default; include them only when opted in.
-    if (!includeDotfiles && rel.split('/').some(seg => seg.startsWith('.')))
-      continue
+    if (!includeDotfiles && rel.split('/').some((seg) => seg.startsWith('.'))) continue
     await s3.putObject({
       bucket,
       key: `${prefix}/${rel}`,
@@ -297,9 +307,7 @@ async function uploadAssets(s3: S3Client, bucket: string, dir: string, prefix: s
 }
 
 /** Code source for a function update: an S3 zip or an ECR image. */
-export type CodeSource =
-  | { kind: 'zip', bucket: string, key: string }
-  | { kind: 'image', imageUri: string }
+export type CodeSource = { kind: 'zip'; bucket: string; key: string } | { kind: 'image'; imageUri: string }
 
 /**
  * AWS caps the aggregate size of a function's environment variables at 4 KB.
@@ -311,23 +319,33 @@ export function assertEnvWithinLimit(name: string, env: Record<string, string>):
   if (bytes > 4096) {
     const biggest = Object.entries(env)
       .map(([k, v]) => [k, Buffer.byteLength(`${k}=${v}`, 'utf8')] as const)
-      .sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([k, n]) => `${k} (${n}B)`).join(', ')
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([k, n]) => `${k} (${n}B)`)
+      .join(', ')
     throw new Error(
-      `${name}: environment variables total ${bytes}B, over AWS's 4096B limit (${bytes - 4096}B too large). `
-      + `Largest: ${biggest}. Move large/secret values out of env — store them in Secrets Manager and fetch at cold start.`,
+      `${name}: environment variables total ${bytes}B, over AWS's 4096B limit (${bytes - 4096}B too large). ` +
+        `Largest: ${biggest}. Move large/secret values out of env — store them in Secrets Manager and fetch at cold start.`,
     )
   }
 }
 
 /** Apply env + code to one function, serialized to avoid update conflicts. */
-async function applyFunction(lambda: LambdaClient, name: string, env: Record<string, string>, code: CodeSource): Promise<void> {
+async function applyFunction(
+  lambda: LambdaClient,
+  name: string,
+  env: Record<string, string>,
+  code: CodeSource,
+): Promise<void> {
   assertEnvWithinLimit(name, env)
-  await withConflictRetry(() => lambda.updateFunctionConfiguration({ FunctionName: name, Environment: { Variables: env } }))
+  await withConflictRetry(() =>
+    lambda.updateFunctionConfiguration({ FunctionName: name, Environment: { Variables: env } }),
+  )
   await lambda.waitForFunctionActive(name, 120)
-  const codeParams = code.kind === 'image'
-    ? { FunctionName: name, ImageUri: code.imageUri }
-    : { FunctionName: name, S3Bucket: code.bucket, S3Key: code.key }
+  const codeParams =
+    code.kind === 'image'
+      ? { FunctionName: name, ImageUri: code.imageUri }
+      : { FunctionName: name, S3Bucket: code.bucket, S3Key: code.key }
   await withConflictRetry(() => lambda.updateFunctionCode(codeParams))
   await lambda.waitForFunctionActive(name, 120)
 }
@@ -340,8 +358,7 @@ async function applyFunction(lambda: LambdaClient, name: string, env: Record<str
 async function publishAndFlip(lambda: LambdaClient, name: string): Promise<string> {
   const published = await withConflictRetry(() => lambda.publishVersion({ FunctionName: name }))
   const version = published.Version
-  if (!version)
-    throw new Error(`publishVersion returned no version for ${name}`)
+  if (!version) throw new Error(`publishVersion returned no version for ${name}`)
   await withConflictRetry(() => lambda.updateAlias({ FunctionName: name, Name: 'live', FunctionVersion: version }))
   return version
 }
@@ -371,17 +388,17 @@ export async function deployServerlessApp(
 
   // 1–2. Produce the deployable artifact: a container image (>250 MB apps) or a
   //      ZIP uploaded to S3. `codeSource` is what each function is pointed at.
-  let handlers: { http: string, queue: string, cli: string }
+  let handlers: { http: string; queue: string; cli: string }
   let codeSource: CodeSource
   let artifactSha: string
   let runtimeLayers: string[] | undefined
-  const parameters: Array<{ ParameterKey: string, ParameterValue: string }> = []
+  const parameters: Array<{ ParameterKey: string; ParameterValue: string }> = []
 
   if (imageMode && resolved.usesLayer && resolved.layerKind !== 'php') {
     throw new Error(
-      `packaging: 'image' currently supports PHP and managed Node runtimes. `
-      + `${resolved.kind}${resolved.kind === 'node' ? ` ${resolved.version}` : ''} uses a custom runtime — `
-      + `use the default zip packaging (the runtime layer is built + attached automatically).`,
+      `packaging: 'image' currently supports PHP and managed Node runtimes. ` +
+        `${resolved.kind}${resolved.kind === 'node' ? ` ${resolved.version}` : ''} uses a custom runtime — ` +
+        `use the default zip packaging (the runtime layer is built + attached automatically).`,
     )
   }
 
@@ -394,18 +411,17 @@ export async function deployServerlessApp(
       region,
       repository: `${slug}-${environment}`,
       skipBuild: opts.skipBuild,
-      onStep: m => cli.info(`  ${m}`),
+      onStep: (m) => cli.info(`  ${m}`),
     })
     handlers = built.handlers
     codeSource = { kind: 'image', imageUri: built.imageUri }
     artifactSha = built.tag
     parameters.push({ ParameterKey: 'ImageUri', ParameterValue: built.imageUri })
-  }
-  else {
+  } else {
     cli.step('Packaging application')
     const artifact = isPhp
-      ? packagePhpApp({ projectRoot, app, skipBuild: opts.skipBuild, onStep: m => cli.info(`  ${m}`) })
-      : await packageServerlessApp({ projectRoot, app, skipBuild: opts.skipBuild, onStep: m => cli.info(`  ${m}`) })
+      ? packagePhpApp({ projectRoot, app, skipBuild: opts.skipBuild, onStep: (m) => cli.info(`  ${m}`) })
+      : await packageServerlessApp({ projectRoot, app, skipBuild: opts.skipBuild, onStep: (m) => cli.info(`  ${m}`) })
     const key = artifactKey(slug, environment, artifact.sha256)
     cli.info(`Artifact: ${artifact.sha256.slice(0, 12)} (${(artifact.zip.length / 1024).toFixed(0)} KB)`)
     handlers = artifact.handlers
@@ -416,15 +432,16 @@ export async function deployServerlessApp(
       const envArn = resolved.layerEnvVar ? process.env[resolved.layerEnvVar] : undefined
       runtimeLayers = app.layers ?? (envArn ? [envArn] : undefined)
       if (!runtimeLayers?.length) {
-        const buildCmd = resolved.layerKind === 'php'
-          ? 'serverless:build-php-layer'
-          : resolved.layerKind === 'bun'
-            ? 'serverless:build-bun-layer'
-            : 'serverless:build-node-layer'
+        const buildCmd =
+          resolved.layerKind === 'php'
+            ? 'serverless:build-php-layer'
+            : resolved.layerKind === 'bun'
+              ? 'serverless:build-bun-layer'
+              : 'serverless:build-node-layer'
         throw new Error(
-          `${resolved.kind} apps on provided.al2023 need a runtime layer. Set environments.<env>.app.layers `
-          + `or the ${resolved.layerEnvVar} env var (build one with \`cloud ${buildCmd}\`)`
-          + `${resolved.kind === 'node' ? ', or use a managed Node version (18/20/22)' : ''}.`,
+          `${resolved.kind} apps on provided.al2023 need a runtime layer. Set environments.<env>.app.layers ` +
+            `or the ${resolved.layerEnvVar} env var (build one with \`cloud ${buildCmd}\`)` +
+            `${resolved.kind === 'node' ? ', or use a managed Node version (18/20/22)' : ''}.`,
         )
       }
     }
@@ -435,11 +452,13 @@ export async function deployServerlessApp(
       await s3.createBucket(artifactBucket)
     }
     // headObject resolves to null (not a throw) for a missing key.
-    const exists = await s3.headObject(artifactBucket, key).then(r => r !== null).catch(() => false)
+    const exists = await s3
+      .headObject(artifactBucket, key)
+      .then((r) => r !== null)
+      .catch(() => false)
     if (exists) {
       cli.info('Artifact already uploaded — reusing')
-    }
-    else {
+    } else {
       cli.step('Uploading artifact')
       await s3.putObject({ bucket: artifactBucket, key, body: artifact.zip, contentType: 'application/zip' })
     }
@@ -457,14 +476,16 @@ export async function deployServerlessApp(
 
   // Resolve the current stack status; a stale failed/deleting stack can't be
   // updated, and a ROLLBACK_COMPLETE/REVIEW stack must be deleted before create.
-  const status = await cfn.describeStacks({ stackName }).then(r => r.Stacks[0]?.StackStatus as string | undefined).catch(() => undefined)
+  const status = await cfn
+    .describeStacks({ stackName })
+    .then((r) => r.Stacks[0]?.StackStatus as string | undefined)
+    .catch(() => undefined)
   let stackExists = status !== undefined
   if (status && /DELETE_IN_PROGRESS/.test(status)) {
     cli.step('Waiting for an in-progress stack delete to finish')
     await cfn.waitForStack(stackName, 'stack-delete-complete').catch(() => {})
     stackExists = false
-  }
-  else if (status && /(?:ROLLBACK_COMPLETE|REVIEW_IN_PROGRESS|CREATE_FAILED)/.test(status)) {
+  } else if (status && /(?:ROLLBACK_COMPLETE|REVIEW_IN_PROGRESS|CREATE_FAILED)/.test(status)) {
     cli.step(`Deleting unusable stack (status ${status}) before recreate`)
     await cfn.deleteStack(stackName)
     await cfn.waitForStack(stackName, 'stack-delete-complete').catch(() => {})
@@ -475,22 +496,19 @@ export async function deployServerlessApp(
     if (stackExists) {
       await cfn.updateStack({ stackName, templateBody, parameters, capabilities })
       await cfn.waitForStack(stackName, 'stack-update-complete')
-    }
-    else {
+    } else {
       await cfn.createStack({ stackName, templateBody, parameters, capabilities, onFailure: 'DELETE' })
       await cfn.waitForStack(stackName, 'stack-create-complete')
     }
-  }
-  catch (err: any) {
+  } catch (err: any) {
     if (/No updates are to be performed/i.test(String(err?.message))) {
       cli.info('No infrastructure changes')
-    }
-    else {
+    } else {
       throw err
     }
   }
 
-  const outputs = await cfn.getStackOutputs(stackName).catch(() => ({} as Record<string, string>))
+  const outputs = await cfn.getStackOutputs(stackName).catch(() => ({}) as Record<string, string>)
 
   // 4. Assets → S3 + ASSET_URL.
   let assetUrl: string | undefined
@@ -503,8 +521,7 @@ export async function deployServerlessApp(
       cli.step(`Syncing assets from ${app.assets}`)
       const n = await uploadAssets(s3, ctx.assetsBucket, assetsDir, artifactSha, app.dotFilesAsAssets)
       cli.info(`Uploaded ${n} asset(s)${assetUrl ? ` → ${assetUrl}` : ''}`)
-    }
-    else {
+    } else {
       cli.warn(`Assets directory not found: ${assetsDir}`)
     }
   }
@@ -519,11 +536,10 @@ export async function deployServerlessApp(
     try {
       const sm = new SecretsManagerClient(region)
       const v = await sm.getSecretValue({ SecretId: `${slug}/${environment}/db` })
-      const creds = JSON.parse(v.SecretString ?? '{}') as { username?: string, password?: string }
+      const creds = JSON.parse(v.SecretString ?? '{}') as { username?: string; password?: string }
       if (creds.username) secrets.DB_USERNAME = creds.username
       if (creds.password) secrets.DB_PASSWORD = creds.password
-    }
-    catch (err: any) {
+    } catch (err: any) {
       cli.warn(`Could not resolve Aurora DB credentials: ${err.message}`)
     }
   }
@@ -559,8 +575,7 @@ export async function deployServerlessApp(
     cli.step('Publishing versions + flipping live alias')
     functionVersions.http = await publishAndFlip(lambda, composed.functionNames.http)
     functionVersions.cli = await publishAndFlip(lambda, composed.functionNames.cli)
-    if (composed.queueNames.length)
-      functionVersions.queue = await publishAndFlip(lambda, composed.functionNames.queue)
+    if (composed.queueNames.length) functionVersions.queue = await publishAndFlip(lambda, composed.functionNames.queue)
   }
 
   // 6. Snapshot the release for rollback.
@@ -610,19 +625,23 @@ export async function deployServerlessApp(
     try {
       const r = await fetch(endpoint, { method: 'GET' })
       cli.info(`GET ${endpoint} → ${r.status}`)
-    }
-    catch (err: any) {
+    } catch (err: any) {
       cli.warn(`Health check could not reach ${endpoint}: ${err.message}`)
     }
   }
 
-  cli.box([
-    'Serverless deploy complete',
-    '',
-    endpoint ? `URL:   ${endpoint}` : '',
-    `Stack: ${stackName}`,
-    `Build: ${artifactSha.slice(0, 12)}`,
-  ].filter(Boolean).join('\n'), 'green')
+  cli.box(
+    [
+      'Serverless deploy complete',
+      '',
+      endpoint ? `URL:   ${endpoint}` : '',
+      `Stack: ${stackName}`,
+      `Build: ${artifactSha.slice(0, 12)}`,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    'green',
+  )
 }
 
 // ── Redeploy (no rebuild) ─────────────────────────────────────────────────────
@@ -633,8 +652,7 @@ export async function redeployServerlessApp(config: CloudConfig, environment: En
   const lambda = new LambdaClient(ctx.region)
 
   const release = await readRelease(s3, ctx.artifactBucket, ctx.slug, environment)
-  if (!release)
-    throw new Error('No previous release to redeploy. Run a full deploy first.')
+  if (!release) throw new Error('No previous release to redeploy. Run a full deploy first.')
 
   cli.header(`Redeploying ${ctx.slug} (${environment}) — build ${release.sha.slice(0, 12)}`)
   for (const [mode, name] of Object.entries(release.functionNames)) {
@@ -658,8 +676,7 @@ export async function rollbackServerlessApp(config: CloudConfig, environment: En
   const lambda = new LambdaClient(ctx.region)
 
   const release = await readRelease(s3, ctx.artifactBucket, ctx.slug, environment)
-  if (!release?.previousCode)
-    throw new Error('No previous release to roll back to.')
+  if (!release?.previousCode) throw new Error('No previous release to roll back to.')
 
   cli.header(`Rolling back ${ctx.slug} (${environment}) → ${release.previousSha?.slice(0, 12)}`)
   for (const [mode, name] of Object.entries(release.functionNames)) {
@@ -673,7 +690,9 @@ export async function rollbackServerlessApp(config: CloudConfig, environment: En
     // the actual rollback is flipping the alias back to the prior version.
     const prevVersion = release.previousFunctionVersions?.[mode]
     if (prevVersion)
-      await withConflictRetry(() => lambda.updateAlias({ FunctionName: name, Name: 'live', FunctionVersion: prevVersion }))
+      await withConflictRetry(() =>
+        lambda.updateAlias({ FunctionName: name, Name: 'live', FunctionVersion: prevVersion }),
+      )
   }
 
   // Swap the release pointer so a subsequent rollback is idempotent-safe.
@@ -710,7 +729,9 @@ export async function setMaintenance(
   if (enabled && bypassSecret) env.MAINTENANCE_BYPASS_SECRET = bypassSecret
   if (!enabled) delete env.MAINTENANCE_BYPASS_SECRET
 
-  await withConflictRetry(() => lambda.updateFunctionConfiguration({ FunctionName: httpName, Environment: { Variables: env } }))
+  await withConflictRetry(() =>
+    lambda.updateFunctionConfiguration({ FunctionName: httpName, Environment: { Variables: env } }),
+  )
 
   // In the provisioned-concurrency model, HTTP traffic runs a published version
   // (frozen env), so the $LATEST env change above won't be seen until we publish
@@ -724,13 +745,21 @@ export async function setMaintenance(
 }
 
 /** Invoke the CLI function with an arbitrary command (e.g. `cloud command "migrate"`). */
-export async function runRemoteCommand(config: CloudConfig, environment: EnvironmentType, command: string): Promise<string> {
+export async function runRemoteCommand(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  command: string,
+): Promise<string> {
   const ctx = resolveContext(config, environment)
   const lambda = new LambdaClient(ctx.region)
   const cliName = `${ctx.slug}-${environment}-cli`
-  const res = await lambda.invoke({ FunctionName: cliName, InvocationType: 'RequestResponse', Payload: { command }, LogType: 'Tail' })
-  if (res.FunctionError)
-    throw new Error(`Command failed: ${res.Payload}`)
+  const res = await lambda.invoke({
+    FunctionName: cliName,
+    InvocationType: 'RequestResponse',
+    Payload: { command },
+    LogType: 'Tail',
+  })
+  if (res.FunctionError) throw new Error(`Command failed: ${res.Payload}`)
   return res.Payload ?? ''
 }
 
@@ -751,8 +780,7 @@ const HISTORY_CAP = 50
 async function readHistory(s3: S3Client, bucket: string, slug: string, env: string): Promise<CommandRecord[]> {
   try {
     return (await s3.getObjectJson<{ records: CommandRecord[] }>(bucket, HISTORY_KEY(slug, env)))?.records ?? []
-  }
-  catch {
+  } catch {
     return []
   }
 }
@@ -762,11 +790,16 @@ export async function runAndRecordCommand(
   config: CloudConfig,
   environment: EnvironmentType,
   command: string,
-): Promise<{ id: number, status: 'ok' | 'error', output: string }> {
+): Promise<{ id: number; status: 'ok' | 'error'; output: string }> {
   const ctx = resolveContext(config, environment)
   const lambda = new LambdaClient(ctx.region)
   const cliName = `${ctx.slug}-${environment}-cli`
-  const res = await lambda.invoke({ FunctionName: cliName, InvocationType: 'RequestResponse', Payload: { command }, LogType: 'Tail' })
+  const res = await lambda.invoke({
+    FunctionName: cliName,
+    InvocationType: 'RequestResponse',
+    Payload: { command },
+    LogType: 'Tail',
+  })
   const output = res.Payload ?? ''
   const status: 'ok' | 'error' = res.FunctionError ? 'error' : 'ok'
 
@@ -778,13 +811,15 @@ export async function runAndRecordCommand(
       const records = await readHistory(s3, ctx.artifactBucket, ctx.slug, environment)
       id = records.reduce((m, r) => Math.max(m, r.id), 0) + 1
       records.push({ id, command, timestamp: new Date().toISOString(), status, output: output.slice(0, 4000) })
-      await s3.putObjectJson(ctx.artifactBucket, HISTORY_KEY(ctx.slug, environment), { records: records.slice(-HISTORY_CAP) })
+      await s3.putObjectJson(ctx.artifactBucket, HISTORY_KEY(ctx.slug, environment), {
+        records: records.slice(-HISTORY_CAP),
+      })
     }
+  } catch {
+    /* history is best-effort */
   }
-  catch { /* history is best-effort */ }
 
-  if (res.FunctionError)
-    throw new Error(`Command failed${id > 0 ? ` (#${id})` : ''}: ${output}`)
+  if (res.FunctionError) throw new Error(`Command failed${id > 0 ? ` (#${id})` : ''}: ${output}`)
   return { id, status, output }
 }
 
@@ -796,10 +831,14 @@ export async function listCommandHistory(config: CloudConfig, environment: Envir
 }
 
 /** Look up one history record by id (or the most recent when id is omitted). */
-export async function getCommandRecord(config: CloudConfig, environment: EnvironmentType, id?: number): Promise<CommandRecord | undefined> {
+export async function getCommandRecord(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  id?: number,
+): Promise<CommandRecord | undefined> {
   const records = await listCommandHistory(config, environment)
   if (!records.length) return undefined
-  return id == null ? records[records.length - 1] : records.find(r => r.id === id)
+  return id == null ? records[records.length - 1] : records.find((r) => r.id === id)
 }
 
 /**
@@ -820,7 +859,7 @@ export interface ServerlessFunctionInfo {
   name: string
   /** `live` alias version when provisioned concurrency is on, else '$LATEST'. */
   version: string
-  provisioned?: { status: string, allocated: number, requested: number }
+  provisioned?: { status: string; allocated: number; requested: number }
 }
 
 export interface ServerlessInfo {
@@ -834,7 +873,7 @@ export interface ServerlessInfo {
   queues: string[]
   provisionedConcurrency: number
   functions: ServerlessFunctionInfo[]
-  lastRelease?: { sha: string, timestamp: string }
+  lastRelease?: { sha: string; timestamp: string }
 }
 
 /** Gather an operational summary of a deployed serverless app. */
@@ -849,10 +888,10 @@ export async function serverlessInfo(config: CloudConfig, environment: Environme
   try {
     const { Stacks } = await cf.describeStacks({ stackName: ctx.stackName })
     stackStatus = Stacks?.[0]?.StackStatus ?? stackStatus
-    for (const o of Stacks?.[0]?.Outputs ?? [])
-      if (o.OutputKey) outputs[o.OutputKey] = o.OutputValue ?? ''
+    for (const o of Stacks?.[0]?.Outputs ?? []) if (o.OutputKey) outputs[o.OutputKey] = o.OutputValue ?? ''
+  } catch {
+    /* stack not deployed */
   }
-  catch { /* stack not deployed */ }
 
   const queues = resolveQueueNames(ctx.app, ctx.slug, environment)
   const pc = ctx.app.provisionedConcurrency ?? 0
@@ -869,7 +908,11 @@ export async function serverlessInfo(config: CloudConfig, environment: Environme
         info.version = alias.FunctionVersion
         const pcc = await lambda.getProvisionedConcurrencyConfig(name, 'live').catch(() => null)
         if (pcc)
-          info.provisioned = { status: pcc.Status ?? '-', allocated: pcc.AllocatedProvisionedConcurrentExecutions ?? 0, requested: pcc.RequestedProvisionedConcurrentExecutions ?? 0 }
+          info.provisioned = {
+            status: pcc.Status ?? '-',
+            allocated: pcc.AllocatedProvisionedConcurrentExecutions ?? 0,
+            requested: pcc.RequestedProvisionedConcurrentExecutions ?? 0,
+          }
       }
     }
     functions.push(info)
@@ -928,20 +971,26 @@ export async function scaleServerlessDatabase(
 export async function restoreServerlessDatabase(
   config: CloudConfig,
   environment: EnvironmentType,
-  opts: { toTime?: Date, latest?: boolean, target?: string },
+  opts: { toTime?: Date; latest?: boolean; target?: string },
 ): Promise<string> {
   const ctx = resolveContext(config, environment)
   if (ctx.app.database?.connection !== 'aurora-serverless')
     throw new Error('No Aurora Serverless v2 database is configured for this environment.')
-  if (!opts.toTime && !opts.latest)
-    throw new Error('Specify a restore point: --to <ISO timestamp> or --latest.')
+  if (!opts.toTime && !opts.latest) throw new Error('Specify a restore point: --to <ISO timestamp> or --latest.')
   const { RDSClient } = await import('../aws/rds')
   const rds = new RDSClient(ctx.region)
   const source = serverlessClusterId(ctx.slug, environment)
   // Build a stable, human-readable target name from the requested time.
-  const stamp = opts.latest ? 'latest' : opts.toTime!.toISOString().replace(/[^0-9]/g, '').slice(0, 14)
+  const stamp = opts.latest
+    ? 'latest'
+    : opts
+        .toTime!.toISOString()
+        .replace(/[^0-9]/g, '')
+        .slice(0, 14)
   const targetId = opts.target ?? `${source}-restore-${stamp}`
-  cli.step(`Restoring ${source} → new cluster ${targetId} (${opts.latest ? 'latest restorable time' : opts.toTime!.toISOString()})`)
+  cli.step(
+    `Restoring ${source} → new cluster ${targetId} (${opts.latest ? 'latest restorable time' : opts.toTime!.toISOString()})`,
+  )
   await rds.restoreDBClusterToPointInTime({
     DBClusterIdentifier: targetId,
     SourceDBClusterIdentifier: source,
@@ -958,7 +1007,7 @@ export async function restoreServerlessDatabase(
     const { DBClusters } = await rds.describeDBClusters({ DBClusterIdentifier: targetId })
     const status = DBClusters?.[0]?.Status
     if (status && status !== 'creating') break
-    await new Promise(r => setTimeout(r, 15000))
+    await new Promise((r) => setTimeout(r, 15000))
   }
   cli.step('Adding a writer instance')
   await rds.createDBInstance({
@@ -967,6 +1016,8 @@ export async function restoreServerlessDatabase(
     Engine: 'aurora-mysql',
     DBInstanceClass: 'db.serverless',
   })
-  cli.success(`Restore complete → cluster ${targetId} with writer ${targetId}-1. Point an env's database at it once available.`)
+  cli.success(
+    `Restore complete → cluster ${targetId} with writer ${targetId}-1. Point an env's database at it once available.`,
+  )
   return targetId
 }

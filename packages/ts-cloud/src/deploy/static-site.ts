@@ -2,14 +2,13 @@
  * Static Site Deployment Module
  * Deploys static sites to AWS using CloudFormation (S3 + CloudFront + Route53/External DNS + ACM)
  */
-
+import type { DnsProviderConfig } from '../dns/types'
+import { ACMClient, ACMDnsValidator } from '../aws/acm'
 import { CloudFormationClient } from '../aws/cloudformation'
-import { S3Client } from '../aws/s3'
 import { CloudFrontClient } from '../aws/cloudfront'
 import { Route53Client } from '../aws/route53'
-import { ACMClient, ACMDnsValidator } from '../aws/acm'
-import type { DnsProviderConfig } from '../dns/types'
-import { deployStaticSiteWithExternalDns, deployStaticSiteWithExternalDnsFull } from './static-site-external-dns'
+import { S3Client } from '../aws/s3'
+import { deployStaticSiteWithExternalDns } from './static-site-external-dns'
 
 export interface StaticSiteConfig {
   /** Site name used for resource naming */
@@ -219,8 +218,7 @@ export function generateStaticSiteTemplate(config: {
       SslSupportMethod: 'sni-only',
       MinimumProtocolVersion: 'TLSv1.2_2021',
     }
-  }
-  else {
+  } else {
     distributionConfig.ViewerCertificate = {
       CloudFrontDefaultCertificate: true,
     }
@@ -328,7 +326,8 @@ export function generateStaticSiteTemplate(config: {
 export async function deployStaticSite(config: StaticSiteConfig): Promise<DeployResult> {
   // If using external DNS provider (not Route53), delegate to the external DNS deployment
   if (config.dnsProvider && config.dnsProvider.provider !== 'route53') {
-    const domain = config.domain || (config.subdomain && config.baseDomain ? `${config.subdomain}.${config.baseDomain}` : undefined)
+    const domain =
+      config.domain || (config.subdomain && config.baseDomain ? `${config.subdomain}.${config.baseDomain}` : undefined)
     if (!domain) {
       return {
         success: false,
@@ -360,8 +359,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
   let domain: string | undefined
   if (config.domain) {
     domain = config.domain
-  }
-  else if (config.subdomain && config.baseDomain) {
+  } else if (config.subdomain && config.baseDomain) {
     domain = `${config.subdomain}.${config.baseDomain}`
   }
 
@@ -385,8 +383,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
     const zone = await route53.findHostedZoneForDomain(domain)
     if (zone) {
       hostedZoneId = zone.Id.replace('/hostedzone/', '')
-    }
-    else {
+    } else {
       return {
         success: false,
         stackName,
@@ -402,8 +399,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
     const existingCert = await acm.findCertificateByDomain(domain)
     if (existingCert && existingCert.Status === 'ISSUED') {
       certificateArn = existingCert.CertificateArn
-    }
-    else {
+    } else {
       // Request and validate new certificate
       const certResult = await acmValidator.requestAndValidate({
         domainName: domain,
@@ -429,24 +425,20 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
         console.log('Previous stack is still being deleted, waiting...')
         await cf.waitForStack(stackName, 'stack-delete-complete')
         stackExists = false
-      }
-      else if (stackStatus === 'DELETE_COMPLETE') {
+      } else if (stackStatus === 'DELETE_COMPLETE') {
         stackExists = false
-      }
-      else {
+      } else {
         stackExists = true
         // Get existing bucket name from stack outputs to ensure consistency during updates
         const outputs = stack.Outputs || []
-        existingBucketName = outputs.find(o => o.OutputKey === 'BucketName')?.OutputValue
+        existingBucketName = outputs.find((o) => o.OutputKey === 'BucketName')?.OutputValue
       }
     }
-  }
-  catch (err: any) {
+  } catch (err: any) {
     // Stack doesn't exist - this is expected for new deployments
     if (err.message?.includes('does not exist') || err.code === 'ValidationError') {
       stackExists = false
-    }
-    else {
+    } else {
       throw err
     }
   }
@@ -476,14 +468,12 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
           if (dist.Aliases?.Items) {
             if (Array.isArray(dist.Aliases.Items)) {
               aliases = dist.Aliases.Items
-            }
-            else if (typeof dist.Aliases.Items === 'object') {
+            } else if (typeof dist.Aliases.Items === 'object') {
               // Items.CNAME can be a string or array
               const cname = (dist.Aliases.Items as any).CNAME
               if (typeof cname === 'string') {
                 aliases = [cname]
-              }
-              else if (Array.isArray(cname)) {
+              } else if (Array.isArray(cname)) {
                 aliases = cname
               }
             }
@@ -503,11 +493,9 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
               let originList: any[] = []
               if (Array.isArray(originsData)) {
                 originList = originsData
-              }
-              else if (originsData.Origin) {
+              } else if (originsData.Origin) {
                 originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
-              }
-              else {
+              } else {
                 originList = [originsData]
               }
 
@@ -553,8 +541,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
                     EvaluateTargetHealth: false,
                   })
                   console.log(`Route53 records ensured for ${domain}`)
-                }
-                catch (dnsErr: any) {
+                } catch (dnsErr: any) {
                   console.log(`Note: Could not update Route53 records: ${dnsErr.message}`)
                 }
               }
@@ -572,8 +559,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
             }
           }
         }
-      }
-      catch {
+      } catch {
         // No distributions or error listing them
       }
 
@@ -593,15 +579,13 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
                     RecordSet: record,
                   })
                   console.log(`Deleted orphaned Route53 ${record.Type} record for ${domain}`)
-                }
-                catch (recordErr: any) {
+                } catch (recordErr: any) {
                   console.log(`Note: Could not delete Route53 record: ${recordErr.message}`)
                 }
               }
             }
           }
-        }
-        catch {
+        } catch {
           // Error listing/deleting records
         }
       }
@@ -620,16 +604,14 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
             )
             await Promise.race([cleanupPromise, timeoutPromise])
             console.log(`Deleted orphaned S3 bucket ${bucket}`)
-          }
-          catch (cleanupErr: any) {
+          } catch (cleanupErr: any) {
             console.log(`Note: Could not clean up S3 bucket: ${cleanupErr.message}`)
             const suffix = Date.now().toString(36)
             finalBucket = `${bucket}-${suffix}`
             console.log(`Using alternative bucket name: ${finalBucket}`)
           }
         }
-      }
-      catch {
+      } catch {
         // Bucket doesn't exist, good
       }
     }
@@ -669,15 +651,14 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
       })
       stackId = result.StackId
       console.log(`Update initiated, stack ID: ${stackId}`)
-    }
-    catch (err: any) {
+    } catch (err: any) {
       // No updates needed is not an error
       if (err.message?.includes('No updates are to be performed')) {
         const stacks = await cf.describeStacks({ stackName })
         stackId = stacks.Stacks[0].StackId
         // No actual update needed, return success with existing stack info
         const outputs = stacks.Stacks[0]?.Outputs || []
-        const getOutput = (key: string) => outputs.find(o => o.OutputKey === key)?.OutputValue
+        const getOutput = (key: string) => outputs.find((o) => o.OutputKey === key)?.OutputValue
 
         return {
           success: true,
@@ -690,13 +671,11 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
           certificateArn,
           message: 'Static site infrastructure is already up to date',
         }
-      }
-      else {
+      } else {
         throw err
       }
     }
-  }
-  else {
+  } else {
     console.log(`Creating CloudFormation stack: ${stackName}`)
     console.log(`Bucket name: ${finalBucket}`)
     console.log(`Domain: ${domain || 'not specified'}`)
@@ -718,11 +697,14 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
   try {
     await cf.waitForStack(stackName, isUpdate ? 'stack-update-complete' : 'stack-create-complete')
     console.log('Stack operation completed successfully!')
-  }
-  catch (err: any) {
+  } catch (err: any) {
     // CloudFormation failed - try direct API creation instead
     // This handles cases where CloudFormation has stricter validation than direct API calls
-    if (err.message?.includes('must be verified') || err.message?.includes('Access denied for operation') || err.message?.includes('failed')) {
+    if (
+      err.message?.includes('must be verified') ||
+      err.message?.includes('Access denied for operation') ||
+      err.message?.includes('failed')
+    ) {
       console.log('CloudFormation deployment failed, trying direct API creation...')
 
       const cloudfront = new CloudFrontClient()
@@ -737,13 +719,11 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
             if (dist.Aliases?.Items) {
               if (Array.isArray(dist.Aliases.Items)) {
                 aliases = dist.Aliases.Items
-              }
-              else if (typeof dist.Aliases.Items === 'object') {
+              } else if (typeof dist.Aliases.Items === 'object') {
                 const cname = (dist.Aliases.Items as any).CNAME
                 if (typeof cname === 'string') {
                   aliases = [cname]
-                }
-                else if (Array.isArray(cname)) {
+                } else if (Array.isArray(cname)) {
                   aliases = cname
                 }
               }
@@ -761,11 +741,9 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
                 let originList: any[] = []
                 if (Array.isArray(originsData)) {
                   originList = originsData
-                }
-                else if (originsData.Origin) {
+                } else if (originsData.Origin) {
                   originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
-                }
-                else {
+                } else {
                   originList = [originsData]
                 }
 
@@ -789,13 +767,13 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
                   distributionDomain: dist.DomainName,
                   domain,
                   certificateArn,
-                  message: 'Using existing CloudFront distribution (account verification pending for new distributions)',
+                  message:
+                    'Using existing CloudFront distribution (account verification pending for new distributions)',
                 }
               }
             }
           }
-        }
-        catch {
+        } catch {
           // Couldn't find existing infrastructure
         }
       }
@@ -811,8 +789,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
         const bucketExists = await s3Direct.headBucket(finalBucket)
         if (bucketExists.exists) {
           console.log(`Using existing S3 bucket: ${finalBucket}`)
-        }
-        else {
+        } else {
           console.log(`Creating S3 bucket: ${finalBucket}...`)
           await s3Direct.createBucket(finalBucket)
         }
@@ -878,8 +855,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
               EvaluateTargetHealth: false,
             })
             console.log(`Route53 records created for ${domain}`)
-          }
-          catch (dnsErr: any) {
+          } catch (dnsErr: any) {
             console.log(`Note: Could not create Route53 records: ${dnsErr.message}`)
           }
         }
@@ -894,8 +870,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
           certificateArn,
           message: 'Static site infrastructure created via direct API calls',
         }
-      }
-      catch (directErr: any) {
+      } catch (directErr: any) {
         console.log(`Direct API creation failed: ${directErr.message}`)
         return {
           success: false,
@@ -919,7 +894,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
   // Get stack outputs
   const stacks = await cf.describeStacks({ stackName })
   const outputs = stacks.Stacks[0]?.Outputs || []
-  const getOutput = (key: string) => outputs.find(o => o.OutputKey === key)?.OutputValue
+  const getOutput = (key: string) => outputs.find((o) => o.OutputKey === key)?.OutputValue
 
   return {
     success: true,
@@ -937,7 +912,9 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
 /**
  * Upload files to S3 bucket (only uploads changed files)
  */
-export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploaded: number; skipped: number; errors: string[] }> {
+export async function uploadStaticFiles(
+  options: UploadOptions,
+): Promise<{ uploaded: number; skipped: number; errors: string[] }> {
   const { sourceDir, bucket, region, cacheControl = 'max-age=31536000, public', onProgress } = options
   const s3 = new S3Client(region)
 
@@ -953,9 +930,8 @@ export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploa
     for (const entry of entries) {
       const fullPath = join(dir, entry.name)
       if (entry.isDirectory()) {
-        files.push(...await listFiles(fullPath))
-      }
-      else {
+        files.push(...(await listFiles(fullPath)))
+      } else {
         files.push(fullPath)
       }
     }
@@ -967,25 +943,25 @@ export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploa
   function getContentType(filePath: string): string {
     const ext = filePath.split('.').pop()?.toLowerCase()
     const types: Record<string, string> = {
-      'html': 'text/html; charset=utf-8',
-      'css': 'text/css; charset=utf-8',
-      'js': 'application/javascript; charset=utf-8',
-      'json': 'application/json; charset=utf-8',
-      'png': 'image/png',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml',
-      'ico': 'image/x-icon',
-      'webp': 'image/webp',
-      'woff': 'font/woff',
-      'woff2': 'font/woff2',
-      'ttf': 'font/ttf',
-      'xml': 'application/xml',
-      'txt': 'text/plain; charset=utf-8',
-      'sh': 'text/plain; charset=utf-8',
-      'bash': 'text/plain; charset=utf-8',
-      'ps1': 'text/plain; charset=utf-8',
+      html: 'text/html; charset=utf-8',
+      css: 'text/css; charset=utf-8',
+      js: 'application/javascript; charset=utf-8',
+      json: 'application/json; charset=utf-8',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      svg: 'image/svg+xml',
+      ico: 'image/x-icon',
+      webp: 'image/webp',
+      woff: 'font/woff',
+      woff2: 'font/woff2',
+      ttf: 'font/ttf',
+      xml: 'application/xml',
+      txt: 'text/plain; charset=utf-8',
+      sh: 'text/plain; charset=utf-8',
+      bash: 'text/plain; charset=utf-8',
+      ps1: 'text/plain; charset=utf-8',
     }
     return types[ext || ''] || 'application/octet-stream'
   }
@@ -1054,8 +1030,7 @@ export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploa
 
       uploaded++
       onProgress?.(uploaded + skipped, files.length, key)
-    }
-    catch (err: any) {
+    } catch (err: any) {
       errors.push(`Failed to upload ${key}: ${err.message}`)
     }
   }
@@ -1075,21 +1050,23 @@ export async function invalidateCache(distributionId: string): Promise<{ invalid
 /**
  * Delete static site infrastructure
  */
-export async function deleteStaticSite(stackName: string, region: string = 'us-east-1'): Promise<{ success: boolean; message: string }> {
+export async function deleteStaticSite(
+  stackName: string,
+  region: string = 'us-east-1',
+): Promise<{ success: boolean; message: string }> {
   const cf = new CloudFormationClient(region)
 
   // First, empty the S3 bucket (CloudFormation can't delete non-empty buckets)
   try {
     const stacks = await cf.describeStacks({ stackName })
     const outputs = stacks.Stacks[0]?.Outputs || []
-    const bucketName = outputs.find(o => o.OutputKey === 'BucketName')?.OutputValue
+    const bucketName = outputs.find((o) => o.OutputKey === 'BucketName')?.OutputValue
 
     if (bucketName) {
       const s3 = new S3Client(region)
       await s3.emptyBucket(bucketName)
     }
-  }
-  catch {
+  } catch {
     // Bucket might not exist or already be empty
   }
 
@@ -1108,11 +1085,13 @@ export async function deleteStaticSite(stackName: string, region: string = 'us-e
 /**
  * Full deployment: infrastructure + files + cache invalidation
  */
-export async function deployStaticSiteFull(config: StaticSiteConfig & {
-  sourceDir: string
-  cleanBucket?: boolean
-  onProgress?: (stage: string, detail?: string) => void
-}): Promise<DeployResult & { filesUploaded?: number; filesSkipped?: number }> {
+export async function deployStaticSiteFull(
+  config: StaticSiteConfig & {
+    sourceDir: string
+    cleanBucket?: boolean
+    onProgress?: (stage: string, detail?: string) => void
+  },
+): Promise<DeployResult & { filesUploaded?: number; filesSkipped?: number }> {
   const { sourceDir, cleanBucket = false, onProgress, ...siteConfig } = config
 
   // Step 1: Deploy infrastructure
@@ -1129,8 +1108,7 @@ export async function deployStaticSiteFull(config: StaticSiteConfig & {
     try {
       const s3 = new S3Client(siteConfig.region || 'us-east-1')
       await s3.emptyBucket(infraResult.bucket)
-    }
-    catch (err: any) {
+    } catch (err: any) {
       // Log but don't fail - bucket might be empty
       console.log(`Note: Could not clean bucket: ${err.message}`)
     }
@@ -1165,9 +1143,10 @@ export async function deployStaticSiteFull(config: StaticSiteConfig & {
 
   onProgress?.('complete', 'Deployment complete!')
 
-  const message = uploadResult.skipped > 0
-    ? `Deployed ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged)`
-    : `Deployed ${uploadResult.uploaded} files successfully`
+  const message =
+    uploadResult.skipped > 0
+      ? `Deployed ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged)`
+      : `Deployed ${uploadResult.uploaded} files successfully`
 
   return {
     ...infraResult,

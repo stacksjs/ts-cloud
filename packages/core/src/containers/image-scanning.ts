@@ -107,11 +107,7 @@ export class ImageScanningManager {
   /**
    * Configure Snyk scanning
    */
-  configureSnykScan(options: {
-    repository: string
-    imageTag: string
-    scanOnPush?: boolean
-  }): ImageScanConfig {
+  configureSnykScan(options: { repository: string; imageTag: string; scanOnPush?: boolean }): ImageScanConfig {
     return this.configureScan({
       repository: options.repository,
       imageTag: options.imageTag,
@@ -124,10 +120,7 @@ export class ImageScanningManager {
   /**
    * Configure ECR scanning
    */
-  configureECRScan(options: {
-    repository: string
-    scanOnPush?: boolean
-  }): ImageScanConfig {
+  configureECRScan(options: { repository: string; scanOnPush?: boolean }): ImageScanConfig {
     return this.configureScan({
       repository: options.repository,
       imageTag: 'latest',
@@ -159,11 +152,11 @@ export class ImageScanningManager {
 
     const summary: VulnerabilitySummary = {
       total: vulnerabilities.length,
-      critical: vulnerabilities.filter(v => v.severity === 'CRITICAL').length,
-      high: vulnerabilities.filter(v => v.severity === 'HIGH').length,
-      medium: vulnerabilities.filter(v => v.severity === 'MEDIUM').length,
-      low: vulnerabilities.filter(v => v.severity === 'LOW').length,
-      unknown: vulnerabilities.filter(v => v.severity === 'UNKNOWN').length,
+      critical: vulnerabilities.filter((v) => v.severity === 'CRITICAL').length,
+      high: vulnerabilities.filter((v) => v.severity === 'HIGH').length,
+      medium: vulnerabilities.filter((v) => v.severity === 'MEDIUM').length,
+      low: vulnerabilities.filter((v) => v.severity === 'LOW').length,
+      unknown: vulnerabilities.filter((v) => v.severity === 'UNKNOWN').length,
     }
 
     const passed = this.evaluateScanResult(config, summary)

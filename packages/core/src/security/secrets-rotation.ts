@@ -15,13 +15,7 @@ export interface SecretRotation {
   versionStages?: string[]
 }
 
-export type SecretType =
-  | 'rds_credentials'
-  | 'api_key'
-  | 'oauth_token'
-  | 'ssh_key'
-  | 'certificate'
-  | 'generic'
+export type SecretType = 'rds_credentials' | 'api_key' | 'oauth_token' | 'ssh_key' | 'certificate' | 'generic'
 
 export interface RotationConfig {
   automaticallyAfterDays: number
@@ -134,11 +128,7 @@ export class SecretsRotationManager {
   /**
    * Enable OAuth token rotation
    */
-  enableOAuthRotation(options: {
-    secretId: string
-    rotationDays?: number
-    rotationLambdaArn: string
-  }): SecretRotation {
+  enableOAuthRotation(options: { secretId: string; rotationDays?: number; rotationLambdaArn: string }): SecretRotation {
     return this.createRotation({
       secretId: options.secretId,
       secretType: 'oauth_token',
@@ -212,9 +202,7 @@ export class SecretsRotationManager {
 
       console.log('5. Finalizing rotation...')
       rotation.lastRotated = new Date()
-      rotation.nextRotation = new Date(
-        Date.now() + rotation.rotationDays * 24 * 60 * 60 * 1000
-      )
+      rotation.nextRotation = new Date(Date.now() + rotation.rotationDays * 24 * 60 * 60 * 1000)
 
       console.log('\n✓ Rotation completed successfully')
       console.log(`  New version: ${newVersion}`)
@@ -227,8 +215,7 @@ export class SecretsRotationManager {
         newVersion,
         rotatedAt: new Date(),
       }
-    }
-catch (error) {
+    } catch (error) {
       console.error('\n✗ Rotation failed:', error)
 
       return {
@@ -256,8 +243,7 @@ catch (error) {
       return true
     }
 
-    const daysSinceRotation =
-      (Date.now() - rotation.lastRotated.getTime()) / (1000 * 60 * 60 * 24)
+    const daysSinceRotation = (Date.now() - rotation.lastRotated.getTime()) / (1000 * 60 * 60 * 24)
 
     return daysSinceRotation >= rotation.rotationDays
   }
@@ -266,9 +252,7 @@ catch (error) {
    * Get secrets needing rotation
    */
   getSecretsNeedingRotation(): SecretRotation[] {
-    return Array.from(this.rotations.values()).filter(rotation =>
-      this.needsRotation(rotation.id)
-    )
+    return Array.from(this.rotations.values()).filter((rotation) => this.needsRotation(rotation.id))
   }
 
   /**

@@ -6,7 +6,11 @@ describe('Integration Tests - Full Stack Deployment', () => {
     const template = new TemplateBuilder('Static Website Infrastructure')
 
     // 1. Create S3 bucket for website
-    const { bucket, bucketPolicy, logicalId: bucketId } = Storage.createBucket({
+    const {
+      bucket,
+      bucketPolicy,
+      logicalId: bucketId,
+    } = Storage.createBucket({
       name: 'website',
       slug: 'my-app',
       environment: 'production',
@@ -23,7 +27,11 @@ describe('Integration Tests - Full Stack Deployment', () => {
     }
 
     // 2. Create CloudFront distribution
-    const { distribution, originAccessControl, logicalId: cdnId } = CDN.createSpaDistribution({
+    const {
+      distribution,
+      originAccessControl,
+      logicalId: cdnId,
+    } = CDN.createSpaDistribution({
       slug: 'my-app',
       environment: 'production',
       origin: {
@@ -243,7 +251,12 @@ describe('Integration Tests - Full Stack Deployment', () => {
     template.addResource(certId, certificate)
 
     // 2. Create encryption key
-    const { key, alias, logicalId: keyId, aliasId } = Security.createKmsKey({
+    const {
+      key,
+      alias,
+      logicalId: keyId,
+      aliasId,
+    } = Security.createKmsKey({
       description: 'Application data encryption',
       slug: 'secure-app',
       environment: 'production',
@@ -288,7 +301,11 @@ describe('Integration Tests - Full Stack Deployment', () => {
     })
 
     // Add IP blocking
-    const { webAcl: finalWebAcl, ipSet, ipSetLogicalId } = Security.blockIpAddresses(
+    const {
+      webAcl: finalWebAcl,
+      ipSet,
+      ipSetLogicalId,
+    } = Security.blockIpAddresses(
       webAcl,
       {
         name: 'BlockMaliciousIPs',
@@ -315,7 +332,11 @@ describe('Integration Tests - Full Stack Deployment', () => {
     template.addResource(bucketId, bucket)
 
     // 5. Create CloudFront distribution with WAF
-    const { distribution, originAccessControl, logicalId: cdnId } = CDN.createSpaDistribution({
+    const {
+      distribution,
+      originAccessControl,
+      logicalId: cdnId,
+    } = CDN.createSpaDistribution({
       slug: 'secure-app',
       environment: 'production',
       origin: {

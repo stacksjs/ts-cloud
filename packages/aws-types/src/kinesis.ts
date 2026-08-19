@@ -2,7 +2,6 @@
  * AWS Kinesis Types
  * CloudFormation resource types for AWS Kinesis (data streaming)
  */
-
 import type { Tag } from './common'
 
 export interface Stream {

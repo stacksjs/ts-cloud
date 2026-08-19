@@ -15,7 +15,7 @@ export function createLaravelPreset(options: {
   /** App domain (also used for the Let's Encrypt cert). */
   domain?: string
   /** Git repository to deploy. */
-  repository: { url: string, branch?: string, provider?: 'github' | 'gitlab' | 'bitbucket' | 'custom' }
+  repository: { url: string; branch?: string; provider?: 'github' | 'gitlab' | 'bitbucket' | 'custom' }
   /** PHP version. @default '8.3' */
   phpVersion?: PhpVersion
   /** Server size. @default 'small' */

@@ -255,15 +255,11 @@ else if (jobStatus === 'FAILED') {
             { AttributeName: 'recordingId', AttributeType: 'S' },
             { AttributeName: 'transcriptionJobName', AttributeType: 'S' },
           ],
-          KeySchema: [
-            { AttributeName: 'recordingId', KeyType: 'HASH' },
-          ],
+          KeySchema: [{ AttributeName: 'recordingId', KeyType: 'HASH' }],
           GlobalSecondaryIndexes: [
             {
               IndexName: 'job-index',
-              KeySchema: [
-                { AttributeName: 'transcriptionJobName', KeyType: 'HASH' },
-              ],
+              KeySchema: [{ AttributeName: 'transcriptionJobName', KeyType: 'HASH' }],
               Projection: { ProjectionType: 'ALL' },
             },
           ],

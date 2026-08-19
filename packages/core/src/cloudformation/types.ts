@@ -15,7 +15,30 @@ export interface CloudFormationTemplate {
 }
 
 export interface CloudFormationParameter {
-  Type: 'String' | 'Number' | 'List<Number>' | 'CommaDelimitedList' | 'AWS::EC2::AvailabilityZone::Name' | 'AWS::EC2::Image::Id' | 'AWS::EC2::Instance::Id' | 'AWS::EC2::KeyPair::KeyName' | 'AWS::EC2::SecurityGroup::GroupName' | 'AWS::EC2::SecurityGroup::Id' | 'AWS::EC2::Subnet::Id' | 'AWS::EC2::Volume::Id' | 'AWS::EC2::VPC::Id' | 'AWS::Route53::HostedZone::Id' | 'List<AWS::EC2::AvailabilityZone::Name>' | 'List<AWS::EC2::Image::Id>' | 'List<AWS::EC2::Instance::Id>' | 'List<AWS::EC2::SecurityGroup::GroupName>' | 'List<AWS::EC2::SecurityGroup::Id>' | 'List<AWS::EC2::Subnet::Id>' | 'List<AWS::EC2::Volume::Id>' | 'List<AWS::EC2::VPC::Id>' | 'List<AWS::Route53::HostedZone::Id>'
+  Type:
+    | 'String'
+    | 'Number'
+    | 'List<Number>'
+    | 'CommaDelimitedList'
+    | 'AWS::EC2::AvailabilityZone::Name'
+    | 'AWS::EC2::Image::Id'
+    | 'AWS::EC2::Instance::Id'
+    | 'AWS::EC2::KeyPair::KeyName'
+    | 'AWS::EC2::SecurityGroup::GroupName'
+    | 'AWS::EC2::SecurityGroup::Id'
+    | 'AWS::EC2::Subnet::Id'
+    | 'AWS::EC2::Volume::Id'
+    | 'AWS::EC2::VPC::Id'
+    | 'AWS::Route53::HostedZone::Id'
+    | 'List<AWS::EC2::AvailabilityZone::Name>'
+    | 'List<AWS::EC2::Image::Id>'
+    | 'List<AWS::EC2::Instance::Id>'
+    | 'List<AWS::EC2::SecurityGroup::GroupName>'
+    | 'List<AWS::EC2::SecurityGroup::Id>'
+    | 'List<AWS::EC2::Subnet::Id>'
+    | 'List<AWS::EC2::Volume::Id>'
+    | 'List<AWS::EC2::VPC::Id>'
+    | 'List<AWS::Route53::HostedZone::Id>'
   Default?: string | number
   Description?: string
   AllowedValues?: string[]
@@ -49,9 +72,7 @@ export interface CloudFormationOutput {
   Condition?: string
 }
 
-export type CloudFormationCondition =
-  | CloudFormationIntrinsicFunction
-  | boolean
+export type CloudFormationCondition = CloudFormationIntrinsicFunction | boolean
 
 /**
  * CloudFormation Intrinsic Functions
@@ -80,38 +101,49 @@ export type CloudFormationIntrinsicFunction =
 export const Fn = {
   ref: (logicalId: string): { Ref: string } => ({ Ref: logicalId }),
 
-  getAtt: (logicalId: string, attribute: string): { 'Fn::GetAtt': [string, string] } =>
-    ({ 'Fn::GetAtt': [logicalId, attribute] as [string, string] }),
+  getAtt: (logicalId: string, attribute: string): { 'Fn::GetAtt': [string, string] } => ({
+    'Fn::GetAtt': [logicalId, attribute] as [string, string],
+  }),
 
-  join: (delimiter: string, values: any[]): { 'Fn::Join': [string, any[]] } =>
-    ({ 'Fn::Join': [delimiter, values] as [string, any[]] }),
+  join: (delimiter: string, values: any[]): { 'Fn::Join': [string, any[]] } => ({
+    'Fn::Join': [delimiter, values] as [string, any[]],
+  }),
 
   sub: (template: string, variables?: Record<string, any>): { 'Fn::Sub': string | [string, Record<string, any>] } =>
     variables ? { 'Fn::Sub': [template, variables] as [string, Record<string, any>] } : { 'Fn::Sub': template },
 
-  select: (index: number, list: any[] | CloudFormationIntrinsicFunction): { 'Fn::Select': [number, any[] | CloudFormationIntrinsicFunction] } =>
-    ({ 'Fn::Select': [index, list] as [number, any[] | CloudFormationIntrinsicFunction] }),
+  select: (
+    index: number,
+    list: any[] | CloudFormationIntrinsicFunction,
+  ): { 'Fn::Select': [number, any[] | CloudFormationIntrinsicFunction] } => ({
+    'Fn::Select': [index, list] as [number, any[] | CloudFormationIntrinsicFunction],
+  }),
 
-  split: (delimiter: string, source: string): { 'Fn::Split': [string, string] } =>
-    ({ 'Fn::Split': [delimiter, source] as [string, string] }),
+  split: (delimiter: string, source: string): { 'Fn::Split': [string, string] } => ({
+    'Fn::Split': [delimiter, source] as [string, string],
+  }),
 
   getAZs: (region: string = ''): { 'Fn::GetAZs': string } => ({ 'Fn::GetAZs': region }),
 
   importValue: (name: any): { 'Fn::ImportValue': any } => ({ 'Fn::ImportValue': name }),
 
-  findInMap: (mapName: string, topLevelKey: any, secondLevelKey: any): { 'Fn::FindInMap': [string, any, any] } =>
-    ({ 'Fn::FindInMap': [mapName, topLevelKey, secondLevelKey] as [string, any, any] }),
+  findInMap: (mapName: string, topLevelKey: any, secondLevelKey: any): { 'Fn::FindInMap': [string, any, any] } => ({
+    'Fn::FindInMap': [mapName, topLevelKey, secondLevelKey] as [string, any, any],
+  }),
 
   base64: (value: any): { 'Fn::Base64': any } => ({ 'Fn::Base64': value }),
 
-  cidr: (ipBlock: any, count: number, cidrBits: number): { 'Fn::Cidr': [any, number, number] } =>
-    ({ 'Fn::Cidr': [ipBlock, count, cidrBits] as [any, number, number] }),
+  cidr: (ipBlock: any, count: number, cidrBits: number): { 'Fn::Cidr': [any, number, number] } => ({
+    'Fn::Cidr': [ipBlock, count, cidrBits] as [any, number, number],
+  }),
 
-  equals: (value1: any, value2: any): { 'Fn::Equals': [any, any] } =>
-    ({ 'Fn::Equals': [value1, value2] as [any, any] }),
+  equals: (value1: any, value2: any): { 'Fn::Equals': [any, any] } => ({
+    'Fn::Equals': [value1, value2] as [any, any],
+  }),
 
-  if: (conditionName: string, trueValue: any, falseValue: any): { 'Fn::If': [string, any, any] } =>
-    ({ 'Fn::If': [conditionName, trueValue, falseValue] as [string, any, any] }),
+  if: (conditionName: string, trueValue: any, falseValue: any): { 'Fn::If': [string, any, any] } => ({
+    'Fn::If': [conditionName, trueValue, falseValue] as [string, any, any],
+  }),
 
   not: (condition: any): { 'Fn::Not': [any] } => ({ 'Fn::Not': [condition] as [any] }),
 
@@ -130,7 +162,11 @@ export const Arn = {
   s3Object: (bucketName: any, key: string = '*'): { 'Fn::Sub': string | [string, Record<string, any>] } =>
     Fn.sub(`arn:aws:s3:::${bucketName}/${key}`),
 
-  lambda: (functionName: string, region?: string, account?: string): { 'Fn::Sub': string | [string, Record<string, any>] } =>
+  lambda: (
+    functionName: string,
+    region?: string,
+    account?: string,
+  ): { 'Fn::Sub': string | [string, Record<string, any>] } =>
     Fn.sub(
       `arn:aws:lambda:\${AWS::Region}:\${AWS::AccountId}:function:${functionName}`,
       region && account ? { 'AWS::Region': region, 'AWS::AccountId': account } : undefined,
@@ -148,7 +184,10 @@ export const Arn = {
   kinesis: (streamName: string): { 'Fn::Sub': string | [string, Record<string, any>] } =>
     Fn.sub(`arn:aws:kinesis:\${AWS::Region}:\${AWS::AccountId}:stream/${streamName}`),
 
-  iam: (resourceType: 'role' | 'policy' | 'user' | 'group', name: string): { 'Fn::Sub': string | [string, Record<string, any>] } =>
+  iam: (
+    resourceType: 'role' | 'policy' | 'user' | 'group',
+    name: string,
+  ): { 'Fn::Sub': string | [string, Record<string, any>] } =>
     Fn.sub(`arn:aws:iam::\${AWS::AccountId}:${resourceType}/${name}`),
 
   secretsManager: (secretName: string): { 'Fn::Sub': string | [string, Record<string, any>] } =>

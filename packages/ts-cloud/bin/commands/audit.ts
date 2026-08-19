@@ -117,8 +117,7 @@ export function registerAuditCommands(app: CLI): void {
             trail.HomeRegion || 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list trails: ${error.message}`)
         process.exit(1)
       }
@@ -201,12 +200,10 @@ export function registerAuditCommands(app: CLI): void {
               }
             }
           }
-        }
-        catch {
+        } catch {
           // Event selectors might not be available for all trails
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get trail: ${error.message}`)
         process.exit(1)
       }
@@ -220,78 +217,86 @@ export function registerAuditCommands(app: CLI): void {
     .option('--resource <resourceName>', 'Filter by resource name')
     .option('--hours <number>', 'Hours to look back', { default: '24' })
     .option('--limit <number>', 'Maximum events to return', { default: '50' })
-    .action(async (options: {
-      region?: string
-      user?: string
-      event?: string
-      resource?: string
-      hours: string
-      limit: string
-    }) => {
-      cli.header('CloudTrail Events')
+    .action(
+      async (options: {
+        region?: string
+        user?: string
+        event?: string
+        resource?: string
+        hours: string
+        limit: string
+      }) => {
+        cli.header('CloudTrail Events')
 
-      try {
-        const config = await loadValidatedConfig()
-        const region = options.region || config.project.region || 'us-east-1'
-        const cloudtrail = await getCloudTrailClient(region)
+        try {
+          const config = await loadValidatedConfig()
+          const region = options.region || config.project.region || 'us-east-1'
+          const cloudtrail = await getCloudTrailClient(region)
 
-        const spinner = new cli.Spinner('Looking up events...')
-        spinner.start()
+          const spinner = new cli.Spinner('Looking up events...')
+          spinner.start()
 
-        const endTime = new Date()
-        const startTime = new Date(endTime.getTime() - Number.parseInt(options.hours) * 60 * 60 * 1000)
+          const endTime = new Date()
+          const startTime = new Date(endTime.getTime() - Number.parseInt(options.hours) * 60 * 60 * 1000)
 
-        const lookupParams: any = {
-          StartTime: startTime,
-          EndTime: endTime,
-          MaxResults: Number.parseInt(options.limit),
+          const lookupParams: any = {
+            StartTime: startTime,
+            EndTime: endTime,
+            MaxResults: Number.parseInt(options.limit),
+          }
+
+          if (options.user) {
+            lookupParams.LookupAttributes = [
+              {
+                AttributeKey: 'Username',
+                AttributeValue: options.user,
+              },
+            ]
+          } else if (options.event) {
+            lookupParams.LookupAttributes = [
+              {
+                AttributeKey: 'EventName',
+                AttributeValue: options.event,
+              },
+            ]
+          } else if (options.resource) {
+            lookupParams.LookupAttributes = [
+              {
+                AttributeKey: 'ResourceName',
+                AttributeValue: options.resource,
+              },
+            ]
+          }
+
+          const result = await cloudtrail.lookupEvents(lookupParams)
+          const events = result.Events || []
+
+          spinner.succeed(`Found ${events.length} event(s)`)
+
+          if (events.length === 0) {
+            cli.info('No events found matching criteria')
+            return
+          }
+
+          cli.table(
+            ['Time', 'Event', 'User', 'Source IP', 'Resources'],
+            events.map((event: any) => [
+              event.EventTime ? new Date(event.EventTime).toLocaleString() : 'N/A',
+              event.EventName || 'N/A',
+              event.Username || 'N/A',
+              event.SourceIPAddress || 'N/A',
+              (event.Resources || [])
+                .map((r: any) => r.ResourceName)
+                .join(', ')
+                .substring(0, 30) || '-',
+            ]),
+          )
+        } catch (error: any) {
+          cli.error(`Failed to lookup events: ${error.message}`)
+          process.exit(1)
         }
-
-        if (options.user) {
-          lookupParams.LookupAttributes = [{
-            AttributeKey: 'Username',
-            AttributeValue: options.user,
-          }]
-        }
-        else if (options.event) {
-          lookupParams.LookupAttributes = [{
-            AttributeKey: 'EventName',
-            AttributeValue: options.event,
-          }]
-        }
-        else if (options.resource) {
-          lookupParams.LookupAttributes = [{
-            AttributeKey: 'ResourceName',
-            AttributeValue: options.resource,
-          }]
-        }
-
-        const result = await cloudtrail.lookupEvents(lookupParams)
-        const events = result.Events || []
-
-        spinner.succeed(`Found ${events.length} event(s)`)
-
-        if (events.length === 0) {
-          cli.info('No events found matching criteria')
-          return
-        }
-
-        cli.table(
-          ['Time', 'Event', 'User', 'Source IP', 'Resources'],
-          events.map((event: any) => [
-            event.EventTime ? new Date(event.EventTime).toLocaleString() : 'N/A',
-            event.EventName || 'N/A',
-            event.Username || 'N/A',
-            event.SourceIPAddress || 'N/A',
-            (event.Resources || []).map((r: any) => r.ResourceName).join(', ').substring(0, 30) || '-',
-          ]),
-        )
-      }
-      catch (error: any) {
-        cli.error(`Failed to lookup events: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('audit:event <eventId>', 'Show CloudTrail event details')
@@ -309,10 +314,12 @@ export function registerAuditCommands(app: CLI): void {
 
         // Look up event by ID
         const result = await cloudtrail.lookupEvents({
-          LookupAttributes: [{
-            AttributeKey: 'EventId',
-            AttributeValue: eventId,
-          }],
+          LookupAttributes: [
+            {
+              AttributeKey: 'EventId',
+              AttributeValue: eventId,
+            },
+          ],
           MaxResults: 1,
         })
 
@@ -346,8 +353,7 @@ export function registerAuditCommands(app: CLI): void {
           const fullEvent = JSON.parse(event.CloudTrailEvent)
           console.log(JSON.stringify(fullEvent, null, 2))
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get event: ${error.message}`)
         process.exit(1)
       }
@@ -361,61 +367,65 @@ export function registerAuditCommands(app: CLI): void {
     .option('--multi-region', 'Enable multi-region trail')
     .option('--validation', 'Enable log file validation')
     .option('--global-events', 'Include global service events')
-    .action(async (trailName: string, options: {
-      region: string
-      bucket?: string
-      prefix?: string
-      multiRegion?: boolean
-      validation?: boolean
-      globalEvents?: boolean
-    }) => {
-      cli.header('Create CloudTrail Trail')
+    .action(
+      async (
+        trailName: string,
+        options: {
+          region: string
+          bucket?: string
+          prefix?: string
+          multiRegion?: boolean
+          validation?: boolean
+          globalEvents?: boolean
+        },
+      ) => {
+        cli.header('Create CloudTrail Trail')
 
-      try {
-        if (!options.bucket) {
-          cli.error('--bucket is required')
-          return
+        try {
+          if (!options.bucket) {
+            cli.error('--bucket is required')
+            return
+          }
+
+          const cloudtrail = await getCloudTrailClient(options.region)
+
+          cli.info(`Trail Name: ${trailName}`)
+          cli.info(`S3 Bucket: ${options.bucket}`)
+          cli.info(`Multi-Region: ${options.multiRegion ? 'Yes' : 'No'}`)
+          cli.info(`Log Validation: ${options.validation ? 'Yes' : 'No'}`)
+          cli.info(`Global Events: ${options.globalEvents ? 'Yes' : 'No'}`)
+
+          const confirmed = await cli.confirm('\nCreate this trail?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Creating trail...')
+          spinner.start()
+
+          const result = await cloudtrail.createTrail({
+            Name: trailName,
+            S3BucketName: options.bucket,
+            S3KeyPrefix: options.prefix,
+            IsMultiRegionTrail: options.multiRegion,
+            EnableLogFileValidation: options.validation,
+            IncludeGlobalServiceEvents: options.globalEvents ?? true,
+          })
+
+          spinner.text = 'Starting logging...'
+          await cloudtrail.startLogging(trailName)
+
+          spinner.succeed('Trail created and logging started')
+
+          cli.success(`\nTrail ARN: ${result.TrailARN}`)
+          cli.info(`S3 Bucket: ${result.S3BucketName}`)
+        } catch (error: any) {
+          cli.error(`Failed to create trail: ${error.message}`)
+          process.exit(1)
         }
-
-        const cloudtrail = await getCloudTrailClient(options.region)
-
-        cli.info(`Trail Name: ${trailName}`)
-        cli.info(`S3 Bucket: ${options.bucket}`)
-        cli.info(`Multi-Region: ${options.multiRegion ? 'Yes' : 'No'}`)
-        cli.info(`Log Validation: ${options.validation ? 'Yes' : 'No'}`)
-        cli.info(`Global Events: ${options.globalEvents ? 'Yes' : 'No'}`)
-
-        const confirmed = await cli.confirm('\nCreate this trail?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Creating trail...')
-        spinner.start()
-
-        const result = await cloudtrail.createTrail({
-          Name: trailName,
-          S3BucketName: options.bucket,
-          S3KeyPrefix: options.prefix,
-          IsMultiRegionTrail: options.multiRegion,
-          EnableLogFileValidation: options.validation,
-          IncludeGlobalServiceEvents: options.globalEvents ?? true,
-        })
-
-        spinner.text = 'Starting logging...'
-        await cloudtrail.startLogging(trailName)
-
-        spinner.succeed('Trail created and logging started')
-
-        cli.success(`\nTrail ARN: ${result.TrailARN}`)
-        cli.info(`S3 Bucket: ${result.S3BucketName}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to create trail: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('audit:start <trailName>', 'Start CloudTrail logging')
@@ -432,8 +442,7 @@ export function registerAuditCommands(app: CLI): void {
         await cloudtrail.startLogging(trailName)
 
         spinner.succeed('Logging started')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to start logging: ${error.message}`)
         process.exit(1)
       }
@@ -462,8 +471,7 @@ export function registerAuditCommands(app: CLI): void {
         await cloudtrail.stopLogging(trailName)
 
         spinner.succeed('Logging stopped')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to stop logging: ${error.message}`)
         process.exit(1)
       }
@@ -492,8 +500,7 @@ export function registerAuditCommands(app: CLI): void {
         await cloudtrail.deleteTrail(trailName)
 
         spinner.succeed('Trail deleted')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete trail: ${error.message}`)
         process.exit(1)
       }

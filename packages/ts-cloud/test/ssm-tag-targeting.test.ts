@@ -22,10 +22,7 @@ interface CapturedRequest {
  * Replace the SSM client's underlying request method with a spy that returns
  * canned responses keyed by the SSM action (X-Amz-Target header).
  */
-function withMockedClient(
-  ssm: SSMClient,
-  responses: Record<string, any>,
-): { calls: CapturedRequest[] } {
+function withMockedClient(ssm: SSMClient, responses: Record<string, any>): { calls: CapturedRequest[] } {
   const calls: CapturedRequest[] = []
   ;(ssm as any).client.request = mock(async (req: CapturedRequest) => {
     calls.push(req)
@@ -66,9 +63,9 @@ describe('SSMClient.sendCommand', () => {
     const ssm = new SSMClient('us-east-1')
     withMockedClient(ssm, {})
 
-    expect(
-      ssm.sendCommand({ DocumentName: 'AWS-RunShellScript' }),
-    ).rejects.toThrow('SendCommand requires either InstanceIds or Targets')
+    expect(ssm.sendCommand({ DocumentName: 'AWS-RunShellScript' })).rejects.toThrow(
+      'SendCommand requires either InstanceIds or Targets',
+    )
   })
 })
 
@@ -78,11 +75,13 @@ describe('SSMClient.sendCommandByTags', () => {
     const { calls } = withMockedClient(ssm, {
       SendCommand: { Command: { CommandId: 'cmd-2' } },
       ListCommandInvocations: {
-        CommandInvocations: [{
-          InstanceId: 'i-aaa',
-          Status: 'Success',
-          CommandPlugins: [{ Output: 'ok' }],
-        }],
+        CommandInvocations: [
+          {
+            InstanceId: 'i-aaa',
+            Status: 'Success',
+            CommandPlugins: [{ Output: 'ok' }],
+          },
+        ],
       },
     })
 
@@ -93,7 +92,7 @@ describe('SSMClient.sendCommandByTags', () => {
       maxWaitMs: 1000,
     })
 
-    const sendCall = calls.find(c => c.headers?.['X-Amz-Target']?.endsWith('.SendCommand'))!
+    const sendCall = calls.find((c) => c.headers?.['X-Amz-Target']?.endsWith('.SendCommand'))!
     const body = JSON.parse(sendCall.body!)
 
     expect(body.Targets).toEqual([
@@ -126,7 +125,7 @@ describe('SSMClient.sendCommandByTags', () => {
 
     expect(result.success).toBe(true)
     expect(result.instanceCount).toBe(2)
-    expect(result.perInstance.map(p => p.instanceId).sort()).toEqual(['i-aaa', 'i-bbb'])
+    expect(result.perInstance.map((p) => p.instanceId).sort()).toEqual(['i-aaa', 'i-bbb'])
   })
 
   it('returns success=false when any instance fails', async () => {
@@ -150,7 +149,7 @@ describe('SSMClient.sendCommandByTags', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBeDefined()
-    const failed = result.perInstance.find(p => p.instanceId === 'i-bbb')!
+    const failed = result.perInstance.find((p) => p.instanceId === 'i-bbb')!
     expect(failed.status).toBe('Failed')
   })
 

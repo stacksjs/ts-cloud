@@ -3,7 +3,6 @@
  * Supports auto-scaling for ECS services, DynamoDB tables, and other AWS resources
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient } from './client'
 
 export type ScalableDimension =
@@ -18,15 +17,7 @@ export type ScalableDimension =
   | 'elasticache:replication-group:Replicas'
 
 export type ServiceNamespace =
-  | 'ecs'
-  | 'dynamodb'
-  | 'rds'
-  | 'lambda'
-  | 'elasticache'
-  | 'custom-resource'
-  | 'comprehend'
-  | 'kafka'
-  | 'sagemaker'
+  'ecs' | 'dynamodb' | 'rds' | 'lambda' | 'elasticache' | 'custom-resource' | 'comprehend' | 'kafka' | 'sagemaker'
 
 export type MetricType =
   | 'ECSServiceAverageCPUUtilization'
@@ -200,7 +191,7 @@ export class ApplicationAutoScalingClient {
     scalableDimension?: ScalableDimension
     maxResults?: number
     nextToken?: string
-  }): Promise<{ ScalableTargets: ScalableTarget[], NextToken?: string }> {
+  }): Promise<{ ScalableTargets: ScalableTarget[]; NextToken?: string }> {
     const params: Record<string, any> = {
       ServiceNamespace: options.serviceNamespace,
     }
@@ -277,7 +268,7 @@ export class ApplicationAutoScalingClient {
     policyType: 'TargetTrackingScaling' | 'StepScaling'
     targetTrackingScalingPolicyConfiguration?: TargetTrackingScalingPolicyConfiguration
     stepScalingPolicyConfiguration?: StepScalingPolicyConfiguration
-  }): Promise<{ PolicyARN: string, Alarms: Array<{ AlarmName: string, AlarmARN: string }> }> {
+  }): Promise<{ PolicyARN: string; Alarms: Array<{ AlarmName: string; AlarmARN: string }> }> {
     const params: Record<string, any> = {
       PolicyName: options.policyName,
       ServiceNamespace: options.serviceNamespace,
@@ -322,7 +313,7 @@ export class ApplicationAutoScalingClient {
     scalableDimension?: ScalableDimension
     maxResults?: number
     nextToken?: string
-  }): Promise<{ ScalingPolicies: ScalingPolicy[], NextToken?: string }> {
+  }): Promise<{ ScalingPolicies: ScalingPolicy[]; NextToken?: string }> {
     const params: Record<string, any> = {
       ServiceNamespace: options.serviceNamespace,
     }
@@ -458,7 +449,7 @@ export class ApplicationAutoScalingClient {
     scalableDimension?: ScalableDimension
     maxResults?: number
     nextToken?: string
-  }): Promise<{ ScheduledActions: ScheduledAction[], NextToken?: string }> {
+  }): Promise<{ ScheduledActions: ScheduledAction[]; NextToken?: string }> {
     const params: Record<string, any> = {
       ServiceNamespace: options.serviceNamespace,
     }
@@ -646,7 +637,7 @@ export class ApplicationAutoScalingClient {
     scaleOutCooldown?: number
     scaleInCooldown?: number
     disableScaleIn?: boolean
-  }): Promise<{ PolicyARN: string, Alarms: Array<{ AlarmName: string, AlarmARN: string }> }> {
+  }): Promise<{ PolicyARN: string; Alarms: Array<{ AlarmName: string; AlarmARN: string }> }> {
     const resourceId = this.getECSServiceResourceId(options.clusterName, options.serviceName)
 
     return this.putScalingPolicy({
@@ -678,7 +669,7 @@ export class ApplicationAutoScalingClient {
     scaleOutCooldown?: number
     scaleInCooldown?: number
     disableScaleIn?: boolean
-  }): Promise<{ PolicyARN: string, Alarms: Array<{ AlarmName: string, AlarmARN: string }> }> {
+  }): Promise<{ PolicyARN: string; Alarms: Array<{ AlarmName: string; AlarmARN: string }> }> {
     const resourceId = this.getECSServiceResourceId(options.clusterName, options.serviceName)
 
     return this.putScalingPolicy({
@@ -712,7 +703,7 @@ export class ApplicationAutoScalingClient {
     scaleOutCooldown?: number
     scaleInCooldown?: number
     disableScaleIn?: boolean
-  }): Promise<{ PolicyARN: string, Alarms: Array<{ AlarmName: string, AlarmARN: string }> }> {
+  }): Promise<{ PolicyARN: string; Alarms: Array<{ AlarmName: string; AlarmARN: string }> }> {
     const resourceId = this.getECSServiceResourceId(options.clusterName, options.serviceName)
 
     // Extract the suffix from ARN for resource label
@@ -814,15 +805,21 @@ export class ApplicationAutoScalingClient {
   /**
    * Helper: Get scaling activity history for an ECS service
    */
-  async getECSScalingActivities(clusterName: string, serviceName: string, maxResults = 20): Promise<Array<{
-    ActivityId: string
-    Description: string
-    Cause: string
-    StartTime: string
-    EndTime?: string
-    StatusCode: string
-    StatusMessage?: string
-  }>> {
+  async getECSScalingActivities(
+    clusterName: string,
+    serviceName: string,
+    maxResults = 20,
+  ): Promise<
+    Array<{
+      ActivityId: string
+      Description: string
+      Cause: string
+      StartTime: string
+      EndTime?: string
+      StatusCode: string
+      StatusMessage?: string
+    }>
+  > {
     const resourceId = this.getECSServiceResourceId(clusterName, serviceName)
 
     const result = await this.describeScalingActivities({
@@ -832,7 +829,7 @@ export class ApplicationAutoScalingClient {
       maxResults,
     })
 
-    return result.ScalingActivities.map(activity => ({
+    return result.ScalingActivities.map((activity) => ({
       ActivityId: activity.ActivityId,
       Description: activity.Description,
       Cause: activity.Cause,

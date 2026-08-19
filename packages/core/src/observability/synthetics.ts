@@ -316,7 +316,7 @@ exports.handler = async () => {
         (step, i) => `
   // Step ${i + 1}: ${step.description}
   await page.goto('${step.url}', {waitUntil: 'domcontentloaded', timeout: 30000});
-  ${step.actions?.map(action => this.generateActionScript(action)).join('\n  ') || ''}
+  ${step.actions?.map((action) => this.generateActionScript(action)).join('\n  ') || ''}
   log.info('Step ${i + 1} completed: ${step.description}');
 `,
       )
@@ -446,8 +446,7 @@ exports.handler = async () => {
         Handler: canary.handler,
         Script: canary.code.script,
       }
-    }
-    else {
+    } else {
       cf.Properties.Code = {
         Handler: canary.handler,
         S3Bucket: canary.code.s3Bucket,

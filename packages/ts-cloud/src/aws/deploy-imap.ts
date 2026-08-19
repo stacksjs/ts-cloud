@@ -39,7 +39,10 @@ export interface MailServerDeployConfig {
  *   - Objects with email: { email: 'chris@stacksjs.com', password: '...' }
  *   - Objects with address (deprecated): { address: 'chris@stacksjs.com' }
  */
-function normalizeMailbox(mailbox: string | MailboxConfig | { address: string, password?: string }, domain: string): MailboxConfig {
+function normalizeMailbox(
+  mailbox: string | MailboxConfig | { address: string; password?: string },
+  domain: string,
+): MailboxConfig {
   if (typeof mailbox === 'string') {
     // If it's just a username (no @), append the domain
     const email = mailbox.includes('@') ? mailbox : `${mailbox}@${domain}`
@@ -137,8 +140,7 @@ export async function deployImapServer(config: MailServerDeployConfig = defaultC
       })
       console.log('   Secret updated with config credentials')
     }
-  }
-  catch {
+  } catch {
     // Create the secret with credentials from config
     console.log('   Creating secret...')
     if (Object.keys(credentials).length === 0) {
@@ -170,13 +172,15 @@ export async function deployImapServer(config: MailServerDeployConfig = defaultC
   const clientCode = readFileSync(join(__dirname, 'client.ts'), 'utf-8')
 
   // Build users config for server script from normalized mailboxes
-  const usersConfig = normalizedMailboxes.map((m) => {
-    const username = m.email.split('@')[0]
-    return `      ${username}: {
+  const usersConfig = normalizedMailboxes
+    .map((m) => {
+      const username = m.email.split('@')[0]
+      return `      ${username}: {
         password: passwords.${username} || 'changeme',
         email: '${m.email}',
       },`
-  }).join('\n')
+    })
+    .join('\n')
 
   // Create the server startup script - fetches credentials from Secrets Manager using AWSClient directly
   const serverScript = `#!/usr/bin/env bun
@@ -274,10 +278,9 @@ WantedBy=multi-user.target
 
   // Step 1: Create directory structure
   console.log('1. Creating directory structure on EC2...')
-  let result = await ssm.runShellCommand(config.instanceId, [
-    'mkdir -p /opt/imap-server',
-    'ls -la /opt/imap-server',
-  ], { maxWaitMs: 60000 })
+  let result = await ssm.runShellCommand(config.instanceId, ['mkdir -p /opt/imap-server', 'ls -la /opt/imap-server'], {
+    maxWaitMs: 60000,
+  })
 
   if (!result.success) {
     console.error('Failed to create directory:', result.error)
@@ -288,10 +291,11 @@ WantedBy=multi-user.target
   // Step 2: Write client.ts (base64 encode to handle special chars)
   console.log('2. Writing client.ts...')
   const clientBase64 = Buffer.from(clientCode).toString('base64')
-  result = await ssm.runShellCommand(config.instanceId, [
-    `echo '${clientBase64}' | base64 -d > /opt/imap-server/client.ts`,
-    'wc -l /opt/imap-server/client.ts',
-  ], { maxWaitMs: 60000 })
+  result = await ssm.runShellCommand(
+    config.instanceId,
+    [`echo '${clientBase64}' | base64 -d > /opt/imap-server/client.ts`, 'wc -l /opt/imap-server/client.ts'],
+    { maxWaitMs: 60000 },
+  )
 
   if (!result.success) {
     console.error('Failed to write client.ts:', result.error)
@@ -302,10 +306,11 @@ WantedBy=multi-user.target
   // Step 3: Write s3.ts
   console.log('3. Writing s3.ts...')
   const s3Base64 = Buffer.from(s3ClientCode).toString('base64')
-  result = await ssm.runShellCommand(config.instanceId, [
-    `echo '${s3Base64}' | base64 -d > /opt/imap-server/s3.ts`,
-    'wc -l /opt/imap-server/s3.ts',
-  ], { maxWaitMs: 60000 })
+  result = await ssm.runShellCommand(
+    config.instanceId,
+    [`echo '${s3Base64}' | base64 -d > /opt/imap-server/s3.ts`, 'wc -l /opt/imap-server/s3.ts'],
+    { maxWaitMs: 60000 },
+  )
 
   if (!result.success) {
     console.error('Failed to write s3.ts:', result.error)
@@ -316,10 +321,11 @@ WantedBy=multi-user.target
   // Step 4: Write imap-server.ts
   console.log('4. Writing imap-server.ts...')
   const imapBase64 = Buffer.from(imapServerCode).toString('base64')
-  result = await ssm.runShellCommand(config.instanceId, [
-    `echo '${imapBase64}' | base64 -d > /opt/imap-server/imap-server.ts`,
-    'wc -l /opt/imap-server/imap-server.ts',
-  ], { maxWaitMs: 60000 })
+  result = await ssm.runShellCommand(
+    config.instanceId,
+    [`echo '${imapBase64}' | base64 -d > /opt/imap-server/imap-server.ts`, 'wc -l /opt/imap-server/imap-server.ts'],
+    { maxWaitMs: 60000 },
+  )
 
   if (!result.success) {
     console.error('Failed to write imap-server.ts:', result.error)
@@ -330,10 +336,11 @@ WantedBy=multi-user.target
   // Step 5: Write server.ts
   console.log('5. Writing server.ts...')
   const serverBase64 = Buffer.from(serverScript).toString('base64')
-  result = await ssm.runShellCommand(config.instanceId, [
-    `echo '${serverBase64}' | base64 -d > /opt/imap-server/server.ts`,
-    'wc -l /opt/imap-server/server.ts',
-  ], { maxWaitMs: 60000 })
+  result = await ssm.runShellCommand(
+    config.instanceId,
+    [`echo '${serverBase64}' | base64 -d > /opt/imap-server/server.ts`, 'wc -l /opt/imap-server/server.ts'],
+    { maxWaitMs: 60000 },
+  )
 
   if (!result.success) {
     console.error('Failed to write server.ts:', result.error)
@@ -344,16 +351,20 @@ WantedBy=multi-user.target
   // Step 6: Write systemd service and start
   console.log('6. Setting up systemd service...')
   const serviceBase64 = Buffer.from(systemdService).toString('base64')
-  result = await ssm.runShellCommand(config.instanceId, [
-    `echo '${serviceBase64}' | base64 -d > /etc/systemd/system/imap-server.service`,
-    'systemctl daemon-reload',
-    'systemctl stop imap-server 2>/dev/null || true',
-    'systemctl enable imap-server',
-    'systemctl start imap-server',
-    'sleep 3',
-    'systemctl status imap-server --no-pager || true',
-    'ss -tlnp | grep -E ":143|:993" || netstat -tlnp | grep -E ":143|:993" || echo "Ports not yet listening"',
-  ], { maxWaitMs: 120000 })
+  result = await ssm.runShellCommand(
+    config.instanceId,
+    [
+      `echo '${serviceBase64}' | base64 -d > /etc/systemd/system/imap-server.service`,
+      'systemctl daemon-reload',
+      'systemctl stop imap-server 2>/dev/null || true',
+      'systemctl enable imap-server',
+      'systemctl start imap-server',
+      'sleep 3',
+      'systemctl status imap-server --no-pager || true',
+      'ss -tlnp | grep -E ":143|:993" || netstat -tlnp | grep -E ":143|:993" || echo "Ports not yet listening"',
+    ],
+    { maxWaitMs: 120000 },
+  )
 
   console.log('')
   console.log('Service status:')

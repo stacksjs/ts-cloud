@@ -29,13 +29,10 @@ export function resolveNginxSnippet(
   nginx: SiteNginxConfig | undefined,
   templates: Record<string, string[]> | undefined,
 ): string[] {
-  if (!nginx)
-    return []
+  if (!nginx) return []
   const out: string[] = []
-  if (nginx.template && templates?.[nginx.template])
-    out.push(...templates[nginx.template])
-  if (nginx.serverSnippet)
-    out.push(...nginx.serverSnippet)
+  if (nginx.template && templates?.[nginx.template]) out.push(...templates[nginx.template])
+  if (nginx.serverSnippet) out.push(...nginx.serverSnippet)
   return out
 }
 
@@ -72,13 +69,13 @@ export interface NginxVhostOptions {
    * site. Used for the `custom` SSL provider; for Let's Encrypt, certbot
    * rewrites the :80 block itself (leave this unset).
    */
-  ssl?: { certPath: string, keyPath: string }
+  ssl?: { certPath: string; keyPath: string }
   /**
    * HTTP Basic auth (htpasswd). When set, the vhost requires auth and the
    * generated script writes the htpasswd file. The `realm` is shown in the
    * browser prompt.
    */
-  auth?: { username: string, password: string, realm?: string }
+  auth?: { username: string; password: string; realm?: string }
   /**
    * Custom nginx directive lines injected into the server block (after the
    * managed directives) — a resolved reusable template plus per-site snippet.
@@ -88,37 +85,31 @@ export interface NginxVhostOptions {
   /** `client_max_body_size` override for this vhost (e.g. `'256M'`). */
   clientMaxBodySize?: string
   /** Emit an HSTS header. `true` = 1yr + includeSubDomains; object customizes. */
-  hsts?: boolean | { maxAge?: number, includeSubDomains?: boolean, preload?: boolean }
+  hsts?: boolean | { maxAge?: number; includeSubDomains?: boolean; preload?: boolean }
   /** `ssl_protocols` for the custom-cert :443 block. */
   tlsProtocols?: string[]
   /** Per-site IP allow/deny (Forge "Security Rules"). */
-  security?: { allow?: string[], deny?: string[] }
+  security?: { allow?: string[]; deny?: string[] }
 }
 
 /** Render the HSTS header line, or `''` when disabled. */
 function hstsHeader(hsts: NginxVhostOptions['hsts']): string {
-  if (!hsts)
-    return ''
+  if (!hsts) return ''
   const o = typeof hsts === 'object' ? hsts : {}
   const maxAge = o.maxAge ?? 31536000
   const parts = [`max-age=${maxAge}`]
-  if (o.includeSubDomains ?? true)
-    parts.push('includeSubDomains')
-  if (o.preload)
-    parts.push('preload')
+  if (o.includeSubDomains ?? true) parts.push('includeSubDomains')
+  if (o.preload) parts.push('preload')
   return `    add_header Strict-Transport-Security "${parts.join('; ')}" always;`
 }
 
 /** Render nginx `allow`/`deny` lines for per-site IP access control. */
 function securityRules(security: NginxVhostOptions['security']): string[] {
-  if (!security || (!security.allow?.length && !security.deny?.length))
-    return []
+  if (!security || (!security.allow?.length && !security.deny?.length)) return []
   const lines: string[] = []
-  for (const ip of security.deny || [])
-    lines.push(`    deny ${ip};`)
+  for (const ip of security.deny || []) lines.push(`    deny ${ip};`)
   if (security.allow?.length) {
-    for (const ip of security.allow)
-      lines.push(`    allow ${ip};`)
+    for (const ip of security.allow) lines.push(`    allow ${ip};`)
     lines.push('    deny all;')
   }
   return lines
@@ -168,20 +159,12 @@ function vhostBody(options: NginxVhostOptions): string[] {
 
   // HSTS (force HTTPS in browsers) — served on the TLS block; harmless on :80.
   const hsts = hstsHeader(options.hsts)
-  if (hsts)
-    lines.push(hsts)
+  if (hsts) lines.push(hsts)
 
   // Per-site IP allow/deny (Forge Security Rules) gate the whole server block.
-  for (const rule of securityRules(options.security))
-    lines.push(rule)
+  for (const rule of securityRules(options.security)) lines.push(rule)
 
-  lines.push(
-    '',
-    `    index ${isPhp ? 'index.php index.html' : 'index.html index.htm'};`,
-    '',
-    '    charset utf-8;',
-    '',
-  )
+  lines.push('', `    index ${isPhp ? 'index.php index.html' : 'index.html index.htm'};`, '', '    charset utf-8;', '')
 
   // Per-vhost upload ceiling (overrides the http-level client_max_body_size).
   if (options.clientMaxBodySize) {
@@ -201,8 +184,7 @@ function vhostBody(options: NginxVhostOptions): string[] {
   for (const [from, to] of Object.entries(options.redirects || {})) {
     lines.push(`    location = ${from} { return 301 ${to}; }`)
   }
-  if (Object.keys(options.redirects || {}).length > 0)
-    lines.push('')
+  if (Object.keys(options.redirects || {}).length > 0) lines.push('')
 
   if (isPhp) {
     lines.push(
@@ -235,29 +217,18 @@ function vhostBody(options: NginxVhostOptions): string[] {
         '    location ~* /wp-content/uploads/.*\\.php$ { deny all; }',
       )
     }
-  }
-  else if (type === 'spa') {
-    lines.push(
-      '    location / {',
-      '        try_files $uri $uri/ /index.html;',
-      '    }',
-    )
-  }
-  else {
+  } else if (type === 'spa') {
+    lines.push('    location / {', '        try_files $uri $uri/ /index.html;', '    }')
+  } else {
     // static
-    lines.push(
-      '    location / {',
-      '        try_files $uri $uri/ =404;',
-      '    }',
-    )
+    lines.push('    location / {', '        try_files $uri $uri/ =404;', '    }')
   }
 
   // Operator-supplied directives (resolved template + per-site snippet) are
   // injected last so they can add/override locations within the server block.
   if (options.serverSnippet && options.serverSnippet.length > 0) {
     lines.push('')
-    for (const line of options.serverSnippet)
-      lines.push(line ? `    ${line}` : '')
+    for (const line of options.serverSnippet) lines.push(line ? `    ${line}` : '')
   }
 
   return lines
@@ -281,11 +252,14 @@ export function buildNginxVhost(options: NginxVhostOptions): string {
   // internal site legitimately arrives as `main` or `docs`. What matters for
   // safety is only that a token can't contain whitespace, `;`, `{` or `}`.
   for (const host of hosts) {
-    if (!/^(?=.{1,253}$)(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(host.trim()))
+    if (
+      !/^(?=.{1,253}$)(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(
+        host.trim(),
+      )
+    )
       throw new Error(`Refusing to build a vhost: '${host}' is not a valid hostname.`)
   }
-  if (!hosts.length)
-    throw new Error('Refusing to build a vhost: no server_name (domain) was given.')
+  if (!hosts.length) throw new Error('Refusing to build a vhost: no server_name (domain) was given.')
   const serverNames = hosts.join(' ')
   const body = vhostBody(options)
 
@@ -313,14 +287,7 @@ export function buildNginxVhost(options: NginxVhostOptions): string {
     return `${[...redirect, '', ...tls].join('\n')}\n`
   }
 
-  const lines = [
-    'server {',
-    '    listen 80;',
-    '    listen [::]:80;',
-    `    server_name ${serverNames};`,
-    ...body,
-    '}',
-  ]
+  const lines = ['server {', '    listen 80;', '    listen [::]:80;', `    server_name ${serverNames};`, ...body, '}']
   return `${lines.join('\n')}\n`
 }
 
@@ -340,7 +307,7 @@ export function buildNginxVhostScript(options: NginxVhostOptions): string[] {
     const file = htpasswdPath(options.siteName)
     // Single-quote-escape both fields so a `'` (or other shell metachar) in the
     // password/username can't break out of the command.
-    const sq = (v: string): string => v.split('\'').join('\'\\\'\'')
+    const sq = (v: string): string => v.split("'").join("'\\''")
     const pw = sq(options.auth.password)
     const user = sq(options.auth.username)
     out.push(
@@ -397,7 +364,7 @@ export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
     `chmod +x ${NGINX_WRAPPER}`,
     // fastcgi_params — apt's nginx ships this; pantry's build does not. The PHP
     // vhost does `include fastcgi_params;`, so write the standard set.
-    'cat > /etc/nginx/fastcgi_params <<\'TS_CLOUD_FCGI_EOF\'',
+    "cat > /etc/nginx/fastcgi_params <<'TS_CLOUD_FCGI_EOF'",
     'fastcgi_param  QUERY_STRING       $query_string;',
     'fastcgi_param  REQUEST_METHOD     $request_method;',
     'fastcgi_param  CONTENT_TYPE       $content_type;',
@@ -420,7 +387,7 @@ export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
     'TS_CLOUD_FCGI_EOF',
     // Full nginx.conf: workers as www-data, logs/pid/temp under /var, and the
     // per-site vhosts from sites-enabled.
-    'cat > /etc/nginx/nginx.conf <<\'TS_CLOUD_NGINXCONF_EOF\'',
+    "cat > /etc/nginx/nginx.conf <<'TS_CLOUD_NGINXCONF_EOF'",
     'user www-data;',
     'worker_processes auto;',
     'pid /run/nginx.pid;',
@@ -468,7 +435,7 @@ export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
     '}',
     'TS_CLOUD_NGINXCONF_EOF',
     // systemd unit running nginx via the wrapper on :80/:443.
-    'cat > /etc/systemd/system/ts-cloud-nginx.service <<\'TS_CLOUD_NGINXUNIT_EOF\'',
+    "cat > /etc/systemd/system/ts-cloud-nginx.service <<'TS_CLOUD_NGINXUNIT_EOF'",
     '[Unit]',
     'Description=ts-cloud nginx (pantry)',
     'After=network.target',

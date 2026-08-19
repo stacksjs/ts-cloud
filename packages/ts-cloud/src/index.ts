@@ -1,12 +1,120 @@
 export * from './config'
+export * from './auth'
+export * from './automation'
+export * from './api'
+export * from './control-plane'
+export * from './security'
+export * from './preview'
+export * from './compose'
+export * from './release'
+export * from './runtime'
+export * from './telemetry'
+export * from './spend'
+
+// Edge protection. Three names collide with @ts-cloud/core (which exports a
+// concurrency RateLimiter, a CloudFormation RateLimitRule, and an AWS WAF
+// WafConfig) and are re-exported under an Edge* prefix; the rest pass through.
+export {
+  applyControlsToDdos,
+  applyControlsToRateLimits,
+  applyMitigationFactor,
+  DEFAULT_ATTACK_MODE_HOURS,
+  defaultRateLimitRules,
+  describePosture,
+  MAX_CONTROL_HOURS,
+  ProtectionControlStore,
+  DEFAULT_DDOS_THRESHOLDS,
+  DEFAULT_RECURSION_LIMITS,
+  escapeSecLang,
+  functionFingerprint,
+  globMatches,
+  globToRegex,
+  inspectInvocation,
+  isSafePattern,
+  isValidCidr,
+  parseChain,
+  planMitigation,
+  propagationHeaders,
+  rateLimitHeaders,
+  rateLimitKey,
+  RateLimiter as EdgeRateLimiter,
+  RATE_LIMIT_KEY_SEPARATOR,
+  RecursionGuard,
+  recursionBlockedResponse,
+  renderDdosInstallScript,
+  renderNftablesRuleset,
+  renderSysctlFile,
+  renderWafConfig,
+  renderWafInstallScript,
+  ruleMatches,
+  sysctlHardening,
+  wafEventTelemetry,
+  CHAIN_HEADER,
+  DEPTH_HEADER,
+  TRACE_HEADER,
+} from './protection'
+export type {
+  DdosConfig,
+  DdosThresholds,
+  IpRules,
+  ProtectionControls,
+  ProtectionPosture,
+  TimeBoxedControl,
+  InvocationContext,
+  MitigationLevel,
+  MitigationPlan,
+  ParanoiaLevel,
+  RateLimitAction,
+  RateLimitAlgorithm,
+  RateLimitDecision,
+  RateLimitKeySource,
+  RateLimitKeySpec,
+  RateLimitRule as EdgeRateLimitRule,
+  RecursionLimits,
+  RecursionReason,
+  RecursionVerdict,
+  RequestDescriptor,
+  TrafficSignals,
+  WafConfig as EdgeWafConfig,
+  WafEvent,
+  WafGenerationResult,
+  WafMode,
+  WafRuleExclusion,
+} from './protection'
+export {
+  AlertEvaluator,
+  AlertStore,
+  HealthCheckRunner,
+  NotificationRouter,
+  evaluateTelemetryAlertRules,
+  isQuietHours,
+} from './alerts'
+export type {
+  Alert,
+  AlertEvaluation,
+  AlertRule,
+  AlertSample,
+  AlertSeverity,
+  AlertState,
+  HealthCheck as AlertHealthCheck,
+  HealthResult as AlertHealthResult,
+  HealthStatus as AlertHealthStatus,
+  NotificationChannel as AlertNotificationChannel,
+  NotificationDelivery as AlertNotificationDelivery,
+  NotificationRoute as AlertNotificationRoute,
+} from './alerts'
+export * from './jobs'
+export * from './data-services'
+export * from './storage'
+export * from './fleet'
+export * from './placement'
+export * from './regions'
+export * from './maintenance'
+export * from './media'
 export * from './generators'
 
 // Validation exports - functions
-export {
-  validateTemplate,
-  validateTemplateSize,
-  validateResourceLimits,
-} from './validation'
+export { validateTemplate, validateTemplateSize, validateResourceLimits } from './validation'
 
 // Validation exports - types with prefixed names for conflicts with @ts-cloud/core
 export type {
@@ -112,22 +220,14 @@ export type {
 } from './aws'
 
 // Multi-provider object storage (AWS S3, Backblaze B2, Hetzner Object Storage)
-export {
-  createObjectStorageClient,
-  providerEndpoint,
-  resolveObjectStorage,
-} from './object-storage'
+export { createObjectStorageClient, providerEndpoint, resolveObjectStorage } from './object-storage'
 export type {
   ObjectStorageConfig,
   ObjectStorageCredentials,
   ObjectStorageProvider,
   ResolvedObjectStorage,
 } from './object-storage'
-export {
-  keyMatchesFilters,
-  migrateObjectStorage,
-  remapKey,
-} from './object-storage/migrate'
+export { keyMatchesFilters, migrateObjectStorage, remapKey } from './object-storage/migrate'
 export type {
   MigrateEndpoint,
   MigrateError,
@@ -155,8 +255,11 @@ export {
   // High-level helper with smart defaults (Porkbun, non-SPA, etc.)
   deploySite,
   // Per-site deploy-target model (resolver + validation)
+  hasProxyUpstream,
+  resolveProxyUpstreams,
   resolveSiteDeployTarget,
   resolveSiteKind,
+  shipsARelease,
   validateDeploymentConfig,
   // Serverless application pipeline (Laravel-Vapor-equivalent)
   buildAndPushServerlessImage,
@@ -169,12 +272,23 @@ export {
   setMaintenance,
   // Management-dashboard auto-deploy (inject the `dashboard.<apex>` site)
   buildManagementDashboardArtifact,
-  DASHBOARD_CREDENTIALS_FILE,
+  dashboardCredentialsFile,
   ensureManagementDashboard,
   MANAGEMENT_DASHBOARD_SITE,
   resolveDashboardAuth,
   resolveUiSource,
 } from './deploy'
+export {
+  collectServerDnsDomains,
+  hostAcceptsIpv6,
+  IPV6_EXCLUDED_HOST_LABELS,
+  normalizePublicIpv6,
+  reconcileAddressRecords,
+  removeStaleServerAddressRecords,
+  verifyAddressRecord,
+} from './deploy/server-dns'
+export type { AddressRecordReport } from './deploy/server-dns'
+export * from './cdn'
 export type {
   EnsureDashboardLogger,
   ResolvedDashboardAuth,
@@ -221,11 +335,23 @@ export {
   buildSshArgs,
   generateUbuntuAppCloudInit,
   wrapCloudInitUserData,
+  buildHostCleanupScript,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,
   resolveExecStart,
   deployAllComputeSites,
   deploySiteRelease,
+  // Re-exported so a deploy can re-run cert issuance and reload after DNS
+  // lands: a brand-new subdomain has no A record when the gateway is first
+  // reloaded, so ACME cannot have issued a certificate for it yet.
+  reloadRpxGateway,
+  renewRpxCertificates,
+  // The hostnames the gateway will answer. A DNS reconciler has to publish
+  // exactly this set — anything it misses resolves without a certificate of
+  // its own and gets served the fallback cert, which on a shared box belongs
+  // to another tenant.
+  gatewayHostnames,
+  hasAutoWwwVariant,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
 export {
@@ -249,11 +375,34 @@ export {
   PorkbunProvider,
   GoDaddyProvider,
   Route53Provider,
+  // Every other provider is surfaced here, and the Cloudflare CDN reconciler
+  // takes a CloudflareProvider INSTANCE — so leaving the class reachable only
+  // through the `/dns` subpath made the documented flow impossible to write
+  // from the package root, while `CloudflareProviderOptions` right below
+  // exported fine and made the gap look like a bug in the consumer's import.
+  CloudflareProvider,
+  policyTag,
+  qualifyName,
+  reconcileDeclaredRecords,
+  resolveDeclaredRecords,
   UnifiedDnsValidator,
   createPorkbunValidator,
   createGoDaddyValidator,
   createRoute53Validator,
 } from './dns'
+export type {
+  CloudflareProviderOptions,
+  CloudflareRule,
+  CloudflareRulesetPhase,
+  CloudflareZoneSetting,
+} from './dns/cloudflare'
+export { CLOUDFLARE_MANAGED_RULE_PREFIX } from './dns/cloudflare'
+
+// Provider-neutral Git source connections, repository bindings, and webhooks
+export * from './source'
+export * from './queue'
+export * from './backups'
+export * from './configuration'
 export type {
   DnsProvider,
   DnsProviderConfig,
@@ -263,6 +412,13 @@ export type {
   CreateRecordResult,
   DeleteRecordResult,
   ListRecordsResult,
+} from './dns'
+export { PROXIABLE_RECORD_TYPES } from './dns'
+export type {
+  DeclaredRecord,
+  DeclaredRecordInput,
+  DeclaredRecordOutcome,
+  DeclaredRecordsReport,
 } from './dns'
 
 // Re-export core functionality (these take precedence for common types)

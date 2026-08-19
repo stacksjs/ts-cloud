@@ -2,7 +2,6 @@
  * AWS Auto Scaling Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_AutoScaling.html
  */
-
 import type { Tag } from './common'
 
 /**
@@ -28,7 +27,15 @@ export interface AutoScalingGroup {
     VPCZoneIdentifier?: string[] | { Ref: string }
     TargetGroupARNs?: Array<string | { Ref: string }>
     LoadBalancerNames?: Array<string | { Ref: string }>
-    TerminationPolicies?: Array<'OldestInstance' | 'NewestInstance' | 'OldestLaunchConfiguration' | 'ClosestToNextInstanceHour' | 'Default' | 'OldestLaunchTemplate' | 'AllocationStrategy'>
+    TerminationPolicies?: Array<
+      | 'OldestInstance'
+      | 'NewestInstance'
+      | 'OldestLaunchConfiguration'
+      | 'ClosestToNextInstanceHour'
+      | 'Default'
+      | 'OldestLaunchTemplate'
+      | 'AllocationStrategy'
+    >
     NewInstancesProtectedFromScaleIn?: boolean
     Tags?: Array<Tag & { PropagateAtLaunch: boolean }>
     MetricsCollection?: Array<{
@@ -118,7 +125,8 @@ export interface AutoScalingScalingPolicy {
     EstimatedInstanceWarmup?: number
     TargetTrackingConfiguration?: {
       PredefinedMetricSpecification?: {
-        PredefinedMetricType: 'ASGAverageCPUUtilization' | 'ASGAverageNetworkIn' | 'ASGAverageNetworkOut' | 'ALBRequestCountPerTarget'
+        PredefinedMetricType:
+          'ASGAverageCPUUtilization' | 'ASGAverageNetworkIn' | 'ASGAverageNetworkOut' | 'ALBRequestCountPerTarget'
         ResourceLabel?: string
       }
       CustomizedMetricSpecification?: {

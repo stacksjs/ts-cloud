@@ -2,7 +2,6 @@
  * AWS CloudFormation API Client
  * Direct API calls without AWS SDK dependency
  */
-
 import type { AWSCredentials } from './credentials'
 import { resolveCredentials } from './credentials'
 import { makeAWSRequest } from './signature'
@@ -15,9 +14,9 @@ export interface CloudFormationStack {
   LastUpdatedTime?: string
   StackStatusReason?: string
   Description?: string
-  Parameters?: Array<{ ParameterKey: string, ParameterValue: string }>
-  Outputs?: Array<{ OutputKey: string, OutputValue: string, Description?: string }>
-  Tags?: Array<{ Key: string, Value: string }>
+  Parameters?: Array<{ ParameterKey: string; ParameterValue: string }>
+  Outputs?: Array<{ OutputKey: string; OutputValue: string; Description?: string }>
+  Tags?: Array<{ Key: string; Value: string }>
 }
 
 export interface CreateStackOptions {
@@ -128,11 +127,9 @@ export class CloudFormationClient {
 
     if (options.templateBody) {
       params.TemplateBody = options.templateBody
-    }
-    else if (options.templateURL) {
+    } else if (options.templateURL) {
       params.TemplateURL = options.templateURL
-    }
-    else {
+    } else {
       throw new Error('Either templateBody or templateURL must be provided')
     }
 
@@ -179,8 +176,7 @@ export class CloudFormationClient {
 
     if (options.templateBody) {
       params.TemplateBody = options.templateBody
-    }
-    else if (options.templateURL) {
+    } else if (options.templateURL) {
       params.TemplateURL = options.templateURL
     }
 
@@ -227,7 +223,8 @@ export class CloudFormationClient {
     })
 
     // Navigate the parsed XML structure
-    const describeResult = result?.DescribeStacksResult || result?.DescribeStacksResponse?.DescribeStacksResult || result
+    const describeResult =
+      result?.DescribeStacksResult || result?.DescribeStacksResponse?.DescribeStacksResult || result
     const stacks = describeResult?.Stacks?.member
     const stack = Array.isArray(stacks) ? stacks[0] : stacks
     if (!stack) {
@@ -295,8 +292,7 @@ export class CloudFormationClient {
             }
             // Reverse to show in chronological order
             newEvents.reverse()
-          }
-          else if (events.length > 0) {
+          } else if (events.length > 0) {
             newEvents = [events[0]]
           }
 
@@ -307,8 +303,7 @@ export class CloudFormationClient {
           if (events.length > 0) {
             lastEventId = events[0].EventId
           }
-        }
-        catch {
+        } catch {
           // Ignore event fetch errors - don't break the wait loop
         }
       }
@@ -321,13 +316,12 @@ export class CloudFormationClient {
       // Check for failure states
       if (stack.StackStatus?.includes('FAILED') || stack.StackStatus?.includes('ROLLBACK')) {
         throw new Error(
-          `Stack reached failed state: ${stack.StackStatus}\n`
-          + `Reason: ${stack.StackStatusReason || 'Unknown'}`,
+          `Stack reached failed state: ${stack.StackStatus}\n` + `Reason: ${stack.StackStatusReason || 'Unknown'}`,
         )
       }
 
       // Wait before next poll
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
     throw new Error(`Timeout waiting for stack ${stackName} to complete`)
@@ -375,8 +369,7 @@ export class CloudFormationClient {
 
     if (options.templateBody) {
       params.TemplateBody = options.templateBody
-    }
-    else if (options.templateURL) {
+    } else if (options.templateURL) {
       params.TemplateURL = options.templateURL
     }
 
@@ -416,8 +409,7 @@ export class CloudFormationClient {
     try {
       const stack = await this.describeStack(stackName)
       return { Stacks: [stack] }
-    }
-    catch {
+    } catch {
       return { Stacks: [] }
     }
   }
@@ -430,7 +422,8 @@ export class CloudFormationClient {
       StackName: stackName,
     })
 
-    const describeResult = result?.DescribeStacksResult || result?.DescribeStacksResponse?.DescribeStacksResult || result
+    const describeResult =
+      result?.DescribeStacksResult || result?.DescribeStacksResponse?.DescribeStacksResult || result
     const stacks = describeResult?.Stacks?.member
     const stack = Array.isArray(stacks) ? stacks[0] : stacks
     if (!stack) return {}
@@ -467,16 +460,13 @@ function flattenParams(params: Record<string, any>, prefix: string = ''): Record
       value.forEach((item, index) => {
         if (typeof item === 'object') {
           Object.assign(result, flattenParams(item, `${fullKey}.${index + 1}`))
-        }
-        else {
+        } else {
           result[`${fullKey}.${index + 1}`] = String(item)
         }
       })
-    }
-    else if (typeof value === 'object' && value !== null) {
+    } else if (typeof value === 'object' && value !== null) {
       Object.assign(result, flattenParams(value, fullKey))
-    }
-    else if (value !== undefined && value !== null) {
+    } else if (value !== undefined && value !== null) {
       result[fullKey] = String(value)
     }
   }
@@ -514,17 +504,14 @@ function parseCloudFormationXML(xml: string): any {
           if (tagEnd !== -1 && str[tagEnd - 1] === '/') {
             // Self-closing, don't increase depth
             pos = tagEnd + 1
-          }
-else {
+          } else {
             depth++
             pos = tagEnd + 1
           }
-        }
-else {
+        } else {
           pos = nextOpen + openPattern.length
         }
-      }
-else {
+      } else {
         depth--
         if (depth === 0) return nextClose
         pos = nextClose + closeTag.length
@@ -533,7 +520,7 @@ else {
     return -1
   }
 
-  function parseElement(str: string, pos: number): { value: any, end: number } {
+  function parseElement(str: string, pos: number): { value: any; end: number } {
     // Skip whitespace
     while (pos < str.length && /\s/.test(str[pos])) pos++
 
@@ -586,7 +573,10 @@ else {
 
       const childName = childTagMatch[1]
       const result = parseElement(str, childPos)
-      if (result.value === undefined) { childPos++; continue }
+      if (result.value === undefined) {
+        childPos++
+        continue
+      }
 
       // Handle list items (member pattern)
       if (childName === 'member' || children[childName] !== undefined) {
@@ -594,8 +584,7 @@ else {
           children[childName] = children[childName] !== undefined ? [children[childName]] : []
         }
         children[childName].push(result.value)
-      }
-else {
+      } else {
         children[childName] = result.value
       }
 

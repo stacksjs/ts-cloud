@@ -13,13 +13,40 @@
 import type { ComputeServicesConfig, DatabaseConfig, DatabaseUserConfig } from '@ts-cloud/core'
 import type { PantrySpec } from './package-manager'
 import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
+import { buildVitessProvisionScript } from './vitess-provision'
+
+/**
+ * Engines whose APP DATABASE is always administered off-box.
+ *
+ * SingleStore is a managed service (Helios) with no self-hosted package.
+ * Vitess now has one (`services.vitess` provisions a single-box cluster),
+ * but it still belongs here: even when this box runs the daemons, the app's
+ * keyspace is created through vtctld, not by `CREATE DATABASE` over a local
+ * mysqld socket. The tablet's mysqld exists, and writing to it directly
+ * bypasses Vitess entirely.
+ *
+ * This matters because {@link isLocalDatabase} decides "on-box or not" from
+ * the HOST, and host is optional. Declaring `engine: 'singlestore'` without
+ * a host therefore read as local and fell through to the MySQL branch of
+ * {@link buildDatabaseSetupScript}, which shells out to
+ * `mysql --socket=/var/lib/pantry/mysql/mysqld.sock` — a socket that cannot
+ * exist, because nothing installed MySQL. The provision step failed with a
+ * missing-socket error that named MySQL, an engine the user never asked for.
+ */
+const ALWAYS_EXTERNAL_ENGINES = new Set(['singlestore', 'vitess'])
 
 /**
  * True when the database is co-located with the box (the managed-services
  * engine): no host configured, or an explicit loopback host. Anything else is
  * an external/managed database reached over TCP.
+ *
+ * An always-external engine is never local regardless of host — pointing one
+ * at 127.0.0.1 means a tunnel or a local proxy, not an engine this box
+ * installed and can administer over a unix socket.
  */
 export function isLocalDatabase(database: DatabaseConfig | undefined): boolean {
+  if (database?.engine && ALWAYS_EXTERNAL_ENGINES.has(database.engine))
+    return false
   return !database?.host || database.host === '127.0.0.1' || database.host === 'localhost'
 }
 
@@ -39,8 +66,7 @@ export function isLocalDatabase(database: DatabaseConfig | undefined): boolean {
  */
 export function pgAdminCommand(database: DatabaseConfig | undefined, tool: 'psql' | 'pg_dump' = 'psql'): string {
   const port = database?.port ?? 5432
-  if (isLocalDatabase(database))
-    return `${tool} -p ${port} -U postgres`
+  if (isLocalDatabase(database)) return `${tool} -p ${port} -U postgres`
   const user = database?.username || 'postgres'
   const env = database?.password ? `PGPASSWORD='${database.password.replace(/'/g, `'\\''`)}' ` : ''
   return `${env}${tool} -h ${database!.host} -p ${port} -U ${user} -w`
@@ -66,12 +92,13 @@ function planServices(services: ComputeServicesConfig): ServicePlan {
     // The catalog's newest tags are "innovation" releases (9.x) with no source
     // tarball; 8.0.43 is the latest GA whose bundled-boost source builds cleanly.
     // (MariaDB is the default MySQL-compatible engine; mysql.com is opt-in.)
-    packages.push(typeof services.mysql === 'object' && services.mysql.version
-      ? `mysql.com@${services.mysql.version}`
-      : 'mysql.com@8.0.43')
+    packages.push(
+      typeof services.mysql === 'object' && services.mysql.version
+        ? `mysql.com@${services.mysql.version}`
+        : 'mysql.com@8.0.43',
+    )
     names.push('mysql')
-  }
-  else if (enabled(services.mariadb)) {
+  } else if (enabled(services.mariadb)) {
     packages.push(PANTRY_PACKAGES.mariadb)
     names.push('mariadb')
   }
@@ -100,13 +127,21 @@ function planServices(services: ComputeServicesConfig): ServicePlan {
  * `options.bindPrivate` is accepted for fleet compatibility; pantry's services
  * already bind all interfaces behind the firewall.
  */
-export function buildServicesProvisionScript(services: ComputeServicesConfig = {}, _options: { bindPrivate?: boolean } = {}): string[] {
+export function buildServicesProvisionScript(
+  services: ComputeServicesConfig = {},
+  _options: { bindPrivate?: boolean } = {},
+): string[] {
   const plan = planServices(services)
-  if (plan.packages.length === 0)
-    return []
+  // Vitess is appended rather than folded into `planServices` because it is
+  // not a `pantry start <name>` service: its daemons need explicit systemd
+  // units with an ordering graph, its own topology bootstrap, and a health
+  // gate. See `./vitess-provision`.
+  const vitess = buildVitessProvisionScript(services.vitess)
+  if (plan.packages.length === 0) return vitess
   return [
     ...buildPantryInstallScript(plan.packages),
     ...buildPantryServiceScript(plan.services),
+    ...vitess,
   ]
 }
 
@@ -120,11 +155,9 @@ export function buildDatabaseSetupScript(
   database: DatabaseConfig | undefined,
   services: ComputeServicesConfig = {},
 ): string[] {
-  if (!database?.name)
-    return []
+  if (!database?.name) return []
   // A managed/external DB is created out-of-band; nothing to do on the box.
-  if (!isLocalDatabase(database))
-    return []
+  if (!isLocalDatabase(database)) return []
 
   const name = database.name
   const user = database.username || name
@@ -144,7 +177,7 @@ export function buildDatabaseSetupScript(
     // conditionally creates the database (which can't run inside a DO block /
     // transaction). The heredoc is quoted so the shell leaves the SQL untouched.
     const pgIdent = (v: string): string => `"${v.replace(/"/g, '""')}"`
-    const pgLit = (v: string): string => `'${v.replace(/'/g, '\'\'')}'`
+    const pgLit = (v: string): string => `'${v.replace(/'/g, "''")}'`
     // Idempotently ensure a login role exists with the given password.
     const pgEnsureRole = (u: string, p: string): string[] => [
       'DO $$ BEGIN',
@@ -175,14 +208,13 @@ export function buildDatabaseSetupScript(
             `ALTER DEFAULT PRIVILEGES FOR ROLE ${pgIdent(user)} IN SCHEMA public GRANT SELECT ON TABLES TO ${pgIdent(u.username)};`,
             '\\connect postgres',
           )
-        }
-        else {
+        } else {
           lines.push(`GRANT ALL PRIVILEGES ON DATABASE ${pgIdent(db)} TO ${pgIdent(u.username)};`)
         }
       }
       return lines
     }
-    const extraUsers = (database.users || [])
+    const extraUsers = database.users || []
     const pgPort = database.port ?? 5432
     return [
       pantryEnvActivation(),
@@ -192,10 +224,10 @@ export function buildDatabaseSetupScript(
       `for i in $(seq 1 30); do pg_isready -p ${pgPort} -q && break; sleep 2; done`,
       `${pgAdminCommand(database)} <<'TS_CLOUD_PG_EOF'`,
       ...pgEnsureRole(user, pass),
-      `SELECT 'CREATE DATABASE ${pgIdent(name)} OWNER ${pgIdent(user)}' `
-      + `WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,
+      `SELECT 'CREATE DATABASE ${pgIdent(name)} OWNER ${pgIdent(user)}' ` +
+        `WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,
       // Additional users (read-only / extra logins) with their own grants.
-      ...extraUsers.flatMap(u => [...pgEnsureRole(u.username, u.password), ...pgGrant(u)]),
+      ...extraUsers.flatMap((u) => [...pgEnsureRole(u.username, u.password), ...pgGrant(u)]),
       'TS_CLOUD_PG_EOF',
     ]
   }
@@ -208,11 +240,13 @@ export function buildDatabaseSetupScript(
   // the app) and `localhost` (socket) so either connection path authenticates.
   const sock = useMariadb ? '/var/lib/pantry/mariadb/mariadbd.sock' : '/var/lib/pantry/mysql/mysqld.sock'
   const ident = (v: string): string => v.replace(/`/g, '``')
-  const lit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
+  const lit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
   // Create a user for both `%` (TCP) and `localhost` (socket), then grant the
   // given privilege list on each database. `ALTER USER` keeps the password in
   // sync on a re-provision (a Forge-style password reset).
-  const mysqlUser = (u: DatabaseUserConfig | { username: string, password: string, databases?: string[], access?: 'all' | 'readonly' }): string[] => {
+  const mysqlUser = (
+    u: DatabaseUserConfig | { username: string; password: string; databases?: string[]; access?: 'all' | 'readonly' },
+  ): string[] => {
     const dbs = u.databases && u.databases.length > 0 ? u.databases : [name]
     const priv = u.access === 'readonly' ? 'SELECT' : 'ALL PRIVILEGES'
     const lines = [
@@ -229,7 +263,7 @@ export function buildDatabaseSetupScript(
     }
     return lines
   }
-  const extraUsers = (database.users || [])
+  const extraUsers = database.users || []
   return [
     pantryEnvActivation(),
     // Wait until the just-started engine accepts socket connections before setup.
@@ -250,28 +284,37 @@ export function buildDatabaseSetupScript(
  * credentials. Returns `{}` when there's nothing to wire.
  */
 export function buildManagedDbEnv(database: DatabaseConfig | undefined): Record<string, string> {
-  if (!database?.name)
-    return {}
-  // SingleStore speaks the MySQL wire protocol on 3306, but keep DB_CONNECTION
-  // as 'singlestore' so the app's query builder selects the SingleStore driver
-  // (distributed DDL, isMysqlLike DML). Postgres → 'pgsql'; everything else →
-  // 'mysql'.
+  if (!database?.name) return {}
+  // SingleStore and Vitess both speak the MySQL wire protocol, but each keeps
+  // its own DB_CONNECTION so the app selects the right driver: they share
+  // MySQL's DML and diverge in DDL (SingleStore has distributed tables and no
+  // foreign keys; Vitess additionally has no AUTO_INCREMENT and needs a
+  // VSchema). Collapsing either to 'mysql' would emit DDL the engine rejects.
+  // Postgres → 'pgsql'; everything else → 'mysql'.
   const isSingleStore = database.engine === 'singlestore'
-  const connection = database.engine === 'postgres' ? 'pgsql' : isSingleStore ? 'singlestore' : 'mysql'
-  const port = database.port ?? (database.engine === 'postgres' ? 5432 : 3306)
+  const isVitess = database.engine === 'vitess'
+  const connection = database.engine === 'postgres'
+    ? 'pgsql'
+    : isSingleStore
+      ? 'singlestore'
+      : isVitess
+        ? 'vitess'
+        : 'mysql'
+  // Vitess is reached through vtgate on 15306. Defaulting it to 3306 would
+  // connect to a vttablet's underlying mysqld instead — a working connection
+  // that silently bypasses sharding, which is worse than a failed one.
+  const port = database.port ?? (database.engine === 'postgres' ? 5432 : isVitess ? 15306 : 3306)
   const env: Record<string, string> = {
     DB_CONNECTION: connection,
     DB_HOST: database.host || '127.0.0.1',
     DB_PORT: String(port),
     DB_DATABASE: database.name,
   }
-  if (database.username)
-    env.DB_USERNAME = database.username
-  if (database.password)
-    env.DB_PASSWORD = database.password
-  // Managed SingleStore (Helios) requires TLS; default it on unless explicitly
-  // disabled via `database.ssl === false`.
-  if (isSingleStore && database.ssl !== false)
-    env.DB_SSL = 'true'
+  if (database.username) env.DB_USERNAME = database.username
+  if (database.password) env.DB_PASSWORD = database.password
+  // Managed SingleStore (Helios) requires TLS, and a managed Vitess endpoint
+  // is likewise reached across a network boundary; default TLS on for both
+  // unless explicitly disabled via `database.ssl === false`.
+  if ((isSingleStore || isVitess) && database.ssl !== false) env.DB_SSL = 'true'
   return env
 }

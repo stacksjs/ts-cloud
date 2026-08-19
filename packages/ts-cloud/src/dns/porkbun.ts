@@ -2,18 +2,31 @@
  * Porkbun DNS Provider
  * API documentation: https://porkbun.com/api/json/v3/documentation
  */
-
-import type {
-  CreateRecordResult,
-  DeleteRecordResult,
-  DnsProvider,
-  DnsRecord,
-  DnsRecordResult,
-  DnsRecordType,
-  ListRecordsResult,
-} from './types'
+import type { CreateRecordResult, DeleteRecordResult, DnsProvider, DnsRecord, DnsRecordResult, DnsRecordType, ListRecordsResult } from './types'
 
 const PORKBUN_API_URL = 'https://api.porkbun.com/api/json/v3'
+const PORKBUN_MAX_ATTEMPTS = 8
+const PORKBUN_REQUEST_TIMEOUT_MS = 15_000
+
+function isRetryablePorkbunResponse(status: number, message = ''): boolean {
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500 ||
+    /rate limit|temporar|timed? ?out|try again/i.test(message)
+  )
+}
+
+async function waitForPorkbunRetry(attempt: number, response?: Response): Promise<void> {
+  const retryAfter = response?.headers.get('retry-after')
+  const retryAfterMs = retryAfter === null || retryAfter === undefined ? undefined : Number(retryAfter) * 1000
+  const delay = Number.isFinite(retryAfterMs)
+    ? Math.max(0, retryAfterMs as number)
+    : Math.min(1000 * 2 ** (attempt - 1), 30000)
+  await new Promise((resolve) => setTimeout(resolve, delay))
+}
 
 interface PorkbunApiResponse {
   status: 'SUCCESS' | 'ERROR'
@@ -42,10 +55,12 @@ export class PorkbunProvider implements DnsProvider {
   readonly name = 'porkbun'
   private apiKey: string
   private secretKey: string
+  private requestTimeoutMs: number
 
-  constructor(apiKey: string, secretKey: string) {
+  constructor(apiKey: string, secretKey: string, requestTimeoutMs: number = PORKBUN_REQUEST_TIMEOUT_MS) {
     this.apiKey = apiKey
     this.secretKey = secretKey
+    this.requestTimeoutMs = requestTimeoutMs
   }
 
   /**
@@ -55,29 +70,54 @@ export class PorkbunProvider implements DnsProvider {
     endpoint: string,
     additionalBody: Record<string, any> = {},
   ): Promise<T> {
-    const response = await fetch(`${PORKBUN_API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        apikey: this.apiKey,
-        secretapikey: this.secretKey,
-        ...additionalBody,
-      }),
-    })
+    let lastError: unknown
+    for (let attempt = 1; attempt <= PORKBUN_MAX_ATTEMPTS; attempt += 1) {
+      let response: Response
+      const controller = new AbortController()
+      const timeout = setTimeout(() => {
+        controller.abort(new Error(`Porkbun API request timed out after ${this.requestTimeoutMs}ms`))
+      }, this.requestTimeoutMs)
+      try {
+        response = await fetch(`${PORKBUN_API_URL}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            apikey: this.apiKey,
+            secretapikey: this.secretKey,
+            ...additionalBody,
+          }),
+          signal: controller.signal,
+        })
+      } catch (error) {
+        lastError = error
+        if (attempt === PORKBUN_MAX_ATTEMPTS) throw error
+        await waitForPorkbunRetry(attempt)
+        continue
+      } finally {
+        clearTimeout(timeout)
+      }
 
-    if (!response.ok) {
-      throw new Error(`Porkbun API error: ${response.status} ${response.statusText}`)
+      if (!response.ok) {
+        lastError = new Error(`Porkbun API error: ${response.status} ${response.statusText}`)
+        if (!isRetryablePorkbunResponse(response.status) || attempt === PORKBUN_MAX_ATTEMPTS) throw lastError
+        await waitForPorkbunRetry(attempt, response)
+        continue
+      }
+
+      const data = (await response.json()) as T
+      if (data.status === 'ERROR') {
+        lastError = new Error(`Porkbun API error: ${data.message || 'Unknown error'}`)
+        if (!isRetryablePorkbunResponse(0, data.message) || attempt === PORKBUN_MAX_ATTEMPTS) throw lastError
+        await waitForPorkbunRetry(attempt, response)
+        continue
+      }
+
+      return data
     }
 
-    const data = await response.json() as T
-
-    if (data.status === 'ERROR') {
-      throw new Error(`Porkbun API error: ${data.message || 'Unknown error'}`)
-    }
-
-    return data
+    throw lastError
   }
 
   /**
@@ -116,6 +156,68 @@ export class PorkbunProvider implements DnsProvider {
     return domain
   }
 
+  /**
+   * Address record types that cannot coexist with an `ALIAS`/`CNAME` on the
+   * same name. Porkbun ships every new domain with a parking `ALIAS` on the
+   * apex and a wildcard `CNAME`, both pointing at `pixie.porkbun.com`.
+   */
+  private static readonly ADDRESS_TYPES = new Set(['A', 'AAAA'])
+
+  /**
+   * Remove any `ALIAS`/`CNAME` occupying `record.name` before writing an
+   * address record there.
+   *
+   * Porkbun accepts `POST /dns/create` for an apex `A` while its parking
+   * `ALIAS` still owns that name, answers `SUCCESS`, and then silently
+   * discards the record — nothing is created and nothing is reported. A deploy
+   * therefore logged a successful DNS reconciliation while the domain stayed
+   * parked, which is indistinguishable from slow propagation until someone
+   * digs the zone by hand.
+   *
+   * Only conflicting ALIAS/CNAME entries on the SAME name are touched; MX, TXT,
+   * NS and records on other names are left alone.
+   */
+  private async clearConflictingAliases(domain: string, record: DnsRecord): Promise<string[]> {
+    if (!PorkbunProvider.ADDRESS_TYPES.has(record.type))
+      return []
+
+    const rootDomain = this.getRootDomain(domain)
+    const subdomain = this.getSubdomain(record.name, rootDomain)
+    const listed = await this.listRecords(domain)
+    if (!listed.success)
+      return [`could not list records to clear ALIAS/CNAME conflicts: ${listed.message ?? 'unknown provider error'}`]
+
+    const warnings: string[] = []
+    for (const existing of listed.records) {
+      if (existing.type !== 'ALIAS' && existing.type !== 'CNAME')
+        continue
+      if (this.getSubdomain(existing.name, rootDomain) !== subdomain)
+        continue
+      const removed = await this.deleteRecord(domain, existing)
+      if (!removed.success)
+        warnings.push(`could not remove conflicting ${existing.type} on ${existing.name}: ${removed.message ?? 'unknown provider error'}`)
+    }
+    return warnings
+  }
+
+  /**
+   * Confirm an address record actually exists after a create that reported
+   * success — see {@link clearConflictingAliases} for why a `SUCCESS` from
+   * Porkbun is not sufficient evidence that anything was written.
+   */
+  private async addressRecordExists(domain: string, record: DnsRecord): Promise<boolean> {
+    const rootDomain = this.getRootDomain(domain)
+    const subdomain = this.getSubdomain(record.name, rootDomain)
+    const listed = await this.listRecords(domain)
+    if (!listed.success)
+      return true // cannot disprove it; do not fail the deploy on a list error
+    return listed.records.some(r =>
+      r.type === record.type
+      && this.getSubdomain(r.name, rootDomain) === subdomain
+      && r.content === record.content,
+    )
+  }
+
   async createRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult> {
     try {
       const rootDomain = this.getRootDomain(domain)
@@ -143,18 +245,26 @@ export class PorkbunProvider implements DnsProvider {
         body.content = `${record.weight} ${record.port} ${record.content}`
       }
 
-      const response = await this.request<PorkbunCreateRecordResponse>(
-        `/dns/create/${rootDomain}`,
-        body,
-      )
+      const conflicts = await this.clearConflictingAliases(domain, record)
+
+      const response = await this.request<PorkbunCreateRecordResponse>(`/dns/create/${rootDomain}`, body)
+
+      // Trust, then verify: Porkbun reports SUCCESS for writes it discards.
+      if (PorkbunProvider.ADDRESS_TYPES.has(record.type) && !(await this.addressRecordExists(domain, record))) {
+        return {
+          success: false,
+          message: `Porkbun reported success but no ${record.type} record for ${record.name} exists${
+            conflicts.length > 0 ? ` (${conflicts.join('; ')})` : ''
+          }. A conflicting ALIAS/CNAME on the same name silently voids the write.`,
+        }
+      }
 
       return {
         success: true,
         id: response.id?.toString(),
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -198,10 +308,7 @@ export class PorkbunProvider implements DnsProvider {
             body.content = `${record.weight} ${record.port} ${record.content}`
           }
 
-          await this.request(
-            `/dns/edit/${rootDomain}/${matchingRecord.id}`,
-            body,
-          )
+          await this.request(`/dns/edit/${rootDomain}/${matchingRecord.id}`, body)
 
           return {
             success: true,
@@ -213,8 +320,7 @@ export class PorkbunProvider implements DnsProvider {
 
       // No existing record found, create new one
       return this.createRecord(domain, record)
-    }
-    catch (error) {
+    } catch (error) {
       // If update fails, try create
       return this.createRecord(domain, record)
     }
@@ -223,10 +329,19 @@ export class PorkbunProvider implements DnsProvider {
   async deleteRecord(domain: string, record: DnsRecord): Promise<DeleteRecordResult> {
     try {
       const rootDomain = this.getRootDomain(domain)
+
+      if ('id' in record && record.id) {
+        await this.request(`/dns/delete/${rootDomain}/${record.id}`)
+        return {
+          success: true,
+          message: 'Record deleted successfully',
+        }
+      }
+
       const subdomain = this.getSubdomain(record.name, rootDomain)
 
       // Find the record to delete
-      const existing = await this.listRecords(domain, record.type)
+      const existing = await this.listRecords(domain)
 
       if (!existing.success) {
         return {
@@ -238,9 +353,7 @@ export class PorkbunProvider implements DnsProvider {
       // Find matching record
       const matchingRecord = existing.records.find((r) => {
         const existingSubdomain = this.getSubdomain(r.name, rootDomain)
-        return existingSubdomain === subdomain
-          && r.type === record.type
-          && r.content === record.content
+        return existingSubdomain === subdomain && r.type === record.type && r.content === record.content
       })
 
       if (!matchingRecord?.id) {
@@ -256,8 +369,7 @@ export class PorkbunProvider implements DnsProvider {
         success: true,
         message: 'Record deleted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -276,7 +388,7 @@ export class PorkbunProvider implements DnsProvider {
 
       const response = await this.request<PorkbunListRecordsResponse>(endpoint)
 
-      const records: DnsRecordResult[] = (response.records || []).map(r => ({
+      const records: DnsRecordResult[] = (response.records || []).map((r) => ({
         id: r.id,
         name: r.name || rootDomain,
         type: r.type as DnsRecordType,
@@ -289,8 +401,7 @@ export class PorkbunProvider implements DnsProvider {
         success: true,
         records,
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         records: [],
@@ -305,8 +416,7 @@ export class PorkbunProvider implements DnsProvider {
       // Ping API to check if we can access this domain
       await this.request(`/dns/retrieve/${rootDomain}`)
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -321,9 +431,8 @@ export class PorkbunProvider implements DnsProvider {
       const response = await this.request<PorkbunApiResponse & { domains?: Array<{ domain: string }> }>(
         '/domain/listAll',
       )
-      return (response.domains || []).map(d => d.domain)
-    }
-    catch {
+      return (response.domains || []).map((d) => d.domain)
+    } catch {
       return []
     }
   }
@@ -334,12 +443,9 @@ export class PorkbunProvider implements DnsProvider {
   async getNameServers(domain: string): Promise<string[]> {
     try {
       const rootDomain = this.getRootDomain(domain)
-      const response = await this.request<PorkbunApiResponse & { ns?: string[] }>(
-        `/dns/getNS/${rootDomain}`,
-      )
+      const response = await this.request<PorkbunApiResponse & { ns?: string[] }>(`/dns/getNS/${rootDomain}`)
       return response.ns || []
-    }
-    catch {
+    } catch {
       return []
     }
   }
@@ -354,8 +460,7 @@ export class PorkbunProvider implements DnsProvider {
         ns: nameservers,
       })
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }

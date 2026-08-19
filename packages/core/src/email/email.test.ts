@@ -354,9 +354,13 @@ describe('Email Template Manager', () => {
       textPart: 'Original',
     })
 
-    manager.updateTemplate(template.id, {
-      subject: 'Updated Subject',
-    }, 'Changed subject line')
+    manager.updateTemplate(
+      template.id,
+      {
+        subject: 'Updated Subject',
+      },
+      'Changed subject line',
+    )
 
     expect(template.subject).toBe('Updated Subject')
     expect(template.version).toBe(2)

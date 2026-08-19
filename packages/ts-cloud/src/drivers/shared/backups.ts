@@ -20,15 +20,14 @@ export const BACKUP_RUNNER_PATH = '/usr/local/bin/ts-cloud-backup.sh'
 
 /** Map a ts-cloud DB engine to a ts-backups database entry. Returns null if unmappable. */
 function backupEntryFor(database: DatabaseConfig): string | null {
-  if (!database.name)
-    return null
+  if (!database.name) return null
   const host = database.host || '127.0.0.1'
   const isPostgres = database.engine === 'postgres'
   const type = isPostgres ? 'postgresql' : 'mysql'
   const port = database.port ?? (isPostgres ? 5432 : 3306)
   // Escape for a single-quoted TS string literal so a `'` or `\` in a
   // credential can't break the generated backups.config.ts.
-  const ts = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
+  const ts = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 
   return [
     '  {',
@@ -58,9 +57,9 @@ export function buildBackupsConfigTs(database: DatabaseConfig | undefined, backu
     ? [
         '  destinations: [',
         '    {',
-        '      type: \'s3\',',
+        "      type: 's3',",
         `      bucket: '${backups.bucket}',`,
-        '      prefix: \'db-backups\',',
+        "      prefix: 'db-backups',",
         ...(backups.endpoint ? [`      endpoint: '${backups.endpoint}',`] : []),
         '      optional: false,',
         '    },',
@@ -68,7 +67,7 @@ export function buildBackupsConfigTs(database: DatabaseConfig | undefined, backu
       ]
     : []
   return [
-    'import type { BackupConfig } from \'ts-backups\'',
+    "import type { BackupConfig } from 'ts-backups'",
     '',
     'const config: BackupConfig = {',
     '  verbose: true,',
@@ -99,8 +98,7 @@ export interface BackupProvisionOptions {
  */
 export function buildBackupProvisionScript(options: BackupProvisionOptions): string[] {
   const { database, backups } = options
-  if (!backups.enabled)
-    return []
+  if (!backups.enabled) return []
 
   const schedule = backups.schedule || '0 2 * * *'
   const configTs = buildBackupsConfigTs(database, backups)
@@ -155,9 +153,11 @@ export interface BackupRestoreOptions {
  * host (see {@link pgAdminCommand}).
  * Returns `[]` when the database has no name.
  */
-export function buildBackupRestoreScript(database: DatabaseConfig | undefined, options: BackupRestoreOptions = {}): string[] {
-  if (!database?.name)
-    return []
+export function buildBackupRestoreScript(
+  database: DatabaseConfig | undefined,
+  options: BackupRestoreOptions = {},
+): string[] {
+  if (!database?.name) return []
   const name = database.name
   const isPg = database.engine === 'postgres'
   const locate = options.from

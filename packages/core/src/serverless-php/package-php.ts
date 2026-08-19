@@ -7,13 +7,14 @@
  * Build hooks (composer install + artisan caches) run before packaging because
  * the Lambda filesystem is read-only at runtime.
  */
-
+import type { ZipEntry } from '../serverless/zip'
 import type { ServerlessAppConfig } from '../types'
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { createZip, type ZipEntry } from '../serverless/zip'
+import { createZip } from '../serverless/zip'
+import { stateDir } from '../state-dir'
 import { LARAVEL_SERVERLESS_BUILD_STEPS } from './runtime-assets'
 
 /** Paths excluded from the PHP deployment artifact by default. */
@@ -45,12 +46,12 @@ export interface PackagePhpOptions {
 export interface PackagedPhpArtifact {
   zip: Buffer
   sha256: string
-  handlers: { http: string, queue: string, cli: string }
+  handlers: { http: string; queue: string; cli: string }
   fileCount: number
 }
 
 function isExcluded(rel: string, excludes: string[]): boolean {
-  return excludes.some(ex => rel === ex || rel.startsWith(`${ex}/`))
+  return excludes.some((ex) => rel === ex || rel.startsWith(`${ex}/`))
 }
 
 function* walk(dir: string, root: string, excludes: string[]): Generator<string> {
@@ -58,7 +59,7 @@ function* walk(dir: string, root: string, excludes: string[]): Generator<string>
     const full = join(dir, entry)
     const rel = relative(root, full).replace(/\\/g, '/')
     if (isExcluded(rel, excludes)) continue
-    if (statSync(full).isDirectory()) yield * walk(full, root, excludes)
+    if (statSync(full).isDirectory()) yield* walk(full, root, excludes)
     else yield full
   }
 }
@@ -84,7 +85,10 @@ export function runPhpBuildHooks(opts: PackagePhpOptions): void {
  */
 export function collectPhpAppEntries(projectRoot: string, exclude: string[] = []): ZipEntry[] {
   const root = resolve(projectRoot)
-  const excludes = [...PHP_DEFAULT_EXCLUDES, ...exclude]
+  // `stateDir()` rather than the literal in PHP_DEFAULT_EXCLUDES: the state
+  // directory is configurable, and it holds the dashboard credentials — a
+  // package that carries them is a credential leak.
+  const excludes = [...PHP_DEFAULT_EXCLUDES, stateDir(), ...exclude]
   const entries: ZipEntry[] = []
   for (const file of walk(root, root, excludes)) {
     const rel = relative(root, file).replace(/\\/g, '/')
@@ -101,8 +105,7 @@ export function packagePhpApp(opts: PackagePhpOptions): PackagedPhpArtifact {
 
   opts.onStep?.('packaging application tree')
   const entries = collectPhpAppEntries(projectRoot, opts.exclude)
-  if (!entries.length)
-    throw new Error(`No files to package under ${projectRoot}`)
+  if (!entries.length) throw new Error(`No files to package under ${projectRoot}`)
 
   const zip = createZip(entries)
 

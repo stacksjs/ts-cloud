@@ -194,7 +194,8 @@ describe('Multipart Upload', () => {
 
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      const urlStr = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input as Request).url)
+      const urlStr =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
       const url = new URL(urlStr)
       hosts.add(url.host)
       const method = init?.method || 'GET'
@@ -242,8 +243,7 @@ describe('Multipart Upload', () => {
 
       // All steps (initiate, parts, complete) hit one consistent host.
       expect([...hosts]).toEqual(['my-bucket.s3.us-east-1.amazonaws.com'])
-    }
-    finally {
+    } finally {
       globalThis.fetch = originalFetch
     }
   })

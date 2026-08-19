@@ -5,7 +5,6 @@
  * The layer builder bundles these files plus the generated php-fpm.conf into the
  * ts-cloud PHP runtime layer (mounted at /opt on Lambda).
  */
-
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -47,7 +46,9 @@ export function phpRuntimeLayerAssets(): RuntimeAsset[] {
  * read-only filesystem (only /tmp writable), no `file` drivers, S3 storage, SQS
  * queue, and logs to stderr → CloudWatch.
  */
-export function laravelServerlessEnvDefaults(opts: { cacheDriver?: 'dynamodb' | 'redis' } = {}): Record<string, string> {
+export function laravelServerlessEnvDefaults(
+  opts: { cacheDriver?: 'dynamodb' | 'redis' } = {},
+): Record<string, string> {
   const cache = opts.cacheDriver ?? 'dynamodb'
   return {
     APP_ENV: 'production',

@@ -21,8 +21,7 @@ function levenshteinDistance(a: string, b: string): number {
     for (let j = 1; j <= a.length; j++) {
       if (b.charAt(i - 1) === a.charAt(j - 1)) {
         matrix[i][j] = matrix[i - 1][j - 1]
-      }
-      else {
+      } else {
         matrix[i][j] = Math.min(
           matrix[i - 1][j - 1] + 1, // substitution
           matrix[i][j - 1] + 1, // insertion
@@ -52,13 +51,13 @@ function similarityScore(a: string, b: string): number {
  */
 export function suggestCommand(input: string, availableCommands: string[], threshold = 0.5): string[] {
   const suggestions = availableCommands
-    .map(cmd => ({
+    .map((cmd) => ({
       command: cmd,
       score: similarityScore(input, cmd),
     }))
-    .filter(item => item.score >= threshold)
+    .filter((item) => item.score >= threshold)
     .sort((a, b) => b.score - a.score)
-    .map(item => item.command)
+    .map((item) => item.command)
 
   return suggestions.slice(0, 5) // Return top 5 suggestions
 }
@@ -75,7 +74,7 @@ export function formatSuggestion(input: string, suggestions: string[]): string {
     return `Unknown command: '${input}'\n\nDid you mean: ${suggestions[0]}?`
   }
 
-  return `Unknown command: '${input}'\n\nDid you mean one of these?\n${suggestions.map(s => `  • ${s}`).join('\n')}`
+  return `Unknown command: '${input}'\n\nDid you mean one of these?\n${suggestions.map((s) => `  • ${s}`).join('\n')}`
 }
 
 /**
@@ -104,13 +103,10 @@ export interface CommandInfo {
 /**
  * Get contextual help based on current command
  */
-export function getContextualHelp(
-  currentCommand: string,
-  categories: CommandCategory[],
-): string {
+export function getContextualHelp(currentCommand: string, categories: CommandCategory[]): string {
   // Find the category containing the current command
-  const category = categories.find(cat =>
-    cat.commands.some(cmd => cmd.name === currentCommand || cmd.aliases?.includes(currentCommand)),
+  const category = categories.find((cat) =>
+    cat.commands.some((cmd) => cmd.name === currentCommand || cmd.aliases?.includes(currentCommand)),
   )
 
   if (!category) {
@@ -136,7 +132,7 @@ export function getContextualHelp(
 
   // Show examples for current command
   const currentCmd = category.commands.find(
-    cmd => cmd.name === currentCommand || cmd.aliases?.includes(currentCommand),
+    (cmd) => cmd.name === currentCommand || cmd.aliases?.includes(currentCommand),
   )
 
   if (currentCmd?.examples && currentCmd.examples.length > 0) {
@@ -164,7 +160,7 @@ export function searchCommands(
     for (const command of category.commands) {
       const nameMatch = command.name.toLowerCase().includes(queryLower)
       const descMatch = command.description.toLowerCase().includes(queryLower)
-      const aliasMatch = command.aliases?.some(alias => alias.toLowerCase().includes(queryLower))
+      const aliasMatch = command.aliases?.some((alias) => alias.toLowerCase().includes(queryLower))
 
       if (nameMatch || descMatch || aliasMatch) {
         results.push({
@@ -181,22 +177,15 @@ export function searchCommands(
 /**
  * Autocomplete suggestions for partial input
  */
-export function autocomplete(
-  partial: string,
-  availableCommands: string[],
-  maxResults = 10,
-): string[] {
+export function autocomplete(partial: string, availableCommands: string[], maxResults = 10): string[] {
   const partialLower = partial.toLowerCase()
 
   // First, exact prefix matches
-  const prefixMatches = availableCommands.filter(cmd =>
-    cmd.toLowerCase().startsWith(partialLower),
-  )
+  const prefixMatches = availableCommands.filter((cmd) => cmd.toLowerCase().startsWith(partialLower))
 
   // Then, contains matches
   const containsMatches = availableCommands.filter(
-    cmd =>
-      cmd.toLowerCase().includes(partialLower) && !cmd.toLowerCase().startsWith(partialLower),
+    (cmd) => cmd.toLowerCase().includes(partialLower) && !cmd.toLowerCase().startsWith(partialLower),
   )
 
   return [...prefixMatches, ...containsMatches].slice(0, maxResults)
@@ -317,7 +306,7 @@ export function validateCommand(
 
   // Check for required flags
   for (const flag of requiredFlags) {
-    if (!args.some(arg => arg === `--${flag}` || arg.startsWith(`--${flag}=`))) {
+    if (!args.some((arg) => arg === `--${flag}` || arg.startsWith(`--${flag}=`))) {
       result.valid = false
       result.errors.push(`Missing required flag: --${flag}`)
     }

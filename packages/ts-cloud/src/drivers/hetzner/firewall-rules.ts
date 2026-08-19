@@ -1,6 +1,8 @@
 export interface HetznerFirewallRuleInput {
   allowSsh?: boolean
   sitePorts: number[]
+  /** Operator-owned public TCP ports from compute.firewall.allowedPorts. */
+  allowedPorts?: number[]
 }
 
 export type HetznerInboundFirewallRule = {
@@ -12,7 +14,7 @@ export type HetznerInboundFirewallRule = {
 }
 
 export function buildHetznerFirewallRules(config: HetznerFirewallRuleInput): HetznerInboundFirewallRule[] {
-  const openPorts = new Set<number>([80, 443, ...config.sitePorts])
+  const openPorts = new Set<number>([80, 443, ...config.sitePorts, ...(config.allowedPorts ?? [])])
   if (config.allowSsh) {
     openPorts.add(22)
   }

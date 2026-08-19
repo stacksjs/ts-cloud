@@ -2,7 +2,6 @@
  * AWS SES (Simple Email Service) Operations
  * Direct API calls without AWS SDK dependency
  */
-
 import type { AWSCredentials } from './client'
 import { AWSClient } from './client'
 
@@ -58,7 +57,7 @@ export class SESClient {
       DomainSigningSelector?: string
       DomainSigningPrivateKey?: string
     }
-    Tags?: Array<{ Key: string, Value: string }>
+    Tags?: Array<{ Key: string; Value: string }>
   }): Promise<{
     IdentityType?: string
     VerifiedForSendingStatus?: boolean
@@ -110,10 +109,13 @@ export class SESClient {
   /**
    * Configure MAIL FROM domain for an email identity
    */
-  async putEmailIdentityMailFromAttributes(emailIdentity: string, params: {
-    MailFromDomain?: string
-    BehaviorOnMxFailure?: 'USE_DEFAULT_VALUE' | 'REJECT_MESSAGE'
-  }): Promise<void> {
+  async putEmailIdentityMailFromAttributes(
+    emailIdentity: string,
+    params: {
+      MailFromDomain?: string
+      BehaviorOnMxFailure?: 'USE_DEFAULT_VALUE' | 'REJECT_MESSAGE'
+    },
+  ): Promise<void> {
     await this.client.request({
       service: 'email',
       region: this.region,
@@ -129,10 +131,7 @@ export class SESClient {
   /**
    * List email identities
    */
-  async listEmailIdentities(params?: {
-    PageSize?: number
-    NextToken?: string
-  }): Promise<{
+  async listEmailIdentities(params?: { PageSize?: number; NextToken?: string }): Promise<{
     EmailIdentities?: Array<{
       IdentityType?: string
       IdentityName?: string
@@ -188,10 +187,7 @@ export class SESClient {
   /**
    * Enable/disable DKIM signing for identity
    */
-  async putEmailIdentityDkimAttributes(params: {
-    EmailIdentity: string
-    SigningEnabled: boolean
-  }): Promise<void> {
+  async putEmailIdentityDkimAttributes(params: { EmailIdentity: string; SigningEnabled: boolean }): Promise<void> {
     await this.client.request({
       service: 'email',
       region: this.region,
@@ -216,10 +212,10 @@ export class SESClient {
     }
     Content: {
       Simple?: {
-        Subject: { Data: string, Charset?: string }
+        Subject: { Data: string; Charset?: string }
         Body: {
-          Text?: { Data: string, Charset?: string }
-          Html?: { Data: string, Charset?: string }
+          Text?: { Data: string; Charset?: string }
+          Html?: { Data: string; Charset?: string }
         }
       }
       Raw?: {
@@ -361,10 +357,7 @@ export class SESClient {
   /**
    * List email templates
    */
-  async listEmailTemplates(params?: {
-    PageSize?: number
-    NextToken?: string
-  }): Promise<{
+  async listEmailTemplates(params?: { PageSize?: number; NextToken?: string }): Promise<{
     TemplatesMetadata?: Array<{
       TemplateName?: string
       CreatedTimestamp?: string
@@ -487,7 +480,9 @@ export class SESClient {
   }): Promise<SendEmailResult> {
     const toAddresses = Array.isArray(params.to) ? params.to : [params.to]
     const replyToAddresses = params.replyTo
-      ? (Array.isArray(params.replyTo) ? params.replyTo : [params.replyTo])
+      ? Array.isArray(params.replyTo)
+        ? params.replyTo
+        : [params.replyTo]
       : undefined
 
     const body: any = {}
@@ -525,7 +520,9 @@ export class SESClient {
   }): Promise<SendEmailResult> {
     const toAddresses = Array.isArray(params.to) ? params.to : [params.to]
     const replyToAddresses = params.replyTo
-      ? (Array.isArray(params.replyTo) ? params.replyTo : [params.replyTo])
+      ? Array.isArray(params.replyTo)
+        ? params.replyTo
+        : [params.replyTo]
       : undefined
 
     return this.sendEmail({
@@ -546,18 +543,20 @@ export class SESClient {
   /**
    * Get DKIM DNS records for a domain
    */
-  async getDkimRecords(domain: string): Promise<Array<{
-    name: string
-    type: string
-    value: string
-  }>> {
+  async getDkimRecords(domain: string): Promise<
+    Array<{
+      name: string
+      type: string
+      value: string
+    }>
+  > {
     const identity = await this.getEmailIdentity(domain)
 
     if (!identity.DkimAttributes?.Tokens) {
       return []
     }
 
-    return identity.DkimAttributes.Tokens.map(token => ({
+    return identity.DkimAttributes.Tokens.map((token) => ({
       name: `${token}._domainkey.${domain}`,
       type: 'CNAME',
       value: `${token}.dkim.amazonses.com`,
@@ -571,8 +570,7 @@ export class SESClient {
     try {
       const identity = await this.getEmailIdentity(domain)
       return identity.VerificationStatus === 'SUCCESS' && identity.SendingEnabled === true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -580,11 +578,7 @@ export class SESClient {
   /**
    * Wait for domain verification
    */
-  async waitForDomainVerification(
-    domain: string,
-    maxAttempts = 60,
-    delayMs = 30000,
-  ): Promise<boolean> {
+  async waitForDomainVerification(domain: string, maxAttempts = 60, delayMs = 30000): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       const isVerified = await this.isDomainVerified(domain)
 
@@ -592,7 +586,7 @@ export class SESClient {
         return true
       }
 
-      await new Promise(resolve => setTimeout(resolve, delayMs))
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
 
     return false
@@ -678,7 +672,7 @@ export class SESClient {
    * List receipt rule sets
    */
   async listReceiptRuleSets(nextToken?: string): Promise<{
-    RuleSets?: Array<{ Name?: string, CreatedTimestamp?: string }>
+    RuleSets?: Array<{ Name?: string; CreatedTimestamp?: string }>
     NextToken?: string
   }> {
     const formParams: Record<string, string | undefined> = {
@@ -702,8 +696,8 @@ export class SESClient {
     })
 
     // Handle both response formats (with and without Response wrapper)
-    const ruleSetsResult = result?.ListReceiptRuleSetsResponse?.ListReceiptRuleSetsResult
-      || result?.ListReceiptRuleSetsResult
+    const ruleSetsResult =
+      result?.ListReceiptRuleSetsResponse?.ListReceiptRuleSetsResult || result?.ListReceiptRuleSetsResult
     const ruleSets = ruleSetsResult?.RuleSets?.member
     return {
       RuleSets: Array.isArray(ruleSets) ? ruleSets : ruleSets ? [ruleSets] : [],
@@ -715,14 +709,14 @@ export class SESClient {
    * Describe a receipt rule set
    */
   async describeReceiptRuleSet(ruleSetName: string): Promise<{
-    Metadata?: { Name?: string, CreatedTimestamp?: string }
+    Metadata?: { Name?: string; CreatedTimestamp?: string }
     Rules?: Array<{
       Name?: string
       Enabled?: boolean
       Recipients?: string[]
       Actions?: Array<{
-        S3Action?: { BucketName?: string, ObjectKeyPrefix?: string }
-        LambdaAction?: { FunctionArn?: string, InvocationType?: string }
+        S3Action?: { BucketName?: string; ObjectKeyPrefix?: string }
+        LambdaAction?: { FunctionArn?: string; InvocationType?: string }
         SNSAction?: { TopicArn?: string }
       }>
     }>
@@ -743,8 +737,8 @@ export class SESClient {
     })
 
     // Handle both response formats (with and without Response wrapper)
-    const response = result?.DescribeReceiptRuleSetResponse?.DescribeReceiptRuleSetResult
-      || result?.DescribeReceiptRuleSetResult
+    const response =
+      result?.DescribeReceiptRuleSetResponse?.DescribeReceiptRuleSetResult || result?.DescribeReceiptRuleSetResult
     const rules = response?.Rules?.member
     return {
       Metadata: response?.Metadata,
@@ -828,7 +822,8 @@ export class SESClient {
 
       if (action.LambdaAction) {
         formParams[`Rule.Actions.member.${actionNum}.LambdaAction.FunctionArn`] = action.LambdaAction.FunctionArn
-        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.InvocationType`] = action.LambdaAction.InvocationType || 'Event'
+        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.InvocationType`] =
+          action.LambdaAction.InvocationType || 'Event'
       }
 
       if (action.SNSAction) {
@@ -886,8 +881,7 @@ export class SESClient {
     try {
       await this.describeReceiptRuleSet(ruleSetName)
       return true
-    }
-    catch (error: any) {
+    } catch (error: any) {
       if (error.code === 'RuleSetDoesNotExist' || error.statusCode === 400) {
         return false
       }
@@ -899,14 +893,14 @@ export class SESClient {
    * Get the active receipt rule set
    */
   async getActiveReceiptRuleSet(): Promise<{
-    Metadata?: { Name?: string, CreatedTimestamp?: string }
+    Metadata?: { Name?: string; CreatedTimestamp?: string }
     Rules?: Array<{
       Name?: string
       Enabled?: boolean
       Recipients?: string[]
       Actions?: Array<{
-        S3Action?: { BucketName?: string, ObjectKeyPrefix?: string }
-        LambdaAction?: { FunctionArn?: string, InvocationType?: string }
+        S3Action?: { BucketName?: string; ObjectKeyPrefix?: string }
+        LambdaAction?: { FunctionArn?: string; InvocationType?: string }
         SNSAction?: { TopicArn?: string }
       }>
     }>
@@ -926,8 +920,9 @@ export class SESClient {
     })
 
     // Handle response format
-    const response = result?.DescribeActiveReceiptRuleSetResponse?.DescribeActiveReceiptRuleSetResult
-      || result?.DescribeActiveReceiptRuleSetResult
+    const response =
+      result?.DescribeActiveReceiptRuleSetResponse?.DescribeActiveReceiptRuleSetResult ||
+      result?.DescribeActiveReceiptRuleSetResult
 
     if (!response?.Metadata) {
       return null // No active rule set
@@ -1014,7 +1009,8 @@ export class SESClient {
 
       if (action.LambdaAction) {
         formParams[`Rule.Actions.member.${actionNum}.LambdaAction.FunctionArn`] = action.LambdaAction.FunctionArn
-        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.InvocationType`] = action.LambdaAction.InvocationType || 'Event'
+        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.InvocationType`] =
+          action.LambdaAction.InvocationType || 'Event'
       }
 
       if (action.SNSAction) {
@@ -1080,8 +1076,7 @@ export class SESClient {
     })
 
     // Handle response format
-    const response = result?.SendRawEmailResponse?.SendRawEmailResult
-      || result?.SendRawEmailResult
+    const response = result?.SendRawEmailResponse?.SendRawEmailResult || result?.SendRawEmailResult
 
     return {
       MessageId: response?.MessageId,
@@ -1105,8 +1100,7 @@ export class SESClient {
       })
 
       return result?.SuppressedDestination || null
-    }
-catch (error: any) {
+    } catch (error: any) {
       if (error.message?.includes('404') || error.message?.includes('NotFoundException')) {
         return null
       }

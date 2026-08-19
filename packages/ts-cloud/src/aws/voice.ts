@@ -9,7 +9,6 @@
  * - Call recording storage
  * - Text-to-speech for voice messages
  */
-
 import { ConnectClient } from './connect'
 import { S3Client } from './s3'
 import { TranscribeClient } from './transcribe'
@@ -220,10 +219,12 @@ export class VoiceClient {
   /**
    * Get voicemails from S3
    */
-  async getVoicemails(options: {
-    prefix?: string
-    maxResults?: number
-  } = {}): Promise<Voicemail[]> {
+  async getVoicemails(
+    options: {
+      prefix?: string
+      maxResults?: number
+    } = {},
+  ): Promise<Voicemail[]> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
     }
@@ -253,8 +254,7 @@ export class VoiceClient {
             size: obj.Size,
           })
         }
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to read voicemail ${obj.Key}:`, err)
       }
     }
@@ -305,8 +305,7 @@ catch (err) {
     const metadataKey = key.replace(/\.[^/.]+$/, '.json')
     try {
       await this.s3.deleteObject(this.config.voicemailBucket, metadataKey)
-    }
-catch {
+    } catch {
       // Metadata might not exist
     }
   }
@@ -351,9 +350,7 @@ catch {
     })
 
     // Count only audio files, not metadata
-    return (objects || []).filter(obj =>
-      obj.Key && !obj.Key.endsWith('.json') && !obj.Key.endsWith('/')
-    ).length
+    return (objects || []).filter((obj) => obj.Key && !obj.Key.endsWith('.json') && !obj.Key.endsWith('/')).length
   }
 
   /**
@@ -361,7 +358,7 @@ catch {
    */
   async getUnreadCount(): Promise<number> {
     const voicemails = await this.getVoicemails({ maxResults: 1000 })
-    return voicemails.filter(v => !v.read).length
+    return voicemails.filter((v) => !v.read).length
   }
 
   /**
@@ -385,8 +382,7 @@ catch {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    }
-catch {
+    } catch {
       // Create metadata if it doesn't exist
       await this.s3.putObject({
         bucket: this.config.voicemailBucket,
@@ -418,8 +414,7 @@ catch {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    }
-catch {
+    } catch {
       // Ignore if metadata doesn't exist
     }
   }
@@ -428,14 +423,14 @@ catch {
    * Batch mark voicemails as read
    */
   async markManyAsRead(keys: string[]): Promise<void> {
-    await Promise.all(keys.map(key => this.markAsRead(key)))
+    await Promise.all(keys.map((key) => this.markAsRead(key)))
   }
 
   /**
    * Batch delete voicemails
    */
   async deleteMany(keys: string[]): Promise<void> {
-    await Promise.all(keys.map(key => this.deleteVoicemail(key)))
+    await Promise.all(keys.map((key) => this.deleteVoicemail(key)))
   }
 
   // ============================================
@@ -483,16 +478,19 @@ catch {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    }
-catch {
+    } catch {
       // Create metadata if it doesn't exist
       await this.s3.putObject({
         bucket: this.config.voicemailBucket,
         key: metadataKey,
-        body: JSON.stringify({
-          transcriptionJobName: jobName,
-          transcriptionStatus: 'processing',
-        }, null, 2),
+        body: JSON.stringify(
+          {
+            transcriptionJobName: jobName,
+            transcriptionStatus: 'processing',
+          },
+          null,
+          2,
+        ),
         contentType: 'application/json',
       })
     }
@@ -531,8 +529,7 @@ catch {
             }
           }
         }
-      }
-catch {
+      } catch {
         // Could not fetch transcript
       }
     }
@@ -561,15 +558,18 @@ catch {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    }
-catch {
+    } catch {
       await this.s3.putObject({
         bucket: this.config.voicemailBucket,
         key: metadataKey,
-        body: JSON.stringify({
-          transcription,
-          transcriptionStatus: 'completed',
-        }, null, 2),
+        body: JSON.stringify(
+          {
+            transcription,
+            transcriptionStatus: 'completed',
+          },
+          null,
+          2,
+        ),
         contentType: 'application/json',
       })
     }
@@ -661,8 +661,7 @@ catch {
         greeting.createdAt = new Date(greeting.createdAt)
         if (greeting.updatedAt) greeting.updatedAt = new Date(greeting.updatedAt)
         greetings.push(greeting)
-      }
-catch {
+      } catch {
         // Skip invalid
       }
     }
@@ -684,8 +683,7 @@ catch {
       greeting.createdAt = new Date(greeting.createdAt)
       if (greeting.updatedAt) greeting.updatedAt = new Date(greeting.updatedAt)
       return greeting
-    }
-catch {
+    } catch {
       return null
     }
   }
@@ -695,7 +693,7 @@ catch {
    */
   async getActiveGreeting(type: 'default' | 'busy' | 'unavailable' | 'custom'): Promise<VoicemailGreeting | null> {
     const greetings = await this.getGreetings()
-    return greetings.find(g => g.type === type && g.isActive) || null
+    return greetings.find((g) => g.type === type && g.isActive) || null
   }
 
   /**
@@ -793,8 +791,7 @@ catch {
     if (greeting?.audioKey) {
       try {
         await this.s3.deleteObject(this.config.voicemailBucket, greeting.audioKey)
-      }
-catch {
+      } catch {
         // Audio may not exist
       }
     }
@@ -885,8 +882,7 @@ catch {
         rule.createdAt = new Date(rule.createdAt)
         if (rule.updatedAt) rule.updatedAt = new Date(rule.updatedAt)
         rules.push(rule)
-      }
-catch {
+      } catch {
         // Skip invalid
       }
     }
@@ -908,8 +904,7 @@ catch {
       rule.createdAt = new Date(rule.createdAt)
       if (rule.updatedAt) rule.updatedAt = new Date(rule.updatedAt)
       return rule
-    }
-catch {
+    } catch {
       return null
     }
   }
@@ -1008,10 +1003,7 @@ catch {
   /**
    * Check if a time is within business hours
    */
-  private isWithinBusinessHours(
-    date: Date,
-    businessHours: NonNullable<CallForwardingRule['businessHours']>,
-  ): boolean {
+  private isWithinBusinessHours(date: Date, businessHours: NonNullable<CallForwardingRule['businessHours']>): boolean {
     const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
 
     // Convert to business timezone if needed (simplified - uses local time)
@@ -1036,10 +1028,12 @@ catch {
   /**
    * Get call recordings from S3
    */
-  async getRecordings(options: {
-    prefix?: string
-    maxResults?: number
-  } = {}): Promise<CallRecording[]> {
+  async getRecordings(
+    options: {
+      prefix?: string
+      maxResults?: number
+    } = {},
+  ): Promise<CallRecording[]> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Recordings bucket not configured')
     }
@@ -1064,8 +1058,7 @@ catch {
         try {
           const metadataContent = await this.s3.getObject(this.config.voicemailBucket!, metadataKey)
           metadata = JSON.parse(metadataContent)
-        }
-catch {
+        } catch {
           // No metadata file
         }
 
@@ -1079,8 +1072,7 @@ catch {
           contentType: 'audio/wav',
           size: obj.Size,
         })
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to read recording ${obj.Key}:`, err)
       }
     }
@@ -1236,8 +1228,7 @@ catch (err) {
         contentType: audioKey.endsWith('.mp3') ? 'audio/mp3' : 'audio/wav',
         raw: metadata,
       }
-    }
-catch {
+    } catch {
       // No metadata file, return basic info
       return {
         key: audioKey,

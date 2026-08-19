@@ -2,7 +2,6 @@
  * Template diff utilities for incremental deployments
  * Detect changes between CloudFormation templates to optimize deployments
  */
-
 import type { CloudFormationTemplate } from '../cloudformation/types'
 
 export interface TemplateDiff {
@@ -18,10 +17,7 @@ export interface TemplateDiff {
 /**
  * Compare two CloudFormation templates
  */
-export function diffTemplates(
-  oldTemplate: CloudFormationTemplate,
-  newTemplate: CloudFormationTemplate,
-): TemplateDiff {
+export function diffTemplates(oldTemplate: CloudFormationTemplate, newTemplate: CloudFormationTemplate): TemplateDiff {
   const added: string[] = []
   const modified: string[] = []
   const deleted: string[] = []
@@ -55,20 +51,18 @@ export function diffTemplates(
 
       if (JSON.stringify(oldResource) !== JSON.stringify(newResource)) {
         modified.push(id)
-      }
-      else {
+      } else {
         unchanged.push(id)
       }
     }
   }
 
   // Check if parameters changed
-  const parametersChanged = JSON.stringify(oldTemplate.Parameters || {})
-    !== JSON.stringify(newTemplate.Parameters || {})
+  const parametersChanged =
+    JSON.stringify(oldTemplate.Parameters || {}) !== JSON.stringify(newTemplate.Parameters || {})
 
   // Check if outputs changed
-  const outputsChanged = JSON.stringify(oldTemplate.Outputs || {})
-    !== JSON.stringify(newTemplate.Outputs || {})
+  const outputsChanged = JSON.stringify(oldTemplate.Outputs || {}) !== JSON.stringify(newTemplate.Outputs || {})
 
   return {
     added,

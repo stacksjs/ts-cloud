@@ -14,17 +14,17 @@
  * `deployStaticSiteWithExternalDnsFull` and `deployStaticSiteFull`
  * remain available for callers that need the full surface.
  */
-
+import type { ExternalDnsDeployResult } from './static-site-external-dns'
 import process from 'node:process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { deployStaticSiteWithExternalDnsFull, type ExternalDnsDeployResult } from './static-site-external-dns'
+import { deployStaticSiteWithExternalDnsFull } from './static-site-external-dns'
 
 export type StaticSiteDnsProvider =
   | 'porkbun'
   | 'godaddy'
-  | { provider: 'porkbun', apiKey?: string, secretKey?: string }
-  | { provider: 'godaddy', apiKey?: string, secretKey?: string, environment?: 'production' | 'ote' }
+  | { provider: 'porkbun'; apiKey?: string; secretKey?: string }
+  | { provider: 'godaddy'; apiKey?: string; secretKey?: string; environment?: 'production' | 'ote' }
 
 export interface DeploySiteConfig {
   /** Site name used for AWS resource naming. */
@@ -105,8 +105,7 @@ export async function deploySite(config: DeploySiteConfig): Promise<DeploySiteRe
   }
 
   const dns = resolveDnsProvider(config.dnsProvider)
-  if ('error' in dns)
-    return fail(start, dns.error)
+  if ('error' in dns) return fail(start, dns.error)
 
   const result: ExternalDnsDeployResult = await deployStaticSiteWithExternalDnsFull({
     siteName: config.siteName,
@@ -133,7 +132,11 @@ export async function deploySite(config: DeploySiteConfig): Promise<DeploySiteRe
   return {
     success: !!result.success,
     domain: result.domain,
-    url: result.domain ? `https://${result.domain}` : result.distributionDomain ? `https://${result.distributionDomain}` : undefined,
+    url: result.domain
+      ? `https://${result.domain}`
+      : result.distributionDomain
+        ? `https://${result.distributionDomain}`
+        : undefined,
     bucket: result.bucket,
     distributionId: result.distributionId,
     distributionDomain: result.distributionDomain,
@@ -146,20 +149,22 @@ export async function deploySite(config: DeploySiteConfig): Promise<DeploySiteRe
 }
 
 // eslint-disable-next-line pickier/no-unused-vars
-function resolveDnsProvider(input?: DeploySiteConfig['dnsProvider']):
-  | { provider: 'porkbun', apiKey: string, secretKey: string }
-  | { provider: 'godaddy', apiKey: string, apiSecret: string, environment?: 'production' | 'ote' }
+function resolveDnsProvider(
+  input?: DeploySiteConfig['dnsProvider'],
+):
+  | { provider: 'porkbun'; apiKey: string; secretKey: string }
+  | { provider: 'godaddy'; apiKey: string; apiSecret: string; environment?: 'production' | 'ote' }
   | { error: string } {
-  const config = typeof input === 'string'
-    ? { provider: input } as { provider: 'porkbun' | 'godaddy' }
-    : input ?? { provider: 'porkbun' as const }
+  const config =
+    typeof input === 'string'
+      ? ({ provider: input } as { provider: 'porkbun' | 'godaddy' })
+      : (input ?? { provider: 'porkbun' as const })
 
   if (config.provider === 'porkbun') {
     const c = config as Extract<DeploySiteConfig['dnsProvider'], { provider: 'porkbun' }>
     const apiKey = c?.apiKey ?? process.env.PORKBUN_API_KEY
     const secretKey = c?.secretKey ?? process.env.PORKBUN_SECRET_KEY ?? process.env.PORKBUN_SECRET_API_KEY
-    if (!apiKey || !secretKey)
-      return { error: 'Missing PORKBUN_API_KEY / PORKBUN_SECRET_KEY in env.' }
+    if (!apiKey || !secretKey) return { error: 'Missing PORKBUN_API_KEY / PORKBUN_SECRET_KEY in env.' }
     return { provider: 'porkbun', apiKey, secretKey }
   }
 
@@ -168,8 +173,7 @@ function resolveDnsProvider(input?: DeploySiteConfig['dnsProvider']):
     const apiKey = c?.apiKey ?? process.env.GODADDY_API_KEY
     const apiSecret = c?.secretKey ?? process.env.GODADDY_API_SECRET
     const environment = c?.environment ?? (process.env.GODADDY_ENVIRONMENT as 'production' | 'ote' | undefined)
-    if (!apiKey || !apiSecret)
-      return { error: 'Missing GODADDY_API_KEY / GODADDY_API_SECRET in env.' }
+    if (!apiKey || !apiSecret) return { error: 'Missing GODADDY_API_KEY / GODADDY_API_SECRET in env.' }
     return { provider: 'godaddy', apiKey, apiSecret, environment }
   }
 

@@ -34,10 +34,7 @@ export interface CDNConfig {
 /**
  * Add CloudFront distribution to CloudFormation template
  */
-export function addCDNResources(
-  builder: CloudFormationBuilder,
-  config: CDNConfig,
-): void {
+export function addCDNResources(builder: CloudFormationBuilder, config: CDNConfig): void {
   if (!config.enabled) {
     return
   }
@@ -63,8 +60,7 @@ export function addCDNResources(
         OriginAccessIdentity: Fn.sub('origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'),
       },
     })
-  }
-  else {
+  } else {
     // Use custom origins
     config.origins.forEach((origin, index) => {
       const originConfig: any = {
@@ -81,8 +77,7 @@ export function addCDNResources(
         originConfig.S3OriginConfig = {
           OriginAccessIdentity: Fn.sub('origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'),
         }
-      }
-      else {
+      } else {
         // Custom origin (ALB, API Gateway, etc.)
         originConfig.CustomOriginConfig = {
           HTTPPort: 80,
@@ -137,7 +132,7 @@ export function addCDNResources(
 
   // Lambda@Edge functions
   if (config.edgeFunctions && config.edgeFunctions.length > 0) {
-    defaultCacheBehavior.LambdaFunctionAssociations = config.edgeFunctions.map(fn => ({
+    defaultCacheBehavior.LambdaFunctionAssociations = config.edgeFunctions.map((fn) => ({
       EventType: fn.eventType,
       LambdaFunctionARN: fn.functionArn,
     }))
@@ -167,8 +162,7 @@ export function addCDNResources(
       SslSupportMethod: 'sni-only',
       MinimumProtocolVersion: 'TLSv1.2_2021',
     }
-  }
-  else {
+  } else {
     distributionConfig.ViewerCertificate = {
       CloudFrontDefaultCertificate: true,
     }
@@ -190,52 +184,66 @@ export function addCDNResources(
   // Comment
   distributionConfig.Comment = Fn.sub('${AWS::StackName} CloudFront Distribution')
 
-  builder.addResource('CloudFrontDistribution', 'AWS::CloudFront::Distribution', {
-    DistributionConfig: distributionConfig,
-  }, {
-    dependsOn: 'CloudFrontOriginAccessIdentity',
-  })
+  builder.addResource(
+    'CloudFrontDistribution',
+    'AWS::CloudFront::Distribution',
+    {
+      DistributionConfig: distributionConfig,
+    },
+    {
+      dependsOn: 'CloudFrontOriginAccessIdentity',
+    },
+  )
 
   // Update S3 bucket policy to allow CloudFront access
   if (!config.origins || config.origins.length === 0) {
-    builder.addResource('StaticBucketPolicyForCloudFront', 'AWS::S3::BucketPolicy', {
-      Bucket: Fn.ref('StaticBucket'),
-      PolicyDocument: {
-        Version: '2012-10-17',
-        Statement: [{
-          Sid: 'AllowCloudFrontAccess',
-          Effect: 'Allow',
-          Principal: {
-            CanonicalUser: Fn.getAtt('CloudFrontOriginAccessIdentity', 'S3CanonicalUserId'),
-          },
-          Action: 's3:GetObject',
-          Resource: Fn.join('', [
-            Fn.getAtt('StaticBucket', 'Arn'),
-            '/*',
-          ]),
-        }],
+    builder.addResource(
+      'StaticBucketPolicyForCloudFront',
+      'AWS::S3::BucketPolicy',
+      {
+        Bucket: Fn.ref('StaticBucket'),
+        PolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [
+            {
+              Sid: 'AllowCloudFrontAccess',
+              Effect: 'Allow',
+              Principal: {
+                CanonicalUser: Fn.getAtt('CloudFrontOriginAccessIdentity', 'S3CanonicalUserId'),
+              },
+              Action: 's3:GetObject',
+              Resource: Fn.join('', [Fn.getAtt('StaticBucket', 'Arn'), '/*']),
+            },
+          ],
+        },
       },
-    }, {
-      dependsOn: ['StaticBucket', 'CloudFrontOriginAccessIdentity'],
-    })
+      {
+        dependsOn: ['StaticBucket', 'CloudFrontOriginAccessIdentity'],
+      },
+    )
   }
 
   // Route53 DNS record for custom domain
   if (config.customDomain) {
     // Note: This assumes a hosted zone exists
     // In a real implementation, you'd need to either create or import the hosted zone
-    builder.addResource('CloudFrontDNSRecord', 'AWS::Route53::RecordSet', {
-      HostedZoneName: Fn.sub(`${extractRootDomain(config.customDomain.domain)}.`),
-      Name: config.customDomain.domain,
-      Type: 'A',
-      AliasTarget: {
-        HostedZoneId: 'Z2FDTNDATAQYW2', // CloudFront hosted zone ID (constant)
-        DNSName: Fn.getAtt('CloudFrontDistribution', 'DomainName'),
-        EvaluateTargetHealth: false,
+    builder.addResource(
+      'CloudFrontDNSRecord',
+      'AWS::Route53::RecordSet',
+      {
+        HostedZoneName: Fn.sub(`${extractRootDomain(config.customDomain.domain)}.`),
+        Name: config.customDomain.domain,
+        Type: 'A',
+        AliasTarget: {
+          HostedZoneId: 'Z2FDTNDATAQYW2', // CloudFront hosted zone ID (constant)
+          DNSName: Fn.getAtt('CloudFrontDistribution', 'DomainName'),
+          EvaluateTargetHealth: false,
+        },
       },
-    }, {
-      dependsOn: 'CloudFrontDistribution',
-    })
+      {
+        dependsOn: 'CloudFrontDistribution',
+      },
+    )
   }
 
   // Outputs

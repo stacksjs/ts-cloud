@@ -32,7 +32,7 @@ describe('defaultDeployScriptFor', () => {
   it('keeps generic PHP minimal (composer, no artisan)', () => {
     const script = defaultDeployScriptFor('php')
     expect(script).not.toContain('php artisan migrate --force')
-    expect(script.some(l => l.startsWith('composer install'))).toBe(true)
+    expect(script.some((l) => l.startsWith('composer install'))).toBe(true)
   })
 })
 
@@ -41,7 +41,9 @@ describe('buildLaravelDeployScript', () => {
   const joined = script.join('\n')
 
   it('expands $CREATE_RELEASE into clone + link + cd', () => {
-    expect(joined).toContain('git clone -q --depth 1 --branch \'main\' \'git@github.com:acme/app.git\' /var/www/app/releases/rel1')
+    expect(joined).toContain(
+      "git clone -q --depth 1 --branch 'main' 'git@github.com:acme/app.git' /var/www/app/releases/rel1",
+    )
     expect(joined).toContain('ln -sfn /var/www/app/shared/storage /var/www/app/releases/rel1/storage')
     expect(joined).toContain('cd /var/www/app/releases/rel1')
   })
@@ -85,14 +87,15 @@ describe('buildLaravelDeployScript', () => {
   })
 
   it('orders code activation before the queue restart', () => {
-    const activate = script.findIndex(l => l.includes('mv -Tf'))
-    const restart = script.findIndex(l => l.includes('queue:restart'))
+    const activate = script.findIndex((l) => l.includes('mv -Tf'))
+    const restart = script.findIndex((l) => l.includes('queue:restart'))
     expect(activate).toBeLessThan(restart)
   })
 
   it('throws without a repository', () => {
-    expect(() => buildLaravelDeployScript({ siteName: 'x', site: { root: '.', type: 'laravel' }, releaseId: 'r' }))
-      .toThrow(/repository.url/)
+    expect(() =>
+      buildLaravelDeployScript({ siteName: 'x', site: { root: '.', type: 'laravel' }, releaseId: 'r' }),
+    ).toThrow(/repository.url/)
   })
 
   it('honours a custom deployScript override', () => {
@@ -116,7 +119,12 @@ describe('site-target resolution for PHP sites', () => {
 
 describe('buildHealthCheckScript', () => {
   it('pings the live site via localhost with the Host header and fails on non-2xx/3xx', () => {
-    const s = buildHealthCheckScript({ root: '.', type: 'laravel', domain: 'acme.com', healthCheck: { path: '/up' } }).join('\n')
+    const s = buildHealthCheckScript({
+      root: '.',
+      type: 'laravel',
+      domain: 'acme.com',
+      healthCheck: { path: '/up' },
+    }).join('\n')
     expect(s).toContain('http://127.0.0.1/up')
     expect(s).toContain('-H "Host: acme.com"')
     expect(s).toContain('health check FAILED')
@@ -124,7 +132,12 @@ describe('buildHealthCheckScript', () => {
   })
 
   it('normalizes a path without a leading slash', () => {
-    const s = buildHealthCheckScript({ root: '.', type: 'laravel', domain: 'acme.com', healthCheck: { path: 'health' } }).join('\n')
+    const s = buildHealthCheckScript({
+      root: '.',
+      type: 'laravel',
+      domain: 'acme.com',
+      healthCheck: { path: 'health' },
+    }).join('\n')
     expect(s).toContain('http://127.0.0.1/health')
   })
 

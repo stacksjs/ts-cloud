@@ -2,7 +2,6 @@
  * Preview environment notifications
  * Send notifications to Slack, Discord, email, etc. when preview environments are created/destroyed
  */
-
 import type { PreviewEnvironment } from './manager'
 
 export interface NotificationChannel {
@@ -62,14 +61,14 @@ export class PreviewNotificationService {
    * Remove notification channel
    */
   removeChannel(type: NotificationChannel['type']): void {
-    this.channels = this.channels.filter(c => c.type !== type)
+    this.channels = this.channels.filter((c) => c.type !== type)
   }
 
   /**
    * Send notification to all channels
    */
   async notify(event: NotificationEvent): Promise<void> {
-    const promises = this.channels.map(channel => this.sendToChannel(channel, event))
+    const promises = this.channels.map((channel) => this.sendToChannel(channel, event))
 
     await Promise.allSettled(promises)
   }
@@ -236,11 +235,11 @@ export class PreviewNotificationService {
     }[type]
 
     const color = {
-      created: 0x36A64F,
-      updated: 0x2196F3,
+      created: 0x36a64f,
+      updated: 0x2196f3,
       destroyed: 0x808080,
-      failed: 0xF44336,
-      expired: 0xFF9800,
+      failed: 0xf44336,
+      expired: 0xff9800,
     }[type]
 
     const title = {

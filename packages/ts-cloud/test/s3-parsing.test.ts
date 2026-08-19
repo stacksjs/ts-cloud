@@ -24,8 +24,8 @@ describe('S3Client XML response parsing (issue #105)', () => {
     const client = new S3Client('us-east-1')
     withMockedRequest(client, {
       '@_xmlns': 'http://s3.amazonaws.com/doc/2006-03-01/',
-      'Owner': { ID: 'test-owner' },
-      'Buckets': {
+      Owner: { ID: 'test-owner' },
+      Buckets: {
         Bucket: [
           { Name: 'bucket-a', CreationDate: '2024-01-01T00:00:00.000Z' },
           { Name: 'bucket-b', CreationDate: '2024-02-01T00:00:00.000Z' },

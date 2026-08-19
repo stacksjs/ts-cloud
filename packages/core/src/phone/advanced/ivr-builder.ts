@@ -103,11 +103,14 @@ export class IVRBuilder {
   /**
    * Add a get input node (DTMF)
    */
-  getInput(prompt: string, options?: {
-    maxDigits?: number
-    timeout?: number
-    errorPrompt?: string
-  }): this {
+  getInput(
+    prompt: string,
+    options?: {
+      maxDigits?: number
+      timeout?: number
+      errorPrompt?: string
+    },
+  ): this {
     const node: IVRNode = {
       id: this.generateId(),
       type: 'get-input',
@@ -116,7 +119,7 @@ export class IVRBuilder {
         prompt,
         maxDigits: options?.maxDigits || 1,
         timeout: options?.timeout || 5,
-        errorPrompt: options?.errorPrompt || 'Sorry, I didn\'t get that.',
+        errorPrompt: options?.errorPrompt || "Sorry, I didn't get that.",
       },
     }
     this.nodes.push(node)
@@ -233,11 +236,7 @@ export class IVRBuilder {
   /**
    * Add a record voicemail node
    */
-  recordVoicemail(options?: {
-    maxDuration?: number
-    greeting?: string
-    beep?: boolean
-  }): this {
+  recordVoicemail(options?: { maxDuration?: number; greeting?: string; beep?: boolean }): this {
     const node: IVRNode = {
       id: this.generateId(),
       type: 'record-voicemail',
@@ -306,7 +305,7 @@ export class IVRBuilder {
    */
   toContactFlow(): string {
     const actions: any[] = []
-    const nodeMap = new Map(this.nodes.map(n => [n.id, n]))
+    const nodeMap = new Map(this.nodes.map((n) => [n.id, n]))
 
     for (const node of this.nodes) {
       const action = this.nodeToAction(node, nodeMap)
@@ -411,9 +410,7 @@ export class IVRBuilder {
           },
           Transitions: {
             NextAction: nextNodeId,
-            Conditions: [
-              { NextAction: nextNodeId, Condition: { Operator: 'Equals', Operands: ['True'] } },
-            ],
+            Conditions: [{ NextAction: nextNodeId, Condition: { Operator: 'Equals', Operands: ['True'] } }],
             Errors: [{ NextAction: 'disconnect' }],
           },
         }
@@ -454,7 +451,7 @@ export class IVRBuilder {
   }
 
   private getNextNodeId(nodeId: string): string | null {
-    const connection = this.connections.find(c => c.sourceNodeId === nodeId)
+    const connection = this.connections.find((c) => c.sourceNodeId === nodeId)
     return connection?.targetNodeId || null
   }
 

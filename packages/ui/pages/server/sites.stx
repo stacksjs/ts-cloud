@@ -6,60 +6,122 @@ const server = __d?.server ?? { name: 'stacks-production-app' }
 // so the box-owner affordances - adding and removing sites - are not offered.
 // Presentation only: the server enforces this regardless of what is rendered.
 const isMember = (__d?.viewer?.role ?? 'admin') === 'member'
+const viewerCapabilities = __d?.viewer?.capabilities ?? []
+const canDeploy = !isMember || viewerCapabilities.includes('deployments:create')
+const canEdit = !isMember || viewerCapabilities.includes('config:write')
 const sites = __d?.sitesDetail ?? [
   { name: 'main', route: 'stacksjs.com', href: 'https://stacksjs.com', kind: 'stacks', runtime: 'bun', tls: 'https', deploy: 'service', root: '/var/www/main/current', branch: 'main', status: 'live' },
   { name: 'api', route: 'internal', kind: 'api', runtime: 'bun', tls: 'loopback', deploy: 'service', root: '/var/www/api/current', branch: 'main', status: 'live' },
   { name: 'docs', route: 'stacksjs.com/docs', href: 'https://stacksjs.com/docs', kind: 'bunpress', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/docs', branch: 'build artifact', status: 'live' },
 ]
+const initialSites = sites
 function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+import { usePolling } from '../../functions/usePolling.ts'
+
 // Reactive site management - add, per-site deploy/edit/remove - via signals +
-// directives. Mutations re-render the server-built page (location.reload) once
-// the cloud config has changed.
+// directives. Mutation responses replace the site signal without reloading, so
+// status and success feedback remain visible.
 const addName = state(''); const addRoot = state(''); const addDomain = state(''); const addPath = state('')
 const addDeploy = state('server'); const addPort = state(''); const addBuild = state(''); const addStart = state('')
 const addMsg = state(''); const addMsgKind = state('')
+const addBusy = state(false)
+const siteRows = state(initialSites)
+const monitorSeries = state([])
+const monitoredAt = state('')
+function monitorParams() {
+  const to = new Date(), from = new Date(to.getTime() - 24 * 60 * 60 * 1000)
+  return new URLSearchParams({
+    from: from.toISOString(),
+    to: to.toISOString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    names: 'site.health.up,site.response.time,site.http.status,site.tls.days_remaining',
+    aggregation: 'avg',
+    bucketMs: String(15 * 60 * 1000),
+  })
+}
+const { pollingState, pollingError, lastUpdatedAt, refresh } = usePolling(async () => {
+  const [dashboardResponse, telemetryResponse] = await Promise.all([
+    fetch('/api/dashboard-data'),
+    fetch('/api/telemetry/series?' + monitorParams()),
+  ])
+  const dashboard = await dashboardResponse.json()
+  const telemetry = await telemetryResponse.json()
+  if (!dashboardResponse.ok) throw new Error(dashboard.error || 'Site health refresh failed.')
+  if (!telemetryResponse.ok || telemetry.ok === false) throw new Error(telemetry.error || 'Site history refresh failed.')
+  if (Array.isArray(dashboard.sitesDetail)) siteRows.set(dashboard.sitesDetail)
+  monitorSeries.set(telemetry.series || [])
+  monitoredAt.set(dashboard.siteHealth?.[0]?.checkedAt || '')
+}, 30000)
+function monitorSource(site) {
+  const project = site.project || 'stacks'
+  const name = String(site.name || '').startsWith(project + ':') ? String(site.name).slice(project.length + 1) : site.name
+  return `site:${project}:${name}`
+}
+function metricSeries(site, name) { return monitorSeries().find(item => item.source === monitorSource(site) && item.name === name) }
+function metricPoints(site, name) { return (metricSeries(site, name)?.points || []).filter(point => !point.gap && point.value != null) }
+function latestMetric(site, name) { const values = metricPoints(site, name); return values.length ? Number(values.at(-1).value) : null }
+function uptime(site) {
+  const values = metricPoints(site, 'site.health.up')
+  return values.length ? values.reduce((sum, point) => sum + Number(point.value || 0), 0) / values.length * 100 : null
+}
+function historyPath(site) {
+  const values = metricPoints(site, 'site.response.time')
+  if (!values.length) return ''
+  const max = Math.max(1, ...values.map(point => Number(point.value)))
+  return values.map((point, index) => {
+    const x = values.length === 1 ? 50 : index / (values.length - 1) * 100
+    const y = 25 - Math.max(0, Math.min(1, Number(point.value) / max)) * 22
+    return `${index ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`
+  }).join(' ')
+}
+function fmtMs(value) { return value == null ? 'collecting' : `${Math.round(value)} ms` }
+function fmtUptime(value) { return value == null ? 'collecting' : `${value.toFixed(value >= 99 ? 2 : 1)}%` }
+function tlsTone(days) { return days == null ? 'warn' : days < 7 ? 'bad' : days < 30 ? 'warn' : 'ok' }
+const liveSites = derived(() => siteRows().filter(site => site.status === 'live').length)
+const failedSites = derived(() => siteRows().filter(site => site.status === 'failed').length)
+const attachedSites = derived(() => siteRows().filter(site => site.managedBy === 'attached').length)
 async function addSite() {
-  addMsg.set('Adding site...'); addMsgKind.set('')
+  if (addBusy()) return
+  addBusy.set(true); addMsg.set('Adding site...'); addMsgKind.set('')
   const payload = { name: addName(), root: addRoot(), domain: addDomain(), path: addPath(), deploy: addDeploy(), port: addPort(), build: addBuild(), start: addStart() }
   try {
     const res = await fetch('/api/sites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
     const b = await res.json()
     if (!b.ok) throw new Error(b.error || 'Could not add site')
-    addMsg.set('Added ' + b.site + '. Refreshing...'); addMsgKind.set('ok'); location.reload()
+    if (Array.isArray(b.data?.sitesDetail)) siteRows.set(b.data.sitesDetail)
+    addMsg.set('Added ' + b.site + '.'); addMsgKind.set('ok')
   } catch (e) { addMsg.set((e && e.message) || String(e)); addMsgKind.set('bad') }
+  finally { addBusy.set(false) }
 }
 
 // Deploy / remove run through the shared op-confirm bar.
-const opOutput = state(''); const opShown = state(false); const pending = state(null); const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askDeploy(name) { pending.set({ kind: 'deploy', name, confirm: name, verb: 'deploy ' + name }); typed.set('') }
-function askRemove(name) { pending.set({ kind: 'remove', name, confirm: name, verb: 'remove ' + name }); typed.set('') }
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending(); if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set((p.kind === 'deploy' ? 'Deploying ' : 'Removing ') + p.name + '...')
-  try {
-    if (p.kind === 'deploy') {
-      const res = await fetch('/api/sites/deploy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, confirm: p.name }) })
-      const b = await res.json()
-      opOutput.set((b.ok ? 'OK ' : 'FAILED ') + (b.command || ('deploy ' + p.name)) + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
-    } else {
-      const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name }) })
-      const b = await res.json()
-      if (b.ok) { opOutput.set('Removed ' + p.name + ' from cloud config. Refreshing...'); location.reload() } else opOutput.set(b.error || 'Could not remove site')
-    }
-  } catch (e) { opOutput.set('FAILED ' + p.name + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  if (p.operation.startsWith('site:deploy:')) {
+    const res = await fetch('/api/sites/deploy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, confirm: p.apiConfirm }) })
+    const body = await res.json()
+    return (body.ok ? 'OK ' : 'FAILED ') + (body.command || ('deploy ' + p.name)) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : '')
+  }
+  if (p.operation.startsWith('site:edit:')) {
+    const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p.payload) })
+    const body = await res.json()
+    if (body.ok && Array.isArray(body.data?.sitesDetail)) siteRows.set(body.data.sitesDetail)
+    return body.ok ? 'Updated ' + p.name + '.' : (body.error || 'Could not update site')
+  }
+  const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name }) })
+  const body = await res.json()
+  if (body.ok && Array.isArray(body.data?.sitesDetail)) siteRows.set(body.data.sitesDetail)
+  return body.ok ? 'Removed ' + p.name + ' from cloud config.' : (body.error || 'Could not remove site')
+})
+function askDeploy(name) { askOp('site:deploy:' + name, name, 'deploy ' + name, null, name, { name }) }
+function askRemove(name) { askOp('site:remove:' + name, name, 'remove ' + name, null, name, { name, danger: true }) }
 
 // Inline per-site edit (TLS / domain / env).
 const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state(''); const editPhp = state(''); const editAliases = state(''); const editRedirects = state('')
 function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set(''); editPhp.set(''); editAliases.set(''); editRedirects.set('') }
-async function saveEdit(name) {
+function editPayload(name) {
   const payload = { name }
   if (editSsl() === 'false') payload.ssl = false; else if (editSsl()) payload.ssl = { provider: editSsl() }
   if (editDomain()) payload.domain = editDomain()
@@ -67,12 +129,12 @@ async function saveEdit(name) {
   if (editAliases().trim()) payload.aliases = editAliases().split(/[\s,]+/).filter(Boolean)
   if (editRedirects().trim()) { payload.redirects = {}; for (const line of editRedirects().split('\n')) { const i = line.indexOf('='); if (i > 0) payload.redirects[line.slice(0, i).trim()] = line.slice(i + 1).trim() } }
   if (editEnv()) { payload.env = {}; for (const line of editEnv().split('\n')) { const i = line.indexOf('='); if (i > 0) payload.env[line.slice(0, i).trim()] = line.slice(i + 1).trim() } }
-  opShown.set(true); opOutput.set('Updating ' + name + '...')
-  try {
-    const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-    const b = await res.json()
-    if (b.ok) { opOutput.set('Updated ' + name + '. Refreshing...'); location.reload() } else opOutput.set(b.error || 'Could not update site')
-  } catch (e) { opOutput.set('FAILED ' + name + '\n\n' + ((e && e.message) || e)) }
+  return payload
+}
+async function saveEdit(name) {
+  const payload = editPayload(name)
+  const verb = payload.ssl === false ? 'disable TLS for ' + name : 'save configuration changes for ' + name
+  askOp('site:edit:' + name, name, verb, null, name, { name, payload, danger: payload.ssl === false })
 }
 </script>
 <!DOCTYPE html>
@@ -90,81 +152,98 @@ async function saveEdit(name) {
       @if (isMember)
         <div><h1>Sites</h1><p>The sites you have been given access to.</p></div>
       @else
-        <div><h1>Sites</h1><p>Server routes served from the box, each deployed as an atomic release.</p></div>
-        <div class="cmds header-actions"><span class="accent cmd">cloud site:add &lt;name&gt;</span></div>
+        <div><h1>Sites</h1><p>Every route discovered on this shared server, including attached projects.</p></div>
+        <div class="cmds header-actions"><span class="pill" :class="pollingState() === 'live' ? 'ok' : 'warn'">{{ pollingState() }}</span><small>{{ lastUpdatedAt()?.toLocaleTimeString() || 'connecting' }}</small><span class="accent cmd">cloud site:add &lt;name&gt;</span></div>
       @endif
     </header>
+    <p class="bad notice" role="status" @show="!!pollingError()">{{ pollingError() }}</p>
+    <div class="site-summary">
+      <div class="panel"><span>Routes monitored</span><strong>{{ siteRows().length }}</strong><small>{{ monitoredAt() ? 'checked ' + new Date(monitoredAt()).toLocaleTimeString() : 'checking now' }}</small></div>
+      <div class="panel"><span>Healthy</span><strong class="ok-text">{{ liveSites() }}</strong><small>HTTP probe below 500</small></div>
+      <div class="panel"><span>Failed</span><strong :class="failedSites() ? 'bad-text' : ''">{{ failedSites() }}</strong><small>Timeouts and 5xx responses</small></div>
+      <div class="panel"><span>Attached projects</span><strong>{{ attachedSites() }}</strong><small>Discovered from rpx registry</small></div>
+    </div>
     @if (!isMember)
       <div class="section">
         <h2>Add site</h2>
         <div class="panel">
           <form class="form-grid" @submit.prevent="addSite()">
-            <div class="field-block"><label>Name</label><input placeholder="docs" :value="addName()" @input="addName.set($event.target.value)"></div>
-            <div class="field-block"><label>Root</label><input placeholder="dist/docs" :value="addRoot()" @input="addRoot.set($event.target.value)"></div>
-            <div class="field-block"><label>Domain</label><input placeholder="example.com" :value="addDomain()" @input="addDomain.set($event.target.value)"></div>
-            <div class="field-block"><label>Path</label><input placeholder="/docs" :value="addPath()" @input="addPath.set($event.target.value)"></div>
-            <div class="field-block"><label>Deploy</label><input :value="addDeploy()" @input="addDeploy.set($event.target.value)"></div>
-            <div class="field-block"><label>Port</label><input placeholder="3000" :value="addPort()" @input="addPort.set($event.target.value)"></div>
-            <div class="field-block wide"><label>Build command</label><input placeholder="bun run build" :value="addBuild()" @input="addBuild.set($event.target.value)"></div>
-            <div class="field-block wide"><label>Start command</label><input placeholder="bun run start" :value="addStart()" @input="addStart.set($event.target.value)"></div>
-            <div class="form-actions"><button class="btn" type="submit">Add site</button><span class="msg" :class="addMsgKind()">{{ addMsg() }}</span></div>
+            <div class="field-block"><label for="site-add-name">Name</label><input id="site-add-name" placeholder="docs" :value="addName()" @input="addName.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-root">Root</label><input id="site-add-root" placeholder="dist/docs" :value="addRoot()" @input="addRoot.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-domain">Domain</label><input id="site-add-domain" placeholder="example.com" :value="addDomain()" @input="addDomain.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-path">Path</label><input id="site-add-path" placeholder="/docs" :value="addPath()" @input="addPath.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-deploy">Deploy</label><input id="site-add-deploy" :value="addDeploy()" @input="addDeploy.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-port">Port</label><input id="site-add-port" placeholder="3000" :value="addPort()" @input="addPort.set($event.target.value)"></div>
+            <div class="field-block wide"><label for="site-add-build">Build command</label><input id="site-add-build" placeholder="bun run build" :value="addBuild()" @input="addBuild.set($event.target.value)"></div>
+            <div class="field-block wide"><label for="site-add-start">Start command</label><input id="site-add-start" placeholder="bun run start" :value="addStart()" @input="addStart.set($event.target.value)"></div>
+            <div class="form-actions"><button class="btn" type="submit" :disabled="addBusy()">Add site</button><span class="msg" :class="addMsgKind()" role="status">{{ addMsg() }}</span></div>
           </form>
         </div>
       </div>
     @endif
-    @if (isMember && sites.length === 0)
-      <div class="empty">
+    @if (isMember)
+      <div class="empty" @show="siteRows().length === 0">
         <strong>No sites yet</strong>
         <span>You have not been given access to a site on this server. Ask the server owner to invite you to one.</span>
       </div>
     @endif
-    @foreach (sites as site)
+    <template :for="site in siteRows()">
       <div class="section">
-        <h2>{{ site.name }} <span class="more"><span class="pill {{ tone(site.status) }}">{{ site.status }}</span></span></h2>
+        <h2>{{ site.name }} <span class="more"><span class="tag" @show="!!site.project">{{ site.project }}</span><span class="pill" :class="tone(site.status)">{{ site.status }}</span></span></h2>
+          <div class="panel site-health">
+          <div><span>HTTP</span><strong>{{ site.httpStatus || 'checking' }}</strong><small>{{ site.checkedAt ? new Date(site.checkedAt).toLocaleTimeString() : 'probe pending' }}</small></div>
+          <div><span>Response time</span><strong>{{ fmtMs(site.responseMs ?? latestMetric(site, 'site.response.time')) }}</strong><small>Latest endpoint probe</small></div>
+          <div><span>TLS expires</span><strong>{{ site.tlsDaysRemaining != null ? site.tlsDaysRemaining + ' days' : 'checking' }}</strong><small><span class="pill" :class="tlsTone(site.tlsDaysRemaining)">{{ site.tlsDaysRemaining == null ? 'unknown' : site.tlsDaysRemaining < 30 ? 'renew soon' : 'valid' }}</span></small></div>
+          <div><span>24h availability</span><strong>{{ fmtUptime(uptime(site)) }}</strong><small>{{ metricPoints(site, 'site.health.up').length }} samples</small></div>
+          <div class="latency-chart">
+            <span>24h response history</span>
+            <svg viewBox="0 0 100 28" preserveAspectRatio="none" role="img" :aria-label="site.name + ' response time history'"><line x1="0" x2="100" y1="25" y2="25"></line><path :d="historyPath(site)"></path></svg>
+            <small>{{ fmtMs(latestMetric(site, 'site.response.time')) }} latest</small>
+          </div>
+        </div>
         <div class="cols">
           <div class="panel">
-            <div class="kv"><span>route</span> <b class="mono">@if (site.href)<a href="{{ site.href }}">{{ site.route }}</a>@else{{ site.route }}@endif</b></div>
+            <div class="kv"><span>route</span> <b class="mono"><a :href="site.href" @show="!!site.href">{{ site.route }}</a><span @show="!site.href">{{ site.route }}</span></b></div>
             <div class="kv"><span>kind</span> <b><span class="tag">{{ site.kind ?? site.type }}</span></b></div>
             <div class="kv"><span>runtime</span> <b class="mono">{{ site.runtime }}</b></div>
-            <div class="kv"><span>tls</span> <b><span class="{{ site.tls === 'https' ? 'ok' : 'warn' }} pill">{{ site.tls }}</span></b></div>
+            <div class="kv"><span>tls</span> <b><span class="pill" :class="site.tls === 'https' ? 'ok' : 'warn'">{{ site.tls }}</span></b></div>
           </div>
           <div class="panel">
             <div class="kv"><span>web root</span> <b class="mono" style="font-size:11px">{{ site.root }}</b></div>
             <div class="kv"><span>source</span> <b class="mono">{{ site.branch }}</b></div>
             <div class="kv"><span>deploy</span> <b>{{ site.deploy }}</b></div>
-            @if (site.envKeys && site.envKeys.length)
-              <div class="kv"><span>env vars</span> <b class="mono">{{ site.envKeys.join(', ') }}</b></div>
-            @endif
-            @if (site.aliases && site.aliases.length)
-              <div class="kv"><span>aliases</span> <b class="mono">{{ site.aliases.join(', ') }}</b></div>
-            @endif
-            @if (site.redirects && Object.keys(site.redirects).length)
-              <div class="kv"><span>redirects</span> <b class="mono">{{ Object.keys(site.redirects).length }}</b></div>
-            @endif
-            @if (site.shadowedBy)
-              <div class="kv"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
-            @endif
+            <div class="kv"><span>ownership</span> <b>{{ site.managedBy === 'attached' ? 'attached project' : 'server owner' }}</b></div>
+            <div class="kv" @show="!!site.release"><span>release</span> <b class="mono">{{ site.release }}</b></div>
+            <div class="kv" @show="!!site.deployedAt"><span>deployed</span> <b>{{ new Date(site.deployedAt).toLocaleString() }}</b></div>
+            <div class="kv" @show="site.envKeys && site.envKeys.length"><span>env vars</span> <b class="mono">{{ (site.envKeys || []).join(', ') }}</b></div>
+            <div class="kv" @show="site.aliases && site.aliases.length"><span>aliases</span> <b class="mono">{{ (site.aliases || []).join(', ') }}</b></div>
+            <div class="kv" @show="site.redirects && Object.keys(site.redirects).length"><span>redirects</span> <b class="mono">{{ Object.keys(site.redirects || {}).length }}</b></div>
+            <div class="kv" @show="!!site.shadowedBy"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
           </div>
         </div>
         <div class="row-actions" style="margin-top:12px;">
-          <button class="btn sm" type="button" @click="askDeploy('{{ site.name }}')">Deploy</button>
-          <button class="btn ghost sm" type="button" @click="toggleEdit('{{ site.name }}')">Edit</button>
+          <a class="btn ghost sm" :href="'/operations/workloads?service=' + encodeURIComponent(site.name)">Backing workloads</a>
+          @if (canDeploy)<button class="btn sm" type="button" @show="site.managedBy !== 'attached'" @click="askDeploy(site.name)">Deploy</button>@endif
+          @if (canEdit)<button class="btn ghost sm" type="button" @show="site.managedBy !== 'attached'" @click="toggleEdit(site.name)">Edit</button>@endif
           @if (!isMember)
-            <button class="btn danger sm" type="button" @click="askRemove('{{ site.name }}')">Remove</button>
+            <button class="btn danger sm" type="button" @show="site.managedBy !== 'attached'" :aria-label="'Remove site ' + site.name" @click="askRemove(site.name)">Remove</button>
           @endif
         </div>
-        <form class="form-grid" style="margin-top:14px;" @show="editing() === '{{ site.name }}'" @submit.prevent="saveEdit('{{ site.name }}')">
+        <p class="note" @show="site.managedBy === 'attached'">This route is managed by the {{ site.project }} project. Deploy and configuration actions belong in that project.</p>
+        @if (!canDeploy && !canEdit)<p class="note">This membership is read-only for {{ site.name }}. Ask an organization owner for deployment or configuration access.</p>@endif
+        <form class="form-grid" style="margin-top:14px;" @show="editing() === site.name" @submit.prevent="saveEdit(site.name)">
           <div class="field-block">
-            <label>TLS</label>
+            <label>TLS
             <select :value="editSsl()" @change="editSsl.set($event.target.value)">
               <option value="">(unchanged)</option>
               <option value="letsencrypt">letsencrypt</option>
               <option value="false">disable</option>
             </select>
+            </label>
           </div>
-          <div class="field-block"><label>Domain</label><input placeholder="{{ site.domain }}" :value="editDomain()" @input="editDomain.set($event.target.value)"></div>
+          <div class="field-block"><label>Domain<input :placeholder="site.domain" :value="editDomain()" @input="editDomain.set($event.target.value)"></label></div>
           <div class="field-block">
-            <label>PHP version</label>
+            <label>PHP version
             <select :value="editPhp()" @change="editPhp.set($event.target.value)">
               <option value="">(unchanged)</option>
               <option value="8.1">8.1</option>
@@ -172,15 +251,31 @@ async function saveEdit(name) {
               <option value="8.3">8.3</option>
               <option value="8.4">8.4</option>
             </select>
+            </label>
           </div>
-          <div class="field-block wide"><label>Domain aliases (space or comma separated)</label><input placeholder="www.example.com, cdn.example.com" :value="editAliases()" @input="editAliases.set($event.target.value)"></div>
-          <div class="field-block wide"><label>Redirects (from = to per line)</label><textarea rows="2" placeholder="/old = /new" :value="editRedirects()" @input="editRedirects.set($event.target.value)"></textarea></div>
-          <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></div>
+          <div class="field-block wide"><label>Domain aliases (space or comma separated)<input placeholder="www.example.com, cdn.example.com" :value="editAliases()" @input="editAliases.set($event.target.value)"></label></div>
+          <div class="field-block wide"><label>Redirects (from = to per line)<textarea rows="2" placeholder="/old = /new" :value="editRedirects()" @input="editRedirects.set($event.target.value)"></textarea></label></div>
+          <div class="field-block wide"><label>Env vars (KEY=value per line)<textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></label></div>
           <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
         </form>
       </div>
-    @endforeach
+    </template>
     @include('../partials/op-confirm')
   </div>
+  <style>
+    .site-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:24px}
+    .site-summary .panel{display:grid;gap:5px;padding:14px 16px}
+    .site-summary span,.site-health>div>span{color:var(--txt3);font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700}
+    .site-summary strong{font-size:24px}.site-summary small{color:var(--txt3);font-size:11px}
+    .ok-text{color:var(--ok)}.bad-text{color:var(--bad)}
+    .site-health{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(220px,1.6fr);gap:0;padding:0;margin-bottom:14px;overflow:hidden}
+    .site-health>div{display:grid;gap:5px;padding:15px 16px;border-right:1px solid var(--panel-br)}
+    .site-health>div:last-child{border-right:0}
+    .site-health strong{font-size:18px}.site-health small{color:var(--txt3);font-size:11px}
+    .site-health .pill{font-size:10px;padding:2px 7px}
+    .latency-chart svg{width:100%;height:36px}.latency-chart line{stroke:rgba(255,255,255,.08);vector-effect:non-scaling-stroke}.latency-chart path{fill:none;stroke:var(--accent);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+    @media(max-width:1000px){.site-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.site-health{grid-template-columns:repeat(2,minmax(0,1fr))}.site-health>div{border-bottom:1px solid var(--panel-br)}.latency-chart{grid-column:1/-1}}
+    @media(max-width:600px){.site-summary,.site-health{grid-template-columns:1fr}.latency-chart{grid-column:auto}.site-health>div{border-right:0}}
+  </style>
 </body>
 </html>

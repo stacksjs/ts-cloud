@@ -67,14 +67,17 @@ export interface FindingFilter {
 }
 
 export interface FindingCriteria {
-  criterion: Record<string, {
-    eq?: string[]
-    neq?: string[]
-    gt?: number
-    gte?: number
-    lt?: number
-    lte?: number
-  }>
+  criterion: Record<
+    string,
+    {
+      eq?: string[]
+      neq?: string[]
+      gt?: number
+      gte?: number
+      lt?: number
+      lte?: number
+    }
+  >
 }
 
 /**
@@ -221,11 +224,7 @@ export class GuardDutyManager {
   /**
    * Create filter for specific finding types
    */
-  createFindingTypeFilter(
-    detectorId: string,
-    findingTypes: string[],
-    action: 'NOOP' | 'ARCHIVE',
-  ): FindingFilter {
+  createFindingTypeFilter(detectorId: string, findingTypes: string[], action: 'NOOP' | 'ARCHIVE'): FindingFilter {
     return this.createFindingFilter({
       detectorId,
       name: `filter-finding-types-${action.toLowerCase()}`,
@@ -362,7 +361,7 @@ export class GuardDutyManager {
     }
 
     if (detector.features) {
-      cf.Properties.Features = detector.features.map(feature => ({
+      cf.Properties.Features = detector.features.map((feature) => ({
         Name: feature.name,
         Status: feature.status,
         ...(feature.additionalConfiguration && {

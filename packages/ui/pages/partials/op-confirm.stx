@@ -1,9 +1,7 @@
-<div class="op-confirm panel" @show="pending() !== null">
-  <span>Type <b class="mono">{{ confirmTok() }}</b> to {{ confirmVerb() }}:</span>
-  <input class="op-confirm-input" :value="typed()" @input="typed.set($event.target.value)" @keydown.enter="runOp()" placeholder="confirm" autocomplete="off" aria-label="Type the confirmation token to proceed">
-  <button type="button" class="btn sm{{ (danger ?? false) ? ' danger' : '' }}" :disabled="!canRun()" @click="runOp()">{{ label ?? 'Run' }}</button>
-  <button type="button" class="btn ghost sm" @click="cancelOp()">Cancel</button>
+<div class="op-confirm panel" @show="pending() !== null" role="group" aria-labelledby="op-confirm-prompt">
+  <span id="op-confirm-prompt">Type <b class="mono">{{ confirmTok() }}</b> to {{ confirmVerb() }}:</span>
+  <input @ref="opConfirmInput" class="op-confirm-input" :value="typed()" @input="typed.set($event.target.value)" @keydown.enter="runOp()" placeholder="confirm" autocomplete="off" aria-labelledby="op-confirm-prompt">
+  <button type="button" class="btn sm" :class="{ danger: confirmDanger() }" :disabled="!canRun()" @click="runOp()">{{ confirmLabel() }}</button>
+  <button type="button" class="btn ghost sm" :disabled="busy()" @click="cancelOp()">Cancel</button>
 </div>
-@if (output ?? true)
-<pre class="action-output op-output" @show="opShown()">{{ opOutput() }}</pre>
-@endif
+<pre class="action-output op-output" @show="opShown()" aria-live="polite">{{ opOutput() }}</pre>

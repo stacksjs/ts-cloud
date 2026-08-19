@@ -1,10 +1,9 @@
-import type { BackupPlan, BackupSelection, BackupVault, S3Bucket, S3BucketPolicy } from '@ts-cloud/aws-types'
-import type { IAMRole } from '@ts-cloud/aws-types'
+import type { BackupPlan, BackupSelection, BackupVault, IAMRole, S3Bucket, S3BucketPolicy } from '@ts-cloud/aws-types'
+import type { EnvironmentType } from '../types'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import type { EnvironmentType } from '../types'
 
 export interface BucketOptions {
   name?: string
@@ -39,7 +38,16 @@ export interface LifecycleRule {
 
 export interface S3NotificationConfig {
   functionArn: string | { 'Fn::GetAtt': [string, string] }
-  events: Array<'s3:ObjectCreated:*' | 's3:ObjectCreated:Put' | 's3:ObjectCreated:Post' | 's3:ObjectCreated:Copy' | 's3:ObjectCreated:CompleteMultipartUpload' | 's3:ObjectRemoved:*' | 's3:ObjectRemoved:Delete' | 's3:ObjectRemoved:DeleteMarkerCreated'>
+  events: Array<
+    | 's3:ObjectCreated:*'
+    | 's3:ObjectCreated:Put'
+    | 's3:ObjectCreated:Post'
+    | 's3:ObjectCreated:Copy'
+    | 's3:ObjectCreated:CompleteMultipartUpload'
+    | 's3:ObjectRemoved:*'
+    | 's3:ObjectRemoved:Delete'
+    | 's3:ObjectRemoved:DeleteMarkerCreated'
+  >
   filter?: {
     prefix?: string
     suffix?: string
@@ -66,7 +74,7 @@ export class Storage {
   /**
    * Create an S3 bucket with the specified options
    */
-  static createBucket(options: BucketOptions): { bucket: S3Bucket, bucketPolicy?: S3BucketPolicy, logicalId: string } {
+  static createBucket(options: BucketOptions): { bucket: S3Bucket; bucketPolicy?: S3BucketPolicy; logicalId: string } {
     const {
       name,
       bucketName: explicitBucketName,
@@ -81,12 +89,14 @@ export class Storage {
       lifecycleRules,
     } = options
 
-    const resourceName = explicitBucketName ?? generateResourceName({
-      slug,
-      environment,
-      resourceType: 's3',
-      suffix: name,
-    })
+    const resourceName =
+      explicitBucketName ??
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 's3',
+        suffix: name,
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -100,11 +110,13 @@ export class Storage {
     // Configure encryption
     if (encryption) {
       bucket.Properties!.BucketEncryption = {
-        ServerSideEncryptionConfiguration: [{
-          ServerSideEncryptionByDefault: {
-            SSEAlgorithm: 'AES256',
+        ServerSideEncryptionConfiguration: [
+          {
+            ServerSideEncryptionByDefault: {
+              SSEAlgorithm: 'AES256',
+            },
           },
-        }],
+        ],
       }
     }
 
@@ -136,7 +148,7 @@ export class Storage {
     // Configure CORS
     if (cors && cors.length > 0) {
       bucket.Properties!.CorsConfiguration = {
-        CorsRules: cors.map(rule => ({
+        CorsRules: cors.map((rule) => ({
           AllowedOrigins: rule.allowedOrigins,
           AllowedMethods: rule.allowedMethods,
           AllowedHeaders: rule.allowedHeaders,
@@ -148,11 +160,11 @@ export class Storage {
     // Configure lifecycle rules
     if (lifecycleRules && lifecycleRules.length > 0) {
       bucket.Properties!.LifecycleConfiguration = {
-        Rules: lifecycleRules.map(rule => ({
+        Rules: lifecycleRules.map((rule) => ({
           Id: rule.id,
           Status: rule.enabled ? 'Enabled' : 'Disabled',
           ExpirationInDays: rule.expirationDays,
-          Transitions: rule.transitions?.map(t => ({
+          Transitions: rule.transitions?.map((t) => ({
             TransitionInDays: t.days,
             StorageClass: t.storageClass,
           })),
@@ -165,10 +177,12 @@ export class Storage {
       const intelligentTieringRule: LifecycleRule = {
         id: 'IntelligentTieringRule',
         enabled: true,
-        transitions: [{
-          days: 0,
-          storageClass: 'INTELLIGENT_TIERING',
-        }],
+        transitions: [
+          {
+            days: 0,
+            storageClass: 'INTELLIGENT_TIERING',
+          },
+        ],
       }
 
       if (!bucket.Properties!.LifecycleConfiguration) {
@@ -178,7 +192,7 @@ export class Storage {
       bucket.Properties!.LifecycleConfiguration.Rules.push({
         Id: intelligentTieringRule.id,
         Status: 'Enabled',
-        Transitions: intelligentTieringRule.transitions?.map(t => ({
+        Transitions: intelligentTieringRule.transitions?.map((t) => ({
           TransitionInDays: t.days,
           StorageClass: t.storageClass,
         })),
@@ -195,13 +209,15 @@ export class Storage {
           Bucket: Fn.Ref(logicalId),
           PolicyDocument: {
             Version: '2012-10-17',
-            Statement: [{
-              Sid: 'PublicReadGetObject',
-              Effect: 'Allow',
-              Principal: '*',
-              Action: ['s3:GetObject'],
-              Resource: [Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any],
-            }],
+            Statement: [
+              {
+                Sid: 'PublicReadGetObject',
+                Effect: 'Allow',
+                Principal: '*',
+                Action: ['s3:GetObject'],
+                Resource: [Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any],
+              },
+            ],
           },
         },
       }
@@ -232,11 +248,7 @@ export class Storage {
   /**
    * Enable website hosting on an existing bucket
    */
-  static enableWebsiteHosting(
-    bucket: S3Bucket,
-    indexDocument = 'index.html',
-    errorDocument = 'error.html',
-  ): S3Bucket {
+  static enableWebsiteHosting(bucket: S3Bucket, indexDocument = 'index.html', errorDocument = 'error.html'): S3Bucket {
     if (!bucket.Properties) {
       bucket.Properties = {}
     }
@@ -258,11 +270,11 @@ export class Storage {
     }
 
     bucket.Properties.LifecycleConfiguration = {
-      Rules: rules.map(rule => ({
+      Rules: rules.map((rule) => ({
         Id: rule.id,
         Status: rule.enabled ? 'Enabled' : 'Disabled',
         ExpirationInDays: rule.expirationDays,
-        Transitions: rule.transitions?.map(t => ({
+        Transitions: rule.transitions?.map((t) => ({
           TransitionInDays: t.days,
           StorageClass: t.storageClass,
         })),
@@ -287,10 +299,12 @@ export class Storage {
     bucket.Properties.LifecycleConfiguration.Rules.push({
       Id: 'IntelligentTieringRule',
       Status: 'Enabled',
-      Transitions: [{
-        TransitionInDays: 0,
-        StorageClass: 'INTELLIGENT_TIERING',
-      }],
+      Transitions: [
+        {
+          TransitionInDays: 0,
+          StorageClass: 'INTELLIGENT_TIERING',
+        },
+      ],
     })
 
     return bucket
@@ -344,7 +358,9 @@ export class Storage {
     /**
      * Trigger Lambda on any object creation
      */
-    onObjectCreated: (functionArn: string | { 'Fn::GetAtt': [string, string] }): {
+    onObjectCreated: (
+      functionArn: string | { 'Fn::GetAtt': [string, string] },
+    ): {
       functionArn: string | { 'Fn::GetAtt': [string, string] }
       events: readonly ['s3:ObjectCreated:*']
     } => ({
@@ -355,7 +371,9 @@ export class Storage {
     /**
      * Trigger Lambda on object deletion
      */
-    onObjectRemoved: (functionArn: string | { 'Fn::GetAtt': [string, string] }): {
+    onObjectRemoved: (
+      functionArn: string | { 'Fn::GetAtt': [string, string] },
+    ): {
       functionArn: string | { 'Fn::GetAtt': [string, string] }
       events: readonly ['s3:ObjectRemoved:*']
     } => ({
@@ -366,7 +384,10 @@ export class Storage {
     /**
      * Trigger Lambda on image uploads (jpg, png, gif)
      */
-    onImageUpload: (functionArn: string | { 'Fn::GetAtt': [string, string] }, prefix?: string): {
+    onImageUpload: (
+      functionArn: string | { 'Fn::GetAtt': [string, string] },
+      prefix?: string,
+    ): {
       functionArn: string | { 'Fn::GetAtt': [string, string] }
       events: readonly ['s3:ObjectCreated:*']
       filter: { prefix: string | undefined; suffix: string }
@@ -444,12 +465,14 @@ export class Storage {
     } = options
 
     // Create backup vault
-    const vaultResourceName = vaultName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'backup-vault',
-      suffix: name,
-    })
+    const vaultResourceName =
+      vaultName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'backup-vault',
+        suffix: name,
+      })
 
     const vaultLogicalId = generateLogicalId(vaultResourceName)
 
@@ -476,13 +499,15 @@ export class Storage {
         RoleName: roleResourceName,
         AssumeRolePolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: {
-              Service: 'backup.amazonaws.com',
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: {
+                Service: 'backup.amazonaws.com',
+              },
+              Action: 'sts:AssumeRole',
             },
-            Action: 'sts:AssumeRole',
-          }],
+          ],
         },
         ManagedPolicyArns: [
           'arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup',
@@ -514,15 +539,17 @@ export class Storage {
       Properties: {
         BackupPlan: {
           BackupPlanName: planResourceName,
-          BackupPlanRule: [{
-            RuleName: `${name}-daily-backup`,
-            TargetBackupVault: Fn.Ref(vaultLogicalId) as any,
-            ScheduleExpression: schedule,
-            StartWindowMinutes: 60,
-            CompletionWindowMinutes: 120,
-            Lifecycle: lifecycle,
-            EnableContinuousBackup: enableContinuousBackup,
-          }],
+          BackupPlanRule: [
+            {
+              RuleName: `${name}-daily-backup`,
+              TargetBackupVault: Fn.Ref(vaultLogicalId) as any,
+              ScheduleExpression: schedule,
+              StartWindowMinutes: 60,
+              CompletionWindowMinutes: 120,
+              Lifecycle: lifecycle,
+              EnableContinuousBackup: enableContinuousBackup,
+            },
+          ],
         },
       },
     }
@@ -538,9 +565,7 @@ export class Storage {
     const selectionLogicalId = generateLogicalId(selectionResourceName)
 
     // Build bucket ARNs from logical IDs
-    const bucketArns = bucketLogicalIds.map(logicalId =>
-      Fn.GetAtt(logicalId, 'Arn') as any,
-    )
+    const bucketArns = bucketLogicalIds.map((logicalId) => Fn.GetAtt(logicalId, 'Arn') as any)
 
     const selection: BackupSelection = {
       Type: 'AWS::Backup::BackupSelection',
@@ -606,14 +631,8 @@ export class Storage {
     sourceDomain: string // e.g., www.example.com
     targetDomain: string // e.g., example.com
     protocol?: 'http' | 'https'
-  }): { bucket: S3Bucket, bucketPolicy: S3BucketPolicy, logicalId: string } {
-    const {
-      slug,
-      environment,
-      sourceDomain,
-      targetDomain,
-      protocol = 'https',
-    } = options
+  }): { bucket: S3Bucket; bucketPolicy: S3BucketPolicy; logicalId: string } {
+    const { slug, environment, sourceDomain, targetDomain, protocol = 'https' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -650,13 +669,15 @@ export class Storage {
         Bucket: Fn.Ref(logicalId),
         PolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Sid: 'PublicReadForRedirect',
-            Effect: 'Allow',
-            Principal: '*',
-            Action: ['s3:GetObject'],
-            Resource: [Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any],
-          }],
+          Statement: [
+            {
+              Sid: 'PublicReadForRedirect',
+              Effect: 'Allow',
+              Principal: '*',
+              Action: ['s3:GetObject'],
+              Resource: [Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any],
+            },
+          ],
         },
       },
     }
@@ -672,23 +693,21 @@ export class Storage {
    * Create a docs bucket (for documentation sites)
    * Conditional creation based on docs presence
    */
-  static createDocsBucket(options: {
-    slug: string
-    environment: EnvironmentType
-    domain?: string
-  }): { bucket: S3Bucket, bucketPolicy?: S3BucketPolicy, logicalId: string } {
-    const {
-      slug,
-      environment,
-      domain,
-    } = options
+  static createDocsBucket(options: { slug: string; environment: EnvironmentType; domain?: string }): {
+    bucket: S3Bucket
+    bucketPolicy?: S3BucketPolicy
+    logicalId: string
+  } {
+    const { slug, environment, domain } = options
 
-    const resourceName = domain || generateResourceName({
-      slug,
-      environment,
-      resourceType: 's3',
-      suffix: 'docs',
-    })
+    const resourceName =
+      domain ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 's3',
+        suffix: 'docs',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -697,11 +716,13 @@ export class Storage {
       Properties: {
         BucketName: resourceName,
         BucketEncryption: {
-          ServerSideEncryptionConfiguration: [{
-            ServerSideEncryptionByDefault: {
-              SSEAlgorithm: 'AES256',
+          ServerSideEncryptionConfiguration: [
+            {
+              ServerSideEncryptionByDefault: {
+                SSEAlgorithm: 'AES256',
+              },
             },
-          }],
+          ],
         },
         PublicAccessBlockConfiguration: {
           BlockPublicAcls: true,
@@ -709,10 +730,12 @@ export class Storage {
           IgnorePublicAcls: true,
           RestrictPublicBuckets: true,
         },
-        Tags: [{
-          Key: 'backup',
-          Value: 'weekly',
-        }],
+        Tags: [
+          {
+            Key: 'backup',
+            Value: 'weekly',
+          },
+        ],
       },
     }
 
@@ -725,14 +748,12 @@ export class Storage {
   /**
    * Create an email bucket for storing emails
    */
-  static createEmailBucket(options: {
-    slug: string
-    environment: EnvironmentType
-  }): { bucket: S3Bucket, bucketPolicy: S3BucketPolicy, logicalId: string } {
-    const {
-      slug,
-      environment,
-    } = options
+  static createEmailBucket(options: { slug: string; environment: EnvironmentType }): {
+    bucket: S3Bucket
+    bucketPolicy: S3BucketPolicy
+    logicalId: string
+  } {
+    const { slug, environment } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -748,11 +769,13 @@ export class Storage {
       Properties: {
         BucketName: resourceName,
         BucketEncryption: {
-          ServerSideEncryptionConfiguration: [{
-            ServerSideEncryptionByDefault: {
-              SSEAlgorithm: 'AES256',
+          ServerSideEncryptionConfiguration: [
+            {
+              ServerSideEncryptionByDefault: {
+                SSEAlgorithm: 'AES256',
+              },
             },
-          }],
+          ],
         },
         PublicAccessBlockConfiguration: {
           BlockPublicAcls: true,
@@ -761,15 +784,19 @@ export class Storage {
           RestrictPublicBuckets: true,
         },
         LifecycleConfiguration: {
-          Rules: [{
-            Id: 'EmailRetention',
-            Status: 'Enabled',
-            ExpirationInDays: 90, // Keep emails for 90 days
-            Transitions: [{
-              TransitionInDays: 30,
-              StorageClass: 'STANDARD_IA', // Move to IA after 30 days
-            }],
-          }],
+          Rules: [
+            {
+              Id: 'EmailRetention',
+              Status: 'Enabled',
+              ExpirationInDays: 90, // Keep emails for 90 days
+              Transitions: [
+                {
+                  TransitionInDays: 30,
+                  StorageClass: 'STANDARD_IA', // Move to IA after 30 days
+                },
+              ],
+            },
+          ],
         },
       },
     }
@@ -781,20 +808,22 @@ export class Storage {
         Bucket: Fn.Ref(logicalId),
         PolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Sid: 'AllowSESPuts',
-            Effect: 'Allow',
-            Principal: {
-              Service: 'ses.amazonaws.com',
-            },
-            Action: 's3:PutObject',
-            Resource: Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any,
-            Condition: {
-              StringEquals: {
-                'AWS:SourceAccount': Fn.Ref('AWS::AccountId') as any,
+          Statement: [
+            {
+              Sid: 'AllowSESPuts',
+              Effect: 'Allow',
+              Principal: {
+                Service: 'ses.amazonaws.com',
+              },
+              Action: 's3:PutObject',
+              Resource: Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any,
+              Condition: {
+                StringEquals: {
+                  'AWS:SourceAccount': Fn.Ref('AWS::AccountId') as any,
+                },
               },
             },
-          }],
+          ],
         },
       },
     }
@@ -809,19 +838,18 @@ export class Storage {
   /**
    * Check if a docs directory exists and has content
    */
-  static docsExist(options: {
-    projectRoot?: string
-    docsPaths?: string[]
-  } = {}): {
+  static docsExist(
+    options: {
+      projectRoot?: string
+      docsPaths?: string[]
+    } = {},
+  ): {
     exists: boolean
     path: string | null
     hasDistFolder: boolean
     distPath: string | null
   } {
-    const {
-      projectRoot = process.cwd(),
-      docsPaths = ['docs', 'documentation', 'doc'],
-    } = options
+    const { projectRoot = process.cwd(), docsPaths = ['docs', 'documentation', 'doc'] } = options
 
     for (const docsPath of docsPaths) {
       const fullPath = join(projectRoot, docsPath)
@@ -844,8 +872,7 @@ export class Storage {
                   distPath: fullDistPath,
                 }
               }
-            }
-            catch {
+            } catch {
               // Continue to next path
             }
           }
@@ -926,14 +953,8 @@ export class Storage {
     enableVersioning?: boolean
     retentionDays?: number
     encryptionKeyArn?: string
-  }): { bucket: S3Bucket, logicalId: string } {
-    const {
-      slug,
-      environment,
-      enableVersioning = true,
-      retentionDays,
-      encryptionKeyArn,
-    } = options
+  }): { bucket: S3Bucket; logicalId: string } {
+    const { slug, environment, enableVersioning = true, retentionDays, encryptionKeyArn } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -949,16 +970,18 @@ export class Storage {
       Properties: {
         BucketName: resourceName,
         BucketEncryption: {
-          ServerSideEncryptionConfiguration: [{
-            ServerSideEncryptionByDefault: encryptionKeyArn
-              ? {
-                  SSEAlgorithm: 'aws:kms',
-                  KMSMasterKeyID: encryptionKeyArn,
-                }
-              : {
-                  SSEAlgorithm: 'AES256',
-                },
-          }],
+          ServerSideEncryptionConfiguration: [
+            {
+              ServerSideEncryptionByDefault: encryptionKeyArn
+                ? {
+                    SSEAlgorithm: 'aws:kms',
+                    KMSMasterKeyID: encryptionKeyArn,
+                  }
+                : {
+                    SSEAlgorithm: 'AES256',
+                  },
+            },
+          ],
         },
         PublicAccessBlockConfiguration: {
           BlockPublicAcls: true,
@@ -966,22 +989,24 @@ export class Storage {
           IgnorePublicAcls: true,
           RestrictPublicBuckets: true,
         },
-        VersioningConfiguration: enableVersioning
-          ? { Status: 'Enabled' }
-          : undefined,
+        VersioningConfiguration: enableVersioning ? { Status: 'Enabled' } : undefined,
         LifecycleConfiguration: retentionDays
           ? {
-              Rules: [{
-                Id: 'RetentionPolicy',
-                Status: 'Enabled',
-                ExpirationInDays: retentionDays,
-              }],
+              Rules: [
+                {
+                  Id: 'RetentionPolicy',
+                  Status: 'Enabled',
+                  ExpirationInDays: retentionDays,
+                },
+              ],
             }
           : undefined,
-        Tags: [{
-          Key: 'backup',
-          Value: 'daily',
-        }],
+        Tags: [
+          {
+            Key: 'backup',
+            Value: 'daily',
+          },
+        ],
       },
     }
 
@@ -995,22 +1020,21 @@ export class Storage {
    * Check if source paths exist for deployment
    * Common paths: views/web/dist, docs/dist, private
    */
-  static checkSourcePaths(options: {
-    projectRoot?: string
-    paths?: {
-      web?: string
-      docs?: string
-      private?: string
-    }
-  } = {}): {
-    web: { exists: boolean, path: string }
-    docs: { exists: boolean, path: string }
-    private: { exists: boolean, path: string }
+  static checkSourcePaths(
+    options: {
+      projectRoot?: string
+      paths?: {
+        web?: string
+        docs?: string
+        private?: string
+      }
+    } = {},
+  ): {
+    web: { exists: boolean; path: string }
+    docs: { exists: boolean; path: string }
+    private: { exists: boolean; path: string }
   } {
-    const {
-      projectRoot = process.cwd(),
-      paths = {},
-    } = options
+    const { projectRoot = process.cwd(), paths = {} } = options
 
     const webPath = paths.web || 'views/web/dist'
     const docsPath = paths.docs || 'docs/dist'
@@ -1054,18 +1078,12 @@ export class Storage {
       private: boolean
     }
     sourcePaths: {
-      web: { exists: boolean, path: string }
-      docs: { exists: boolean, path: string }
-      private: { exists: boolean, path: string }
+      web: { exists: boolean; path: string }
+      docs: { exists: boolean; path: string }
+      private: { exists: boolean; path: string }
     }
   } {
-    const {
-      slug,
-      environment,
-      domain,
-      projectRoot,
-      paths,
-    } = options
+    const { slug, environment, domain, projectRoot, paths } = options
 
     const sourcePaths = Storage.checkSourcePaths({ projectRoot, paths })
     const resources: Record<string, S3Bucket | S3BucketPolicy> = {}

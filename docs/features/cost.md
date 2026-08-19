@@ -29,6 +29,98 @@ AWS WAF                                                        -            $15.
 Total: $307.63 across 19 services
 ```
 
+## Current month projection
+
+`cloud cost` queries each billed service from the first day of the current UTC month through today. It projects the total with `month-to-date spend / elapsed calendar days × days in month` and compares that projection with the previous full month.
+
+```sh
+cloud cost
+cloud cost --profile stacks
+cloud cost --no-cache
+```
+
+The projection is deliberately naive: it is useful for spotting trajectory changes, but it does not model reservations, one-time charges, seasonality, or future usage changes.
+
+## Rolling service breakdown
+
+`cost:breakdown` compares adjacent windows of equal length and calculates the trend independently for every service.
+
+```sh
+cloud cost:breakdown                 # last 30 days vs the preceding 30
+cloud cost:breakdown --days 7
+cloud cost:breakdown --days 90 --profile stacks
+```
+
+The accepted range is 1–366 days. A service with no spend in the previous window is labeled `new` instead of showing a misleading infinite percentage.
+
+## Egress usage types
+
+`cost:egress` groups real Cost Explorer data by `USAGE_TYPE` and ranks billed NAT Gateway, internet, inter-AZ, inter-region, and other data-transfer line items.
+
+```sh
+cloud cost:egress
+cloud cost:egress --days 7 --profile stacks
+```
+
+Cost Explorer usage types identify the transfer category, not the workload or destination that caused it. Correlating a line item to destination IP, port, or instance requires VPC Flow Logs; the command states this boundary explicitly instead of inventing attribution.
+
+## Resource inventory
+
+`cloud resources` combines the Resource Groups Tagging API with direct EC2, RDS, Lambda, and S3 discovery. The union includes untagged resources, deduplicates provider records, and keeps working with explicit partial-coverage warnings when one optional permission is unavailable.
+
+```sh
+cloud resources
+cloud resources --profile stacks --region us-west-2
+cloud resources --type ec2
+cloud resources --type lambda
+```
+
+The monthly-cost column remains unavailable unless Cost and Usage Reports resource IDs are enabled for the account. ts-cloud displays that prerequisite instead of attributing service-level spend to individual resources.
+
+Additional inventory permissions are `tag:GetResources`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `ec2:DescribeAddresses`, `rds:DescribeDBInstances`, `lambda:ListFunctions`, and `s3:ListAllMyBuckets`. Only `tag:GetResources` is needed for the cross-service baseline; the direct calls fill gaps and untagged resources.
+
+## Unused-resource analysis
+
+`cloud resources:unused` evaluates real inventory with conservative provider signals:
+
+- EC2 instances: 30-day average CPU below 5%.
+- RDS instances: 14 days with zero average connections and combined read/write IOPS below 1.
+- EBS volumes: detached according to `DescribeVolumes`.
+- Elastic IPs: no association according to `DescribeAddresses`.
+- S3 buckets: zero objects and zero requests over 90 days.
+- Lambda functions: zero invocations over 30 days.
+- ElastiCache clusters: zero connections and cache hit rate below 20% over 14 days.
+
+```sh
+cloud resources:unused
+cloud resources:unused --profile stacks --region us-east-1
+cloud resources:unused --type ec2
+```
+
+Missing CloudWatch data is treated as insufficient evidence, never as zero activity. Each candidate includes the exact signal and a provider-appropriate recommendation. When Cost and Usage Reports resource IDs are enabled, the command groups Cost Explorer by `RESOURCE_ID` and totals known monthly savings; otherwise savings are explicitly shown as unavailable.
+
+## Optimization recommendations
+
+`cloud optimize` combines the resource inventory, the unused-resource checks, 30-day CloudWatch utilization, and Cost Explorer line items into an ordered action list. Every row includes the source signal, current cost, projected cost, and estimated monthly savings.
+
+```sh
+cloud optimize
+cloud optimize --profile stacks --region us-east-1
+cloud optimize --type ec2
+cloud optimize --include-commitments
+```
+
+The conservative default covers:
+
+- unused resources, using the exact checks described above;
+- EC2 and RDS right-sizing when 30-day average CPU is below 20%;
+- S3 lifecycle candidates when Standard storage is at least 5 GiB and has fewer than 9,000 requests over 90 days; and
+- account-level CloudFront compression and cache-policy review when Cost Explorer reports billed transfer usage types.
+
+Commitment recommendations are opt-in because they can create long-lived financial obligations. `--include-commitments` shows running EC2 and available RDS workloads with at least 20% average CPU as candidates for a one-year RI or Savings Plan comparison; the command never purchases a commitment.
+
+Projected values are directional scenarios, not provider quotes: 40% for a one-size right-sizing scenario, 30% for commitment comparison, 25% for storage transitions, and 20% for CloudFront transfer reduction. Validate memory, peaks, retrieval charges, workload seasonality, current AWS pricing, and existing commitments before acting. Resource cost columns require Cost and Usage Reports resource IDs; without them the source signal and recommendation remain available while all three cost fields are explicitly `—`.
+
 ### What it does
 
 - Calls `ce:GetCostAndUsage` for the last fully-closed month, grouping by `SERVICE` with `UnblendedCost`.
@@ -59,10 +151,10 @@ Cost Explorer charges **$0.01 per request**. ts-cloud caches every successful `g
 
 | Where | `~/.cache/ts-cloud/cost-explorer/<profile>/<sha>.json` (honors `XDG_CACHE_HOME`) |
 |---|---|
-| Key | `(profile, start, end, granularity, metrics, groupBy)` — anything that affects response shape |
+| Key | `(profile, start, end, granularity, metrics, groupBy, filter)` — anything that affects response shape |
 | TTL — open period | 1 hour (the current month is still moving) |
 | TTL — closed period | 30 days (closed months are immutable in Cost Explorer) |
-| Skip cache | `--no-cache` on `cost:analyze` |
+| Skip cache | `--no-cache` on any cost query command |
 
 When a cached response is used, you'll see a one-line notice:
 
@@ -96,20 +188,6 @@ _Profile: `stacks`_
 
 **Total: $307.63 across 19 services**
 ```
-
-## Status of related commands
-
-A handful of stub commands ship with hardcoded output and are guarded with a "not implemented" warning until they're wired against real AWS APIs:
-
-| Command | Tracking |
-|---|---|
-| `cost` (current MTD + naive projection) | [#108](https://github.com/stacksjs/ts-cloud/issues/108) |
-| `cost:breakdown` (N-day window with trend) | [#109](https://github.com/stacksjs/ts-cloud/issues/109) |
-| `resources` (Resource Groups Tagging API) | [#110](https://github.com/stacksjs/ts-cloud/issues/110) |
-| `resources:unused` (CloudWatch idle detection) | [#111](https://github.com/stacksjs/ts-cloud/issues/111) |
-| `optimize` (RI/savings recommendations) | [#112](https://github.com/stacksjs/ts-cloud/issues/112) |
-
-Use `cost:analyze` for real numbers in the meantime.
 
 ## See also
 

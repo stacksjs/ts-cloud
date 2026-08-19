@@ -5,11 +5,7 @@ import type { CloudConfig } from '../types'
  * Perfect for: REST APIs, GraphQL APIs, mobile backends
  * Includes: API Gateway + Lambda functions + DynamoDB
  */
-export function createApiBackendPreset(options: {
-  name: string
-  slug: string
-  domain?: string
-}): Partial<CloudConfig> {
+export function createApiBackendPreset(options: { name: string; slug: string; domain?: string }): Partial<CloudConfig> {
   const { name, slug, domain } = options
 
   return {
@@ -34,10 +30,12 @@ export function createApiBackendPreset(options: {
           allowHeaders: ['Content-Type', 'Authorization'],
           maxAge: 3600,
         },
-        customDomain: domain ? {
-          domain,
-          certificateArn: 'TO_BE_GENERATED',
-        } : undefined,
+        customDomain: domain
+          ? {
+              domain,
+              certificateArn: 'TO_BE_GENERATED',
+            }
+          : undefined,
         throttling: {
           rateLimit: 10000,
           burstLimit: 5000,
@@ -53,26 +51,31 @@ export function createApiBackendPreset(options: {
           handler: 'dist/api/users.handler',
           memory: 512,
           timeout: 30,
-          events: [{
-            type: 'http',
-            path: '/users',
-            method: 'GET',
-          }, {
-            type: 'http',
-            path: '/users',
-            method: 'POST',
-          }],
+          events: [
+            {
+              type: 'http',
+              path: '/users',
+              method: 'GET',
+            },
+            {
+              type: 'http',
+              path: '/users',
+              method: 'POST',
+            },
+          ],
         },
         products: {
           runtime: 'nodejs20.x',
           handler: 'dist/api/products.handler',
           memory: 512,
           timeout: 30,
-          events: [{
-            type: 'http',
-            path: '/products',
-            method: 'GET',
-          }],
+          events: [
+            {
+              type: 'http',
+              path: '/products',
+              method: 'GET',
+            },
+          ],
         },
       },
       databases: {
@@ -83,11 +86,13 @@ export function createApiBackendPreset(options: {
               billingMode: 'PAY_PER_REQUEST',
               streamEnabled: true,
               pointInTimeRecovery: true,
-              globalSecondaryIndexes: [{
-                name: 'EmailIndex',
-                partitionKey: { name: 'email', type: 'S' },
-                projection: 'ALL',
-              }],
+              globalSecondaryIndexes: [
+                {
+                  name: 'EmailIndex',
+                  partitionKey: { name: 'email', type: 'S' },
+                  projection: 'ALL',
+                },
+              ],
             },
             [`${slug}-products`]: {
               partitionKey: { name: 'productId', type: 'S' },
@@ -107,27 +112,32 @@ export function createApiBackendPreset(options: {
         },
       },
       security: {
-        certificate: domain ? {
-          domain,
-          validationMethod: 'DNS',
-        } : undefined,
+        certificate: domain
+          ? {
+              domain,
+              validationMethod: 'DNS',
+            }
+          : undefined,
         waf: {
           enabled: true,
           rules: ['rateLimit', 'sqlInjection'],
         },
       },
       monitoring: {
-        alarms: [{
-          metric: 'Errors',
-          threshold: 10,
-          period: 300,
-          evaluationPeriods: 1,
-        }, {
-          metric: 'Duration',
-          threshold: 3000, // 3 seconds
-          period: 300,
-          evaluationPeriods: 2,
-        }],
+        alarms: [
+          {
+            metric: 'Errors',
+            threshold: 10,
+            period: 300,
+            evaluationPeriods: 1,
+          },
+          {
+            metric: 'Duration',
+            threshold: 3000, // 3 seconds
+            period: 300,
+            evaluationPeriods: 2,
+          },
+        ],
       },
     },
   }

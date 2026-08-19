@@ -113,7 +113,10 @@ export class StorageAdvancedManager {
   private eventNotifications = new Map<string, EventNotification>()
   private counter = 0
 
-  createLifecyclePolicy(transitions: Array<{ days: number; storageClass: string }>, expiration?: number): LifecyclePolicy {
+  createLifecyclePolicy(
+    transitions: Array<{ days: number; storageClass: string }>,
+    expiration?: number,
+  ): LifecyclePolicy {
     const id = `lifecycle-${Date.now()}-${this.counter++}`
     const policy = { id, transitions, expiration }
     this.policies.set(id, policy)
@@ -218,10 +221,12 @@ export class StorageAdvancedManager {
       bucketName: options.bucketName,
       archiveType: options.archiveType,
       transitionDays: options.transitionDays,
-      restoreConfig: options.restoreTier ? {
-        tier: options.restoreTier,
-        days: options.restoreDays || 7,
-      } : undefined,
+      restoreConfig: options.restoreTier
+        ? {
+            tier: options.restoreTier,
+            days: options.restoreDays || 7,
+          }
+        : undefined,
     }
     this.glacierConfigs.set(id, config)
     return config
@@ -314,10 +319,13 @@ export class StorageAdvancedManager {
         type: 'Lambda',
         arn: options.lambdaArn,
       },
-      filter: (options.prefix || options.suffix) ? {
-        prefix: options.prefix,
-        suffix: options.suffix,
-      } : undefined,
+      filter:
+        options.prefix || options.suffix
+          ? {
+              prefix: options.prefix,
+              suffix: options.suffix,
+            }
+          : undefined,
     }
     this.eventNotifications.set(id, notification)
     return notification
@@ -342,10 +350,13 @@ export class StorageAdvancedManager {
         type: 'SQS',
         arn: options.queueArn,
       },
-      filter: (options.prefix || options.suffix) ? {
-        prefix: options.prefix,
-        suffix: options.suffix,
-      } : undefined,
+      filter:
+        options.prefix || options.suffix
+          ? {
+              prefix: options.prefix,
+              suffix: options.suffix,
+            }
+          : undefined,
     }
     this.eventNotifications.set(id, notification)
     return notification
@@ -370,10 +381,13 @@ export class StorageAdvancedManager {
         type: 'SNS',
         arn: options.topicArn,
       },
-      filter: (options.prefix || options.suffix) ? {
-        prefix: options.prefix,
-        suffix: options.suffix,
-      } : undefined,
+      filter:
+        options.prefix || options.suffix
+          ? {
+              prefix: options.prefix,
+              suffix: options.suffix,
+            }
+          : undefined,
     }
     this.eventNotifications.set(id, notification)
     return notification
@@ -430,12 +444,14 @@ export class StorageAdvancedManager {
             VpcId: accessPoint.vpcId,
           },
         }),
-        PublicAccessBlockConfiguration: accessPoint.publicAccessBlock ? {
-          BlockPublicAcls: true,
-          BlockPublicPolicy: true,
-          IgnorePublicAcls: true,
-          RestrictPublicBuckets: true,
-        } : undefined,
+        PublicAccessBlockConfiguration: accessPoint.publicAccessBlock
+          ? {
+              BlockPublicAcls: true,
+              BlockPublicPolicy: true,
+              IgnorePublicAcls: true,
+              RestrictPublicBuckets: true,
+            }
+          : undefined,
         ...(accessPoint.policy && { Policy: accessPoint.policy }),
       },
     }
@@ -470,17 +486,19 @@ export class StorageAdvancedManager {
    * Generate CloudFormation for Event Notification
    */
   generateEventNotificationCF(notification: EventNotification): any {
-    const configKey = notification.destination.type === 'Lambda'
-      ? 'LambdaConfigurations'
-      : notification.destination.type === 'SQS'
-        ? 'QueueConfigurations'
-        : 'TopicConfigurations'
+    const configKey =
+      notification.destination.type === 'Lambda'
+        ? 'LambdaConfigurations'
+        : notification.destination.type === 'SQS'
+          ? 'QueueConfigurations'
+          : 'TopicConfigurations'
 
-    const destKey = notification.destination.type === 'Lambda'
-      ? 'Function'
-      : notification.destination.type === 'SQS'
-        ? 'Queue'
-        : 'Topic'
+    const destKey =
+      notification.destination.type === 'Lambda'
+        ? 'Function'
+        : notification.destination.type === 'SQS'
+          ? 'Queue'
+          : 'Topic'
 
     const config: any = {
       Event: notification.events[0],

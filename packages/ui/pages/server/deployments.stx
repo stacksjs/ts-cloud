@@ -7,18 +7,31 @@ const server = __d?.server ?? { name: 'acme-production-app' }
 // Members reach this page for their own sites; box-level CLI hints and the
 // server crumb are not theirs to act on.
 const isMember = (__d?.viewer?.role ?? 'admin') === 'member'
+const viewerCapabilities = __d?.viewer?.capabilities ?? []
+const canRollback = !isMember && viewerCapabilities.includes('deployments:rollback')
 const initialDeps = __d?.serverDeploymentsDetail ?? []
 const deploymentChart = renderDeploymentSparkline(initialDeps)
 const deploymentsEmptyReason = __d?.deploymentsEmptyReason ?? 'No deployment history has been recorded yet.'
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Seeded from build-time data (stx server→client bridge), then live-refreshed.
 const deps = state(initialDeps)
-const status = state('all')
-const site = state('all')
+const initialFilters = new URLSearchParams(location.search)
+const status = state(initialFilters.get('status') || 'all')
+const site = state(initialFilters.get('site') || 'all')
 const sites = derived(() => [...new Set(deps().map(d => d.site).filter(Boolean))])
 const filtered = derived(() => deps().filter(d =>
   (status() === 'all' || d.status === status()) && (site() === 'all' || d.site === site())))
+function setFilter(name, value, signal) {
+  signal.set(value)
+  const url = new URL(location.href)
+  if (value === 'all') url.searchParams.delete(name)
+  else url.searchParams.set(name, value)
+  history.replaceState(null, '', url)
+  window.dispatchEvent(new Event('ts-cloud:filters-changed'))
+}
 function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 async function refresh() {
   try { const r = await fetch('/api/dashboard-data'); if (!r.ok) return; const x = await r.json(); if (Array.isArray(x.serverDeploymentsDetail)) deps.set(x.serverDeploymentsDetail) } catch {}
@@ -26,27 +39,12 @@ async function refresh() {
 onMount(() => { refresh() })
 
 // Reactive operation runner (rollback) - typed-confirm bar + output.
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb, to) { pending.set({ operation, confirm, verb, to: to || null }); typed.set('') }
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
-  try {
-    const payload = p.to ? { operation: p.operation, confirm: p.confirm, to: p.to } : { operation: p.operation, confirm: p.confirm }
-    const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
-  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const payload = p.to ? { operation: p.operation, confirm: p.apiConfirm, to: p.to } : { operation: p.operation, confirm: p.apiConfirm }
+  const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+  const body = await res.json()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : '')
+})
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -74,13 +72,13 @@ async function runOp() {
         </div>
         <div class="filters">
           <div class="segmented" role="group" aria-label="Filter deployment status">
-            <button type="button" :class="{ active: status() === 'all' }" @click="status.set('all')">All</button>
-            <button type="button" :class="{ active: status() === 'success' }" @click="status.set('success')">Success</button>
-            <button type="button" :class="{ active: status() === 'failed' }" @click="status.set('failed')">Failed</button>
+            <button type="button" :class="{ active: status() === 'all' }" @click="setFilter('status', 'all', status)">All</button>
+            <button type="button" :class="{ active: status() === 'success' }" @click="setFilter('status', 'success', status)">Success</button>
+            <button type="button" :class="{ active: status() === 'failed' }" @click="setFilter('status', 'failed', status)">Failed</button>
           </div>
           <label class="select-filter">
             <span>Site</span>
-            <select :value="site()" @change="site.set($event.target.value)">
+            <select :value="site()" @change="setFilter('site', $event.target.value, site)">
               <option value="all">All sites</option>
               <template :for="s in sites()">
                 <option :value="s">{{ s }}</option>
@@ -89,7 +87,7 @@ async function runOp() {
           </label>
         </div>
         <table>
-          <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th><th>Action</th></tr></thead>
+          <thead><tr><th scope="col">Build</th><th scope="col">Site</th><th scope="col">Branch</th><th scope="col">Status</th><th scope="col">Steps</th><th scope="col">By</th><th scope="col">Took</th><th scope="col">When</th><th scope="col">Action</th></tr></thead>
           <tbody>
             <template :for="d in filtered()">
               <tr>
@@ -101,7 +99,7 @@ async function runOp() {
                 <td style="color:var(--txt2)">{{ d.by }}</td>
                 <td class="mono">{{ d.took }}</td>
                 <td style="color:var(--txt3)">{{ d.when }}</td>
-                <td class="table-actions"><button class="btn danger sm" type="button" @click="askOp('rollback:' + d.site, d.site, 'roll back', d.release)">Roll back</button></td>
+                <td class="table-actions">@if (canRollback)<button class="btn danger sm" type="button" :aria-label="'Roll back ' + d.site + ' deployment ' + d.sha" @click="askOp('rollback:' + d.site, d.site, 'roll back', d.release)">Roll back</button>@else<span class="mono">read only</span>@endif</td>
               </tr>
             </template>
           </tbody>
@@ -110,7 +108,7 @@ async function runOp() {
         <div class="compact empty" @show="deps().length > 0 && filtered().length === 0"><strong>No matches</strong><span>Try a different status or site filter.</span></div>
         @include('../partials/op-confirm')
         @if (isMember)
-          <p class="note">Roll back one of your sites to any prior release.</p>
+          <p class="note">Deployment history is visible in this scope. Rollback requires an organization administrator because it changes server-wide release state.</p>
         @else
           <p class="note">Roll back a site to any prior release, or inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
         @endif

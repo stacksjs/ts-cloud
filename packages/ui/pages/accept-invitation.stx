@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('./partials/head', { title: 'ts-cloud - Accept invitation' })</head>
+<body class="auth-page">
+  <main class="auth-card" id="main-content">
+    <a class="brand" href="/"><span class="dot"></span><span>ts-cloud</span></a>
+    <div>
+      <span class="context-label">Organization invitation</span>
+      <h1>Join your team</h1>
+      <p>Choose the dashboard username and password you will use after this invitation is accepted.</p>
+    </div>
+    <form id="accept-invitation-form" class="auth-form">
+      <div class="field-block"><label for="invite-name">Name</label><input id="invite-name" name="name" autocomplete="name" placeholder="Chris Breuer"></div>
+      <div class="field-block"><label for="invite-username">Username</label><input id="invite-username" name="username" autocomplete="username" minlength="2" maxlength="32" required></div>
+      <div class="field-block"><label for="invite-password">Password</label><input id="invite-password" name="password" type="password" autocomplete="new-password" minlength="12" required><small>At least 12 characters.</small></div>
+      <button class="btn" type="submit">Accept invitation</button>
+      <div id="invitation-status" class="auth-status" role="status"></div>
+    </form>
+    <p class="note">If this link expired or was already used, ask an organization owner to resend the invitation.</p>
+  </main>
+  <script>
+  (() => {
+    const form = document.querySelector('#accept-invitation-form')
+    const status = document.querySelector('#invitation-status')
+    const token = new URLSearchParams(location.search).get('token') || ''
+    if (!token) {
+      status.textContent = 'This invitation link is missing its token. Ask an owner to resend it.'
+      form.querySelector('button').disabled = true
+    }
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      const data = new FormData(form)
+      status.textContent = 'Accepting invitation…'
+      const response = await fetch('/api/invitations/accept', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token, name: data.get('name'), username: data.get('username'), password: data.get('password') }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        status.textContent = result.error || 'This invitation could not be accepted.'
+        return
+      }
+      status.textContent = 'Invitation accepted. Opening your dashboard…'
+      location.assign('/')
+    })
+  })()
+  </script>
+</body>
+</html>

@@ -721,9 +721,7 @@ describe('Synthetics Manager', () => {
       const cf = manager.generateCanaryRoleCF()
 
       expect(cf.Type).toBe('AWS::IAM::Role')
-      expect(cf.Properties.ManagedPolicyArns).toContain(
-        'arn:aws:iam::aws:policy/CloudWatchSyntheticsFullAccess'
-      )
+      expect(cf.Properties.ManagedPolicyArns).toContain('arn:aws:iam::aws:policy/CloudWatchSyntheticsFullAccess')
       expect(cf.Properties.Policies[0].PolicyName).toBe('CanaryS3Policy')
     })
   })

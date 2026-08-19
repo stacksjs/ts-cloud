@@ -24,7 +24,6 @@
  * secret), so it comes from `HCLOUD_TOKEN` — but that is a convention, not a
  * different precedence.
  */
-
 import type { CloudConfig } from '@ts-cloud/core'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -47,8 +46,7 @@ export function expandHome(path: string): string {
 function env(...names: string[]): string | undefined {
   for (const name of names) {
     const value = process.env[name]?.trim()
-    if (value)
-      return value
+    if (value) return value
   }
   return undefined
 }
@@ -56,8 +54,7 @@ function env(...names: string[]): string | undefined {
 function first(...values: Array<string | undefined>): string | undefined {
   for (const value of values) {
     const trimmed = value?.trim()
-    if (trimmed)
-      return trimmed
+    if (trimmed) return trimmed
   }
   return undefined
 }
@@ -75,8 +72,9 @@ export function resolveHetznerApiToken(explicit?: string, config?: CloudConfig):
 
 /** Datacenter location slug, e.g. `fsn1`, `nbg1`, `hel1`. */
 export function resolveHetznerLocation(config?: CloudConfig, explicit?: string): string {
-  return first(explicit, config?.hetzner?.location, env('HCLOUD_LOCATION', 'HETZNER_LOCATION'))
-    ?? HETZNER_DEFAULTS.location
+  return (
+    first(explicit, config?.hetzner?.location, env('HCLOUD_LOCATION', 'HETZNER_LOCATION')) ?? HETZNER_DEFAULTS.location
+  )
 }
 
 /**
@@ -88,21 +86,24 @@ export function resolveHetznerLocation(config?: CloudConfig, explicit?: string):
  */
 export function resolveHetznerImage(config?: CloudConfig, explicit?: string): string {
   const compute = config?.infrastructure?.compute as { image?: string } | undefined
-  return first(explicit, compute?.image, config?.hetzner?.image, env('HCLOUD_IMAGE', 'HETZNER_IMAGE'))
-    ?? HETZNER_DEFAULTS.image
+  return (
+    first(explicit, compute?.image, config?.hetzner?.image, env('HCLOUD_IMAGE', 'HETZNER_IMAGE')) ??
+    HETZNER_DEFAULTS.image
+  )
 }
 
 /** SSH user for deploy commands. */
 export function resolveHetznerSshUser(config?: CloudConfig, explicit?: string): string {
-  return first(explicit, config?.hetzner?.sshUser, env('HCLOUD_SSH_USER', 'HETZNER_SSH_USER'))
-    ?? HETZNER_DEFAULTS.sshUser
+  return (
+    first(explicit, config?.hetzner?.sshUser, env('HCLOUD_SSH_USER', 'HETZNER_SSH_USER')) ?? HETZNER_DEFAULTS.sshUser
+  )
 }
 
 /** Absolute path to the SSH private key used for deploy commands. */
 export function resolveHetznerSshPrivateKeyPath(config?: CloudConfig, explicit?: string): string {
   return expandHome(
-    first(explicit, config?.hetzner?.sshPrivateKeyPath, env('HCLOUD_SSH_KEY', 'HETZNER_SSH_KEY'))
-    ?? HETZNER_DEFAULTS.sshPrivateKeyPath,
+    first(explicit, config?.hetzner?.sshPrivateKeyPath, env('HCLOUD_SSH_KEY', 'HETZNER_SSH_KEY')) ??
+      HETZNER_DEFAULTS.sshPrivateKeyPath,
   )
 }
 
@@ -110,10 +111,17 @@ export function resolveHetznerSshPrivateKeyPath(config?: CloudConfig, explicit?:
  * Absolute path to the SSH public key uploaded to Hetzner. Defaults to the
  * private key's path with `.pub`, which is where `ssh-keygen` puts it.
  */
-export function resolveHetznerSshPublicKeyPath(config?: CloudConfig, explicit?: string, privateKeyPath?: string): string {
-  const explicitPath = first(explicit, config?.hetzner?.sshPublicKeyPath, env('HCLOUD_SSH_PUBLIC_KEY', 'HETZNER_SSH_PUBLIC_KEY'))
-  if (explicitPath)
-    return expandHome(explicitPath)
+export function resolveHetznerSshPublicKeyPath(
+  config?: CloudConfig,
+  explicit?: string,
+  privateKeyPath?: string,
+): string {
+  const explicitPath = first(
+    explicit,
+    config?.hetzner?.sshPublicKeyPath,
+    env('HCLOUD_SSH_PUBLIC_KEY', 'HETZNER_SSH_PUBLIC_KEY'),
+  )
+  if (explicitPath) return expandHome(explicitPath)
   return `${privateKeyPath ?? resolveHetznerSshPrivateKeyPath(config)}.pub`
 }
 
@@ -137,7 +145,10 @@ export interface HetznerOverrides {
 }
 
 /** Resolve the full Hetzner settings for `config`, applying `overrides` first. */
-export function resolveHetznerSettings(config?: CloudConfig, overrides: HetznerOverrides = {}): ResolvedHetznerSettings {
+export function resolveHetznerSettings(
+  config?: CloudConfig,
+  overrides: HetznerOverrides = {},
+): ResolvedHetznerSettings {
   const sshPrivateKeyPath = resolveHetznerSshPrivateKeyPath(config, overrides.sshPrivateKeyPath)
   return {
     apiToken: resolveHetznerApiToken(overrides.apiToken, config),

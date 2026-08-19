@@ -1,10 +1,10 @@
+/* pickier-disable quotes */
 /**
  * Pre-Deployment Security Scanner
  * Scans source code for leaked secrets, credentials, and sensitive data before deployment
  */
-
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, extname } from 'node:path'
+import { extname, join, relative } from 'node:path'
 
 export interface SecretPattern {
   name: string
@@ -57,7 +57,8 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   },
   {
     name: 'AWS Secret Access Key',
-    pattern: /(?:aws_secret_access_key|aws_secret_key|secret_access_key|secretAccessKey)\s*[=:]\s*['"]?([A-Za-z0-9/+=]{40})['"]?/gi,
+    pattern:
+      /(?:aws_secret_access_key|aws_secret_key|secret_access_key|secretAccessKey)['"]?\s*[=:]\s*['"]?([A-Za-z0-9/+=]{40})['"]?/gi,
     severity: 'critical',
     description: 'AWS Secret Access Key detected',
   },
@@ -173,7 +174,8 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   },
   {
     name: 'Heroku API Key',
-    pattern: /(?:heroku[_-]?api[_-]?key)\s*[=:]\s*['"]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})['"]?/gi,
+    pattern:
+      /(?:heroku[_-]?api[_-]?key)\s*[=:]\s*['"]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})['"]?/gi,
     severity: 'critical',
     description: 'Heroku API key detected',
   },
@@ -187,7 +189,8 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   },
   {
     name: 'Database Password',
-    pattern: /(?:db[_-]?password|database[_-]?password|mysql[_-]?password|postgres[_-]?password)\s*[=:]\s*['"]?([^'"\s]{8,})['"]?/gi,
+    pattern:
+      /(?:db[_-]?password|database[_-]?password|mysql[_-]?password|postgres[_-]?password)\s*[=:]\s*['"]?([^'"\s]{8,})['"]?/gi,
     severity: 'critical',
     description: 'Database password detected',
   },
@@ -265,7 +268,8 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   // Environment Variable Leaks
   {
     name: 'Env Variable with Secret',
-    pattern: /(?:process\.env\.)((?=[A-Z_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH))[A-Z_]+)\s*(?:===?\s*['"]([^'"]+)['"])?/g,
+    pattern:
+      /(?:process\.env\.)((?=[A-Z_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH))[A-Z_]+)\s*(?:===?\s*['"]([^'"]+)['"])?/g,
     severity: 'medium',
     description: 'Environment variable containing secret may be exposed',
   },
@@ -318,6 +322,10 @@ const DEFAULT_EXCLUDE_DIRS = [
   '.turbo',
   '.next',
   '.nuxt',
+  // Framework upgrades keep recoverable source snapshots in this generated
+  // directory. Scanning the copies adds no coverage and can report the same
+  // source token repeatedly after several upgrades.
+  'framework.bak',
   // Local toolchain caches — typically vendored .d.ts/package.json files
   // that trip generic secret patterns (base64-ish strings, hashes).
   'pantry',
@@ -425,8 +433,7 @@ export class PreDeployScanner {
         const fileFindings = this.scanContent(content, relativePath, skipPatterns)
         findings.push(...fileFindings)
         scannedFiles++
-      }
-      catch {
+      } catch {
         // Skip files that can't be read (binary, etc.)
         continue
       }
@@ -434,10 +441,10 @@ export class PreDeployScanner {
 
     // Calculate summary
     const summary = {
-      critical: findings.filter(f => f.pattern.severity === 'critical').length,
-      high: findings.filter(f => f.pattern.severity === 'high').length,
-      medium: findings.filter(f => f.pattern.severity === 'medium').length,
-      low: findings.filter(f => f.pattern.severity === 'low').length,
+      critical: findings.filter((f) => f.pattern.severity === 'critical').length,
+      high: findings.filter((f) => f.pattern.severity === 'high').length,
+      medium: findings.filter((f) => f.pattern.severity === 'medium').length,
+      low: findings.filter((f) => f.pattern.severity === 'low').length,
     }
 
     // Determine if scan passed based on severity threshold
@@ -493,11 +500,39 @@ export class PreDeployScanner {
           continue
         }
 
+        const candidate = match[1] || match[0]
+
+        // A bare 40-character hexadecimal value is overwhelmingly a SHA-1
+        // source/content digest, especially in manifests and lock files. Keep
+        // the named AWS credential rule strict, but do not let the generic
+        // base64-shaped fallback classify ordinary digests as credentials.
+        if (pattern.name === 'AWS Secret Key (Generic)' && /^[a-f0-9]{40}$/i.test(candidate)) {
+          continue
+        }
+
+        // A bare identifier can also be exactly 40 characters long. Requiring
+        // three character classes keeps the generic fallback focused on
+        // base64-shaped random material instead of class/action names made
+        // entirely from letters. The named AWS rule above remains strict and
+        // catches credentials with unusual low-diversity values.
+        if (pattern.name === 'AWS Secret Key (Generic)' && !this.hasSecretCharacterDiversity(candidate)) {
+          continue
+        }
+
+        if (
+          pattern.name === 'AWS Secret Key (Generic)' &&
+          /^(?:Actions|Commands|Controllers|Handlers|Jobs|Listeners|Middleware|Models|Resources|Services)\//.test(
+            candidate,
+          )
+        ) {
+          continue
+        }
+
         // Entropy guard — real secrets/keys are high-entropy strings.
         // ASCII section dividers (`====...===`) and other low-diversity
         // matches (`0000...000`, `XXXX...XXX`) overwhelmingly produce
         // false positives against the generic 40-char base64 pattern.
-        if (this.isLowEntropy(match[1] || match[0])) {
+        if (this.isLowEntropy(candidate)) {
           continue
         }
 
@@ -556,7 +591,12 @@ export class PreDeployScanner {
 
     // Check if it's in a comment
     const trimmedContext = context.trim()
-    if (trimmedContext.startsWith('//') || trimmedContext.startsWith('#') || trimmedContext.startsWith('*') || trimmedContext.startsWith('/*')) {
+    if (
+      trimmedContext.startsWith('//') ||
+      trimmedContext.startsWith('#') ||
+      trimmedContext.startsWith('*') ||
+      trimmedContext.startsWith('/*')
+    ) {
       // Only skip if it's clearly documentation
       if (lowerContext.includes('example') || lowerContext.includes('format:') || lowerContext.includes('e.g.')) {
         return true
@@ -588,6 +628,12 @@ export class PreDeployScanner {
     return false
   }
 
+  private hasSecretCharacterDiversity(value: string): boolean {
+    const hasRandomAlphabetMarker = /[\d+=]/.test(value)
+    const characterClasses = [/[a-z]/.test(value), /[A-Z]/.test(value), /\d/.test(value), /[/+=]/.test(value)]
+    return hasRandomAlphabetMarker && characterClasses.filter(Boolean).length >= 3
+  }
+
   /**
    * Mask a secret for display
    */
@@ -597,7 +643,11 @@ export class PreDeployScanner {
     }
 
     const visibleChars = Math.min(4, Math.floor(value.length * 0.2))
-    return value.substring(0, visibleChars) + '*'.repeat(value.length - visibleChars * 2) + value.substring(value.length - visibleChars)
+    return (
+      value.substring(0, visibleChars) +
+      '*'.repeat(value.length - visibleChars * 2) +
+      value.substring(value.length - visibleChars)
+    )
   }
 
   /**
@@ -618,8 +668,7 @@ export class PreDeployScanner {
           if (!excludeDirs.includes(entry.name)) {
             scan(fullPath)
           }
-        }
-        else if (entry.isFile()) {
+        } else if (entry.isFile()) {
           const ext = extname(entry.name).toLowerCase()
           // Include files with matching extensions or no extension (like .env files)
           if (extensions.includes(ext) || entry.name.startsWith('.env') || entry.name.endsWith('.config')) {
@@ -646,15 +695,13 @@ export class PreDeployScanner {
         if (fileName.endsWith(suffix)) {
           return true
         }
-      }
-      else if (pattern.endsWith('*')) {
+      } else if (pattern.endsWith('*')) {
         // Prefix wildcard (e.g. '.env.*' to match .env.production etc.)
         const prefix = pattern.substring(0, pattern.length - 1)
         if (fileName.startsWith(prefix)) {
           return true
         }
-      }
-      else if (fileName === pattern) {
+      } else if (fileName === pattern) {
         return true
       }
     }

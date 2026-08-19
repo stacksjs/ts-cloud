@@ -2,7 +2,6 @@
  * AWS Support API Operations
  * Automates support ticket creation for service limit increases and sandbox exits
  */
-
 import { AWSClient } from './client'
 
 export interface SupportCase {
@@ -117,7 +116,7 @@ export class SupportClient {
     includeResolved?: boolean
     maxResults?: number
     nextToken?: string
-  }): Promise<{ cases: SupportCase[], nextToken?: string }> {
+  }): Promise<{ cases: SupportCase[]; nextToken?: string }> {
     const result = await this.client.request({
       service: 'support',
       region: this.region,
@@ -135,7 +134,7 @@ export class SupportClient {
       }),
     })
 
-    return result as { cases: SupportCase[], nextToken?: string }
+    return result as { cases: SupportCase[]; nextToken?: string }
   }
 
   /**
@@ -164,7 +163,7 @@ export class SupportClient {
   /**
    * Resolve a support case
    */
-  async resolveCase(caseId: string): Promise<{ initialCaseStatus?: string, finalCaseStatus?: string }> {
+  async resolveCase(caseId: string): Promise<{ initialCaseStatus?: string; finalCaseStatus?: string }> {
     const result = await this.client.request({
       service: 'support',
       region: this.region,
@@ -179,7 +178,7 @@ export class SupportClient {
       }),
     })
 
-    return result as { initialCaseStatus?: string, finalCaseStatus?: string }
+    return result as { initialCaseStatus?: string; finalCaseStatus?: string }
   }
 
   /**
@@ -207,7 +206,7 @@ export class SupportClient {
   /**
    * Get available severity levels
    */
-  async describeSeverityLevels(): Promise<Array<{ code: string, name: string }>> {
+  async describeSeverityLevels(): Promise<Array<{ code: string; name: string }>> {
     const result = await this.client.request({
       service: 'support',
       region: this.region,
@@ -222,7 +221,7 @@ export class SupportClient {
       }),
     })
 
-    return (result as { severityLevels?: Array<{ code: string, name: string }> }).severityLevels || []
+    return (result as { severityLevels?: Array<{ code: string; name: string }> }).severityLevels || []
   }
 }
 

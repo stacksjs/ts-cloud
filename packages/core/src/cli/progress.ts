@@ -162,7 +162,7 @@ export class MultiStepProgress {
   private currentStepIndex: number = 0
 
   constructor(stepNames: string[]) {
-    this.steps = stepNames.map(name => ({
+    this.steps = stepNames.map((name) => ({
       name,
       status: 'pending',
     }))
@@ -273,14 +273,14 @@ export class MultiStepProgress {
    * Check if all steps complete
    */
   isComplete(): boolean {
-    return this.steps.every(step => step.status === 'completed' || step.status === 'skipped')
+    return this.steps.every((step) => step.status === 'completed' || step.status === 'skipped')
   }
 
   /**
    * Check if any step failed
    */
   hasFailed(): boolean {
-    return this.steps.some(step => step.status === 'failed')
+    return this.steps.some((step) => step.status === 'failed')
   }
 }
 

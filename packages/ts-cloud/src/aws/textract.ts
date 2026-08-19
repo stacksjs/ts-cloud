@@ -3,7 +3,6 @@
  * Document OCR, form extraction, table extraction
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -39,12 +38,45 @@ export interface Geometry {
 }
 
 export interface Relationship {
-  Type?: 'VALUE' | 'CHILD' | 'COMPLEX_FEATURES' | 'MERGED_CELL' | 'TITLE' | 'ANSWER' | 'TABLE' | 'TABLE_TITLE' | 'TABLE_FOOTER'
+  Type?:
+    | 'VALUE'
+    | 'CHILD'
+    | 'COMPLEX_FEATURES'
+    | 'MERGED_CELL'
+    | 'TITLE'
+    | 'ANSWER'
+    | 'TABLE'
+    | 'TABLE_TITLE'
+    | 'TABLE_FOOTER'
   Ids?: string[]
 }
 
 export interface Block {
-  BlockType?: 'KEY_VALUE_SET' | 'PAGE' | 'LINE' | 'WORD' | 'TABLE' | 'CELL' | 'SELECTION_ELEMENT' | 'MERGED_CELL' | 'TITLE' | 'QUERY' | 'QUERY_RESULT' | 'SIGNATURE' | 'TABLE_TITLE' | 'TABLE_FOOTER' | 'LAYOUT_TEXT' | 'LAYOUT_TITLE' | 'LAYOUT_HEADER' | 'LAYOUT_FOOTER' | 'LAYOUT_SECTION_HEADER' | 'LAYOUT_PAGE_NUMBER' | 'LAYOUT_LIST' | 'LAYOUT_FIGURE' | 'LAYOUT_TABLE' | 'LAYOUT_KEY_VALUE'
+  BlockType?:
+    | 'KEY_VALUE_SET'
+    | 'PAGE'
+    | 'LINE'
+    | 'WORD'
+    | 'TABLE'
+    | 'CELL'
+    | 'SELECTION_ELEMENT'
+    | 'MERGED_CELL'
+    | 'TITLE'
+    | 'QUERY'
+    | 'QUERY_RESULT'
+    | 'SIGNATURE'
+    | 'TABLE_TITLE'
+    | 'TABLE_FOOTER'
+    | 'LAYOUT_TEXT'
+    | 'LAYOUT_TITLE'
+    | 'LAYOUT_HEADER'
+    | 'LAYOUT_FOOTER'
+    | 'LAYOUT_SECTION_HEADER'
+    | 'LAYOUT_PAGE_NUMBER'
+    | 'LAYOUT_LIST'
+    | 'LAYOUT_FIGURE'
+    | 'LAYOUT_TABLE'
+    | 'LAYOUT_KEY_VALUE'
   Confidence?: number
   Text?: string
   TextType?: 'HANDWRITING' | 'PRINTED'
@@ -55,7 +87,17 @@ export interface Block {
   Geometry?: Geometry
   Id?: string
   Relationships?: Relationship[]
-  EntityTypes?: ('KEY' | 'VALUE' | 'COLUMN_HEADER' | 'TABLE_TITLE' | 'TABLE_FOOTER' | 'TABLE_SECTION_TITLE' | 'TABLE_SUMMARY' | 'STRUCTURED_TABLE' | 'SEMI_STRUCTURED_TABLE')[]
+  EntityTypes?: (
+    | 'KEY'
+    | 'VALUE'
+    | 'COLUMN_HEADER'
+    | 'TABLE_TITLE'
+    | 'TABLE_FOOTER'
+    | 'TABLE_SECTION_TITLE'
+    | 'TABLE_SUMMARY'
+    | 'STRUCTURED_TABLE'
+    | 'SEMI_STRUCTURED_TABLE'
+  )[]
   SelectionStatus?: 'SELECTED' | 'NOT_SELECTED'
   Page?: number
   Query?: {
@@ -468,14 +510,18 @@ export class TextractClient {
   /**
    * Start async text detection job
    */
-  async startDocumentTextDetection(params: StartDocumentTextDetectionCommandInput): Promise<StartDocumentTextDetectionCommandOutput> {
+  async startDocumentTextDetection(
+    params: StartDocumentTextDetectionCommandInput,
+  ): Promise<StartDocumentTextDetectionCommandOutput> {
     return this.request('StartDocumentTextDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of text detection job
    */
-  async getDocumentTextDetection(params: GetDocumentTextDetectionCommandInput): Promise<GetDocumentTextDetectionCommandOutput> {
+  async getDocumentTextDetection(
+    params: GetDocumentTextDetectionCommandInput,
+  ): Promise<GetDocumentTextDetectionCommandOutput> {
     return this.request('GetDocumentTextDetection', params as unknown as Record<string, unknown>)
   }
 
@@ -530,7 +576,7 @@ export class TextractClient {
    */
   async extractText(document: Document): Promise<string[]> {
     const result = await this.detectDocumentText({ Document: document })
-    return result.Blocks?.filter(b => b.BlockType === 'LINE').map(b => b.Text || '') || []
+    return result.Blocks?.filter((b) => b.BlockType === 'LINE').map((b) => b.Text || '') || []
   }
 
   /**
@@ -551,14 +597,14 @@ export class TextractClient {
 
     const blocks = result.Blocks || []
     const blockMap = new Map<string, Block>()
-    blocks.forEach(b => b.Id && blockMap.set(b.Id, b))
+    blocks.forEach((b) => b.Id && blockMap.set(b.Id, b))
 
     const forms: Array<{ key: string; value: string; confidence: number }> = []
 
     for (const block of blocks) {
       if (block.BlockType === 'KEY_VALUE_SET' && block.EntityTypes?.includes('KEY')) {
         const keyText = this.getBlockText(block, blockMap)
-        const valueBlock = block.Relationships?.find(r => r.Type === 'VALUE')
+        const valueBlock = block.Relationships?.find((r) => r.Type === 'VALUE')
         let valueText = ''
         if (valueBlock?.Ids) {
           for (const id of valueBlock.Ids) {
@@ -588,14 +634,14 @@ export class TextractClient {
 
     const blocks = result.Blocks || []
     const blockMap = new Map<string, Block>()
-    blocks.forEach(b => b.Id && blockMap.set(b.Id, b))
+    blocks.forEach((b) => b.Id && blockMap.set(b.Id, b))
 
     const tables: Array<{ rows: string[][] }> = []
 
     for (const block of blocks) {
       if (block.BlockType === 'TABLE') {
-        const cellIds = block.Relationships?.find(r => r.Type === 'CHILD')?.Ids || []
-        const cells: Block[] = cellIds.map(id => blockMap.get(id)).filter(Boolean) as Block[]
+        const cellIds = block.Relationships?.find((r) => r.Type === 'CHILD')?.Ids || []
+        const cells: Block[] = cellIds.map((id) => blockMap.get(id)).filter(Boolean) as Block[]
 
         // Find max row and column
         let maxRow = 0
@@ -671,12 +717,15 @@ export class TextractClient {
   /**
    * Answer questions about a document
    */
-  async queryDocument(document: Document, questions: string[]): Promise<Array<{ question: string; answer: string; confidence: number }>> {
+  async queryDocument(
+    document: Document,
+    questions: string[],
+  ): Promise<Array<{ question: string; answer: string; confidence: number }>> {
     const result = await this.analyzeDocument({
       Document: document,
       FeatureTypes: ['QUERIES'],
       QueriesConfig: {
-        Queries: questions.map(q => ({ Text: q })),
+        Queries: questions.map((q) => ({ Text: q })),
       },
     })
 
@@ -686,10 +735,10 @@ export class TextractClient {
     for (const block of blocks) {
       if (block.BlockType === 'QUERY_RESULT' && block.Text) {
         // Find the corresponding query
-        const queryBlock = blocks.find(b =>
-          b.BlockType === 'QUERY' && b.Relationships?.some(r =>
-            r.Type === 'ANSWER' && r.Ids?.includes(block.Id || ''),
-          ),
+        const queryBlock = blocks.find(
+          (b) =>
+            b.BlockType === 'QUERY' &&
+            b.Relationships?.some((r) => r.Type === 'ANSWER' && r.Ids?.includes(block.Id || '')),
         )
         answers.push({
           question: queryBlock?.Query?.Text || '',
@@ -722,7 +771,7 @@ export class TextractClient {
       if (result.JobStatus === 'FAILED') {
         throw new Error(`Textract job ${jobId} failed`)
       }
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for Textract job ${jobId}`)
@@ -731,8 +780,8 @@ export class TextractClient {
   private getBlockText(block: Block, blockMap: Map<string, Block>): string {
     if (block.Text) return block.Text
 
-    const childIds = block.Relationships?.find(r => r.Type === 'CHILD')?.Ids || []
-    return childIds.map(id => blockMap.get(id)?.Text || '').join(' ')
+    const childIds = block.Relationships?.find((r) => r.Type === 'CHILD')?.Ids || []
+    return childIds.map((id) => blockMap.get(id)?.Text || '').join(' ')
   }
 }
 
@@ -743,11 +792,7 @@ export class TextractClient {
 /**
  * Quick text extraction from S3 document
  */
-export async function extractTextFromS3(
-  bucket: string,
-  key: string,
-  region?: string,
-): Promise<string> {
+export async function extractTextFromS3(bucket: string, key: string, region?: string): Promise<string> {
   const client = new TextractClient(region || 'us-east-1')
   const lines = await client.extractTextFromS3(bucket, key)
   return lines.join('\n')
@@ -763,18 +808,14 @@ export async function extractFormsFromS3(
 ): Promise<Record<string, string>> {
   const client = new TextractClient(region || 'us-east-1')
   const forms = await client.extractForms({ S3Object: { Bucket: bucket, Name: key } })
-  return Object.fromEntries(forms.map(f => [f.key, f.value]))
+  return Object.fromEntries(forms.map((f) => [f.key, f.value]))
 }
 
 /**
  * Quick table extraction from S3 document
  */
-export async function extractTablesFromS3(
-  bucket: string,
-  key: string,
-  region?: string,
-): Promise<string[][][]> {
+export async function extractTablesFromS3(bucket: string, key: string, region?: string): Promise<string[][][]> {
   const client = new TextractClient(region || 'us-east-1')
   const tables = await client.extractTables({ S3Object: { Bucket: bucket, Name: key } })
-  return tables.map(t => t.rows)
+  return tables.map((t) => t.rows)
 }

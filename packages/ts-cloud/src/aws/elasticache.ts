@@ -2,7 +2,6 @@
  * AWS ElastiCache Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient } from './client'
 
 export interface CacheCluster {
@@ -118,7 +117,7 @@ export class ElastiCacheClient {
     port?: number
     securityGroupIds?: string[]
     subnetGroupName?: string
-    tags?: Array<{ Key: string, Value: string }>
+    tags?: Array<{ Key: string; Value: string }>
   }): Promise<{ CacheCluster: CacheCluster }> {
     const params: Record<string, any> = {
       Action: 'CreateCacheCluster',
@@ -270,15 +269,17 @@ export class ElastiCacheClient {
   private parseCacheClusters(result: any): CacheCluster[] {
     // Simplified parser - would need proper XML parsing in production
     if (result.CacheClusterId) {
-      return [{
-        CacheClusterId: result.CacheClusterId,
-        CacheClusterStatus: result.CacheClusterStatus || 'available',
-        Engine: result.Engine || 'redis',
-        EngineVersion: result.EngineVersion || '7.0',
-        CacheNodeType: result.CacheNodeType || 'cache.t3.micro',
-        NumCacheNodes: Number.parseInt(result.NumCacheNodes || '1'),
-        CacheClusterCreateTime: result.CacheClusterCreateTime || new Date().toISOString(),
-      }]
+      return [
+        {
+          CacheClusterId: result.CacheClusterId,
+          CacheClusterStatus: result.CacheClusterStatus || 'available',
+          Engine: result.Engine || 'redis',
+          EngineVersion: result.EngineVersion || '7.0',
+          CacheNodeType: result.CacheNodeType || 'cache.t3.micro',
+          NumCacheNodes: Number.parseInt(result.NumCacheNodes || '1'),
+          CacheClusterCreateTime: result.CacheClusterCreateTime || new Date().toISOString(),
+        },
+      ]
     }
 
     return []

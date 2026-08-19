@@ -17,10 +17,9 @@ describe('buildAuthorizedKeysScript', () => {
   })
 
   it('honours a custom authorized_keys path', () => {
-    const script = buildAuthorizedKeysScript(
-      [{ name: 'k', publicKey: 'ssh-rsa AAAA' }],
-      { path: '/home/deploy/.ssh/authorized_keys' },
-    ).join('\n')
+    const script = buildAuthorizedKeysScript([{ name: 'k', publicKey: 'ssh-rsa AAAA' }], {
+      path: '/home/deploy/.ssh/authorized_keys',
+    }).join('\n')
     expect(script).toContain('mkdir -p /home/deploy/.ssh')
     expect(script).toContain('/home/deploy/.ssh/authorized_keys')
   })

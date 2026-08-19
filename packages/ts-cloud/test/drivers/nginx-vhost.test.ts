@@ -173,11 +173,7 @@ describe('custom nginx config (templates + per-site snippets)', () => {
       { template: 'hardening', serverSnippet: ['location /ping { return 200; }'] },
       { hardening: ['add_header X-Robots-Tag noindex;', 'server_tokens off;'] },
     )
-    expect(lines).toEqual([
-      'add_header X-Robots-Tag noindex;',
-      'server_tokens off;',
-      'location /ping { return 200; }',
-    ])
+    expect(lines).toEqual(['add_header X-Robots-Tag noindex;', 'server_tokens off;', 'location /ping { return 200; }'])
   })
 
   it('ignores an unknown template name and handles no customization', () => {
@@ -204,12 +200,24 @@ describe('custom nginx config (templates + per-site snippets)', () => {
 
 describe('HSTS, TLS protocols, and IP security rules', () => {
   it('emits an HSTS header (default 1yr + includeSubDomains)', () => {
-    const v = buildNginxVhost({ siteName: 'app', domain: 'app.test', type: 'laravel', appDir: '/var/www/app/current', hsts: true })
+    const v = buildNginxVhost({
+      siteName: 'app',
+      domain: 'app.test',
+      type: 'laravel',
+      appDir: '/var/www/app/current',
+      hsts: true,
+    })
     expect(v).toContain('add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;')
   })
 
   it('customizes HSTS max-age + preload', () => {
-    const v = buildNginxVhost({ siteName: 'app', domain: 'app.test', type: 'laravel', appDir: '/x', hsts: { maxAge: 600, includeSubDomains: false, preload: true } })
+    const v = buildNginxVhost({
+      siteName: 'app',
+      domain: 'app.test',
+      type: 'laravel',
+      appDir: '/x',
+      hsts: { maxAge: 600, includeSubDomains: false, preload: true },
+    })
     expect(v).toContain('Strict-Transport-Security "max-age=600; preload"')
   })
 
@@ -219,7 +227,13 @@ describe('HSTS, TLS protocols, and IP security rules', () => {
   })
 
   it('renders allow-list security rules (allow + deny all)', () => {
-    const v = buildNginxVhost({ siteName: 'app', domain: 'app.test', type: 'laravel', appDir: '/x', security: { allow: ['10.0.0.0/8', '1.2.3.4'] } })
+    const v = buildNginxVhost({
+      siteName: 'app',
+      domain: 'app.test',
+      type: 'laravel',
+      appDir: '/x',
+      security: { allow: ['10.0.0.0/8', '1.2.3.4'] },
+    })
     expect(v).toContain('    allow 10.0.0.0/8;')
     expect(v).toContain('    allow 1.2.3.4;')
     expect(v).toContain('    deny all;')
@@ -228,13 +242,26 @@ describe('HSTS, TLS protocols, and IP security rules', () => {
   it('renders deny rules without an allow-list deny-all when only deny given', () => {
     // static type has no dotfile `deny all;`, so the only deny-all would be the
     // security allow-list one — which must NOT appear for a deny-only rule.
-    const v = buildNginxVhost({ siteName: 'app', domain: 'app.test', type: 'static', appDir: '/x', security: { deny: ['9.9.9.9'] } })
+    const v = buildNginxVhost({
+      siteName: 'app',
+      domain: 'app.test',
+      type: 'static',
+      appDir: '/x',
+      security: { deny: ['9.9.9.9'] },
+    })
     expect(v).toContain('    deny 9.9.9.9;')
     expect(v).not.toContain('deny all;')
   })
 
   it('adds ssl_protocols to the custom-cert :443 block', () => {
-    const v = buildNginxVhost({ siteName: 'app', domain: 'app.test', type: 'laravel', appDir: '/x', ssl: { certPath: '/c', keyPath: '/k' }, tlsProtocols: ['TLSv1.2', 'TLSv1.3'] })
+    const v = buildNginxVhost({
+      siteName: 'app',
+      domain: 'app.test',
+      type: 'laravel',
+      appDir: '/x',
+      ssl: { certPath: '/c', keyPath: '/k' },
+      tlsProtocols: ['TLSv1.2', 'TLSv1.3'],
+    })
     expect(v).toContain('ssl_protocols TLSv1.2 TLSv1.3;')
     expect(v).toContain('listen 443 ssl;')
   })
@@ -242,8 +269,13 @@ describe('HSTS, TLS protocols, and IP security rules', () => {
 
 describe('WordPress specialization', () => {
   it('serves WordPress from the release root (not public/) with WP hardening', () => {
-    const v = buildNginxVhost({ siteName: 'blog', domain: 'blog.test', type: 'wordpress', appDir: '/var/www/blog/current' })
-    expect(v).toContain('root /var/www/blog/current;')        // not /public
+    const v = buildNginxVhost({
+      siteName: 'blog',
+      domain: 'blog.test',
+      type: 'wordpress',
+      appDir: '/var/www/blog/current',
+    })
+    expect(v).toContain('root /var/www/blog/current;') // not /public
     expect(v).toContain('try_files $uri $uri/ /index.php?$query_string;')
     expect(v).toContain('location = /xmlrpc.php { deny all; }')
     expect(v).toContain('/wp-content/uploads/.*\\.php$ { deny all; }')

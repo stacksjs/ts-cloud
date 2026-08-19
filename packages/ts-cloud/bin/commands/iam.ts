@@ -1,7 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
 import * as cli from '../../src/utils/cli'
 import { IAMClient } from '../../src/aws/iam'
-import { loadValidatedConfig } from './shared'
 
 export function registerIamCommands(app: CLI): void {
   app
@@ -21,7 +20,7 @@ export function registerIamCommands(app: CLI): void {
         let roles = result.Roles || []
 
         if (options.prefix) {
-          roles = roles.filter(r => r.RoleName?.startsWith(options.prefix!))
+          roles = roles.filter((r) => r.RoleName?.startsWith(options.prefix!))
         }
 
         spinner.succeed(`Found ${roles.length} role(s)`)
@@ -33,85 +32,81 @@ export function registerIamCommands(app: CLI): void {
 
         cli.table(
           ['Role Name', 'Path', 'Created', 'Description'],
-          roles.map(role => [
+          roles.map((role) => [
             role.RoleName || 'N/A',
             role.Path || '/',
             role.CreateDate ? new Date(role.CreateDate).toLocaleDateString() : 'N/A',
             (role.Description || '').substring(0, 40),
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list roles: ${error.message}`)
         process.exit(1)
       }
     })
 
-  app
-    .command('iam:role <roleName>', 'Show IAM role details')
-    .action(async (roleName: string) => {
-      cli.header(`IAM Role: ${roleName}`)
+  app.command('iam:role <roleName>', 'Show IAM role details').action(async (roleName: string) => {
+    cli.header(`IAM Role: ${roleName}`)
 
-      try {
-        const iam = new IAMClient()
+    try {
+      const iam = new IAMClient()
 
-        const spinner = new cli.Spinner('Fetching role details...')
-        spinner.start()
+      const spinner = new cli.Spinner('Fetching role details...')
+      spinner.start()
 
-        const role = await iam.getRole({ RoleName: roleName })
+      const role = await iam.getRole({ RoleName: roleName })
 
-        // Get attached policies
-        const attachedPolicies = await iam.listAttachedRolePolicies({ RoleName: roleName })
-        const inlinePolicies = await iam.listRolePolicies({ RoleName: roleName })
+      // Get attached policies
+      const attachedPolicies = await iam.listAttachedRolePolicies({ RoleName: roleName })
+      const inlinePolicies = await iam.listRolePolicies({ RoleName: roleName })
 
-        spinner.succeed('Role details loaded')
+      spinner.succeed('Role details loaded')
 
-        cli.info('\nRole Information:')
-        cli.info(`  Name: ${role.RoleName}`)
-        cli.info(`  ARN: ${role.Arn}`)
-        cli.info(`  Path: ${role.Path}`)
-        cli.info(`  Created: ${role.CreateDate ? new Date(role.CreateDate).toLocaleString() : 'N/A'}`)
+      cli.info('\nRole Information:')
+      cli.info(`  Name: ${role.RoleName}`)
+      cli.info(`  ARN: ${role.Arn}`)
+      cli.info(`  Path: ${role.Path}`)
+      cli.info(`  Created: ${role.CreateDate ? new Date(role.CreateDate).toLocaleString() : 'N/A'}`)
 
-        if (role.Description) {
-          cli.info(`  Description: ${role.Description}`)
-        }
+      if (role.Description) {
+        cli.info(`  Description: ${role.Description}`)
+      }
 
-        if (role.MaxSessionDuration) {
-          cli.info(`  Max Session: ${role.MaxSessionDuration / 3600} hours`)
-        }
+      if (role.MaxSessionDuration) {
+        cli.info(`  Max Session: ${role.MaxSessionDuration / 3600} hours`)
+      }
 
-        if (role.AssumeRolePolicyDocument) {
-          cli.info('\nTrust Policy:')
-          const trustPolicy = JSON.parse(decodeURIComponent(role.AssumeRolePolicyDocument))
-          console.log(JSON.stringify(trustPolicy, null, 2))
-        }
+      if (role.AssumeRolePolicyDocument) {
+        cli.info('\nTrust Policy:')
+        const trustPolicy = JSON.parse(decodeURIComponent(role.AssumeRolePolicyDocument))
+        console.log(JSON.stringify(trustPolicy, null, 2))
+      }
 
-        if (attachedPolicies.AttachedPolicies && attachedPolicies.AttachedPolicies.length > 0) {
-          cli.info('\nAttached Managed Policies:')
-          for (const policy of attachedPolicies.AttachedPolicies) {
-            cli.info(`  - ${policy.PolicyName}`)
-          }
-        }
-
-        if (inlinePolicies.PolicyNames && inlinePolicies.PolicyNames.length > 0) {
-          cli.info('\nInline Policies:')
-          for (const policyName of inlinePolicies.PolicyNames) {
-            cli.info(`  - ${policyName}`)
-          }
-        }
-
-        if (role.Tags && role.Tags.length > 0) {
-          cli.info('\nTags:')
-          for (const tag of role.Tags) {
-            cli.info(`  ${tag.Key}: ${tag.Value}`)
-          }
+      if (attachedPolicies.AttachedPolicies && attachedPolicies.AttachedPolicies.length > 0) {
+        cli.info('\nAttached Managed Policies:')
+        for (const policy of attachedPolicies.AttachedPolicies) {
+          cli.info(`  - ${policy.PolicyName}`)
         }
       }
-      catch (error: any) {
-        cli.error(`Failed to get role: ${error.message}`)
-        process.exit(1)
+
+      if (inlinePolicies.PolicyNames && inlinePolicies.PolicyNames.length > 0) {
+        cli.info('\nInline Policies:')
+        for (const policyName of inlinePolicies.PolicyNames) {
+          cli.info(`  - ${policyName}`)
+        }
       }
-    })
+
+      if (role.Tags && role.Tags.length > 0) {
+        cli.info('\nTags:')
+        for (const tag of role.Tags) {
+          cli.info(`  ${tag.Key}: ${tag.Value}`)
+        }
+      }
+    } catch (error: any) {
+      cli.error(`Failed to get role: ${error.message}`)
+      process.exit(1)
+    }
+  })
 
   app
     .command('iam:policies', 'List IAM policies')
@@ -136,7 +131,7 @@ export function registerIamCommands(app: CLI): void {
         let policies = result.Policies || []
 
         if (options.prefix) {
-          policies = policies.filter(p => p.PolicyName?.startsWith(options.prefix!))
+          policies = policies.filter((p) => p.PolicyName?.startsWith(options.prefix!))
         }
 
         spinner.succeed(`Found ${policies.length} policy(s)`)
@@ -148,19 +143,20 @@ export function registerIamCommands(app: CLI): void {
 
         cli.table(
           ['Policy Name', 'ARN', 'Attachments', 'Created'],
-          policies.slice(0, 50).map(policy => [
-            policy.PolicyName || 'N/A',
-            (policy.Arn || 'N/A').substring(0, 50),
-            (policy.AttachmentCount || 0).toString(),
-            policy.CreateDate ? new Date(policy.CreateDate).toLocaleDateString() : 'N/A',
-          ]),
+          policies
+            .slice(0, 50)
+            .map((policy) => [
+              policy.PolicyName || 'N/A',
+              (policy.Arn || 'N/A').substring(0, 50),
+              (policy.AttachmentCount || 0).toString(),
+              policy.CreateDate ? new Date(policy.CreateDate).toLocaleDateString() : 'N/A',
+            ]),
         )
 
         if (policies.length > 50) {
           cli.info(`\n... and ${policies.length - 50} more policies`)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list policies: ${error.message}`)
         process.exit(1)
       }
@@ -207,8 +203,7 @@ export function registerIamCommands(app: CLI): void {
           const document = JSON.parse(decodeURIComponent(versionResult.Document))
           console.log(JSON.stringify(document, null, 2))
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get policy: ${error.message}`)
         process.exit(1)
       }
@@ -238,7 +233,7 @@ export function registerIamCommands(app: CLI): void {
 
         cli.table(
           ['User Name', 'User ID', 'Path', 'Created', 'Password Last Used'],
-          users.map(user => [
+          users.map((user) => [
             user.UserName || 'N/A',
             user.UserId || 'N/A',
             user.Path || '/',
@@ -246,82 +241,78 @@ export function registerIamCommands(app: CLI): void {
             user.PasswordLastUsed ? new Date(user.PasswordLastUsed).toLocaleDateString() : 'Never',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list users: ${error.message}`)
         process.exit(1)
       }
     })
 
-  app
-    .command('iam:user <userName>', 'Show IAM user details')
-    .action(async (userName: string) => {
-      cli.header(`IAM User: ${userName}`)
+  app.command('iam:user <userName>', 'Show IAM user details').action(async (userName: string) => {
+    cli.header(`IAM User: ${userName}`)
 
-      try {
-        const iam = new IAMClient()
+    try {
+      const iam = new IAMClient()
 
-        const spinner = new cli.Spinner('Fetching user details...')
-        spinner.start()
+      const spinner = new cli.Spinner('Fetching user details...')
+      spinner.start()
 
-        const user = await iam.getUser({ UserName: userName })
+      const user = await iam.getUser({ UserName: userName })
 
-        // Get additional info
-        const [groups, policies, accessKeys] = await Promise.all([
-          iam.listGroupsForUser({ UserName: userName }),
-          iam.listAttachedUserPolicies({ UserName: userName }),
-          iam.listAccessKeys({ UserName: userName }),
-        ])
+      // Get additional info
+      const [groups, policies, accessKeys] = await Promise.all([
+        iam.listGroupsForUser({ UserName: userName }),
+        iam.listAttachedUserPolicies({ UserName: userName }),
+        iam.listAccessKeys({ UserName: userName }),
+      ])
 
-        spinner.succeed('User details loaded')
+      spinner.succeed('User details loaded')
 
-        cli.info('\nUser Information:')
-        cli.info(`  Name: ${user.UserName}`)
-        cli.info(`  ARN: ${user.Arn}`)
-        cli.info(`  User ID: ${user.UserId}`)
-        cli.info(`  Path: ${user.Path}`)
-        cli.info(`  Created: ${user.CreateDate ? new Date(user.CreateDate).toLocaleString() : 'N/A'}`)
+      cli.info('\nUser Information:')
+      cli.info(`  Name: ${user.UserName}`)
+      cli.info(`  ARN: ${user.Arn}`)
+      cli.info(`  User ID: ${user.UserId}`)
+      cli.info(`  Path: ${user.Path}`)
+      cli.info(`  Created: ${user.CreateDate ? new Date(user.CreateDate).toLocaleString() : 'N/A'}`)
 
-        if (user.PasswordLastUsed) {
-          cli.info(`  Password Last Used: ${new Date(user.PasswordLastUsed).toLocaleString()}`)
+      if (user.PasswordLastUsed) {
+        cli.info(`  Password Last Used: ${new Date(user.PasswordLastUsed).toLocaleString()}`)
+      }
+
+      if (groups.Groups && groups.Groups.length > 0) {
+        cli.info('\nGroups:')
+        for (const group of groups.Groups) {
+          cli.info(`  - ${group.GroupName}`)
         }
+      }
 
-        if (groups.Groups && groups.Groups.length > 0) {
-          cli.info('\nGroups:')
-          for (const group of groups.Groups) {
-            cli.info(`  - ${group.GroupName}`)
-          }
+      if (policies.AttachedPolicies && policies.AttachedPolicies.length > 0) {
+        cli.info('\nAttached Policies:')
+        for (const policy of policies.AttachedPolicies) {
+          cli.info(`  - ${policy.PolicyName}`)
         }
+      }
 
-        if (policies.AttachedPolicies && policies.AttachedPolicies.length > 0) {
-          cli.info('\nAttached Policies:')
-          for (const policy of policies.AttachedPolicies) {
-            cli.info(`  - ${policy.PolicyName}`)
-          }
-        }
-
-        if (accessKeys.AccessKeyMetadata && accessKeys.AccessKeyMetadata.length > 0) {
-          cli.info('\nAccess Keys:')
-          for (const key of accessKeys.AccessKeyMetadata) {
-            cli.info(`  - ${key.AccessKeyId}: ${key.Status}`)
-            if (key.CreateDate) {
-              cli.info(`    Created: ${new Date(key.CreateDate).toLocaleString()}`)
-            }
-          }
-        }
-
-        if (user.Tags && user.Tags.length > 0) {
-          cli.info('\nTags:')
-          for (const tag of user.Tags) {
-            cli.info(`  ${tag.Key}: ${tag.Value}`)
+      if (accessKeys.AccessKeyMetadata && accessKeys.AccessKeyMetadata.length > 0) {
+        cli.info('\nAccess Keys:')
+        for (const key of accessKeys.AccessKeyMetadata) {
+          cli.info(`  - ${key.AccessKeyId}: ${key.Status}`)
+          if (key.CreateDate) {
+            cli.info(`    Created: ${new Date(key.CreateDate).toLocaleString()}`)
           }
         }
       }
-      catch (error: any) {
-        cli.error(`Failed to get user: ${error.message}`)
-        process.exit(1)
+
+      if (user.Tags && user.Tags.length > 0) {
+        cli.info('\nTags:')
+        for (const tag of user.Tags) {
+          cli.info(`  ${tag.Key}: ${tag.Value}`)
+        }
       }
-    })
+    } catch (error: any) {
+      cli.error(`Failed to get user: ${error.message}`)
+      process.exit(1)
+    }
+  })
 
   app
     .command('iam:groups', 'List IAM groups')
@@ -347,15 +338,14 @@ export function registerIamCommands(app: CLI): void {
 
         cli.table(
           ['Group Name', 'Group ID', 'Path', 'Created'],
-          groups.map(group => [
+          groups.map((group) => [
             group.GroupName || 'N/A',
             group.GroupId || 'N/A',
             group.Path || '/',
             group.CreateDate ? new Date(group.CreateDate).toLocaleDateString() : 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list groups: ${error.message}`)
         process.exit(1)
       }
@@ -371,8 +361,8 @@ export function registerIamCommands(app: CLI): void {
       try {
         const iam = new IAMClient()
 
-        const action = options.action || await cli.prompt('Action to simulate', 's3:GetObject')
-        const resource = options.resource || await cli.prompt('Resource ARN', '*')
+        const action = options.action || (await cli.prompt('Action to simulate', 's3:GetObject'))
+        const resource = options.resource || (await cli.prompt('Resource ARN', '*'))
 
         cli.info(`\nPolicy: ${policyArn}`)
         cli.info(`Action: ${action}`)
@@ -397,11 +387,9 @@ export function registerIamCommands(app: CLI): void {
 
             if (decision === 'allowed') {
               cli.success(`  Decision: ALLOWED`)
-            }
-            else if (decision === 'implicitDeny') {
+            } else if (decision === 'implicitDeny') {
               cli.warn(`  Decision: IMPLICIT DENY (no matching allow statement)`)
-            }
-            else {
+            } else {
               cli.error(`  Decision: EXPLICIT DENY`)
             }
 
@@ -413,52 +401,46 @@ export function registerIamCommands(app: CLI): void {
             }
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to simulate policy: ${error.message}`)
         process.exit(1)
       }
     })
 
-  app
-    .command('iam:whoami', 'Show current IAM identity')
-    .action(async () => {
-      cli.header('Current IAM Identity')
+  app.command('iam:whoami', 'Show current IAM identity').action(async () => {
+    cli.header('Current IAM Identity')
 
-      try {
-        const iam = new IAMClient()
+    try {
+      const iam = new IAMClient()
 
-        const spinner = new cli.Spinner('Fetching identity...')
-        spinner.start()
+      const spinner = new cli.Spinner('Fetching identity...')
+      spinner.start()
 
-        // Use STS to get caller identity
-        const { STSClient } = await import('../../src/aws/sts')
-        const sts = new STSClient('us-east-1')
-        const identity = await sts.getCallerIdentity()
+      // Use STS to get caller identity
+      const { STSClient } = await import('../../src/aws/sts')
+      const sts = new STSClient('us-east-1')
+      const identity = await sts.getCallerIdentity()
 
-        spinner.succeed('Identity loaded')
+      spinner.succeed('Identity loaded')
 
-        cli.info('\nCaller Identity:')
-        cli.info(`  Account: ${identity.Account}`)
-        cli.info(`  ARN: ${identity.Arn}`)
-        cli.info(`  User ID: ${identity.UserId}`)
+      cli.info('\nCaller Identity:')
+      cli.info(`  Account: ${identity.Account}`)
+      cli.info(`  ARN: ${identity.Arn}`)
+      cli.info(`  User ID: ${identity.UserId}`)
 
-        // Determine identity type
-        const arn = identity.Arn || ''
-        if (arn.includes(':user/')) {
-          cli.info(`  Type: IAM User`)
-        }
-        else if (arn.includes(':assumed-role/')) {
-          cli.info(`  Type: Assumed Role`)
-        }
-        else if (arn.includes(':root')) {
-          cli.warn(`  Type: Root Account`)
-          cli.warn('\n  Warning: Using root credentials is not recommended!')
-        }
+      // Determine identity type
+      const arn = identity.Arn || ''
+      if (arn.includes(':user/')) {
+        cli.info(`  Type: IAM User`)
+      } else if (arn.includes(':assumed-role/')) {
+        cli.info(`  Type: Assumed Role`)
+      } else if (arn.includes(':root')) {
+        cli.warn(`  Type: Root Account`)
+        cli.warn('\n  Warning: Using root credentials is not recommended!')
       }
-      catch (error: any) {
-        cli.error(`Failed to get identity: ${error.message}`)
-        process.exit(1)
-      }
-    })
+    } catch (error: any) {
+      cli.error(`Failed to get identity: ${error.message}`)
+      process.exit(1)
+    }
+  })
 }

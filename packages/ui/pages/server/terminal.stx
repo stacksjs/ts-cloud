@@ -4,35 +4,12 @@ try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d =
 const server = __d?.server ?? { name: 'stacks-production-app' }
 </script>
 <script client>
+import { useTerminal } from '../../functions/useTerminal.ts'
+
 // Web terminal: a WebSocket to /api/terminal streams a persistent shell running
 // on the dashboard host (the box, in box mode). Line-oriented: type a command
 // and press Enter; output streams back. Not a full PTY (no vim/htop).
-const buf = state('')
-const status = state('connecting')
-const cmd = state('')
-let ws = null
-function scrollBottom() {
-  const el = document.getElementById('term-out')
-  if (el) el.scrollTop = el.scrollHeight
-}
-function connect() {
-  status.set('connecting')
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  ws = new WebSocket(proto + '//' + location.host + '/api/terminal')
-  ws.onopen = () => status.set('connected')
-  ws.onclose = () => status.set('disconnected')
-  ws.onerror = () => status.set('error')
-  ws.onmessage = (e) => { buf.set((buf() + e.data).slice(-40000)); scrollBottom() }
-}
-function send() {
-  if (!ws || ws.readyState !== 1) return
-  ws.send(cmd() + '\n')
-  cmd.set('')
-}
-function reconnect() { try { if (ws) ws.close() } catch {} buf.set(''); connect() }
-function clearOut() { buf.set('') }
-function statusTone(s) { return s === 'connected' ? 'ok' : (s === 'disconnected' || s === 'error' ? 'bad' : 'warn') }
-onMount(() => { connect(); return () => { try { if (ws) ws.close() } catch {} } })
+const { buf, cmd, status, send, reconnect, clearOut, statusTone } = useTerminal()
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -52,9 +29,10 @@ onMount(() => { connect(); return () => { try { if (ws) ws.close() } catch {} } 
 
     <div class="section">
       <div class="panel">
-        <pre id="term-out" class="logs" style="max-height:520px; white-space:pre-wrap; overflow-wrap:anywhere;">{{ buf() }}</pre>
+        <pre @ref="terminalOutput" id="term-out" class="logs" aria-live="polite" aria-label="Terminal output" style="max-height:520px; white-space:pre-wrap; overflow-wrap:anywhere;">{{ buf() }}</pre>
         <div class="field" style="margin-top:12px;">
-          <input :value="cmd()" @input="cmd.set($event.target.value)" @keydown.enter="send()" placeholder="e.g. systemctl status rpx-gateway, tail -n 50 /var/log/syslog" autocomplete="off" spellcheck="false" style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace;">
+          <label class="sr-only" for="terminal-command">Command</label>
+          <input id="terminal-command" :value="cmd()" @input="cmd.set($event.target.value)" @keydown.enter="send()" placeholder="e.g. systemctl status rpx-gateway, tail -n 50 /var/log/syslog" autocomplete="off" spellcheck="false" style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace;">
           <button class="btn" type="button" @click="send()">Run</button>
         </div>
         <p class="note">The shell runs on the machine serving this dashboard (in box mode, the provisioned server) and is protected by the same Basic auth. It is line-oriented, so full-screen programs like vim or htop are not supported. Disable it with <span class="mono">TS_CLOUD_DASHBOARD_TERMINAL=0</span>.</p>

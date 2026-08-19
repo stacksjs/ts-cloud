@@ -162,7 +162,7 @@ describe('Migration Manager', () => {
       const validation = manager.validatePlan(plan.id)
 
       expect(validation.valid).toBe(false)
-      expect(validation.errors.some(e => e.includes('Duplicate'))).toBe(true)
+      expect(validation.errors.some((e) => e.includes('Duplicate'))).toBe(true)
     })
   })
 
@@ -480,7 +480,7 @@ describe('Performance Manager', () => {
     it('should detect full table scan', () => {
       const analysis = manager.analyzeQuery('SELECT * FROM users')
 
-      expect(analysis.bottlenecks.some(b => b.type === 'full_table_scan')).toBe(true)
+      expect(analysis.bottlenecks.some((b) => b.type === 'full_table_scan')).toBe(true)
     })
 
     it('should recommend index', () => {

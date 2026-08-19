@@ -6,6 +6,9 @@ const initialAlwaysOpen = __d?.firewall?.alwaysOpen ?? [22, 80, 443]
 const initialPorts = __d?.firewall?.ports ?? [8080, 6379]
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+import { requestJson } from '../../functions/requestJson.ts'
+
 // Reactive host firewall (UFW) management - list + allow + remove, via signals +
 // directives. Seeded from build-time data (stx server→client bridge); load()
 // reconciles against the live cloud config, and each mutation applies UFW live.
@@ -15,13 +18,65 @@ const newPort = state('')
 const message = state('')
 const messageKind = state('')
 const reserved = [22, 80, 443]
+const posture = state(null)
+const ipRules = state({ allow: [], block: [] })
+const working = state(false)
 function setMessage(text, kind) { message.set(text); messageKind.set(kind || '') }
 function applyLine(apply) {
   if (!apply) return ''
   if (apply.ok === false) return ' Live UFW apply failed: ' + (apply.error || 'unknown error') + '.'
   return ' Applied to UFW live on the box.'
 }
+async function loadProtection() {
+  try {
+    const data = await requestJson('/api/protection')
+    posture.set(data.posture || null)
+    ipRules.set(data.controls?.ipRules || { allow: [], block: [] })
+  } catch { posture.set(null) }
+}
+async function protect(path, body, note) {
+  working.set(true)
+  try {
+    await requestJson(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    setMessage(note, 'ok')
+    await loadProtection()
+  } catch (e) { setMessage((e && e.message) || 'Request failed.', 'bad') }
+  finally { working.set(false) }
+}
+async function toggleAttackMode(on) {
+  if (on && !confirm('Attack mode challenges every visitor, including legitimate ones. Continue?')) return
+  await protect('/api/protection/attack-mode', on ? { enabled: true, reason: 'Enabled from the dashboard.' } : { enabled: false }, on ? 'Attack mode is on. It lifts itself automatically.' : 'Attack mode is off.')
+}
+async function togglePause(on) {
+  if (on) {
+    const reason = prompt('Pausing mitigation serves and bills all traffic, including attacks. Why are you pausing it?')
+    if (!reason) return
+    await protect('/api/protection/pause', { enabled: true, reason }, 'Mitigation paused. It resumes automatically.')
+    return
+  }
+  await protect('/api/protection/pause', { enabled: false }, 'Automatic mitigation resumed.')
+}
+async function addIpRule(list, cidr) {
+  if (!cidr) return
+  await protect('/api/protection/ip-rules', { list, cidr }, `Added ${cidr} to the ${list} list.`)
+}
+async function removeIpRule(list, cidr) {
+  working.set(true)
+  try {
+    await requestJson('/api/protection/ip-rules', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ list, cidr }) })
+    setMessage(`Removed ${cidr} from the ${list} list.`, 'ok')
+    await loadProtection()
+  } catch (e) { setMessage((e && e.message) || 'Request failed.', 'bad') }
+  finally { working.set(false) }
+}
+function submitIpRule(event) {
+  event.preventDefault()
+  const value = Object.fromEntries(new FormData(event.currentTarget))
+  void addIpRule(value.list, String(value.cidr || '').trim()).then(() => event.currentTarget.reset())
+}
+
 async function load() {
+  void loadProtection()
   try {
     const res = await fetch('/api/firewall')
     if (!res.ok) throw new Error('Could not read firewall config.')
@@ -31,38 +86,33 @@ async function load() {
   } catch (e) { setMessage((e && e.message) || 'Could not read firewall config.', 'bad') }
 }
 async function allowPort() {
+  if (working()) return
   const port = Number(newPort())
   if (!Number.isInteger(port) || port < 1 || port > 65535) { setMessage('Port must be a whole number between 1 and 65535.', 'bad'); return }
   if (reserved.includes(port)) { setMessage('Ports 22, 80, and 443 are always open, so there is nothing to add.', 'bad'); return }
-  setMessage('Allowing port ' + port + '...', '')
-  const res = await fetch('/api/firewall', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not allow port.', 'bad'); return }
-  ports.set(data.ports || []); newPort.set('')
-  setMessage('Allowed port ' + port + ' in cloud config.' + applyLine(data.apply), 'ok')
+  working.set(true); setMessage('Allowing port ' + port + '...', '')
+  try {
+    const data = await requestJson('/api/firewall', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
+    ports.set(data.ports || []); newPort.set('')
+    setMessage('Allowed port ' + port + ' in cloud config.' + applyLine(data.apply), 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not allow port.', 'bad') }
+  finally { working.set(false) }
 }
 async function removePort(port) {
   setMessage('Removing port ' + port + '...', '')
-  const res = await fetch('/api/firewall', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not remove port.', 'bad'); return }
-  ports.set(data.ports || [])
-  setMessage('Removed port ' + port + ' from cloud config.' + applyLine(data.apply), 'ok')
+  try {
+    const data = await requestJson('/api/firewall', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
+    ports.set(data.ports || [])
+    setMessage('Removed port ' + port + ' from cloud config.' + applyLine(data.apply), 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not remove port.', 'bad') }
 }
 
-// Remove runs through the shared typed-confirm bar: type the port number to
-// confirm. Names match the contract partials/op-confirm.stx binds to.
-const pending = state(null); const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p !== null ? String(p) : '' })
-const confirmVerb = derived(() => { const p = pending(); return p !== null ? 'remove port ' + p : '' })
-const canRun = derived(() => { const p = pending(); return p !== null && typed() === String(p) })
-function askRemove(port) { pending.set(port); typed.set('') }
-function cancelOp() { pending.set(null); typed.set('') }
-async function runOp() {
-  const p = pending(); if (p === null || typed() !== String(p)) return
-  pending.set(null); typed.set('')
-  await removePort(p)
-}
+// Remove runs through the shared typed-confirm lifecycle.
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  await removePort(Number(p.port))
+  return message()
+})
+function askRemove(port) { askOp('firewall:remove:' + port, String(port), 'remove port ' + port, null, String(port), { port, danger: true, label: 'Remove port' }) }
 onMount(() => { load() })
 </script>
 <!DOCTYPE html>
@@ -76,6 +126,43 @@ onMount(() => { load() })
       <div><h1>Firewall</h1><p>ts-cloud reconciles the host firewall (UFW) from cloud config on every deploy. SSH (22), HTTP (80), and HTTPS (443) are always open and cannot be changed here.</p></div>
       <div class="cmds header-actions"><span class="accent cmd">cloud server:secure {{ server.name }}</span></div>
     </header>
+
+    <div class="section">
+      <h2>Mitigation posture</h2>
+      <div class="panel">
+        <p class="notice" :class="posture()?.attackMode || posture()?.mitigationPaused ? 'warn' : ''" @show="!!posture()">{{ posture()?.summary }}</p>
+        <p class="note" @show="!posture()">Protection controls are unavailable for this account.</p>
+        <div class="actions" @show="!!posture()">
+          <button class="btn ghost sm" :disabled="working()" @click="toggleAttackMode(!posture()?.attackMode)">{{ posture()?.attackMode ? 'Turn attack mode off' : 'Turn attack mode on' }}</button>
+          <button class="btn danger ghost sm" :disabled="working()" @click="togglePause(!posture()?.mitigationPaused)">{{ posture()?.mitigationPaused ? 'Resume mitigation' : 'Pause mitigation' }}</button>
+        </div>
+        <p class="note">Attack mode challenges every visitor, so it is time-boxed and lifts itself. Pausing mitigation serves and bills all traffic, including attacks, and is capped at 24 hours.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>IP rules</h2>
+      <div class="panel">
+        <form class="inline-form" @submit="submitIpRule($event)">
+          <select name="list" aria-label="List"><option value="block">Block</option><option value="allow">Allow</option></select>
+          <input name="cidr" placeholder="203.0.113.0/24" aria-label="IP or CIDR" required>
+          <button class="btn sm" type="submit" :disabled="working()">Add</button>
+        </form>
+        <table>
+          <thead><tr><th scope="col">List</th><th scope="col">CIDR</th><th scope="col"></th></tr></thead>
+          <tbody>
+            <template :for="cidr in ipRules().allow">
+              <tr><td><span class="ok pill">allow</span></td><td class="mono">{{ cidr }}</td><td><button class="btn ghost sm" :disabled="working()" @click="removeIpRule('allow', cidr)">Remove</button></td></tr>
+            </template>
+            <template :for="cidr in ipRules().block">
+              <tr><td><span class="bad pill">block</span></td><td class="mono">{{ cidr }}</td><td><button class="btn ghost sm" :disabled="working()" @click="removeIpRule('block', cidr)">Remove</button></td></tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="empty" @show="!ipRules().allow.length && !ipRules().block.length"><strong>No IP rules</strong><span>Allowed ranges bypass every limit; blocked ranges are dropped at the kernel.</span></div>
+        <p class="note">Allow wins over block, so a range cannot sit on both lists. Rules apply on the next deploy.</p>
+      </div>
+    </div>
 
     <div class="section">
       <h2>Always open</h2>
@@ -102,7 +189,7 @@ onMount(() => { load() })
             <input id="fw-port" type="number" min="1" max="65535" autocomplete="off" placeholder="8080" :value="newPort()" @input="newPort.set($event.target.value)" required>
           </div>
           <div class="form-actions">
-            <button class="btn" type="submit">Allow</button>
+            <button class="btn" type="submit" :disabled="working()">Allow</button>
             <span class="msg" :class="messageKind()" role="status">{{ message() }}</span>
           </div>
         </form>
@@ -115,14 +202,14 @@ onMount(() => { load() })
         <div class="port-grid" @show="ports().length > 0">
           <template :for="p in ports()">
             <div class="port-card">
-              <div class="top"><span class="tag">tcp</span><button type="button" class="btn danger sm" @click="askRemove(p)">Remove</button></div>
+              <div class="top"><span class="tag">tcp</span><button type="button" class="btn danger sm" :aria-label="'Remove firewall port ' + p" @click="askRemove(p)">Remove</button></div>
               <div class="listen mono">{{ p }}</div>
               <div class="proc">Allowed via cloud config</div>
             </div>
           </template>
         </div>
         <div class="compact empty" @show="ports().length === 0"><strong>No extra ports configured</strong><span>Only 22, 80, and 443 are open. Allow a port above to update <span class="mono">infrastructure.compute.firewall</span>.</span></div>
-        @include('../partials/op-confirm', { label: 'Remove', danger: true, output: false })
+        @include('../partials/op-confirm')
         <p class="note">Ports are declarative: this page edits <span class="mono">infrastructure.compute.firewall</span> in cloud config and applies <span class="mono">ufw allow</span> / <span class="mono">ufw delete allow</span> live on the box. The full config is reconciled again on the next <span class="mono">cloud deploy</span>.</p>
       </div>
     </div>

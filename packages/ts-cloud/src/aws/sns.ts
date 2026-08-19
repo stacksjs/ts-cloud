@@ -2,7 +2,6 @@
  * AWS SNS (Simple Notification Service) Operations
  * Direct API calls without AWS SDK dependency
  */
-
 import { AWSClient } from './client'
 
 export interface SNSTopicAttributes {
@@ -59,7 +58,7 @@ export class SNSClient {
   async createTopic(params: {
     Name: string
     DisplayName?: string
-    Tags?: Array<{ Key: string, Value: string }>
+    Tags?: Array<{ Key: string; Value: string }>
     Attributes?: Record<string, string>
   }): Promise<{ TopicArn?: string }> {
     const formParams: Record<string, string | undefined> = {
@@ -101,8 +100,7 @@ export class SNSClient {
     })
 
     return {
-      TopicArn: result?.CreateTopicResponse?.CreateTopicResult?.TopicArn
-        || result?.TopicArn,
+      TopicArn: result?.CreateTopicResponse?.CreateTopicResult?.TopicArn || result?.TopicArn,
     }
   }
 
@@ -185,8 +183,8 @@ export class SNSClient {
     const attrs: SNSTopicAttributes = { TopicArn: topicArn }
 
     if (Array.isArray(attributes)) {
-      attributes.forEach((entry: { key: string, value: string }) => {
-        (attrs as any)[entry.key] = entry.value
+      attributes.forEach((entry: { key: string; value: string }) => {
+        ;(attrs as any)[entry.key] = entry.value
       })
     }
 
@@ -196,11 +194,7 @@ export class SNSClient {
   /**
    * Set topic attributes
    */
-  async setTopicAttributes(params: {
-    TopicArn: string
-    AttributeName: string
-    AttributeValue: string
-  }): Promise<void> {
+  async setTopicAttributes(params: { TopicArn: string; AttributeName: string; AttributeValue: string }): Promise<void> {
     await this.client.request({
       service: 'sns',
       region: this.region,
@@ -262,8 +256,7 @@ export class SNSClient {
     })
 
     return {
-      SubscriptionArn: result?.SubscribeResponse?.SubscribeResult?.SubscriptionArn
-        || result?.SubscriptionArn,
+      SubscriptionArn: result?.SubscribeResponse?.SubscribeResult?.SubscriptionArn || result?.SubscriptionArn,
     }
   }
 
@@ -290,7 +283,10 @@ export class SNSClient {
   /**
    * List subscriptions for a topic
    */
-  async listSubscriptionsByTopic(topicArn: string, nextToken?: string): Promise<{
+  async listSubscriptionsByTopic(
+    topicArn: string,
+    nextToken?: string,
+  ): Promise<{
     Subscriptions?: SNSSubscriptionAttributes[]
     NextToken?: string
   }> {
@@ -332,11 +328,14 @@ export class SNSClient {
     Message: string
     Subject?: string
     MessageStructure?: 'json'
-    MessageAttributes?: Record<string, {
-      DataType: 'String' | 'Number' | 'Binary'
-      StringValue?: string
-      BinaryValue?: string
-    }>
+    MessageAttributes?: Record<
+      string,
+      {
+        DataType: 'String' | 'Number' | 'Binary'
+        StringValue?: string
+        BinaryValue?: string
+      }
+    >
   }): Promise<{ MessageId?: string }> {
     const formParams: Record<string, string | undefined> = {
       Action: 'Publish',
@@ -377,8 +376,7 @@ export class SNSClient {
     })
 
     return {
-      MessageId: result?.PublishResponse?.PublishResult?.MessageId
-        || result?.MessageId,
+      MessageId: result?.PublishResponse?.PublishResult?.MessageId || result?.MessageId,
     }
   }
 
@@ -386,7 +384,7 @@ export class SNSClient {
    * Publish SMS message directly (without topic)
    */
   async publishSMS(phoneNumber: string, message: string, senderId?: string): Promise<{ MessageId?: string }> {
-    const messageAttributes: Record<string, { DataType: 'String', StringValue: string }> = {}
+    const messageAttributes: Record<string, { DataType: 'String'; StringValue: string }> = {}
 
     if (senderId) {
       messageAttributes['AWS.SNS.SMS.SenderID'] = {
@@ -427,7 +425,11 @@ export class SNSClient {
   /**
    * Subscribe an SQS queue to a topic
    */
-  async subscribeSqs(topicArn: string, queueArn: string, rawMessageDelivery?: boolean): Promise<{ SubscriptionArn?: string }> {
+  async subscribeSqs(
+    topicArn: string,
+    queueArn: string,
+    rawMessageDelivery?: boolean,
+  ): Promise<{ SubscriptionArn?: string }> {
     const attributes: Record<string, string> = {}
     if (rawMessageDelivery) {
       attributes.RawMessageDelivery = 'true'
@@ -444,7 +446,11 @@ export class SNSClient {
   /**
    * Subscribe an HTTP/HTTPS endpoint to a topic
    */
-  async subscribeHttp(topicArn: string, url: string, rawMessageDelivery?: boolean): Promise<{ SubscriptionArn?: string }> {
+  async subscribeHttp(
+    topicArn: string,
+    url: string,
+    rawMessageDelivery?: boolean,
+  ): Promise<{ SubscriptionArn?: string }> {
     const protocol: SNSProtocol = url.startsWith('https') ? 'https' : 'http'
     const attributes: Record<string, string> = {}
     if (rawMessageDelivery) {
@@ -477,8 +483,7 @@ export class SNSClient {
     try {
       await this.getTopicAttributes(topicArn)
       return true
-    }
-    catch (error: any) {
+    } catch (error: any) {
       if (error.code === 'NotFound' || error.statusCode === 404) {
         return false
       }
@@ -515,11 +520,10 @@ export class SNSClient {
     const attributes: Record<string, string> = {}
 
     if (Array.isArray(attrs)) {
-      attrs.forEach((entry: { key: string, value: string }) => {
+      attrs.forEach((entry: { key: string; value: string }) => {
         attributes[entry.key] = entry.value
       })
-    }
-else if (attrs) {
+    } else if (attrs) {
       attributes[attrs.key] = attrs.value
     }
 

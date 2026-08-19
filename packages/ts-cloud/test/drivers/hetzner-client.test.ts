@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test'
-import { HetznerClient } from '../../src/drivers/hetzner/client'
+import { HetznerApiError, HetznerClient } from '../../src/drivers/hetzner/client'
 import { matchesTsCloudLabels, resolveHetznerServerType } from '../../src/drivers/hetzner/instance-sizes'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from '../../src/drivers/hetzner/cloud-init'
 
@@ -17,17 +17,31 @@ describe('resolveHetznerServerType', () => {
 
 describe('matchesTsCloudLabels', () => {
   it('matches ts-cloud project/environment/role labels', () => {
-    expect(matchesTsCloudLabels({
-      'ts-cloud/project': 'pantry',
-      'ts-cloud/environment': 'production',
-      'ts-cloud/role': 'app',
-    }, 'pantry', 'production', 'app')).toBe(true)
+    expect(
+      matchesTsCloudLabels(
+        {
+          'ts-cloud/project': 'pantry',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'app',
+        },
+        'pantry',
+        'production',
+        'app',
+      ),
+    ).toBe(true)
 
-    expect(matchesTsCloudLabels({
-      'ts-cloud/project': 'pantry',
-      'ts-cloud/environment': 'staging',
-      'ts-cloud/role': 'app',
-    }, 'pantry', 'production', 'app')).toBe(false)
+    expect(
+      matchesTsCloudLabels(
+        {
+          'ts-cloud/project': 'pantry',
+          'ts-cloud/environment': 'staging',
+          'ts-cloud/role': 'app',
+        },
+        'pantry',
+        'production',
+        'app',
+      ),
+    ).toBe(false)
   })
 })
 
@@ -71,17 +85,22 @@ describe('HetznerClient', () => {
       expect(url).toBe('https://api.hetzner.cloud/v1/servers?per_page=50&page=1')
       expect(init?.method).toBe('GET')
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
-      return new Response(JSON.stringify({
-        servers: [{
-          id: 42,
-          name: 'app-production',
-          status: 'running',
-          public_net: { ipv4: { ip: '203.0.113.10' } },
-          labels: { 'ts-cloud/project': 'app' },
-          server_type: { name: 'cx22' },
-          datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
-        }],
-      }), { status: 200 })
+      return new Response(
+        JSON.stringify({
+          servers: [
+            {
+              id: 42,
+              name: 'app-production',
+              status: 'running',
+              public_net: { ipv4: { ip: '203.0.113.10' } },
+              labels: { 'ts-cloud/project': 'app' },
+              server_type: { name: 'cx22' },
+              datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+            },
+          ],
+        }),
+        { status: 200 },
+      )
     })
 
     const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
@@ -96,28 +115,65 @@ describe('HetznerClient', () => {
     const fetchImpl = mock(async (url: string) => {
       urls.push(url)
       if (url.includes('page=1')) {
-        return new Response(JSON.stringify({
-          servers: [{ id: 1, name: 'a', status: 'running', public_net: {}, server_type: { name: 'cx22' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } }],
-          meta: { pagination: { page: 1, per_page: 50, previous_page: null, next_page: 2, last_page: 2, total_entries: 2 } },
-        }), { status: 200 })
+        return new Response(
+          JSON.stringify({
+            servers: [
+              {
+                id: 1,
+                name: 'a',
+                status: 'running',
+                public_net: {},
+                server_type: { name: 'cx22' },
+                datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+              },
+            ],
+            meta: {
+              pagination: { page: 1, per_page: 50, previous_page: null, next_page: 2, last_page: 2, total_entries: 2 },
+            },
+          }),
+          { status: 200 },
+        )
       }
-      return new Response(JSON.stringify({
-        servers: [{ id: 2, name: 'b', status: 'running', public_net: {}, server_type: { name: 'cx22' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } }],
-        meta: { pagination: { page: 2, per_page: 50, previous_page: 1, next_page: null, last_page: 2, total_entries: 2 } },
-      }), { status: 200 })
+      return new Response(
+        JSON.stringify({
+          servers: [
+            {
+              id: 2,
+              name: 'b',
+              status: 'running',
+              public_net: {},
+              server_type: { name: 'cx22' },
+              datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+            },
+          ],
+          meta: {
+            pagination: { page: 2, per_page: 50, previous_page: 1, next_page: null, last_page: 2, total_entries: 2 },
+          },
+        }),
+        { status: 200 },
+      )
     })
 
-    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl: fetchImpl as (url: string, init?: RequestInit) => Promise<Response> })
+    const client = new HetznerClient({
+      apiToken: 'test-token',
+      fetchImpl: fetchImpl as (url: string, init?: RequestInit) => Promise<Response>,
+    })
     const servers = await client.listServers()
-    expect(servers.map(s => s.id)).toEqual([1, 2])
+    expect(servers.map((s) => s.id)).toEqual([1, 2])
     expect(urls).toHaveLength(2)
     expect(urls[1]).toContain('page=2')
   })
 
   it('throws with API error message on failure', async () => {
-    const fetchImpl = mock(async () => new Response(JSON.stringify({
-      error: { message: 'unauthorized', code: 'unauthorized' },
-    }), { status: 401 }))
+    const fetchImpl = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { message: 'unauthorized', code: 'unauthorized' },
+          }),
+          { status: 401 },
+        ),
+    )
 
     const client = new HetznerClient({ apiToken: 'bad-token', fetchImpl })
     await expect(client.listServers()).rejects.toThrow('unauthorized')
@@ -130,9 +186,15 @@ describe('HetznerClient', () => {
   })
 
   it('includes the status code and error code in the thrown message', async () => {
-    const fetchImpl = mock(async () => new Response(JSON.stringify({
-      error: { message: 'rate limit exceeded', code: 'rate_limit_exceeded' },
-    }), { status: 429 }))
+    const fetchImpl = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { message: 'rate limit exceeded', code: 'rate_limit_exceeded' },
+          }),
+          { status: 429 },
+        ),
+    )
     const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
     await expect(client.listServers()).rejects.toThrow(/\(429\) \[rate_limit_exceeded\]: rate limit exceeded/)
   })
@@ -151,22 +213,52 @@ describe('HetznerClient', () => {
     expect(actions[0].id).toBe(9)
   })
 
+  it('reads bounded historical server metrics', async () => {
+    const fetchImpl = mock(async (url: string) => {
+      const request = new URL(url)
+      expect(request.pathname).toBe('/v1/servers/42/metrics')
+      expect(request.searchParams.get('type')).toBe('cpu,disk,network')
+      expect(request.searchParams.get('step')).toBe('60')
+      return new Response(
+        JSON.stringify({
+          metrics: {
+            start: '2026-07-27T18:00:00Z',
+            end: '2026-07-27T21:00:00Z',
+            step: 60,
+            time_series: { cpu: { values: [[1785175200, '75.5']] } },
+          },
+        }),
+        { status: 200 },
+      )
+    })
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    const metrics = await client.getServerMetrics(42, {
+      types: ['cpu', 'disk', 'network'],
+      start: new Date('2026-07-27T18:00:00Z'),
+      end: new Date('2026-07-27T21:00:00Z'),
+    })
+    expect(metrics.time_series.cpu.values[0]).toEqual([1785175200, '75.5'])
+  })
+
   it('creates a server with labels and user_data', async () => {
     let capturedBody: any
     const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
       capturedBody = JSON.parse(String(init?.body))
-      return new Response(JSON.stringify({
-        server: {
-          id: 99,
-          name: 'my-app-production-app',
-          status: 'initializing',
-          public_net: { ipv4: { ip: '203.0.113.20' } },
-          labels: capturedBody.labels,
-          server_type: { name: 'cx22' },
-          datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
-        },
-        action: { id: 1, status: 'running' },
-      }), { status: 201 })
+      return new Response(
+        JSON.stringify({
+          server: {
+            id: 99,
+            name: 'my-app-production-app',
+            status: 'initializing',
+            public_net: { ipv4: { ip: '203.0.113.20' } },
+            labels: capturedBody.labels,
+            server_type: { name: 'cx22' },
+            datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+          },
+          action: { id: 1, status: 'running' },
+        }),
+        { status: 201 },
+      )
     })
 
     const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
@@ -182,5 +274,72 @@ describe('HetznerClient', () => {
     expect(capturedBody.server_type).toBe('cx22')
     expect(capturedBody.user_data).toContain('#cloud-config')
     expect(server.id).toBe(99)
+  })
+
+  it('fetches a server type with location capacity and pricing', async () => {
+    const fetchImpl = mock(async (url: string) => {
+      expect(url).toContain('/server_types?name=cx43&per_page=50&page=1')
+      return new Response(
+        JSON.stringify({
+          server_types: [
+            {
+              id: 45,
+              name: 'cx43',
+              cores: 8,
+              memory: 16,
+              disk: 160,
+              locations: [{ id: 1, name: 'fsn1', available: false, recommended: false }],
+              prices: [
+                {
+                  location: 'fsn1',
+                  price_hourly: { net: '0.0264', gross: '0.0264' },
+                  price_monthly: { net: '16.49', gross: '16.49' },
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      )
+    })
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    const type = await client.getServerType('cx43')
+    expect(type?.locations?.[0].available).toBe(false)
+    expect(type?.prices?.[0].price_monthly.gross).toBe('16.49')
+  })
+
+  it('sends shutdown, power-on, and change-type actions with the expected payloads', async () => {
+    const calls: Array<{ url: string; body: unknown }> = []
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: JSON.parse(String(init?.body)) })
+      return new Response(JSON.stringify({ action: { id: calls.length, status: 'running' } }), { status: 201 })
+    })
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    await client.shutdownServer(42)
+    await client.powerOnServer(42)
+    await client.changeServerType(42, 'cx43', true)
+    expect(calls.map((call) => call.url.split('/').pop())).toEqual(['shutdown', 'poweron', 'change_type'])
+    expect(calls[2].body).toEqual({ server_type: 'cx43', upgrade_disk: true })
+  })
+
+  it('preserves the API status and code for capacity failures', async () => {
+    const fetchImpl = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { message: 'No fitting host found', code: 'resource_unavailable' },
+          }),
+          { status: 412 },
+        ),
+    )
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    try {
+      await client.changeServerType(42, 'cx43', true)
+      throw new Error('Expected changeServerType to fail')
+    } catch (error) {
+      expect(error).toBeInstanceOf(HetznerApiError)
+      expect((error as HetznerApiError).status).toBe(412)
+      expect((error as HetznerApiError).code).toBe('resource_unavailable')
+    }
   })
 })

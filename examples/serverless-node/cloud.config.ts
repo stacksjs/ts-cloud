@@ -12,10 +12,10 @@ const config: Partial<CloudConfig> = createServerlessNodePreset({
   entry: 'src/server.ts',
   // domain: 'api.example.com',          // optional custom domain (needs an ACM cert)
   build: ['bun install'],
-  deploy: [],                            // e.g. ['migrate'] — runs on the CLI function
-  assets: 'public',                      // uploaded to S3 + CloudFront, exposed as ASSET_URL
-  queues: true,                          // a single default SQS queue + DLQ
-  scheduler: 'on',                       // EventBridge invokes cli `schedule:run` each minute
+  deploy: [], // e.g. ['migrate'] — runs on the CLI function
+  assets: 'public', // uploaded to S3 + CloudFront, exposed as ASSET_URL
+  queues: true, // a single default SQS queue + DLQ
+  scheduler: 'on', // EventBridge invokes cli `schedule:run` each minute
 })
 
 export default config
