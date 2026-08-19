@@ -1100,3 +1100,117 @@ describe('deployAllComputeSites attach-mode service preflight', () => {
     expect(commands).not.toContain('ts_cloud_probe')
   })
 })
+
+/**
+ * Attaching resolves the owner's box by LISTING the provider with the ATTACHING
+ * project's credential, so the owner's box must be visible to it — which on a
+ * provider without per-resource scoping means write over every server in the
+ * project. Reported so it is a decision rather than a discovery.
+ */
+describe('deployAllComputeSites attach-mode credential reach', () => {
+  function attachedConfig(): CloudConfig {
+    return {
+      project: { name: 'Log HQ', slug: 'loghq', region: 'fsn1' },
+      environments: { production: { type: 'production' } },
+      cloud: { provider: 'hetzner', attachTo: 'statushq' },
+      sites: { web: { domain: 'loghq.example.com', port: 3000, root: '.output', start: 'bun run server.ts' } },
+      infrastructure: { compute: { runtime: 'bun', proxy: { engine: 'rpx' } } },
+    }
+  }
+
+  async function deployWith(reachable: Array<{ name: string, labels?: Record<string, string> }> | Error) {
+    const warnings: string[] = []
+    const infos: string[] = []
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      listReachableResources: mock(async () => {
+        if (reachable instanceof Error) throw reachable
+        return reachable
+      }),
+    })
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-reach-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+    process.env.TS_CLOUD_UI_DISABLE = '1'
+    const ok = await deployAllComputeSites({
+      config: attachedConfig(),
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      tarballForSite: () => tarball,
+      logger: {
+        info: (message: string) => infos.push(message),
+        warn: (message: string) => warnings.push(message),
+        error: () => {},
+        step: () => {},
+        success: () => {},
+      },
+    }).finally(() => {
+      delete process.env.TS_CLOUD_UI_DISABLE
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+    return { ok, warnings: warnings.join('\n'), infos: infos.join('\n') }
+  }
+
+  const label = (project: string) => ({ 'ts-cloud/project': project })
+
+  it('warns, naming the servers neither project owns', async () => {
+    const { ok, warnings } = await deployWith([
+      { name: 'statushq-production-app', labels: label('statushq') },
+      { name: 'bughq-production-app', labels: label('bughq') },
+      { name: 'stacks-production-app', labels: label('stacks') },
+      { name: 'some-legacy-box' },
+    ])
+    expect(ok).toBe(true)
+    expect(warnings).toContain('all 4 server(s)')
+    expect(warnings).toContain('bughq: bughq-production-app')
+    expect(warnings).toContain('stacks: stacks-production-app')
+    expect(warnings).toContain('not managed by ts-cloud: some-legacy-box')
+  })
+
+  /**
+   * A warning that fires every time is a warning nobody reads: when the reach is
+   * exactly the two projects being joined there is nothing to decide.
+   */
+  it('stays quiet when the reach is only the two projects being joined', async () => {
+    const { ok, warnings, infos } = await deployWith([
+      { name: 'statushq-production-app', labels: label('statushq') },
+      { name: 'loghq-production-app', labels: label('loghq') },
+    ])
+    expect(ok).toBe(true)
+    expect(warnings).toBe('')
+    expect(infos).toContain('Nothing outside the two projects being joined is reachable with it.')
+  })
+
+  it('never fails the deploy when the credential cannot enumerate', async () => {
+    const { ok, warnings } = await deployWith(new Error('403 forbidden'))
+    expect(ok).toBe(true)
+    expect(warnings).toContain('403 forbidden')
+  })
+
+  it('reports nothing for a driver that cannot enumerate at all', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    expect(driver.listReachableResources).toBeUndefined()
+    const warnings: string[] = []
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-reach-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+    process.env.TS_CLOUD_UI_DISABLE = '1'
+    const ok = await deployAllComputeSites({
+      config: attachedConfig(),
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      tarballForSite: () => tarball,
+      logger: { info: () => {}, warn: (m: string) => warnings.push(m), error: () => {}, step: () => {}, success: () => {} },
+    }).finally(() => {
+      delete process.env.TS_CLOUD_UI_DISABLE
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+    expect(ok).toBe(true)
+    expect(warnings.join('\n')).not.toContain('credential')
+  })
+})

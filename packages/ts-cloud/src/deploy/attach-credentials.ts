@@ -1,3 +1,4 @@
+import type { ReachableResource } from '@ts-cloud/core'
 import { TS_CLOUD_LABEL_PREFIX } from '../drivers/hetzner/instance-sizes'
 
 /**
@@ -28,15 +29,10 @@ import { TS_CLOUD_LABEL_PREFIX } from '../drivers/hetzner/instance-sizes'
 const PROJECT_LABEL = `${TS_CLOUD_LABEL_PREFIX}/project`
 
 /**
- * The minimum a driver has to produce for a server to be attributed.
- *
- * Structural rather than a provider type so a Hetzner server satisfies it as-is
- * and another driver can satisfy it without importing anything.
+ * The minimum a driver has to produce for a server to be attributed — the shape
+ * `CloudDriver.listReachableResources()` returns.
  */
-export interface ReachableServer {
-  name: string
-  labels?: Record<string, string>
-}
+export type ReachableServer = ReachableResource
 
 export interface CredentialReach {
   /** Every server the credential enumerated. */

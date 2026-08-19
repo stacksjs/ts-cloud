@@ -1,4 +1,4 @@
-import type { CloudDriver, ComputeProxyConfig, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, ProvisionComputeOptions, RemoteDeployResult, RunRemoteDeployOptions, SiteConfig, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
+import type { CloudDriver, ComputeProxyConfig, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, ProvisionComputeOptions, ReachableResource, RemoteDeployResult, RunRemoteDeployOptions, SiteConfig, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import type { HetznerDriverState } from './state'
@@ -1237,6 +1237,17 @@ export class HetznerDriver implements CloudDriver {
     await writeDriverState(stackName, state)
 
     return this.outputsFromState(state)
+  }
+
+  /**
+   * Every server this token can see. On Hetzner that is every server in the
+   * provider project, because a Cloud API token is project-scoped with Read or
+   * Read & Write and no per-resource scoping — so "can see" and "can delete"
+   * are the same set, and the count is the honest blast radius.
+   */
+  async listReachableResources(): Promise<ReachableResource[]> {
+    const servers = await this.client.listServers()
+    return servers.map((server) => ({ name: server.name, labels: server.labels }))
   }
 
   async runRemoteDeploy(options: RunRemoteDeployOptions): Promise<RemoteDeployResult> {

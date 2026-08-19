@@ -4,6 +4,7 @@ import { copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hasManagementDashboardSite, resolveAppDatabase, resolveProjectStackName } from '@ts-cloud/core'
+import { describeCredentialReach, formatCredentialReach, unrelatedReachCount } from '../../deploy/attach-credentials'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
 import { buildSiteServicesScript, siteHasServices } from './app-services'
@@ -495,6 +496,53 @@ async function reconcileManagementDashboardServices(
 }
 
 /**
+ * Attach mode: report what this deploy's credential can actually reach.
+ *
+ * Attaching resolves the owner's box by LISTING the provider with the ATTACHING
+ * project's own credential. That listing is the whole mechanism, and it has a
+ * consequence the config never states — the owner's box has to be visible to
+ * this credential, so both projects share one provider project, and on a
+ * provider without per-resource scoping that means write over every server in
+ * it. Three apps that each owned one box become three pipelines that each reach
+ * all three.
+ *
+ * Reported, never enforced. The trade is frequently worth making, and a deploy
+ * that started failing on upgrade would teach operators to silence it rather
+ * than to read it. The quiet case stays quiet: when the reach is exactly the two
+ * projects being joined, this is one info line, because a warning that fires
+ * every time is a warning nobody reads.
+ *
+ * @see https://github.com/stacksjs/ts-cloud/issues/169
+ */
+async function reportAttachCredentialReach(
+  driver: CloudDriver,
+  options: DeployAllSitesOptions,
+  logger: ComputeDeployLogger,
+): Promise<void> {
+  const { config } = options
+  const ownerSlug = config.cloud?.attachTo
+  // A driver that cannot enumerate reports no radius rather than a wrong one.
+  if (!ownerSlug || !driver.listReachableResources) return
+
+  let resources
+  try {
+    resources = await driver.listReachableResources()
+  } catch (error) {
+    // Never fail a deploy over the advisory. A token that cannot list is a
+    // problem the real work reports far better than this can.
+    logger.warn(`Could not determine this credential's reach: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+
+  const reach = describeCredentialReach(resources, { ownerSlug, selfSlug: config.project.slug })
+  const surprising = unrelatedReachCount(reach) > 0
+  for (const line of formatCredentialReach(reach, { ownerSlug, selfSlug: config.project.slug })) {
+    if (surprising) logger.warn(line)
+    else logger.info(line)
+  }
+}
+
+/**
  * Attach mode preflight: does the owner's box actually provide the on-box
  * services this project declares?
  *
@@ -712,6 +760,10 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // written. Returning here left such a project silently untouched — the deploy
   // ran green and the box kept a hand-maintained fragment.
   if (deployable.length === 0) return reloadRpxGateway(options)
+
+  // Attach mode (`cloud.attachTo`): state the credential radius this attach
+  // implies before it is acted on. Advisory — see the function.
+  await reportAttachCredentialReach(driver, options, logger)
 
   // Attach mode (`cloud.attachTo`): before anything is built ON the owner's
   // services, confirm the owner's box actually runs them.
