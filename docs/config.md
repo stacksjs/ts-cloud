@@ -153,6 +153,36 @@ is often worth making, but it should be a decision rather than a surprise.
 token actually reaches, separating the owner's boxes from the ones no one asked
 for, so the radius can be shown before an attach is approved.
 
+### It cannot install services on the owner's box
+
+Attach mode provisions nothing — installing engines on someone else's server is
+not a tenant's business. So `infrastructure.compute.managedServices` in an
+attached config is a statement about what the HOST already runs, not a request
+to install anything:
+
+```typescript
+cloud: { provider: 'hetzner', attachTo: 'statushq' },
+infrastructure: {
+  appDatabase: { engine: 'postgres', name: 'loghq', username: 'loghq', password: '…' },
+  compute: { managedServices: { postgres: true } },  // statushq must ALREADY run postgres
+}
+```
+
+If the owner's box runs SQLite, there is no Postgres for the tenant's role and
+database to be created in, and nothing will ever install one. The deploy checks
+this before it ships anything and stops with the incompatibility named:
+
+```
+This project declares managedServices.postgres, but 'statushq' has no postgres
+on 203.0.113.10. Attach mode does not provision services on the owner's box, so
+nothing will install it. Point the app at an external service, or ask the owner
+of 'statushq' to add it to their own config and re-provision.
+```
+
+A service counts as present when its binary is on `PATH` or something is
+listening on its port. If the check itself cannot get an answer, the deploy
+proceeds — it is a preflight, not a gate.
+
 ## Two app models
 
 ts-cloud deploys apps two ways; pick per environment:
@@ -343,6 +373,54 @@ clean. If a site targets a server (`deploy: 'server'`, or `start` set) but no
 `infrastructure.compute` is configured, `cloud deploy` aborts up front with an
 actionable error instead of failing silently at runtime — set `deploy: 'bucket'`
 or add a server.
+
+### State that must survive a deploy
+
+Each deploy unpacks into a NEW `releases/<id>` directory and flips `current` at
+it; old releases are pruned. Anything the app writes and must keep therefore has
+to live in the site's `shared/` directory and be symlinked in, which is what
+`site.sharedPaths` declares. `.env` is always shared.
+
+```typescript
+sites: {
+  app: {
+    start: 'bun run server.ts',
+    sharedPaths: ['storage', 'public/uploads'],
+  },
+}
+```
+
+A **SQLite database is shared automatically**. The deploy already knows the
+connection and the file path from the environment it writes to the box, so when
+`DB_CONNECTION` is `sqlite` and `DB_DATABASE` names a path inside the release,
+that file is added to `sharedPaths` for you and the deploy log says so. Without
+it the database sits inside a release directory and the next deploy starts the
+app on an empty one — silently, with the data still in a release that is about
+to be pruned.
+
+Two cases it does not cover:
+
+- **`DB_DATABASE` unset.** An app can default its own path internally, which the
+  deploy never sees. Guessing the filename would report the data as safe while
+  sharing a path the app may not use, so the deploy warns instead — set
+  `DB_DATABASE`, or list the file in `sharedPaths` yourself.
+- **An absolute path.** A database outside the release tree already survives; a
+  deploy replaces the release, not the filesystem around it.
+
+Turning existing on-box state into shared state does not throw it away: the
+first deploy to share a path copies the live release's copy into `shared/`
+(SQLite's `-wal`/`-shm` sidecars included), and a site's first deploy seeds a
+still-empty shared file from the copy the artifact shipped.
+
+Several sites of one project can share ONE file — an app and its API on one
+SQLite database — with the object form, which names an absolute `target`:
+
+```typescript
+sharedPaths: [{ path: 'database/app.sqlite', target: '/var/www/acme-app/shared/database/app.sqlite', seed: false }]
+```
+
+Each site installs under its own base, so a plain string would give each of them
+a database of its own. `seed: false` marks the sites that do not own the file.
 
 ### CDN / caching
 

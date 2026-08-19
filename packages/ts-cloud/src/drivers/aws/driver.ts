@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { resolveProjectStackName } from '@ts-cloud/core'
 import { CloudFormationClient } from '../../aws/cloudformation'
 import { normalizePublicIpv6 } from '../../deploy/server-dns'
+import { summarizeRemoteFailures } from '../shared/remote-failure'
 import { EC2Client } from '../../aws/ec2'
 import { S3Client } from '../../aws/s3'
 import { SSMClient } from '../../aws/ssm'
@@ -463,7 +464,12 @@ export class AwsDriver implements CloudDriver {
       success,
       instanceCount: perInstance.length,
       perInstance,
-      error: success ? undefined : 'One or more SSM command invocations failed',
+      // Include each failing invocation's StandardErrorContent — callers report
+      // `result.error` alone, so without this the reason is captured and then
+      // dropped on the floor.
+      error: success
+        ? undefined
+        : summarizeRemoteFailures(perInstance, 'One or more SSM command invocations failed'),
     }
   }
 }

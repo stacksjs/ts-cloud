@@ -154,3 +154,46 @@ describe('shared paths pointed at a project-level target', () => {
     expect(buildLinkSharedPaths(paths, [spec]).join('\n')).not.toContain('if [ -e ')
   })
 })
+
+/**
+ * Adoption rescues state from the LIVE release, which covers a path that
+ * becomes shared on an existing site. A site's FIRST deploy has no live release
+ * to adopt from, so without this the empty placeholder would replace whatever
+ * the artifact shipped — an app shipping a seeded SQLite database would come up
+ * empty on the very deploy that created it.
+ */
+describe('seeding a shared file from the incoming release', () => {
+  const link = (shared: SharedPathEntry[]): string => buildLinkSharedPaths(paths, shared).join('\n')
+
+  it('copies the release copy in when the shared file is still a placeholder', () => {
+    const out = link(['database/app.sqlite'])
+    expect(out).toContain('if [ -f /var/www/site/releases/rel1/database/app.sqlite ]')
+    expect(out).toContain('[ ! -s /var/www/site/shared/database/app.sqlite ]')
+    expect(out).toContain('cp -a /var/www/site/releases/rel1/database/app.sqlite /var/www/site/shared/database/app.sqlite')
+  })
+
+  it('still links the shared file afterwards', () => {
+    const out = link(['database/app.sqlite'])
+    const seed = out.indexOf('cp -a /var/www/site/releases/rel1/database/app.sqlite')
+    const ln = out.indexOf('ln -sfn /var/www/site/shared/database/app.sqlite')
+    expect(seed).toBeGreaterThan(-1)
+    expect(ln).toBeGreaterThan(seed)
+  })
+
+  it('leaves .env alone — the deploy writes the shared one itself', () => {
+    expect(link(['.env'])).not.toContain('cp -a')
+  })
+
+  it('leaves directories alone', () => {
+    expect(link(['storage'])).not.toContain('cp -a')
+  })
+
+  /**
+   * A site that does not own the target must not seed it: the owner's own
+   * deploy adopts or writes it, and a copy from here would make that a no-op.
+   */
+  it('leaves a target this site does not own alone', () => {
+    expect(link([{ path: 'database/app.sqlite', target: '/var/www/api/shared/app.sqlite', seed: false }]))
+      .not.toContain('cp -a')
+  })
+})

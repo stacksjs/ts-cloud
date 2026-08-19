@@ -12,11 +12,13 @@ import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
 import { buildAwsArtifactFetch, buildHostCleanupScript, buildLocalArtifactFetch, buildSiteDeployScript, buildStaticSiteDeployScript, releaseTarballTmpPath, resolveExecStart } from './deploy-script'
 import { buildFleetServicesEnv } from './fleet'
 import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-deploy'
+import { buildManagedServicesProbeScript, declaredManagedServices, formatMissingManagedServicesError, parseMissingManagedServices } from './managed-services-probe'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { resolveNotifications, sendNotifications } from './notifications'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
+import { inferSqliteSharedPath } from './sqlite-shared-path'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -94,6 +96,14 @@ export async function deploySiteRelease(
     // select Bun's development exports or dev-only runtime paths on the box.
     ...productionEnv,
   }
+
+  // A SQLite database inside the release directory is thrown away by the next
+  // deploy. The script builders share it automatically when the env says where
+  // it lives; when the env says SQLite but not where, only the operator can
+  // resolve it — so say so here rather than deploying quietly over it.
+  const sqlite = inferSqliteSharedPath(envWithServices, site.sharedPaths ?? [])
+  if (sqlite.warning) logger.warn(`Site '${siteName}': ${sqlite.warning}`)
+  else if (sqlite.path) logger.info(`Site '${siteName}': sharing '${sqlite.path}' so the SQLite database survives deploys.`)
 
   // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
   // tarball upload). The box clones the repo, runs the deploy script inside the
@@ -485,6 +495,65 @@ async function reconcileManagementDashboardServices(
 }
 
 /**
+ * Attach mode preflight: does the owner's box actually provide the on-box
+ * services this project declares?
+ *
+ * Attach mode provisions nothing — that is the whole point of riding someone
+ * else's box — so `managedServices` here is a statement about what the HOST is
+ * expected to already run, not a request to install anything. When the host
+ * does not run it, every step built on top of it is doomed: the database ensure
+ * below talks to an engine that is not there, and the app ships with a
+ * connection string pointing at a closed port.
+ *
+ * Catching that here costs one SSH round-trip and turns an afternoon of
+ * guessing into one sentence. A probe that cannot run (no targets, no output)
+ * never blocks the deploy: this is a preflight, not a gate.
+ *
+ * Returns `false` only when the box positively reported a declared service
+ * missing.
+ */
+async function preflightAttachedHostServices(
+  driver: CloudDriver,
+  options: DeployAllSitesOptions,
+  logger: ComputeDeployLogger,
+): Promise<boolean> {
+  const { config, environment } = options
+  const ownerSlug = config.cloud?.attachTo
+  if (!ownerSlug) return true
+
+  const declared = declaredManagedServices(config.infrastructure?.compute?.managedServices)
+  if (declared.length === 0) return true
+
+  const slug = config.project.slug
+  const stackName = resolveProjectStackName(config, environment)
+  const targets = await driver.findComputeTargets({ slug, environment, role: 'app', stackName })
+  // No targets: the site deploy itself reports that error authoritatively.
+  if (targets.length === 0) return true
+
+  const result = await driver.runRemoteDeploy({
+    targets,
+    commands: buildManagedServicesProbeScript(declared),
+    comment: `ts-cloud preflight managed services ${slug}`,
+    tags: { Project: slug, Environment: environment, Role: 'app' },
+  })
+  if (!result.success) {
+    // The probe itself failing says nothing about the services. Deploy on and
+    // let the real work report its own error.
+    logger.warn(`Could not check '${ownerSlug}' for the declared services: ${result.error || 'unknown error'}`)
+    return true
+  }
+
+  const missing = new Set<string>()
+  for (const instance of result.perInstance) {
+    for (const name of parseMissingManagedServices(instance.output, declared)) missing.add(name)
+  }
+  if (missing.size === 0) return true
+
+  logger.error(formatMissingManagedServicesError([...missing], ownerSlug, targets[0]?.publicIp))
+  return false
+}
+
+/**
  * Attach mode (`cloud.attachTo`): this project rides a box its OWNER provisioned,
  * so no cloud-init of ours ever ran the on-box database setup — the tenant role
  * and database simply do not exist unless someone creates them by hand. When the
@@ -643,6 +712,10 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // written. Returning here left such a project silently untouched — the deploy
   // ran green and the box kept a hand-maintained fragment.
   if (deployable.length === 0) return reloadRpxGateway(options)
+
+  // Attach mode (`cloud.attachTo`): before anything is built ON the owner's
+  // services, confirm the owner's box actually runs them.
+  if (!(await preflightAttachedHostServices(driver, options, logger))) return false
 
   // Attach mode (`cloud.attachTo`): the shared box was provisioned by its OWNER,
   // so no cloud-init of ours ever ran this project's on-box database setup — the

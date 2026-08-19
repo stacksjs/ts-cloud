@@ -1243,6 +1243,11 @@ export interface SiteConfig {
    * A release is a fresh directory, so anything the app WRITES and must keep
    * has to be listed here or the next deploy silently starts it from empty.
    *
+   * A SQLite database is the one exception, added for you: when the site's
+   * resolved env says `DB_CONNECTION=sqlite` and `DB_DATABASE` names a path
+   * inside the release, the deploy shares that file without being asked. An
+   * env that says SQLite but not WHERE is warned about rather than guessed at.
+   *
    * An entry may instead be a {@link SharedPathSpec} naming an absolute
    * `target`, which is how SEVERAL sites of one project point at ONE file —
    * an app and its API sharing a single SQLite database, say. Each site
