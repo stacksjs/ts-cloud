@@ -134,6 +134,37 @@ export interface CloudDriver {
 
   /** Run a shell script on every target (SSM, SSH, etc.) */
   runRemoteDeploy(options: RunRemoteDeployOptions): Promise<RemoteDeployResult>
+
+  /**
+   * Enumerate every resource this driver's credential can see — and therefore,
+   * on providers without per-resource scoping, write to and delete.
+   *
+   * Exists so nothing above the driver has to assume "one all-powerful token"
+   * is the only credential shape. Attaching to another project's box works by
+   * LISTING the provider with the attaching project's own credential, so the
+   * radius is a property of that credential rather than of the config, and only
+   * the driver holding it can report it. A driver whose credential IS narrowly
+   * scoped simply enumerates less, and the same reporting comes out right
+   * without a special case.
+   *
+   * Optional: a driver that cannot enumerate omits it, and callers report no
+   * radius rather than a wrong one.
+   *
+   * @see https://github.com/stacksjs/ts-cloud/issues/169
+   */
+  listReachableResources?(): Promise<ReachableResource[]>
+}
+
+/**
+ * One resource a provider credential can reach, reduced to what attribution
+ * needs: a name to print and the labels that say who owns it.
+ *
+ * Deliberately structural and provider-agnostic — a Hetzner server satisfies it
+ * as-is, and another driver can satisfy it without importing anything.
+ */
+export interface ReachableResource {
+  name: string
+  labels?: Record<string, string>
 }
 
 export interface DeploySiteReleaseOptions {

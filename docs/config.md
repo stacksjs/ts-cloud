@@ -149,9 +149,32 @@ own provider project cannot be attached at all, because its token cannot see the
 owner's box. Co-hosting trades credential isolation for a shared box; that trade
 is often worth making, but it should be a decision rather than a surprise.
 
-`describeCredentialReach()` and `formatCredentialReach()` report what a given
-token actually reaches, separating the owner's boxes from the ones no one asked
-for, so the radius can be shown before an attach is approved.
+Every attach deploy states this radius before it acts on it, splitting the
+owner's boxes from the ones nobody asked for:
+
+```
+Attaching to 'statushq' shares one provider project, so this deploy's credential
+can write to all 4 server(s) it can see.
+3 of them belong to neither project:
+  bughq: bughq-production-app
+  stacks: stacks-production-app
+  not managed by ts-cloud: some-legacy-box
+A compromised CI run or a mistargeted teardown in this project now reaches those.
+Keep the app in its own provider project instead if that is not acceptable, which
+rules out attaching.
+```
+
+It is reported, never enforced — the trade is frequently worth making, and a
+deploy that started failing on upgrade would teach operators to silence it
+rather than read it. When the reach is exactly the two projects being joined it
+is one quiet line, because a warning that fires every time is a warning nobody
+reads.
+
+The radius comes from the driver (`CloudDriver.listReachableResources()`), not
+from a global assumption about tokens: a provider whose credential can be
+scoped per-resource simply enumerates less, and the same report comes out
+correct without a special case. `describeCredentialReach()` and
+`formatCredentialReach()` are exported for building your own plan output.
 
 ### It cannot install services on the owner's box
 
