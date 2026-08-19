@@ -216,5 +216,9 @@ describe('dashboard application onboarding integration', () => {
       })
     ).json()) as any
     expect(disconnected.registry).toMatchObject({ status: 'disconnected', credentialConfigured: false })
-  })
+  // 30s, not the 5000ms default. Booting the dashboard spawns a real
+  // `stx build --no-cache` of the cockpit (~1.7s measured), and this test then
+  // detects, resumes, validates and applies a plan on top of it. ~2s
+  // standalone, past 5000ms under the full 313-file run.
+  }, 30_000)
 })
