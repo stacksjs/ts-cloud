@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.3...v0.9.4)
+
+## ⚡ Performance Improvements
+
+- **build**: minify the library, as the executables already were ([f571afb](https://github.com/stacksjs/ts-cloud/commit/f571afb)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.9.4 ([4ef367c](https://github.com/stacksjs/ts-cloud/commit/4ef367c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.2...v0.9.3)
 
 ## 🐛 Bug Fixes
