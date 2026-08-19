@@ -22,6 +22,7 @@ import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { resolveHetznerApiToken, resolveHetznerImage, resolveHetznerSettings } from './config'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, matchesTsCloudProject, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
+import { summarizeRemoteFailures } from '../shared/remote-failure'
 import { readDriverState, writeDriverState } from './state'
 
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
@@ -1277,7 +1278,11 @@ export class HetznerDriver implements CloudDriver {
       success,
       instanceCount: options.targets.length,
       perInstance,
-      error: success ? undefined : 'One or more SSH deploy commands failed',
+      // Carry the failing host's remote output into the error itself. Callers
+      // report `result.error` and nothing else, so a bare summary here is the
+      // difference between "the database ensure failed" and "the database
+      // ensure failed because there is no psql on this box".
+      error: success ? undefined : summarizeRemoteFailures(perInstance, 'One or more SSH deploy commands failed'),
     }
   }
 

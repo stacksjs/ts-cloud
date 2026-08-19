@@ -153,6 +153,36 @@ is often worth making, but it should be a decision rather than a surprise.
 token actually reaches, separating the owner's boxes from the ones no one asked
 for, so the radius can be shown before an attach is approved.
 
+### It cannot install services on the owner's box
+
+Attach mode provisions nothing — installing engines on someone else's server is
+not a tenant's business. So `infrastructure.compute.managedServices` in an
+attached config is a statement about what the HOST already runs, not a request
+to install anything:
+
+```typescript
+cloud: { provider: 'hetzner', attachTo: 'statushq' },
+infrastructure: {
+  appDatabase: { engine: 'postgres', name: 'loghq', username: 'loghq', password: '…' },
+  compute: { managedServices: { postgres: true } },  // statushq must ALREADY run postgres
+}
+```
+
+If the owner's box runs SQLite, there is no Postgres for the tenant's role and
+database to be created in, and nothing will ever install one. The deploy checks
+this before it ships anything and stops with the incompatibility named:
+
+```
+This project declares managedServices.postgres, but 'statushq' has no postgres
+on 203.0.113.10. Attach mode does not provision services on the owner's box, so
+nothing will install it. Point the app at an external service, or ask the owner
+of 'statushq' to add it to their own config and re-provision.
+```
+
+A service counts as present when its binary is on `PATH` or something is
+listening on its port. If the check itself cannot get an answer, the deploy
+proceeds — it is a preflight, not a gate.
+
 ## Two app models
 
 ts-cloud deploys apps two ways; pick per environment:

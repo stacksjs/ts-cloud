@@ -912,9 +912,11 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     const { ok, driver } = await deploy(attachConfig('canonical', 'stacks'))
     expect(ok).toBe(true)
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    // One dashboard reconciliation, one ensure, and one site deploy call.
-    expect(calls.length).toBe(3)
-    const ensure = calls[1][0]
+    // One dashboard reconciliation, one managed-services preflight, one ensure,
+    // and one site deploy call.
+    expect(calls.length).toBe(4)
+    expect(calls[1][0].commands.join('\n')).toContain('ts_cloud_probe postgres')
+    const ensure = calls[2][0]
     const sql = ensure.commands.join('\n')
     // Same idempotent script the provisioning path runs at first boot.
     expect(sql).toContain("IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'training')")
@@ -927,15 +929,15 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     expect(ensure.comment).toBe('ts-cloud ensure database training/training')
     // The ensure strictly precedes the site deploy so the app's first boot
     // already finds its database.
-    expect(calls[2][0].commands.join('\n')).toContain('systemctl restart training-web@abc.service')
+    expect(calls[3][0].commands.join('\n')).toContain('systemctl restart training-web@abc.service')
   })
 
   it('honors the deprecated infrastructure.compute.database alias (bughq shape)', async () => {
     const { ok, driver } = await deploy(attachConfig('legacy', 'stacks'))
     expect(ok).toBe(true)
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    expect(calls.length).toBe(3)
-    const sql = calls[1][0].commands.join('\n')
+    expect(calls.length).toBe(4)
+    const sql = calls[2][0].commands.join('\n')
     expect(sql).toContain('CREATE ROLE "training" LOGIN PASSWORD \'pw\'')
     expect(sql).toContain('CREATE DATABASE "training" OWNER "training"')
   })
@@ -953,8 +955,10 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     const { ok, driver } = await deploy(attachConfig('none', 'stacks'))
     expect(ok).toBe(true)
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    expect(calls.length).toBe(2)
-    expect(calls[0][0].commands.join('\n')).not.toContain('CREATE DATABASE')
+    // Dashboard reconciliation, the managed-services preflight, and the site
+    // deploy — no ensure, because there is no database to ensure.
+    expect(calls.length).toBe(3)
+    expect(calls.map((call: any[]) => call[0].commands.join('\n')).join('\n')).not.toContain('CREATE DATABASE')
   })
 
   it('fails the deploy (shipping nothing) when the database ensure fails', async () => {
@@ -975,5 +979,124 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     expect(ok).toBe(false)
     // The site deploy must never run after a failed ensure.
     expect((driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.length).toBe(1)
+  })
+})
+
+/**
+ * Attach mode rides a box its OWNER provisioned and provisions nothing itself,
+ * so `managedServices` here is a claim about the host rather than a request.
+ * When the host does not honour it, every later step is built on an engine that
+ * is not there — which is how a deploy shipped both releases and then died on
+ * "Ensuring database 'loghq' failed" with nothing else to go on.
+ */
+describe('deployAllComputeSites attach-mode service preflight', () => {
+  function attachedConfig(): CloudConfig {
+    return {
+      project: { name: 'Log HQ', slug: 'loghq', region: 'fsn1' },
+      environments: { production: { type: 'production' } },
+      cloud: { provider: 'hetzner', attachTo: 'uptime-status' },
+      sites: { web: { domain: 'loghq.example.com', port: 3000, root: '.output', start: 'bun run server.ts' } },
+      infrastructure: {
+        appDatabase: { engine: 'postgres', name: 'loghq', username: 'loghq', password: 'secret' },
+        compute: { runtime: 'bun', managedServices: { postgres: true }, proxy: { engine: 'rpx' } },
+      },
+    }
+  }
+
+  function run(driver: CloudDriver, config: CloudConfig, errors: string[]): Promise<boolean> {
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-attach-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+    process.env.TS_CLOUD_UI_DISABLE = '1'
+    return deployAllComputeSites({
+      config,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      tarballForSite: () => tarball,
+      logger: {
+        info: () => {},
+        warn: () => {},
+        error: (message: string) => errors.push(message),
+        step: () => {},
+        success: () => {},
+      },
+    }).finally(() => {
+      delete process.env.TS_CLOUD_UI_DISABLE
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+  }
+
+  it('refuses before shipping anything when the host has no postgres', async () => {
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      runRemoteDeploy: mock(async (options: { commands: string[] }) => ({
+        success: true,
+        instanceCount: 1,
+        perInstance: [
+          {
+            instanceId: 'i-abc123',
+            status: 'Success',
+            output: options.commands.join('\n').includes('ts_cloud_probe postgres')
+              ? 'ts-cloud-service:postgres:missing'
+              : '',
+          },
+        ],
+      })),
+    })
+    const errors: string[] = []
+    expect(await run(driver, attachedConfig(), errors)).toBe(false)
+    expect(errors.join('\n')).toContain('managedServices.postgres')
+    expect(errors.join('\n')).toContain("'uptime-status'")
+    // The probe ran; the release upload never did.
+    expect(driver.uploadRelease).not.toHaveBeenCalled()
+  })
+
+  it('proceeds when the host provides what was declared', async () => {
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      runRemoteDeploy: mock(async () => ({
+        success: true,
+        instanceCount: 1,
+        perInstance: [{ instanceId: 'i-abc123', status: 'Success', output: 'ts-cloud-service:postgres:present' }],
+      })),
+    })
+    const errors: string[] = []
+    expect(await run(driver, attachedConfig(), errors)).toBe(true)
+    expect(errors).toEqual([])
+  })
+
+  /**
+   * A preflight that cannot get an answer must not become a gate: an older box
+   * or a truncated capture would otherwise block deploys that are perfectly
+   * fine.
+   */
+  it('does not block when the probe returns nothing', async () => {
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      runRemoteDeploy: mock(async () => ({
+        success: true,
+        instanceCount: 1,
+        perInstance: [{ instanceId: 'i-abc123', status: 'Success' }],
+      })),
+    })
+    const errors: string[] = []
+    expect(await run(driver, attachedConfig(), errors)).toBe(true)
+  })
+
+  it('probes nothing for a project that owns its box', async () => {
+    const config = attachedConfig()
+    delete config.cloud
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const errors: string[] = []
+    expect(await run(driver, config, errors)).toBe(true)
+    const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+      .map((call: any[]) => call[0].commands.join('\n'))
+      .join('\n')
+    expect(commands).not.toContain('ts_cloud_probe')
   })
 })
