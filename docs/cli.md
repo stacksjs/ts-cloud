@@ -154,6 +154,7 @@ See [Preview environments](/features/preview-environments) for policy, source li
 | `cloud server:list` / `server:create <name>` / `server:destroy <name>` | Manage servers. |
 | `cloud server:ssh <name>` / `server:logs <name>` / `server:monitoring <name>` | Connect / logs / metrics. |
 | `cloud server:deploy <name>` / `server:reboot` / `server:resize <name> <type>` | Deploy / reboot / resize. |
+| `cloud server:rename <name> <new-name> [--apply]` | Rename a server in place. Prints the plan; `--apply` performs it. |
 | `cloud server:recipe <name> <recipe>` | Run a reusable script across servers. |
 | `cloud server:worker:add/list/restart/remove` | Queue workers (Supervisor). |
 | `cloud server:cron:add/list/remove` | Scheduled jobs / cron. |
@@ -163,6 +164,49 @@ See [Preview environments](/features/preview-environments) for policy, source li
 | `cloud server:update <name>` / `server:secure <name>` | OS updates / hardening. |
 
 See [Laravel / Forge-style](/features/laravel) for the `infrastructure.compute` + `sites` config.
+
+### Renaming a server
+
+A name is spelled in four places, and a rename is only done when all four agree:
+the provider record, the local driver state pin
+(`storage/cloud/state/<stack>.json`), the box's own hostname, and the fleet
+inventory record. The state pin is the one that is not cosmetic — a deploy
+REFUSES a pinned server whose live name no longer matches the recorded one, a
+guard against a stale pin sending a database operation to another project's box
+— so renaming at the provider alone quietly invalidates it.
+
+```bash
+cloud server:rename bughq hq-production-server            # plan only
+cloud server:rename bughq hq-production-server --apply    # perform it
+```
+
+Without `--apply` it prints the plan and changes nothing:
+
+```
+server:rename bughq
+  →   Rename the server at the provider
+        bughq → hq-production-server
+  →   Update the recorded name in the local driver state
+        bughq → hq-production-server
+  ok  Set the hostname on the box [already done]
+  →   Rename the fleet inventory record
+        bughq → hq-production-server
+  3 step(s) would run
+  Re-run with --apply to perform it.
+```
+
+Every step asks reality whether it is already done, so a rename that dies
+halfway is resumed by running the same command again — the finished steps skip
+themselves rather than being attempted twice — and a completed rename re-runs as
+`Nothing to do`. A step whose capability is missing is dropped and reported
+under `not covered`: a hand-enrolled server has no provider record, a project
+deploying purely from labels has no state pin, and a box whose host key is not
+pinned cannot be reached to set a hostname (`cloud server:validate` first).
+
+Renaming is reversible by renaming back, so it needs no typed confirmation. It
+is also non-interactive by construction — the plan is data and the authorization
+is a flag — so it runs unattended from CI, and `--json` emits both the plan and
+the outcome. Each step appends to the operation log as it starts and finishes.
 
 ## Databases
 

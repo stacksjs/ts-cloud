@@ -2,6 +2,7 @@ import type { CLI } from '@stacksjs/clapp'
 import type { EnvironmentType } from '@ts-cloud/core'
 import type { HetznerResizeCheckpoint } from '../../src/drivers/hetzner/resize-state'
 import type { ServerProvider, ServerRole } from '../../src/fleet'
+import type { ServerRenameEffects } from '../../src/operations/server-rename'
 import { resolveProjectStackName } from '@ts-cloud/core'
 import * as cli from '../../src/utils/cli'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
@@ -20,9 +21,11 @@ import { resolveHetznerServerType } from '../../src/drivers/hetzner/instance-siz
 import { executeHetznerServerResize, planHetznerServerResize } from '../../src/drivers/hetzner/resize'
 import { collectHetznerResizeManifest, prepareHetznerResize, verifyHetznerResize } from '../../src/drivers/hetzner/resize-remote'
 import { acquireResizeLock, readResizeCheckpoint, writeResizeCheckpoint } from '../../src/drivers/hetzner/resize-state'
-import { readDriverState } from '../../src/drivers/hetzner/state'
+import { readDriverState, writeDriverState } from '../../src/drivers/hetzner/state'
 import { usesRpxProxy } from '../../src/drivers/shared/rpx-gateway'
-import { FleetService, FleetStore, SshFleetDriver } from '../../src/fleet'
+import { FleetService, FleetStore, SshFleetDriver, SystemFleetSshTransport } from '../../src/fleet'
+import { applyPlan, formatPlan, resolvePlan } from '../../src/operations/plan'
+import { buildSetHostnameScript, planServerRename } from '../../src/operations/server-rename'
 import { unsupportedCommand } from './capability-command'
 import { loadValidatedConfig } from './shared'
 
@@ -482,6 +485,157 @@ async function runHetznerHostOptimization(name: string, options: OptimizeCommand
   else cli.success(`${server.name} passed full host, rpx route, service, release, and data verification.`)
 }
 
+interface RenameCommandOptions {
+  env?: string
+  apply?: boolean
+  json?: boolean
+}
+
+/**
+ * Wire the four records a rename touches to live effects, plan it, print the
+ * plan, and apply it only when asked.
+ *
+ * Each capability is wired only when it is actually available: a server with no
+ * provider id has no provider record to rename, a project with no state pin for
+ * this server has nothing to repin, and a box whose host key is not pinned
+ * cannot be reached to set a hostname. A missing one drops its step rather than
+ * failing the rename — see `planServerRename`.
+ */
+async function runServerRename(name: string, next: string, options: RenameCommandOptions): Promise<void> {
+  const config = await loadValidatedConfig()
+  const environment = (options.env ?? 'production') as EnvironmentType
+  const stackName = resolveProjectStackName(config, environment)
+
+  await use(async (value) => {
+    const server = find(value, name)
+    const inventory = value.store.list(value.controlPlane.project.id, true)
+
+    // A Hetzner client is only reachable with a token; without one the provider
+    // record simply is not part of this rename, and the plan says so.
+    const hetzner =
+      server.provider === 'hetzner' && server.providerId
+        ? (() => {
+            try {
+              const settings = resolveHetznerSettings(config)
+              return new HetznerClient({ apiToken: resolveHetznerApiToken(settings.apiToken, config) })
+            } catch {
+              return null
+            }
+          })()
+        : null
+    const providerId = server.providerId ? Number(server.providerId) : Number.NaN
+
+    const state = await readDriverState(stackName)
+    // Only repin state that actually points at THIS server. Rewriting a pin for
+    // a different box would be exactly the stale-pin bug the guard exists for.
+    const pinned = state != null && state.serverId === providerId
+
+    const transport = new SystemFleetSshTransport()
+    const reachable = server.trustState === 'pinned'
+
+    const effects: ServerRenameEffects = {
+      takenNames: async () => {
+        const names = inventory.map((item) => item.name)
+        if (hetzner) names.push(...(await hetzner.listServers()).map((item) => item.name))
+        return names
+      },
+      inventoryName: () => value.store.get(server.id)?.name ?? server.name,
+      renameInventory: (value_) => {
+        value.store.update(server.id, { name: value_ })
+      },
+      ...(hetzner && Number.isFinite(providerId)
+        ? {
+            providerName: async () => (await hetzner.getServer(providerId)).name,
+            renameProvider: async (value_: string) => {
+              await hetzner.renameServer(providerId, value_)
+            },
+          }
+        : {}),
+      ...(pinned
+        ? {
+            stateName: async () => (await readDriverState(stackName))?.serverName,
+            writeStateName: async (value_: string) => {
+              const current = await readDriverState(stackName)
+              if (current) await writeDriverState(stackName, { ...current, serverName: value_ })
+            },
+          }
+        : {}),
+      ...(reachable
+        ? {
+            remoteHostname: async () => {
+              const result = await transport.exec(server, 'hostname')
+              return result.code === 0 ? result.stdout.trim() : undefined
+            },
+            setRemoteHostname: async (value_: string) => {
+              const result = await transport.exec(server, buildSetHostnameScript(value_))
+              if (result.code !== 0) throw new Error(result.stderr.trim() || `hostname exited ${result.code}`)
+            },
+          }
+        : {}),
+    }
+
+    const plan = await planServerRename(server.name, next, effects)
+    const resolved = await resolvePlan(plan)
+
+    if (!options.apply) {
+      const skipped = [
+        hetzner ? '' : 'provider record (no provider id or no API token)',
+        pinned ? '' : 'local state pin (none points at this server)',
+        reachable ? '' : 'box hostname (host key is not pinned — run server:validate first)',
+      ].filter(Boolean)
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              schemaVersion: 1,
+              operation: plan.operation,
+              target: plan.target,
+              rename: { from: server.name, to: next },
+              notCovered: skipped,
+              steps: resolved.map((item) => ({
+                id: item.step.id,
+                title: item.step.title,
+                state: item.state,
+                change: item.step.change,
+                reason: item.reason,
+              })),
+            },
+            null,
+            2,
+          ),
+        )
+        return
+      }
+      for (const line of formatPlan(plan, resolved)) console.log(line)
+      for (const item of skipped) console.log(`  not covered: ${item}`)
+      console.log('  Re-run with --apply to perform it.')
+      return
+    }
+
+    const outcome = await applyPlan(plan, resolved, {
+      log: (message) => cli.info(message),
+      audit: (event) =>
+        value.controlPlane.store.appendEvent({
+          projectId: value.controlPlane.project.id,
+          resourceId: server.resourceId,
+          type: `${event.operation}.${event.step}.${event.state}`,
+          level: event.state === 'failed' ? 'error' : 'info',
+          payload: { target: event.target, renameTo: next, ...(event.error ? { error: event.error } : {}) },
+        }),
+    })
+
+    if (options.json) console.log(JSON.stringify({ schemaVersion: 1, outcome }, null, 2))
+    if (!outcome.success) {
+      const failed = outcome.steps.find((step) => step.state === 'failed')
+      throw new Error(
+        `${plan.operation} stopped at '${failed?.title}': ${failed?.error}. `
+        + 'Earlier steps stayed applied; re-run the same command to continue from here.',
+      )
+    }
+    if (!options.json) cli.success(`Renamed ${server.name} to ${next}.`)
+  })
+}
+
 export function registerServerCommands(app: CLI): void {
   app
     .command('capabilities [server]', 'Show provider and target operation support')
@@ -669,6 +823,18 @@ export function registerServerCommands(app: CLI): void {
             )
           else cli.success(`Bootstrap queued: ${result.operation?.id}`)
         })
+      } catch (error) {
+        fail(error)
+      }
+    })
+  app
+    .command('server:rename <name> <new-name>', 'Rename a server in place, without recreating it')
+    .option('--env <environment>', 'Deployment environment', { default: 'production' })
+    .option('--apply', 'Perform the reviewed rename plan')
+    .option('--json', 'Print structured JSON')
+    .action(async (name: string, newName: string, options: RenameCommandOptions) => {
+      try {
+        await runServerRename(name, newName, options)
       } catch (error) {
         fail(error)
       }
