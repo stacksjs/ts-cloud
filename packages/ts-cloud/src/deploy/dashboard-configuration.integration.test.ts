@@ -136,5 +136,9 @@ describe('dashboard configuration integration', () => {
       body: JSON.stringify({ id: token.id, expectedVersion: 2, confirm: 'TOKEN' }),
     })
     expect(await removed.json()).toMatchObject({ ok: true, mutation: { removed: ['TOKEN'] } })
-  })
+  // 30s, not the 5000ms default. Booting the dashboard spawns a real
+  // `stx build --no-cache` of the cockpit (~1.7s measured), and this test then
+  // drives import, preview, mask, reveal, rotate, export and delete through it.
+  // ~2s standalone, past 5000ms under the full 313-file run.
+  }, 30_000)
 })

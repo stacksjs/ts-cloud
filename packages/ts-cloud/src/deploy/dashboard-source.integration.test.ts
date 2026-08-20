@@ -175,5 +175,9 @@ describe('dashboard source connection integration', () => {
       })
     ).json()) as any
     expect(disconnected.connection).toMatchObject({ status: 'disconnected', credentialConfigured: false })
-  })
+  // 30s, not the 5000ms default. Booting the dashboard spawns a real
+  // `stx build --no-cache` of the cockpit (~1.7s measured) before this test
+  // connects a repository and enqueues a signed deployment. ~2s standalone,
+  // past 5000ms under the full 313-file run.
+  }, 30_000)
 })
