@@ -243,6 +243,41 @@ export interface SiteMoveEffects {
   refreshTargetGateway: () => Promise<void>
   /** Does the target's gateway already route this site? */
   targetRoutesSite: () => Promise<boolean>
+  /**
+   * How to carry an ON-BOX database, when the project has one.
+   *
+   * A SQLite database rides along in the tree already — it lives under
+   * `shared/`, which is the whole point of `sharedPaths`. An engine database
+   * does not: Postgres and MySQL keep their data in the engine's own directory,
+   * which belongs to the box rather than to the site. Moving the tree and not
+   * the database would cut DNS over to a target serving an empty app, so the
+   * plan REFUSES to be built when a project has one of these and no way to
+   * carry it — see {@link SiteMoveOptions.database}.
+   *
+   * Absent when the database is external (RDS, a managed host): the target
+   * connects to the same endpoint the source did, and there is nothing to move.
+   */
+  database?: SiteMoveDatabaseEffects
+}
+
+/** Carrying an on-box engine database between boxes, in resumable pieces. */
+export interface SiteMoveDatabaseEffects {
+  /** Dump it on the source. */
+  dump: () => Promise<void>
+  /** Carry the dump to the target. */
+  transferDump: () => Promise<void>
+  /** Is the dump already staged on the target? Lets the transfer resume. */
+  dumpStaged: () => Promise<boolean>
+  /** Create the role + database on the target, then load the dump into it. */
+  restore: () => Promise<void>
+  /**
+   * Does the target ALREADY hold a database of this name with tables in it?
+   *
+   * Checked as a precondition, not as a step: loading a dump over someone
+   * else's data is the one genuinely destructive thing a move could do, and the
+   * answer decides whether the operation may run at all.
+   */
+  targetHasData: () => Promise<boolean>
 }
 
 export interface SiteMoveOptions {
@@ -259,6 +294,13 @@ export interface SiteMoveOptions {
   port?: number
   /** Health-check path, defaulting to `/`. */
   healthCheckPath?: string
+  /**
+   * The on-box engine database this site's project owns, when it has one —
+   * `resolveAppDatabase(config)` narrowed by `isLocalDatabase`. Naming it here
+   * is what makes the move refuse to run without a way to carry it, rather than
+   * moving the app and quietly leaving its data behind.
+   */
+  database?: { name: string }
 }
 
 /**
@@ -273,6 +315,27 @@ export async function planSiteMove(options: SiteMoveOptions, effects: SiteMoveEf
 
   if (from === to) throw new Error(`'${siteName}' is already on ${to}.`)
 
+  // A project with an on-box engine database and no way to carry it must not
+  // move at all. Moving the tree alone would pass every check in this plan —
+  // the app starts, answers its health gate, takes the DNS cutover — and serve
+  // an empty database to production. Refusing here is the only honest answer.
+  if (options.database && !effects.database)
+    throw new Error(
+      `'${siteName}' uses the on-box database '${options.database.name}', which lives in the engine's own `
+      + 'data directory rather than in the site tree, and this move has no way to carry it. '
+      + 'Moving the site without it would cut traffic over to an empty database.',
+    )
+
+  // Loading a dump over data already on the target is the one genuinely
+  // destructive thing this operation could do, so it is a precondition something
+  // the operator resolves, not a step with a confirmation flag on it.
+  if (options.database && effects.database && (await effects.database.targetHasData()))
+    throw new Error(
+      `${to} already has a database named '${options.database.name}' with tables in it. `
+      + 'Restoring this site\'s dump over it would destroy that data. '
+      + 'Rename or drop it on the target first, or point this project at a different database name.',
+    )
+
   const steps: OperationStep[] = [
     {
       id: 'pause-workers',
@@ -282,6 +345,20 @@ export async function planSiteMove(options: SiteMoveOptions, effects: SiteMoveEf
         await effects.runOnSource(buildPauseWorkersScript(slug, siteName))
       },
     },
+    ...(effects.database
+      ? [
+          {
+            id: 'database-dump',
+            title: `Dump the '${options.database?.name}' database on ${from}`,
+            // Never skipped, for the same reason the tree snapshot is not: a
+            // dump from an earlier attempt predates whatever the source has
+            // committed since, and shipping stale rows is worse than dumping
+            // twice.
+            satisfied: async () => false,
+            apply: () => effects.database!.dump(),
+          } satisfies OperationStep,
+        ]
+      : []),
     {
       id: 'snapshot',
       title: `Archive the site's tree and units on ${from}`,
@@ -301,6 +378,26 @@ export async function planSiteMove(options: SiteMoveOptions, effects: SiteMoveEf
       satisfied: () => effects.archiveStaged(),
       apply: () => effects.transferArchive(),
     },
+    ...(effects.database
+      ? [
+          {
+            id: 'database-transfer',
+            title: `Carry the database dump to ${to}`,
+            change: { from, to },
+            satisfied: () => effects.database!.dumpStaged(),
+            apply: () => effects.database!.transferDump(),
+          } satisfies OperationStep,
+          {
+            id: 'database-restore',
+            title: `Create and load '${options.database?.name}' on ${to}`,
+            // Before the app starts, so its first request finds its data —
+            // and never skipped, because the precondition above already
+            // established the target holds nothing this could overwrite.
+            satisfied: async () => false,
+            apply: () => effects.database!.restore(),
+          } satisfies OperationStep,
+        ]
+      : []),
     {
       id: 'restore',
       title: `Unpack the site on ${to} and start it`,

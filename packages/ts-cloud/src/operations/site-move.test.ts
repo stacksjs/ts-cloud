@@ -285,3 +285,101 @@ describe('remote scripts', () => {
     expect(siteMoveArchivePath('hq', 'bughq')).toBe('/tmp/ts-cloud-move-hq-bughq.tar.gz')
   })
 })
+
+/**
+ * A SQLite database rides along in the tree — it lives under `shared/`, which is
+ * the whole point of `sharedPaths`. A Postgres or MySQL database does not: it
+ * lives in the engine's own data directory, which belongs to the box rather than
+ * the site. Moving the tree alone would pass every check in the plan and then
+ * serve production an empty database.
+ */
+describe('planSiteMove with an on-box database', () => {
+  function dbWorld() {
+    const base = world()
+    const db = { dumped: false, staged: false, restored: false, targetData: false }
+    const effects = {
+      ...base.effects,
+      database: {
+        dump: async () => { db.dumped = true },
+        transferDump: async () => { db.staged = true },
+        dumpStaged: async () => db.staged,
+        restore: async () => { db.restored = true },
+        targetHasData: async () => db.targetData,
+      },
+    }
+    return { state: base.state, db, effects }
+  }
+
+  const withDb = { ...options, database: { name: 'bughq' } }
+
+  it('refuses the move when there is no way to carry the database', async () => {
+    await expect(planSiteMove(withDb, world().effects)).rejects.toThrow('no way to carry it')
+  })
+
+  /** Loading a dump over data already there is the one destructive thing here. */
+  it('refuses when the target already holds a database of that name', async () => {
+    const { db, effects } = dbWorld()
+    db.targetData = true
+    await expect(planSiteMove(withDb, effects)).rejects.toThrow('already has a database')
+  })
+
+  it('carries the database, and loads it before the app starts', async () => {
+    const p = await planSiteMove(withDb, dbWorld().effects)
+    const ids = p.steps.map(step => step.id)
+    expect(ids).toEqual([
+      'pause-workers',
+      'database-dump',
+      'snapshot',
+      'transfer',
+      'database-transfer',
+      'database-restore',
+      'restore',
+      'health',
+      'gateway',
+      'dns',
+      'drain-source',
+    ])
+    // The dump is taken while background work is stopped, and loaded before the
+    // app on the target can serve a request against it.
+    expect(ids.indexOf('database-dump')).toBeGreaterThan(ids.indexOf('pause-workers'))
+    expect(ids.indexOf('database-restore')).toBeLessThan(ids.indexOf('restore'))
+  })
+
+  it('moves the data end to end', async () => {
+    const { state, db, effects } = dbWorld()
+    const p = await planSiteMove(withDb, effects)
+    expect((await applyPlan(p, await resolvePlan(p))).success).toBe(true)
+    expect(db).toMatchObject({ dumped: true, staged: true, restored: true })
+    expect(state.sourceRunning).toBe(false)
+  })
+
+  /** A dump from an earlier attempt predates what the source has committed since. */
+  it('re-dumps on a resume rather than shipping stale rows', async () => {
+    const { effects } = dbWorld()
+    const p = await planSiteMove(withDb, effects)
+    await applyPlan(p, await resolvePlan(p))
+    const again = await resolvePlan(await planSiteMove(withDb, effects))
+    expect(again.find(item => item.step.id === 'database-dump')?.state).toBe('pending')
+    // The transfer, though, resumes — the dump is already staged.
+    expect(again.find(item => item.step.id === 'database-transfer')?.state).toBe('satisfied')
+  })
+
+  /** An external database is reached at the same endpoint from either box. */
+  it('adds no database steps when the project has no on-box database', async () => {
+    const p = await planSiteMove(options, world().effects)
+    expect(p.steps.map(step => step.id).some(id => id.startsWith('database-'))).toBe(false)
+  })
+
+  it('leaves the source serving when the restore fails', async () => {
+    const { state, effects } = dbWorld()
+    const p = await planSiteMove(withDb, {
+      ...effects,
+      database: { ...effects.database, restore: async () => { throw new Error('role does not exist') } },
+    })
+    const outcome = await applyPlan(p, await resolvePlan(p))
+    expect(outcome.success).toBe(false)
+    expect(outcome.steps.at(-1)?.id).toBe('database-restore')
+    expect(state.published).toBe('203.0.113.1')
+    expect(state.sourceRunning).toBe(true)
+  })
+})

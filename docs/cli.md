@@ -202,6 +202,37 @@ command. Background units are enabled but not started on the target until the
 source is drained, so the two boxes can never both run a scheduler against one
 dataset.
 
+#### The database
+
+A **SQLite** database rides along in the tree: it lives under `shared/`, which is
+the whole point of `sharedPaths`. An **external** database (RDS, a managed host)
+needs nothing either — the target reaches the same endpoint the source did.
+
+An **on-box Postgres or MySQL** database is different. It lives in the engine's
+own data directory, which belongs to the box rather than to the site, so the move
+carries it explicitly: dump on the source while background work is stopped, carry
+the file, then create the role and database on the target and load it — using the
+same dump, setup, and restore scripts `cloud db:backup`/`db:restore` and
+provisioning use, so a moved database is built exactly like a provisioned one.
+
+The dump is loaded **before** the app starts on the target, so its first request
+finds its data.
+
+Two rules keep this safe:
+
+- If the project has an on-box database and the move has no way to carry it, the
+  move **refuses to run**. Moving the tree alone would pass every check in the
+  plan — the app starts, answers its health gate, takes the DNS cutover — and
+  then serve production an empty database.
+- If the target already has a database of that name **with tables in it**, the
+  move refuses. Loading a dump over someone else's data is the one genuinely
+  destructive thing this operation could do, so it is a precondition the operator
+  resolves rather than a step behind a confirmation flag.
+
+Like the tree snapshot, the dump is re-taken on a resume rather than skipped: one
+from an earlier attempt predates whatever the source has committed since, and
+shipping stale rows is worse than dumping twice.
+
 The archive travels through the machine running the command rather than directly
 between the boxes: a direct hop would need the target to hold a credential for
 the source, which is the same credential-radius problem consolidation already

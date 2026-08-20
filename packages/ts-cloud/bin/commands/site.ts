@@ -5,11 +5,15 @@ import type { SiteMoveEffects } from '../../src/operations/site-move'
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import * as cli from '../../src/utils/cli'
+import { resolveAppDatabase } from '@ts-cloud/core'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
 import { createDnsProvider } from '../../src/dns'
 import { normalizePublicIpv6, reconcileAddressRecords, verifyAddressRecord } from '../../src/deploy/server-dns'
 import { addSiteToCloudConfig } from '../../src/deploy/site-config-editor'
 import { siteInstallBase } from '../../src/deploy/site-target'
+import { buildBackupScript } from '../../src/deploy/dashboard-database'
+import { buildDatabaseSetupScript, isLocalDatabase } from '../../src/drivers/shared/db-provision'
+import { buildBackupRestoreScript } from '../../src/drivers/shared/backups'
 import { buildRpxConfig, buildRpxFragmentRefreshScript } from '../../src/drivers/shared/rpx-gateway'
 import { FleetStore, SystemFleetSshTransport } from '../../src/fleet'
 import { applyPlan, formatPlan, resolvePlan } from '../../src/operations/plan'
@@ -114,6 +118,16 @@ async function runSiteMove(siteName: string, options: SiteMoveCommandOptions): P
     const zoneFor = (fqdn: string): string =>
       configuredZone && fqdn.endsWith(configuredZone) ? configuredZone : fqdn.split('.').slice(-2).join('.')
 
+    // An ON-BOX engine database has to be carried separately: it lives in the
+    // engine's data directory, not in the site tree. An external one needs
+    // nothing — the target reaches the same endpoint the source did. SQLite
+    // needs nothing either; it is under `shared/` and rides along in the tree.
+    const appDatabase = resolveAppDatabase(config)
+    const onBoxDatabase =
+      appDatabase?.name && isLocalDatabase(appDatabase) ? { name: appDatabase.name } : undefined
+    const dumpPath = `/tmp/ts-cloud-move-${slug}-${siteName}.sql.gz`
+    const engine = (appDatabase?.engine ?? 'mysql') as 'mysql' | 'mariadb' | 'postgres'
+
     const effects: SiteMoveEffects = {
       runOnSource: (script) => execOn(transport, source, script),
       runOnTarget: (script) => execOn(transport, target, script),
@@ -165,6 +179,60 @@ async function runSiteMove(siteName: string, options: SiteMoveCommandOptions): P
         )
         return published ? target.endpoint : undefined
       },
+      ...(onBoxDatabase
+        ? {
+            database: {
+              // The SAME dump the backup command takes, written to a known path
+              // so the transfer and the restore can find it without parsing.
+              dump: async () => {
+                await execOn(
+                  transport,
+                  source,
+                  [
+                    'set -euo pipefail',
+                    'eval "$(cd /opt/pantry && pantry env 2>/dev/null)" || true',
+                    ...buildBackupScript(engine, onBoxDatabase.name, '/tmp', appDatabase),
+                    `mv -f "$(ls -1t /tmp/${onBoxDatabase.name}-*.sql.gz | head -1)" ${dumpPath}`,
+                  ].join('\n'),
+                )
+              },
+              dumpStaged: async () => {
+                const result = await transport.exec(target, `test -s ${dumpPath} && echo staged || true`)
+                return result.stdout.includes('staged')
+              },
+              transferDump: async () => {
+                const local = `${process.cwd()}/.ts-cloud-move-${slug}-${siteName}.sql.gz`
+                await copyFile(source, `${source.sshUser}@${source.endpoint}:${dumpPath}`, local)
+                await copyFile(target, local, `${target.sshUser}@${target.endpoint}:${dumpPath}`)
+                await Bun.file(local).delete().catch(() => {})
+              },
+              restore: async () => {
+                await execOn(
+                  transport,
+                  target,
+                  [
+                    // Create the role + database first, with the SAME idempotent
+                    // script provisioning runs, then load the dump into it.
+                    ...buildDatabaseSetupScript(appDatabase, config.infrastructure?.compute?.managedServices ?? {}),
+                    ...buildBackupRestoreScript(appDatabase, { from: dumpPath }),
+                    `rm -f ${dumpPath}`,
+                  ].join('\n'),
+                )
+              },
+              targetHasData: async () => {
+                const query =
+                  engine === 'postgres'
+                    ? `psql -tAc "select count(*) from information_schema.tables where table_schema='public'" -d ${onBoxDatabase.name} 2>/dev/null || echo 0`
+                    : `mysql -N -B -e "select count(*) from information_schema.tables where table_schema='${onBoxDatabase.name}'" 2>/dev/null || echo 0`
+                const result = await transport.exec(
+                  target,
+                  `eval "$(cd /opt/pantry && pantry env 2>/dev/null)" || true\n${query}`,
+                )
+                return Number.parseInt(result.stdout.trim().split('\n').pop() ?? '0', 10) > 0
+              },
+            },
+          }
+        : {}),
       cutoverDns: async () => {
         if (!domain) return []
         if (!dnsName) return [`No DNS provider configured — point ${domain} at ${target.endpoint} manually.`]
@@ -191,6 +259,7 @@ async function runSiteMove(siteName: string, options: SiteMoveCommandOptions): P
         targetAddress: target.endpoint,
         port: site.port,
         healthCheckPath: site.healthCheck?.path,
+        database: onBoxDatabase,
       },
       effects,
     )
