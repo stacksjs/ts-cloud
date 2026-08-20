@@ -2,6 +2,11 @@ import type { SiteMoveEffects } from './site-move'
 import { describe, expect, it } from 'bun:test'
 import { applyPlan, formatPlan, resolvePlan } from './plan'
 import {
+  buildCertificatePackScript,
+  buildCertificateStateScript,
+  buildCertificateUnpackScript,
+  certificatesMatch,
+  parseCertificateState,
   buildDrainSourceScript,
   buildHealthGateScript,
   buildPauseWorkersScript,
@@ -381,5 +386,129 @@ describe('planSiteMove with an on-box database', () => {
     expect(outcome.steps.at(-1)?.id).toBe('database-restore')
     expect(state.published).toBe('203.0.113.1')
     expect(state.sourceRunning).toBe(true)
+  })
+})
+
+/**
+ * Certificates live in the gateway's cert directory, which belongs to the box
+ * rather than the site — the same shape as an on-box database. With pinned
+ * production certs, a cutover to a box without them is refused by every browser.
+ */
+describe('planSiteMove with TLS material', () => {
+  function certWorld(sourceCerts: Record<string, string>, targetCerts: Record<string, string> = {}) {
+    const base = world()
+    const carried = { count: 0, target: { ...targetCerts } }
+    const effects = {
+      ...base.effects,
+      certificates: {
+        inPlace: async () =>
+          certificatesMatch(new Map(Object.entries(sourceCerts)), new Map(Object.entries(carried.target))),
+        carry: async () => { carried.count++; carried.target = { ...sourceCerts } },
+      },
+    }
+    return { state: base.state, carried, effects }
+  }
+
+  it('carries certificates before routing, and well before DNS', async () => {
+    const p = await planSiteMove(options, certWorld({ 'bughq.example.com': 'abc' }).effects)
+    const ids = p.steps.map(step => step.id)
+    expect(ids.indexOf('certificates')).toBeLessThan(ids.indexOf('gateway'))
+    expect(ids.indexOf('certificates')).toBeLessThan(ids.indexOf('dns'))
+    expect(ids.indexOf('certificates')).toBeGreaterThan(ids.indexOf('restore'))
+  })
+
+  it('carries them when the target has none', async () => {
+    const { carried, effects } = certWorld({ 'bughq.example.com': 'abc' })
+    const p = await planSiteMove(options, effects)
+    expect((await applyPlan(p, await resolvePlan(p))).success).toBe(true)
+    expect(carried.count).toBe(1)
+  })
+
+  /** An OLDER cert for the same hostname is not the one being moved. */
+  it('replaces a stale certificate the target already holds', async () => {
+    const { carried, effects } = certWorld({ 'bughq.example.com': 'new' }, { 'bughq.example.com': 'expired' })
+    const resolved = await resolvePlan(await planSiteMove(options, effects))
+    expect(resolved.find(item => item.step.id === 'certificates')?.state).toBe('pending')
+    const p = await planSiteMove(options, effects)
+    await applyPlan(p, await resolvePlan(p))
+    expect(carried.count).toBe(1)
+    expect(carried.target['bughq.example.com']).toBe('new')
+  })
+
+  it('skips the carry when the target already holds the same material', async () => {
+    const { carried, effects } = certWorld({ 'bughq.example.com': 'abc' }, { 'bughq.example.com': 'abc' })
+    const p = await planSiteMove(options, effects)
+    const outcome = await applyPlan(p, await resolvePlan(p))
+    expect(outcome.steps.find(step => step.id === 'certificates')?.state).toBe('skipped')
+    expect(carried.count).toBe(0)
+  })
+
+  /** On-demand TLS may legitimately have issued nothing yet. */
+  it('does not block on a hostname the source has no certificate for', async () => {
+    const { effects } = certWorld({ 'bughq.example.com': 'absent' })
+    const resolved = await resolvePlan(await planSiteMove(options, effects))
+    expect(resolved.find(item => item.step.id === 'certificates')?.state).toBe('satisfied')
+  })
+
+  it('adds no certificate step when TLS is terminated off the box', async () => {
+    const p = await planSiteMove(options, world().effects)
+    expect(p.steps.map(step => step.id)).not.toContain('certificates')
+  })
+
+  it('leaves DNS on the source when the carry fails', async () => {
+    const { state, effects } = certWorld({ 'bughq.example.com': 'abc' })
+    const p = await planSiteMove(options, {
+      ...effects,
+      certificates: { ...effects.certificates, carry: async () => { throw new Error('permission denied') } },
+    })
+    const outcome = await applyPlan(p, await resolvePlan(p))
+    expect(outcome.success).toBe(false)
+    expect(outcome.steps.at(-1)?.id).toBe('certificates')
+    expect(state.published).toBe('203.0.113.1')
+    expect(state.sourceRunning).toBe(true)
+  })
+})
+
+describe('certificate scripts', () => {
+  it('reports a checksum per hostname, or absent', () => {
+    const script = buildCertificateStateScript('/etc/rpx/certs', ['bughq.example.com'])
+    expect(script).toContain("'/etc/rpx/certs/bughq.example.com.crt'")
+    expect(script).toContain('sha256sum')
+    expect(script).toContain('cert:bughq.example.com:absent')
+  })
+
+  it('parses the reported state', () => {
+    const state = parseCertificateState('cert:a.example.com:abc123\ncert:b.example.com:absent\nnoise')
+    expect(state.get('a.example.com')).toBe('abc123')
+    expect(state.get('b.example.com')).toBe('absent')
+    expect(state.size).toBe(2)
+  })
+
+  it('compares only the hostnames the source actually has a cert for', () => {
+    const source = new Map([['a', 'x'], ['b', 'absent']])
+    expect(certificatesMatch(source, new Map([['a', 'x']]))).toBe(true)
+    expect(certificatesMatch(source, new Map([['a', 'y']]))).toBe(false)
+    expect(certificatesMatch(source, new Map())).toBe(false)
+  })
+
+  it('packs the key alongside the certificate for every hostname', () => {
+    const script = buildCertificatePackScript('/etc/rpx/certs', ['a.example.com', 'b.example.com'], '/tmp/c.tar.gz')
+    expect(script).toContain("'a.example.com.crt'")
+    expect(script).toContain("'a.example.com.key'")
+    expect(script).toContain("'b.example.com.key'")
+  })
+
+  /** A site whose certificate has not been issued yet is not an error. */
+  it('exits clean when there is nothing to pack', () => {
+    const script = buildCertificatePackScript('/etc/rpx/certs', ['a.example.com'], '/tmp/c.tar.gz')
+    expect(script).toContain('no certificates to carry')
+    expect(script).toContain('exit 0')
+  })
+
+  /** A world-readable private key on a shared box is silent until it is not. */
+  it('restores private keys 0600', () => {
+    const script = buildCertificateUnpackScript('/etc/rpx/certs', '/tmp/c.tar.gz')
+    expect(script).toContain("chmod 600 '/etc/rpx/certs'/*.key")
+    expect(script).toContain('tar xzf')
   })
 })

@@ -14,10 +14,19 @@ import { siteInstallBase } from '../../src/deploy/site-target'
 import { buildBackupScript } from '../../src/deploy/dashboard-database'
 import { buildDatabaseSetupScript, isLocalDatabase } from '../../src/drivers/shared/db-provision'
 import { buildBackupRestoreScript } from '../../src/drivers/shared/backups'
-import { buildRpxConfig, buildRpxFragmentRefreshScript } from '../../src/drivers/shared/rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, DEFAULT_RPX_CERTS_DIR } from '../../src/drivers/shared/rpx-gateway'
 import { FleetStore, SystemFleetSshTransport } from '../../src/fleet'
 import { applyPlan, formatPlan, resolvePlan } from '../../src/operations/plan'
-import { planSiteMove, siteMoveArchivePath } from '../../src/operations/site-move'
+import {
+  buildCertificatePackScript,
+  buildCertificateStateScript,
+  buildCertificateUnpackScript,
+  certificatesMatch,
+  parseCertificateState,
+  planSiteMove,
+  siteMoveArchivePath,
+  siteMoveCertArchivePath,
+} from '../../src/operations/site-move'
 import { loadValidatedConfig, resolveDnsProviderConfig } from './shared'
 
 interface SiteAddOptions {
@@ -126,6 +135,10 @@ async function runSiteMove(siteName: string, options: SiteMoveCommandOptions): P
     const onBoxDatabase =
       appDatabase?.name && isLocalDatabase(appDatabase) ? { name: appDatabase.name } : undefined
     const dumpPath = `/tmp/ts-cloud-move-${slug}-${siteName}.sql.gz`
+    const certArchive = siteMoveCertArchivePath(slug, siteName)
+    const certsDir = proxy?.certsDir ?? DEFAULT_RPX_CERTS_DIR
+    // Every hostname this site is served on needs its own certificate.
+    const certDomains = [domain, ...(site.aliases ?? [])].filter((value): value is string => !!value)
     const engine = (appDatabase?.engine ?? 'mysql') as 'mysql' | 'mariadb' | 'postgres'
 
     const effects: SiteMoveEffects = {
@@ -229,6 +242,36 @@ async function runSiteMove(siteName: string, options: SiteMoveCommandOptions): P
                   `eval "$(cd /opt/pantry && pantry env 2>/dev/null)" || true\n${query}`,
                 )
                 return Number.parseInt(result.stdout.trim().split('\n').pop() ?? '0', 10) > 0
+              },
+            },
+          }
+        : {}),
+      ...(proxy
+        ? {
+            certificates: {
+              inPlace: async () => {
+                const state = buildCertificateStateScript(certsDir, certDomains)
+                const [onSource, onTarget] = await Promise.all([
+                  transport.exec(source, state),
+                  transport.exec(target, state),
+                ])
+                return certificatesMatch(
+                  parseCertificateState(onSource.stdout),
+                  parseCertificateState(onTarget.stdout),
+                )
+              },
+              carry: async () => {
+                await execOn(transport, source, buildCertificatePackScript(certsDir, certDomains, certArchive))
+                const local = `${process.cwd()}/.ts-cloud-move-${slug}-${siteName}-certs.tar.gz`
+                // A site behind on-demand TLS may have no certificate yet; the
+                // pack script says so and exits clean rather than failing.
+                const staged = await transport.exec(source, `test -s ${certArchive} && echo staged || true`)
+                if (!staged.stdout.includes('staged')) return
+                await copyFile(source, `${source.sshUser}@${source.endpoint}:${certArchive}`, local)
+                await copyFile(target, local, `${target.sshUser}@${target.endpoint}:${certArchive}`)
+                await Bun.file(local).delete().catch(() => {})
+                await execOn(transport, target, buildCertificateUnpackScript(certsDir, certArchive))
+                await transport.exec(source, `rm -f ${certArchive}`)
               },
             },
           }

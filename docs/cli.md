@@ -233,6 +233,26 @@ Like the tree snapshot, the dump is re-taken on a resume rather than skipped: on
 from an earlier attempt predates whatever the source has committed since, and
 shipping stale rows is worse than dumping twice.
 
+#### TLS
+
+Certificates live in the gateway's cert directory (`/etc/rpx/certs` by default),
+which belongs to the box rather than to the site — the same shape as an on-box
+database, and the same failure if left behind. The move carries the certificate
+and private key for the site's domain and every alias, **before** it routes the
+site and well before DNS: a hostname that resolves to a box holding no
+certificate for it is refused by every browser, which is a worse outcome than the
+site simply still being on the old box. Private keys are restored `0600`.
+
+Whether the target already has them is decided by checksum, not by whether a file
+exists — an older certificate for the same hostname, expired or issued while the
+domain pointed somewhere else, is not the one being moved. A hostname the source
+has no certificate for is skipped rather than blocking: a site behind on-demand
+TLS may legitimately have none yet, and the target re-issues on first request.
+
+Renewal is not carried. The per-project renewal timer is written by the normal
+provisioning path, so the next `cloud deploy` against the target establishes it;
+until then the carried certificates stand on their own remaining validity.
+
 The archive travels through the machine running the command rather than directly
 between the boxes: a direct hop would need the target to hold a credential for
 the source, which is the same credential-radius problem consolidation already

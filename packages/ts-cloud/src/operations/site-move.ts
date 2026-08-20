@@ -217,6 +217,97 @@ export function parseSourceDrained(output: string): boolean {
   return !output.split('\n').some(line => line.trim().startsWith('active:'))
 }
 
+/** Where a site's TLS material is staged while it crosses between boxes. */
+export function siteMoveCertArchivePath(slug: string, siteName: string): string {
+  return `/tmp/ts-cloud-move-${slug}-${siteName}-certs.tar.gz`
+}
+
+/**
+ * Report a checksum per hostname for the cert the box holds, or `absent`.
+ *
+ * A checksum rather than "does the file exist": the target may hold an OLDER
+ * certificate for the same hostname — an expired one from a previous tenancy,
+ * or a staging cert issued while the domain still pointed elsewhere — and
+ * treating that as "already carried" would hand the cutover a certificate
+ * browsers reject.
+ *
+ * Read-only, so a plan can use it without changing either box.
+ */
+export function buildCertificateStateScript(certsDir: string, domains: readonly string[]): string {
+  return [
+    'set -u',
+    ...domains.map(domain =>
+      `if [ -s ${sh(`${certsDir}/${domain}.crt`)} ]; then`
+      + ` echo "cert:${domain}:$(sha256sum ${sh(`${certsDir}/${domain}.crt`)} | cut -d' ' -f1)";`
+      + ` else echo "cert:${domain}:absent"; fi`,
+    ),
+  ].join('\n')
+}
+
+/** `hostname → checksum | 'absent'` from {@link buildCertificateStateScript}. */
+export function parseCertificateState(output: string): Map<string, string> {
+  const state = new Map<string, string>()
+  for (const line of output.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('cert:')) continue
+    const [, domain, checksum] = trimmed.split(':')
+    if (domain && checksum) state.set(domain, checksum)
+  }
+  return state
+}
+
+/**
+ * Is the target's TLS material already what the source holds?
+ *
+ * Only hostnames the SOURCE has a certificate for are compared. A site running
+ * behind on-demand TLS may legitimately have none yet, and a move must not
+ * block on carrying something that does not exist.
+ */
+export function certificatesMatch(source: Map<string, string>, target: Map<string, string>): boolean {
+  for (const [domain, checksum] of source) {
+    if (checksum === 'absent') continue
+    if (target.get(domain) !== checksum) return false
+  }
+  return true
+}
+
+/** Pack a site's certificate and private key for each hostname it serves. */
+export function buildCertificatePackScript(
+  certsDir: string,
+  domains: readonly string[],
+  archive: string,
+): string {
+  const names = domains.flatMap(domain => [`${domain}.crt`, `${domain}.key`])
+  return [
+    'set -eu',
+    `rm -f ${sh(archive)}`,
+    `cd ${sh(certsDir)} 2>/dev/null || { echo "no certs dir at ${certsDir}" >&2; exit 0; }`,
+    // `|| true` on the listing: a hostname with no cert yet is not an error, it
+    // is a site whose certificate has not been issued.
+    `TS_CLOUD_CERTS="$(ls ${names.map(sh).join(' ')} 2>/dev/null | tr '\\n' ' ' || true)"`,
+    '[ -n "$TS_CLOUD_CERTS" ] || { echo "no certificates to carry"; exit 0; }',
+    `tar czf ${sh(archive)} $TS_CLOUD_CERTS`,
+  ].join('\n')
+}
+
+/**
+ * Unpack the certificates on the target.
+ *
+ * The private keys are re-chmodded to 0600 after extraction. `tar` restores the
+ * modes it recorded, so this is belt-and-braces — but a world-readable private
+ * key on a shared box is the kind of mistake that is silent until it is not.
+ */
+export function buildCertificateUnpackScript(certsDir: string, archive: string): string {
+  return [
+    'set -eu',
+    `[ -s ${sh(archive)} ] || { echo "no certificate archive staged"; exit 0; }`,
+    `mkdir -p ${sh(certsDir)}`,
+    `tar xzf ${sh(archive)} -C ${sh(certsDir)}`,
+    `chmod 600 ${sh(certsDir)}/*.key 2>/dev/null || true`,
+    `rm -f ${sh(archive)}`,
+  ].join('\n')
+}
+
 /**
  * The side effects a move needs, injected so the operation is testable without
  * two live boxes, a provider, or a DNS account.
@@ -258,6 +349,35 @@ export interface SiteMoveEffects {
    * connects to the same endpoint the source did, and there is nothing to move.
    */
   database?: SiteMoveDatabaseEffects
+  /**
+   * How to carry the site's TLS material, when the project terminates TLS on the
+   * box itself.
+   *
+   * Certificates live in the gateway's cert directory, which belongs to the box
+   * rather than to the site — the same shape as an on-box database, and the same
+   * failure if it is left behind. With pinned production certificates the
+   * cutover lands on a box that has no certificate for the hostname and every
+   * browser refuses it. With on-demand TLS the target re-issues on first
+   * request, so it self-heals, but only after a visible gap during which the
+   * site is down.
+   *
+   * Absent when TLS is terminated somewhere else entirely — a CDN, a managed
+   * load balancer — where the box never holds the material to begin with.
+   */
+  certificates?: SiteMoveCertificateEffects
+}
+
+/** Carrying a site's TLS material between boxes. */
+export interface SiteMoveCertificateEffects {
+  /**
+   * Does the target already hold exactly what the source holds?
+   *
+   * Compared by checksum rather than existence: an older certificate for the
+   * same hostname on the target is not the one being moved.
+   */
+  inPlace: () => Promise<boolean>
+  /** Pack on the source, carry, unpack on the target. */
+  carry: () => Promise<void>
 }
 
 /** Carrying an on-box engine database between boxes, in resumable pieces. */
@@ -426,6 +546,20 @@ export async function planSiteMove(options: SiteMoveOptions, effects: SiteMoveEf
   }
 
   steps.push(
+    ...(effects.certificates
+      ? [
+          {
+            id: 'certificates',
+            title: `Carry the site's TLS material to ${to}`,
+            // Before the route and well before DNS: a hostname that resolves to
+            // a box with no certificate for it is refused by every browser, and
+            // that is a worse failure than the site simply still being on the
+            // old box.
+            satisfied: () => effects.certificates!.inPlace(),
+            apply: () => effects.certificates!.carry(),
+          } satisfies OperationStep,
+        ]
+      : []),
     {
       id: 'gateway',
       title: `Route the site on ${to}`,
