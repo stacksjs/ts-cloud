@@ -242,9 +242,13 @@ export function registerDomainCommands(app: CLI): void {
       ) => {
         cli.header(`Zone migration: ${domain} (Route53 → Cloudflare)`)
 
+        // Only --apply needs Cloudflare. A dry run reads Route53 and
+        // translates in memory, and demanding a token for that made the one
+        // step whose whole purpose is REVIEWING a migration before you have
+        // committed to it the step you could not run first.
         const apiToken = process.env.CLOUDFLARE_API_TOKEN
-        if (!apiToken) {
-          cli.error('CLOUDFLARE_API_TOKEN is not set.')
+        if (options?.apply && !apiToken) {
+          cli.error('CLOUDFLARE_API_TOKEN is not set — required for --apply.')
           return
         }
 
@@ -281,7 +285,7 @@ export function registerDomainCommands(app: CLI): void {
           }
 
           // 3. Create the destination zone (idempotent) and import.
-          const provider = new CloudflareProvider(apiToken, { accountId: options?.account })
+          const provider = new CloudflareProvider(apiToken!, { accountId: options?.account })
           const zone = await provider.createZone(domain, { accountId: options?.account })
           cli.success(
             zone.created
