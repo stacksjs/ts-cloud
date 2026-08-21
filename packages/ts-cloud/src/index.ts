@@ -415,6 +415,19 @@ export type {
 } from './dns'
 export { PROXIABLE_RECORD_TYPES } from './dns'
 export type {
+  MigratedRecord,
+  SkippedRecord,
+  ZoneMigrationPlan,
+  ZoneMigrationReport,
+  ZoneParityReport,
+} from './dns'
+export {
+  applyZoneMigration,
+  exportRoute53Zone,
+  planZoneMigration,
+  verifyZoneParity,
+} from './dns'
+export type {
   DeclaredRecord,
   DeclaredRecordInput,
   DeclaredRecordOutcome,

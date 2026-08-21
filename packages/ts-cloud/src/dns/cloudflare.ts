@@ -38,16 +38,8 @@ interface CloudflareRecord {
   created_on: string
   modified_on: string
   priority?: number
-}
-
-interface CloudflareZone {
-  id: string
-  name: string
-  status: string
-  paused: boolean
-  type: string
-  development_mode: number
-  name_servers: string[]
+  /** Structured RDATA, used for the types whose fields do not fit `content` (SRV, CAA). */
+  data?: SrvRdata | Record<string, unknown>
 }
 
 /** One entry of `GET /zones/{id}/settings` (and the body of a per-setting PATCH). */
@@ -280,9 +272,24 @@ export class CloudflareProvider implements DnsProvider {
       cfRecord.priority = record.priority
     }
 
-    // SRV records have special format
+    // SRV carries four fields (priority, weight, port, target) that do not fit
+    // in `content`, so Cloudflare takes them as a structured `data` object.
+    //
+    // Sending the RDATA as a content string INSTEAD looks like it works — the
+    // API accepts it — and then stores a record whose priority is counted
+    // twice: once from the leading number in the string and once from the
+    // `priority` field. Mail and calendar clients read the result as a
+    // malformed target and fall back to guessing hostnames, which fails
+    // quietly on the client rather than loudly here.
     if (record.type === 'SRV') {
-      if (record.priority !== undefined) {
+      const parsed = parseSrvContent(record)
+      if (parsed) {
+        cfRecord.data = parsed
+        // `content` and `data` are mutually exclusive for SRV; leaving the
+        // string in place makes Cloudflare reject the whole record.
+        delete cfRecord.content
+        delete cfRecord.priority
+      } else if (record.priority !== undefined) {
         cfRecord.priority = record.priority
       }
     }
@@ -495,6 +502,79 @@ export class CloudflareProvider implements DnsProvider {
       return allZones.map((z) => z.name)
     } catch {
       return []
+    }
+  }
+
+  /**
+   * Create a zone in this account, or return the one already there.
+   *
+   * Idempotent on purpose. A zone migration is re-run far more often than it
+   * succeeds first time — a too-narrow token, a half-imported record set, a
+   * nameserver flip that has not propagated — and every one of those reruns
+   * would otherwise die on Cloudflare's "zone already exists" (code 1061)
+   * before reaching the import that actually needed fixing.
+   *
+   * `accountId` is required by the API for anything but a single-account token,
+   * so it falls back to {@link CloudflareProviderOptions.accountId} and fails
+   * loudly rather than letting Cloudflare pick an account for you.
+   *
+   * The returned `nameServers` are the pair the registrar has to be pointed at.
+   * They are assigned at creation and never change for the life of the zone, so
+   * they can be read once here and used to drive the registrar update.
+   */
+  async createZone(
+    domain: string,
+    options: { accountId?: string, jumpStart?: boolean } = {},
+  ): Promise<{
+    id: string
+    name: string
+    status: string
+    nameServers: string[]
+    created: boolean
+  }> {
+    const name = domain.replace(/\.$/, '').toLowerCase()
+    const accountId = options.accountId ?? this.accountId
+
+    if (!accountId) {
+      throw new Error(
+        `Cannot create zone ${name}: no Cloudflare account id. ` +
+          `Set CLOUDFLARE_ACCOUNT_ID, or pass accountId.`,
+      )
+    }
+
+    try {
+      const response = await this.request<CloudflareZone>('POST', '/zones', {
+        name,
+        account: { id: accountId },
+        // Cloudflare's "jump start" scrapes the CURRENT authoritative nameservers
+        // and imports whatever it can guess. That sounds helpful and is not: it
+        // silently drops what it cannot scrape (anything not resolvable by a
+        // simple sweep) while making the zone look populated, so a partial
+        // import reads as a complete one. We import explicitly instead, from a
+        // provider listing we can diff.
+        jump_start: options.jumpStart ?? false,
+      })
+
+      const zone = response.result
+      this.zoneCache.set(zone.name, zone.id)
+
+      return {
+        id: zone.id,
+        name: zone.name,
+        status: zone.status,
+        nameServers: zone.name_servers ?? [],
+        created: true,
+      }
+    } catch (error) {
+      // 1061 is "zone already exists in this account" — the idempotent path.
+      // Any other failure is real and must surface.
+      const message = error instanceof Error ? error.message : String(error)
+      if (!/already exists|1061/i.test(message)) throw error
+
+      const existing = await this.getZoneDetails(name)
+      if (!existing) throw error
+
+      return { ...existing, created: false }
     }
   }
 
@@ -759,4 +839,53 @@ function deepEqual(a: unknown, b: unknown): boolean {
   const bRecord = b as Record<string, unknown>
   // Cloudflare echoes settings back with extra keys, so compare only what was asked for.
   return Object.keys(bRecord).every(key => deepEqual(aRecord[key], bRecord[key]))
+}
+
+/** The four fields an `SRV` record carries, as Cloudflare's structured RDATA. */
+interface SrvRdata {
+  priority: number
+  weight: number
+  port: number
+  target: string
+}
+
+/**
+ * Pull SRV's four fields out of whichever shape the caller supplied.
+ *
+ * A record may arrive already split (`priority`/`weight`/`port` set, `content`
+ * holding just the target) or as one RDATA string — Route53 and every zone-file
+ * export use the string form. Both have to end up as the same `data` object.
+ *
+ * Returns null when neither shape yields all four, so the caller can fall back
+ * rather than write a half-formed record.
+ */
+function parseSrvContent(record: DnsRecord): SrvRdata | null {
+  const raw = (record.content || record.value || '').trim()
+
+  if (record.weight !== undefined && record.port !== undefined && record.priority !== undefined && raw) {
+    return { priority: record.priority, weight: record.weight, port: record.port, target: stripTrailingDot(raw) }
+  }
+
+  const parts = raw.split(/\s+/)
+  if (parts.length < 4) return null
+
+  const [priority, weight, port] = parts.slice(0, 3).map(Number)
+  if (![priority, weight, port].every(Number.isFinite)) return null
+
+  return { priority, weight, port, target: stripTrailingDot(parts.slice(3).join(' ')) }
+}
+
+/** Trailing dots are legal in a zone file and rejected by Cloudflare. */
+function stripTrailingDot(value: string): string {
+  return value.replace(/\.$/, '')
+}
+
+interface CloudflareZone {
+  id: string
+  name: string
+  status: string
+  paused: boolean
+  type: string
+  development_mode: number
+  name_servers: string[]
 }

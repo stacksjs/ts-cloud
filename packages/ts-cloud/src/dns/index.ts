@@ -20,6 +20,19 @@ export {
   resolveDeclaredRecords,
 } from './declared-records'
 export { Route53Provider } from './route53-adapter'
+export type {
+  MigratedRecord,
+  SkippedRecord,
+  ZoneMigrationPlan,
+  ZoneMigrationReport,
+  ZoneParityReport,
+} from './zone-migration'
+export {
+  applyZoneMigration,
+  exportRoute53Zone,
+  planZoneMigration,
+  verifyZoneParity,
+} from './zone-migration'
 export {
   UnifiedDnsValidator,
   createPorkbunValidator,

@@ -318,21 +318,33 @@ export class GoDaddyProvider implements DnsProvider {
   }
 
   /**
-   * Update nameservers for a domain (GoDaddy-specific)
+   * Read the nameservers the REGISTRY has this domain delegated to.
+   *
+   * Note this is the delegation, not the zone's own `NS` records. The two can
+   * disagree — that is exactly the state a half-finished migration leaves
+   * behind — and only the delegation decides who actually answers queries.
+   */
+  async getNameServers(domain: string): Promise<string[]> {
+    const details = await this.getDomainDetails(domain)
+    return details?.nameServers ?? []
+  }
+
+  /**
+   * Delegate a domain to a different set of nameservers.
+   *
+   * This PATCHes the DOMAIN, which is the registrar operation that changes the
+   * delegation at the registry. The obvious-looking alternative —
+   * `PUT /v1/domains/{domain}/records/NS` — writes `NS` records into GoDaddy's
+   * own hosted zone instead. That call succeeds, returns 200, and changes
+   * nothing about who is authoritative: the registry still points at the old
+   * provider. For a migration whose whole purpose is the cutover, that is the
+   * worst possible failure, because every check short of an external `dig +trace`
+   * reports success.
    */
   async updateNameServers(domain: string, nameservers: string[]): Promise<boolean> {
     try {
       const rootDomain = this.getRootDomain(domain)
-      await this.request(
-        'PUT',
-        `/v1/domains/${rootDomain}/records/NS`,
-        nameservers.map((ns) => ({
-          type: 'NS',
-          name: '@',
-          data: ns,
-          ttl: 3600,
-        })),
-      )
+      await this.request('PATCH', `/v1/domains/${rootDomain}`, { nameServers: nameservers })
       return true
     } catch {
       return false

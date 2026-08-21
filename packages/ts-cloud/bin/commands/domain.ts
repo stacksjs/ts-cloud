@@ -2,6 +2,16 @@ import type { CLI } from '@stacksjs/clapp'
 import * as cli from '../../src/utils/cli'
 import { ACMClient } from '../../src/aws/acm'
 import { UnifiedDnsValidator } from '../../src/dns'
+import { CloudflareProvider } from '../../src/dns/cloudflare'
+import { GoDaddyProvider } from '../../src/dns/godaddy'
+import { PorkbunProvider } from '../../src/dns/porkbun'
+import {
+  applyZoneMigration,
+  exportRoute53Zone,
+  planZoneMigration,
+  verifyZoneParity,
+} from '../../src/dns/zone-migration'
+import { Route53Client } from '../../src/aws/route53'
 import { getDnsProvider, resolveDnsProviderConfig } from './shared'
 
 export function registerDomainCommands(app: CLI): void {
@@ -220,6 +230,145 @@ export function registerDomainCommands(app: CLI): void {
     })
 
   app
+    .command('dns:migrate <domain>', 'Migrate a whole zone from Route53 to Cloudflare')
+    .option('--account <id>', 'Cloudflare account id (defaults to CLOUDFLARE_ACCOUNT_ID)')
+    .option('--hosted-zone <id>', 'Route53 hosted zone id (auto-discovered when omitted)')
+    .option('--region <region>', 'AWS region for Route53', { default: 'us-east-1' })
+    .option('--apply', 'Write the records. Without it this is a dry run.')
+    .action(
+      async (
+        domain: string,
+        options?: { account?: string, hostedZone?: string, region?: string, apply?: boolean },
+      ) => {
+        cli.header(`Zone migration: ${domain} (Route53 → Cloudflare)`)
+
+        const apiToken = process.env.CLOUDFLARE_API_TOKEN
+        if (!apiToken) {
+          cli.error('CLOUDFLARE_API_TOKEN is not set.')
+          return
+        }
+
+        try {
+          // 1. Export the source zone, in full.
+          const route53 = new Route53Client(options?.region || 'us-east-1')
+          let hostedZoneId = options?.hostedZone
+          if (!hostedZoneId) {
+            const zone = await route53.findHostedZoneForDomain(domain)
+            if (!zone) {
+              cli.error(`No Route53 hosted zone found for ${domain}`)
+              return
+            }
+            hostedZoneId = zone.Id.replace('/hostedzone/', '')
+          }
+
+          const spinner = new cli.Spinner(`Exporting ${domain} from Route53...`)
+          spinner.start()
+          const sets = await exportRoute53Zone(route53, hostedZoneId)
+          spinner.succeed(`Exported ${sets.length} record set(s) from ${hostedZoneId}`)
+
+          // 2. Translate.
+          const plan = planZoneMigration(sets, domain)
+          cli.info(`Planned ${plan.records.length} record(s), skipped ${plan.skipped.length}`)
+          for (const skip of plan.skipped) cli.info(`  - ${skip.type} ${skip.name}: ${skip.reason}`)
+          for (const warning of plan.warnings) cli.warn(`  ⚠ ${warning}`)
+          for (const record of plan.records.filter(r => r.translatedFrom))
+            cli.info(`  ~ ${record.name} ${record.translatedFrom} → CNAME ${record.content}`)
+
+          if (!options?.apply) {
+            cli.info('')
+            cli.info('Dry run — nothing was written. Re-run with --apply to migrate.')
+            return
+          }
+
+          // 3. Create the destination zone (idempotent) and import.
+          const provider = new CloudflareProvider(apiToken, { accountId: options?.account })
+          const zone = await provider.createZone(domain, { accountId: options?.account })
+          cli.success(
+            zone.created
+              ? `Created Cloudflare zone ${zone.name} (${zone.id})`
+              : `Using existing Cloudflare zone ${zone.name} (${zone.id})`,
+          )
+
+          const importSpinner = new cli.Spinner(`Importing ${plan.records.length} record(s)...`)
+          importSpinner.start()
+          const report = await applyZoneMigration(provider, plan)
+          importSpinner.succeed(`Imported ${report.applied.length} record(s)`)
+          for (const failure of report.failed)
+            cli.error(`  ✗ ${failure.record.type} ${failure.record.name}: ${failure.message}`)
+
+          // 4. Read the zone back and diff. This is what decides whether the
+          //    nameservers are safe to move, so it always runs.
+          const parity = await verifyZoneParity(provider, plan)
+          if (parity.ok) {
+            cli.success(`Parity check passed — all ${parity.matched.length} record(s) present at Cloudflare`)
+          } else {
+            cli.error(`Parity check FAILED — ${parity.missing.length} record(s) missing or different:`)
+            for (const gap of parity.missing)
+              cli.error(`  ✗ ${gap.record.type} ${gap.record.name} → ${gap.record.content}${gap.found ? ` (found: ${gap.found})` : ''}`)
+            cli.warn('Do NOT move the nameservers until this is clean.')
+            return
+          }
+
+          cli.info('')
+          cli.info('Nameservers to set at the registrar:')
+          for (const ns of zone.nameServers) cli.info(`  ${ns}`)
+          cli.info('')
+          cli.info(`  cloud dns:nameservers ${domain} --set ${zone.nameServers.join(',')}`)
+        } catch (error) {
+          cli.error(`Migration failed: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      },
+    )
+
+  app
+    .command('dns:nameservers <domain>', 'Show or set the nameservers a domain is delegated to')
+    .option('--registrar <name>', 'Registrar: godaddy or porkbun')
+    .option('--set <nameservers>', 'Comma-separated nameservers to delegate to')
+    .action(async (domain: string, options?: { registrar?: string, set?: string }) => {
+      cli.header(`Nameservers for ${domain}`)
+
+      const registrar = (options?.registrar || detectRegistrarFromEnv())?.toLowerCase()
+      if (!registrar) {
+        cli.error('No registrar credentials found. Set GODADDY_API_KEY/GODADDY_API_SECRET or PORKBUN_API_KEY/PORKBUN_SECRET_KEY.')
+        return
+      }
+
+      const client = registrar === 'porkbun'
+        ? new PorkbunProvider(process.env.PORKBUN_API_KEY!, process.env.PORKBUN_SECRET_KEY!)
+        : new GoDaddyProvider(process.env.GODADDY_API_KEY!, process.env.GODADDY_API_SECRET!)
+
+      try {
+        const current = await client.getNameServers(domain)
+        cli.info(`Current (${registrar}):`)
+        for (const ns of current) cli.info(`  ${ns}`)
+
+        if (!options?.set) return
+
+        const wanted = options.set.split(',').map(n => n.trim()).filter(Boolean)
+        if (wanted.length < 2) {
+          cli.error('At least two nameservers are required.')
+          return
+        }
+
+        cli.warn('')
+        cli.warn('Changing nameservers moves authority for the ENTIRE zone — every')
+        cli.warn('record on it, including mail. Make sure the destination zone is')
+        cli.warn('already populated and parity-checked (cloud dns:migrate).')
+
+        const ok = await client.updateNameServers(domain, wanted)
+        if (ok) {
+          cli.success(`Delegated ${domain} to:`)
+          for (const ns of wanted) cli.success(`  ${ns}`)
+          cli.info('Propagation typically takes minutes to a few hours.')
+        } else {
+          cli.error('The registrar rejected the nameserver update.')
+        }
+      } catch (error) {
+        cli.error(`Failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    })
+
+  app
     .command('dns:records <domain>', 'List DNS records for a domain')
     .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .option('--type <type>', 'Filter by record type (A, AAAA, CNAME, TXT, MX, etc.)')
@@ -387,4 +536,11 @@ export function registerDomainCommands(app: CLI): void {
         cli.error(`Failed to delete record: ${error instanceof Error ? error.message : String(error)}`)
       }
     })
+}
+
+/** Pick a registrar from whichever credentials are present in the environment. */
+function detectRegistrarFromEnv(): 'godaddy' | 'porkbun' | null {
+  if (process.env.GODADDY_API_KEY && process.env.GODADDY_API_SECRET) return 'godaddy'
+  if (process.env.PORKBUN_API_KEY && process.env.PORKBUN_SECRET_KEY) return 'porkbun'
+  return null
 }
