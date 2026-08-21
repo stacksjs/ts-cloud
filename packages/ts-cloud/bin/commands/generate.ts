@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import * as cli from '../../src/utils/cli'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
+import { defaultConfig } from '../../src/config'
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
 import { validateResourceLimits, validateTemplate, validateTemplateSize } from '../../src/validation/template'
 import { unsupportedCommand } from './capability-command'
@@ -66,9 +67,25 @@ export function registerGenerateCommands(app: CLI): void {
           for (const error of allErrors) {
             cli.error(`  - ${error.path}: ${error.message}`)
           }
-        } else {
-          cli.success('Template validated successfully')
+          // Exit non-zero and write nothing. Reporting the failure and then
+          // finishing with "✓ Generated …" and status 0 is worse than not
+          // validating at all: CI goes green and an empty or malformed
+          // template lands on disk looking authoritative. The commonest cause
+          // is a config that never loaded — a stray `config.ts` beside
+          // `cloud.config.ts` shadows it in discovery — which produces a
+          // resource-less template for the built-in default project.
+          if (config.project?.slug === defaultConfig.project?.slug) {
+            cli.warn(
+              `No project config was loaded — this is the built-in default (`
+              + `project.slug "${defaultConfig.project?.slug}"). Check that `
+              + `cloud.config.ts is in ${process.cwd()} and is not shadowed by `
+              + `another config file.`,
+            )
+          }
+          process.exitCode = 1
+          return
         }
+        cli.success('Template validated successfully')
 
         // Show warnings
         const allWarnings = [...validation.warnings, ...sizeValidation.warnings, ...limitsValidation.warnings]
