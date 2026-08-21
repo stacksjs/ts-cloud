@@ -1,3 +1,37 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.4...v0.10.0)
+
+## 🚀 Features
+
+- **dns**: migrate a whole zone onto Cloudflare, records and all ([d4c2222](https://github.com/stacksjs/ts-cloud/commit/d4c2222)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **mail**: a mail server, and the same binary as the local mail trap ([b86701c](https://github.com/stacksjs/ts-cloud/commit/b86701c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: move a deployed site to another server (#176) ([fd77d10](https://github.com/stacksjs/ts-cloud/commit/fd77d10)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#176](https://github.com/stacksjs/ts-cloud/issues/176), [#176](https://github.com/stacksjs/ts-cloud/issues/176))
+- **consolidation**: report an attach's credential radius, and rename a server in place (#175) ([3fc683e](https://github.com/stacksjs/ts-cloud/commit/3fc683e)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#175](https://github.com/stacksjs/ts-cloud/issues/175), [#175](https://github.com/stacksjs/ts-cloud/issues/175))
+
+## 🐛 Bug Fixes
+
+- **mail**: a catcher that actually catches ([c20592e](https://github.com/stacksjs/ts-cloud/commit/c20592e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: carry a site's TLS material when it moves (#179) ([80d6625](https://github.com/stacksjs/ts-cloud/commit/80d6625)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#179](https://github.com/stacksjs/ts-cloud/issues/179), [#179](https://github.com/stacksjs/ts-cloud/issues/179))
+- **test**: give the last three dashboard integrations a real timeout (#177) ([21db7bb](https://github.com/stacksjs/ts-cloud/commit/21db7bb)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#177](https://github.com/stacksjs/ts-cloud/issues/177), [#177](https://github.com/stacksjs/ts-cloud/issues/177))
+- **fleet**: carry the on-box database when a site moves (#178) ([2150915](https://github.com/stacksjs/ts-cloud/commit/2150915)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#178](https://github.com/stacksjs/ts-cloud/issues/178), [#178](https://github.com/stacksjs/ts-cloud/issues/178))
+- **deploy**: keep SQLite across deploys, and preflight an attached host's services (#174) ([2973082](https://github.com/stacksjs/ts-cloud/commit/2973082)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#174](https://github.com/stacksjs/ts-cloud/issues/174), [#174](https://github.com/stacksjs/ts-cloud/issues/174))
+
+## 📚 Documentation
+
+- **mail**: the mail server on the landing page ([28928f5](https://github.com/stacksjs/ts-cloud/commit/28928f5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧪 Tests
+
+- **fleet**: run site:move against two real machines (#180) ([0782fcd](https://github.com/stacksjs/ts-cloud/commit/0782fcd)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#180](https://github.com/stacksjs/ts-cloud/issues/180), [#180](https://github.com/stacksjs/ts-cloud/issues/180))
+
+## 🧹 Chores
+
+- release v0.10.0 ([78aaa96](https://github.com/stacksjs/ts-cloud/commit/78aaa96)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _Glenn Michael Torregosa <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.3...v0.9.4)
 
 ## ⚡ Performance Improvements
