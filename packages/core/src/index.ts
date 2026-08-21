@@ -15,6 +15,10 @@ export * from './deployment-mode'
 // deprecated `infrastructure.compute.database` alias honored).
 export * from './app-database'
 
+// Canonical mail resolution. One answer for the provisioner, the firewall, the
+// DNS planner and the `.env` writer — see the module for why that matters.
+export * from './app-mail'
+
 // Cloud drivers (provider abstraction)
 export * from './drivers'
 

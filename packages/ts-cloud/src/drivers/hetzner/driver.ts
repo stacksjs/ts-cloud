@@ -261,7 +261,7 @@ export class HetznerDriver implements CloudDriver {
     // Machine provisioning (PHP/nginx + services + db + firewall + updates +
     // monitoring + ssh keys + notifier + backups). Composed by the shared
     // builder so a cold boot and a golden-image bake install the same stack.
-    const provision = buildComputeProvisionScripts(config)
+    const provision = buildComputeProvisionScripts(config, { environment })
 
     // When booting a pre-baked golden image, the stack is already installed —
     // skip the install-heavy steps for a near-instant boot.
@@ -707,7 +707,7 @@ export class HetznerDriver implements CloudDriver {
     const appProvisionScripts = buildComputeProvisionScripts({
       ...config,
       infrastructure: { ...config.infrastructure, compute: appBoxCompute },
-    })
+    }, { environment })
     const appUserData = wrapCloudInitUserData(
       generateUbuntuAppCloudInit({
         runtime: appProvisionScripts.runtime,

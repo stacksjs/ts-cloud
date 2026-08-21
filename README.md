@@ -166,6 +166,24 @@ Complete CloudFormation template builders for:
 - **Monitoring** - CloudWatch dashboards, alarms, and log groups
 - **Security** - ACM certificates, WAF rules, security groups
 
+### ✉️ Mail Server
+
+A mail server your project actually owns, from one line of config:
+
+- **`managedServices: { mail: true }`** - SMTP, IMAP, DKIM signing, ACME TLS,
+  spam scoring, and a webmail UI, provisioned as a hardened systemd unit
+- **One binary, two modes** - production gets a real MTA; every other
+  environment gets a *catcher* that accepts everything and delivers nothing,
+  on mailpit's ports so anything pointed at mailpit is already pointed at this
+- **No parser gap** - the trap and the server are the same program, so a
+  message that renders in development has been through the code production runs
+- **Wired for you** - every site on the box gets `MAIL_*` in its `.env` from the
+  same resolution that configured the listeners, so the two cannot drift
+- **DNS printed, never published** - MX, SPF, DMARC and DKIM are handed to you,
+  because a wrong MX does not fail, it quietly routes somebody's mail elsewhere
+
+See the [mail server documentation](./docs/features/mail.md).
+
 ### 🔒 Security Posture and Deployment Gates
 
 Persistent security findings and policy gates prevent unsafe releases:

@@ -10,7 +10,7 @@
  * so a baked image and a cold boot install exactly the same stack.
  */
 import type { CloudConfig } from '@ts-cloud/core'
-import { resolveAppDatabase, resolveCloudProvider } from '@ts-cloud/core'
+import { mailFirewallPorts, resolveAppDatabase, resolveCloudProvider, resolveMailService } from '@ts-cloud/core'
 import { buildBackupProvisionScript } from './backups'
 import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-provision'
 import { buildAutoUpdatesScript } from './maintenance'
@@ -34,17 +34,34 @@ export interface ComputeProvisionScripts {
   phpBox: boolean
   /** nginx + php-fpm + Composer install commands (undefined for non-PHP boxes). */
   phpProvision?: string[]
-  /** services + db + firewall + updates + monitoring + ssh + notifier + backups. */
+  /** services + db + mail + firewall + updates + monitoring + ssh + notifier + backups. */
   servicesProvision?: string[]
+}
+
+/** Which environment the box is being provisioned for. See {@link buildComputeProvisionScripts}. */
+export interface ComputeProvisionOptions {
+  /**
+   * The environment name, e.g. `'production'`.
+   *
+   * Only mail reads it today, and it reads it for a reason worth stating: an
+   * omitted environment resolves to a mail **catcher**, never a server. The
+   * caller that forgets to pass it gets a box that traps its own mail rather
+   * than one that offers SMTP to the internet.
+   */
+  environment?: string
 }
 
 /**
  * Build the machine provisioning scripts from a CloudConfig. Returns the
  * pieces the Ubuntu bootstrap (and the image bake) splice in.
  */
-export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvisionScripts {
+export function buildComputeProvisionScripts(config: CloudConfig, options?: ComputeProvisionOptions): ComputeProvisionScripts {
   const compute = config.infrastructure?.compute ?? {}
   const phpBox = compute.runtime === 'php' || !!compute.php
+  // Resolved once, because four things downstream have to agree about it: the
+  // provisioner, the firewall, the flood-mitigation port list, and the `.env`
+  // the deploy writes.
+  const mail = resolveMailService(config, { environment: options?.environment })
 
   // Bootstrap the pantry CLI (system service scope) before any package install.
   // Prepended to the php provision on a PHP box, or to the services block when
@@ -78,7 +95,7 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   extras.push(...buildNotifierScript(config.notifications))
   if (compute.managedServices) {
     extras.push(
-      ...buildServicesProvisionScript(compute.managedServices),
+      ...buildServicesProvisionScript(compute.managedServices, { mail: mail.enabled ? mail : undefined }),
       ...buildDatabaseSetupScript(appDatabase, compute.managedServices),
     )
   }
@@ -91,11 +108,23 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
       ...buildSftpProvisionScript({ slug: config.project.slug, sftp }),
     )
   }
-  extras.push(...buildUfwScript(compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })))
+  // The mail ports join the firewall's allow list, and only when mail is
+  // exposed. Merged here rather than written into `firewall.allowedPorts` by
+  // hand, because the two would drift and the drift is silent in the dangerous
+  // direction: a server whose 25 was never opened simply receives no mail, and
+  // looks like a DNS problem for a week. `mailFirewallPorts` returns `[]` for a
+  // catcher, which must stay loopback-only.
+  const firewall = compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })
+  const mailPorts = mailFirewallPorts(mail)
+  extras.push(...buildUfwScript(
+    mailPorts.length > 0
+      ? { ...firewall, allowedPorts: [...(firewall.allowedPorts ?? []), ...mailPorts] }
+      : firewall,
+  ))
   // Flood mitigation and the WAF run for every box, not only PHP ones: the
   // ports UFW opens are the ports an attacker reaches, whatever is behind them.
   // Both are opt-out rather than opt-in, and the WAF starts detection-only.
-  extras.push(...buildProtectionScript({ ddos: compute.ddos, waf: compute.waf }, compute.firewall?.allowedPorts ?? []))
+  extras.push(...buildProtectionScript({ ddos: compute.ddos, waf: compute.waf }, [...(compute.firewall?.allowedPorts ?? []), ...mailPorts]))
   extras.push(...buildAutoUpdatesScript(compute.autoUpdates ?? phpBox))
   extras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
   extras.push(...buildAuthorizedKeysScript(compute.sshKeys))

@@ -70,10 +70,18 @@ export function buildImageRecipe(config: CloudConfig, options: ImageRecipeOption
 
   // For a generic golden image, bake the stack (runtime, php, nginx, services,
   // firewall, auto-updates, monitoring) but NOT project-specific state (ssh
-  // keys, app DB, backups) — those are applied per-box at boot/deploy. We do
-  // that by stripping the project-specific config before composing. Strip BOTH
-  // database keys (canonical `appDatabase` + the deprecated `compute.database`
-  // alias) or `resolveAppDatabase` would resurrect the app DB from the alias.
+  // keys, app DB, backups, mail) — those are applied per-box at boot/deploy. We
+  // do that by stripping the project-specific config before composing. Strip
+  // BOTH database keys (canonical `appDatabase` + the deprecated
+  // `compute.database` alias) or `resolveAppDatabase` would resurrect the app
+  // DB from the alias.
+  //
+  // Mail is stripped for a sharper reason than "project-specific": the
+  // provisioner generates a DKIM **private key** on first run, and a key baked
+  // into a shared image is a key every box cloned from it signs with. Anybody
+  // who can boot the image can then sign mail as the domains it was baked for.
+  // It is also useless state — the hostname, accounts and local domains all
+  // belong to one project.
   const recipeConfig: CloudConfig = generic
     ? {
         ...config,
@@ -86,6 +94,9 @@ export function buildImageRecipe(config: CloudConfig, options: ImageRecipeOption
             database: undefined,
             sshKeys: undefined,
             backups: undefined,
+            managedServices: config.infrastructure?.compute?.managedServices
+              ? { ...config.infrastructure.compute.managedServices, mail: undefined }
+              : undefined,
           },
         },
       }

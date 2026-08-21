@@ -3407,6 +3407,247 @@ export interface ComputeServicesConfig {
   redis?: boolean | { version?: string }
   memcached?: boolean | { version?: string }
   meilisearch?: boolean | { version?: string }
+
+  /**
+   * Provision the **mail server** on this box - `mail`, the Zig SMTP/IMAP
+   * server (`github.com/mail-os/mail`), with its own webmail UI.
+   *
+   * `true` picks a mode from the environment rather than making you say it:
+   * a production environment gets `'server'` (a real MTA that sends and
+   * receives), anything else gets `'catcher'` (accepts everything, delivers
+   * nowhere, shows it in the webmail UI). See {@link MailServiceConfig.mode}.
+   *
+   * ## Why this exists rather than a mailpit container
+   *
+   * Development mail traps and production mail servers are conventionally two
+   * different programs, and that difference is where mail breaks. A message
+   * that renders in mailpit has been through a parser nothing in production
+   * will ever run; a `From` that mailpit accepts is one no MTA would. The bugs
+   * that costs are the ones nobody can reproduce locally, which is the worst
+   * kind.
+   *
+   * The two modes here are one binary with one parser, one authentication
+   * path, one Maildir, and one UI. What development sees is what production
+   * does, minus the delivery.
+   */
+  mail?: boolean | MailServiceConfig
+}
+
+/**
+ * What the on-box mail server is for. See {@link MailServiceConfig.mode}.
+ *
+ * - `'server'` - a real MTA. Receives on 25, submits on 587/465, serves IMAP,
+ *   signs with DKIM, and delivers outbound mail (directly or through a relay).
+ * - `'catcher'` - accepts every message addressed to anywhere, delivers none
+ *   of them onward, and shows them in the webmail UI. The replacement for
+ *   mailpit/Mailhog, on the ports those tools use so nothing has to be
+ *   reconfigured to adopt it.
+ */
+export type MailServiceMode = 'server' | 'catcher'
+
+/**
+ * On-box mail server (`mail`). See {@link ComputeServicesConfig.mail}.
+ *
+ * Every field is optional; the defaults are a working server for the
+ * environment's mode. What has no safe default - the hostname the server
+ * announces, and therefore what its MX record must point at - is derived from
+ * the project's own domain and can be overridden here.
+ */
+export interface MailServiceConfig {
+  /**
+   * Real MTA or local trap. Defaults to `'server'` in a production
+   * environment and `'catcher'` everywhere else.
+   */
+  mode?: MailServiceMode
+  /** Pin the mail server version. @default latest release */
+  version?: string
+  /**
+   * The FQDN this server announces in HELO/EHLO and signs mail as, e.g.
+   * `mail.example.com`. It is also what an MX record has to resolve to, so it
+   * must be a name you control and that resolves to this box.
+   *
+   * @default `mail.<the project's primary site domain>`, or `localhost` for a
+   * catcher, which announces a name nobody has to resolve.
+   */
+  hostname?: string
+  /**
+   * Additional domains delivered to mailboxes on this server, beyond
+   * {@link hostname} and its parent (`mail.example.com` already covers
+   * `example.com`). One server, several domains' mailboxes.
+   */
+  domains?: string[]
+  /** Listening ports. Every one has a default; see {@link MailPortsConfig}. */
+  ports?: MailPortsConfig
+  /**
+   * TLS for SMTP/IMAP. Defaults to ACME (Let's Encrypt) for a `'server'` on a
+   * real hostname, and off for a `'catcher'`, which is loopback-only.
+   */
+  tls?: MailTlsConfig
+  /**
+   * DKIM signing. `true` generates a key per {@link domains} entry on first
+   * provision and prints the DNS record to publish; the private key stays on
+   * the box and is never rewritten once it exists.
+   *
+   * On by default for a `'server'`, off for a `'catcher'` - a trap signing
+   * mail is signing mail nobody will ever verify.
+   */
+  dkim?: boolean | MailDkimConfig
+  /**
+   * The webmail UI - the browser client the mail server serves itself, and
+   * the thing you look at instead of mailpit's inbox.
+   *
+   * On by default. A catcher serves it on 8025 (mailpit's port, so a bookmark
+   * or a `docker-compose` port mapping carries over); a server serves it on
+   * 8080 behind the gateway.
+   */
+  webmail?: boolean | MailWebmailConfig
+  /**
+   * Mailboxes to create on first provision. Idempotent: an account that
+   * already exists has its password reset to what is declared here, so this
+   * stays the source of truth rather than drifting after the first boot.
+   *
+   * Passwords belong in the environment, not in a committed config - write
+   * `password: process.env.MAIL_ADMIN_PASSWORD!` rather than a literal.
+   */
+  accounts?: MailAccountConfig[]
+  /**
+   * How outbound mail leaves the box.
+   *
+   * - `'direct'` - talk to the recipient's MX on port 25. The right answer for
+   *   a box whose provider does not block outbound 25 and whose IP has
+   *   reverse DNS. Note that most providers block outbound 25 on new accounts
+   *   and unblock it on request; check before choosing this.
+   * - `'ses'` - relay through AWS SES in {@link sesRegion}, which is what to
+   *   use while port 25 is blocked.
+   * - `'none'` - accept and deliver locally, never send. What a catcher does.
+   *
+   * There is deliberately no generic smarthost option: the mail server has no
+   * authenticated-relay path yet, so a `relay: { host, username, password }`
+   * here would be a credential written to a box and then ignored, and mail
+   * that appears to be configured and silently goes nowhere is worse than mail
+   * that was never configured.
+   *
+   * @default `'direct'` for a server, `'none'` for a catcher.
+   */
+  delivery?: 'direct' | 'ses' | 'none'
+  /** SES region for `delivery: 'ses'`. @default 'us-east-1' */
+  sesRegion?: string
+  /** Where mailboxes, the database and DKIM keys live. @default '/var/lib/mail' */
+  storagePath?: string
+  /** Largest message accepted, in bytes. @default 26214400 (25 MB) */
+  maxMessageSize?: number
+  /** Inbound spam handling. Advisory by default; see {@link MailSpamConfig}. */
+  spam?: MailSpamConfig
+  /** POST every received message to this URL. Off unless set. */
+  webhookUrl?: string
+  /**
+   * Open the mail ports to the internet.
+   *
+   * A `'server'` has to be reachable to receive mail, so this defaults to
+   * true for it and the ports join the host firewall's allow list. A
+   * `'catcher'` defaults to false and binds loopback only - a machine that
+   * accepts every message for every recipient and shows them in a UI with no
+   * password is an open relay and an open inbox, and it must never be
+   * reachable from anywhere but the box itself.
+   */
+  expose?: boolean
+}
+
+/**
+ * Which ports the mail server listens on. The defaults are the standard ones
+ * for a server, and mailpit's for a catcher, so adopting a catcher needs no
+ * change to anything that was pointed at mailpit.
+ */
+export interface MailPortsConfig {
+  /** Inbound SMTP from other servers. @default 25 (server) / 1025 (catcher) */
+  smtp?: number
+  /** Message submission (STARTTLS). @default 587; off for a catcher. */
+  submission?: number
+  /** Implicit-TLS submission. @default 465; off for a catcher. */
+  submissions?: number
+  /** IMAP. @default 143; off for a catcher. */
+  imap?: number
+  /** IMAP over TLS. @default 993; off for a catcher. */
+  imaps?: number
+  /** The webmail UI. @default 8080 (server) / 8025 (catcher) */
+  webmail?: number
+  /** ManageSieve, when {@link MailServiceConfig} enables filtering. @default 4190 */
+  managesieve?: number
+}
+
+/** TLS for the mail server's SMTP/IMAP listeners. */
+export interface MailTlsConfig {
+  /** Serve TLS at all. @default true for a server, false for a catcher. */
+  enabled?: boolean
+  /**
+   * Obtain and renew the certificate over ACME (Let's Encrypt) for
+   * {@link MailServiceConfig.hostname}. @default true when TLS is enabled and
+   * no explicit paths are given.
+   */
+  acme?: boolean
+  /** Contact address ACME registers. @default the first configured account. */
+  acmeEmail?: string
+  /** Certificate path, when you supply the certificate yourself. */
+  certPath?: string
+  /** Private key path, when you supply the certificate yourself. */
+  keyPath?: string
+  /**
+   * Refuse AUTH until the connection is encrypted. On by default for a
+   * server: an SMTP AUTH over cleartext is a password on the wire.
+   */
+  requireForAuth?: boolean
+}
+
+/** DKIM signing. See {@link MailServiceConfig.dkim}. */
+export interface MailDkimConfig {
+  /** Selector published as `<selector>._domainkey.<domain>`. @default 'default' */
+  selector?: string
+  /** Rotate the key on a schedule. Off by default. */
+  rotate?: boolean
+  /** Days between rotations when {@link rotate} is on. @default 90 */
+  rotateIntervalDays?: number
+}
+
+/** The webmail UI. See {@link MailServiceConfig.webmail}. */
+export interface MailWebmailConfig {
+  /** Serve it. @default true */
+  enabled?: boolean
+  /** Port. @default 8080 (server) / 8025 (catcher) */
+  port?: number
+  /**
+   * Hostname to route to the UI through the box's gateway, e.g.
+   * `mail.example.com`. Without one the UI is reachable on its port only,
+   * which for a catcher is exactly right.
+   */
+  domain?: string
+}
+
+/** A mailbox created on first provision. See {@link MailServiceConfig.accounts}. */
+export interface MailAccountConfig {
+  /** Full address, e.g. `postmaster@example.com`. */
+  address: string
+  /** The password. Read it from the environment; never commit one. */
+  password: string
+}
+
+/** Inbound spam handling. See {@link MailServiceConfig.spam}. */
+export interface MailSpamConfig {
+  /** Score inbound mail and file it into Junk. @default true for a server. */
+  enabled?: boolean
+  /**
+   * Reject mail that fails DMARC outright rather than recording the verdict
+   * in `Authentication-Results` and delivering it. Off by default: a policy
+   * that bounces mail is one somebody has to be ready to hear about.
+   */
+  enforce?: boolean
+  /** Score at which mail is filed into Junk. @default 5 */
+  junkScore?: number
+  /** Score at which mail is refused at SMTP time. @default 12 */
+  rejectScore?: number
+  /** Consult DNS blocklists. @default true for a server. */
+  dnsbl?: boolean
+  /** Greylist unknown senders. Off by default - it delays first contact. */
+  greylist?: boolean
 }
 
 /**

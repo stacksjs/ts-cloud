@@ -3,7 +3,7 @@ import type { RpxLbAppBox } from './rpx-gateway'
 import { copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hasManagementDashboardSite, resolveAppDatabase, resolveProjectStackName } from '@ts-cloud/core'
+import { buildMailEnv, hasManagementDashboardSite, resolveAppDatabase, resolveMailService, resolveProjectStackName } from '@ts-cloud/core'
 import { describeCredentialReach, formatCredentialReach, unrelatedReachCount } from '../../deploy/attach-credentials'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
@@ -79,6 +79,13 @@ export async function deploySiteRelease(
   const dbEnv = outputs.servicesPrivateIp
     ? buildFleetServicesEnv(outputs.servicesPrivateIp, resolveAppDatabase(config))
     : buildManagedDbEnv(resolveAppDatabase(config))
+  // And `MAIL_*`, from the same resolution the box was provisioned with. Empty
+  // unless `services.mail` is declared, so nothing changes for a project that
+  // sends through a third party. When it is declared, this is the whole point
+  // of provisioning it: an application told by hand which port its own mail
+  // server is on is one whose `.env` and whose box disagree the first time
+  // either changes — and a wrong `MAIL_PORT` raises nothing, it stops sending.
+  const mailEnv = buildMailEnv(resolveMailService(config, { environment }))
   const compute = config.infrastructure?.compute
   // rpx reaches every server-app over loopback. Default the process bind to
   // loopback too, so an application cannot accidentally bypass TLS, route
@@ -90,6 +97,7 @@ export async function deploySiteRelease(
     : {}
   const envWithServices: Record<string, string> = {
     ...dbEnv,
+    ...mailEnv,
     ...proxyEnv,
     ...(site.env || {}),
     // Production is a deployment invariant, not an app-level suggestion.

@@ -37,6 +37,10 @@ export const PANTRY_PACKAGES = {
   redis: 'redis.io',
   memcached: 'memcached.org',
   meilisearch: 'meilisearch.com',
+  // The mail server (SMTP/IMAP/POP3 + webmail), one static Zig binary. Hosted
+  // as a GitHub-source package rather than a domain because that is where its
+  // releases are; pantry resolves `github.com/<org>/<repo>` the same way.
+  mail: 'github.com/mail-os/mail',
   git: 'git-scm.com',
   certbot: 'certbot.eff.org',
   bun: 'bun.sh',

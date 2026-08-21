@@ -10,8 +10,9 @@
  * are on PATH via `pantry env`. Admin commands (db setup, dumps, restores)
  * connect over the engine's local unix socket — see {@link pgAdminCommand}.
  */
-import type { ComputeServicesConfig, DatabaseConfig, DatabaseUserConfig } from '@ts-cloud/core'
+import type { ComputeServicesConfig, DatabaseConfig, DatabaseUserConfig, ResolvedMailService } from '@ts-cloud/core'
 import type { PantrySpec } from './package-manager'
+import { buildMailProvisionScript } from './mail-provision'
 import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
 import { buildVitessProvisionScript } from './vitess-provision'
 
@@ -129,7 +130,7 @@ function planServices(services: ComputeServicesConfig): ServicePlan {
  */
 export function buildServicesProvisionScript(
   services: ComputeServicesConfig = {},
-  _options: { bindPrivate?: boolean } = {},
+  options: { bindPrivate?: boolean, mail?: ResolvedMailService } = {},
 ): string[] {
   const plan = planServices(services)
   // Vitess is appended rather than folded into `planServices` because it is
@@ -137,11 +138,18 @@ export function buildServicesProvisionScript(
   // units with an ordering graph, its own topology bootstrap, and a health
   // gate. See `./vitess-provision`.
   const vitess = buildVitessProvisionScript(services.vitess)
-  if (plan.packages.length === 0) return vitess
+  // Mail is likewise not a `pantry start` service: it needs a generated TOML,
+  // an environment file, a DKIM key that must survive re-provisioning, and a
+  // unit whose capabilities depend on which ports it was given. It also comes
+  // in already resolved, because `services.mail: true` means different things
+  // in production and in a preview — see `resolveMailService`.
+  const mail = options.mail ? buildMailProvisionScript(options.mail) : []
+  if (plan.packages.length === 0) return [...vitess, ...mail]
   return [
     ...buildPantryInstallScript(plan.packages),
     ...buildPantryServiceScript(plan.services),
     ...vitess,
+    ...mail,
   ]
 }
 
