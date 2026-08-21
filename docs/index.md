@@ -27,4 +27,7 @@ features:
   - title: "CloudFormation Native"
     icon: "☁️"
     details: "Generate clean, reviewable CloudFormation templates. Full control over your infrastructure."
+  - title: "Your Own Mail Server"
+    icon: "✉️"
+    details: "One line of config provisions SMTP, IMAP, DKIM and a webmail UI — and gives every other environment a local mail trap that is the same binary, not mailpit."
 ---
