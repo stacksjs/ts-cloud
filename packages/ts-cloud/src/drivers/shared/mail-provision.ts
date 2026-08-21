@@ -90,6 +90,24 @@ export function buildMailConfigToml(mail: ResolvedMailService): string {
   if (mail.domains.length > 0)
     lines.push(`local_domains = ${toml(mail.domains.join(', '))}`)
 
+  /*
+   * A catcher accepts mail for EVERY domain, and without this it accepts almost
+   * none.
+   *
+   * Unauthenticated mail to a domain the server does not host is correctly
+   * refused with 550 — and for a trap that is every message, because an
+   * application sends to whatever addresses its fixtures contain. `catch_all`
+   * makes every domain local, so everything is accepted and filed into one
+   * mailbox the webmail UI can show.
+   *
+   * The server refuses to start with this set unless it is bound to loopback,
+   * which is the same rule `expose` already enforces from this side. Two
+   * independent checks on purpose: this one is the config's, and the server's is
+   * the one that holds when somebody edits `/etc/mail/config.toml` by hand.
+   */
+  if (mail.mode === 'catcher')
+    lines.push('catch_all = true')
+
   lines.push(
     `max_message_size = ${mail.maxMessageSize}`,
     '',
@@ -103,9 +121,14 @@ export function buildMailConfigToml(mail: ResolvedMailService): string {
   lines.push(
     '',
     '[auth]',
-    // A catcher has no accounts. With auth on it would advertise AUTH and then
-    // refuse every login, which reads to a mail client as a broken server
-    // rather than as a trap that does not need one.
+    // A catcher has no accounts to authenticate. With auth on it would
+    // advertise AUTH and then refuse every login, which reads to a mail client
+    // as a broken server rather than as a trap that does not need one.
+    //
+    // The webmail UI still runs either way: the server initialises its database
+    // whenever webmail is enabled rather than only when SMTP AUTH is, and trap
+    // mode creates the single account that UI signs in with (`dev` / `dev`,
+    // printed to the server's log on first start).
     `enabled = ${mail.mode === 'server'}`,
     '',
     '[antispam]',

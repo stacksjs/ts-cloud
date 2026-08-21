@@ -23,7 +23,7 @@ So ts-cloud does not install a trap. It installs the mail server in one of two
 | Mode | What it does | Ports |
 | --- | --- | --- |
 | `server` | A real MTA. Receives on 25, submits on 587/465, serves IMAP, signs with DKIM, delivers outbound mail. | 25, 587, 465, 143, 993, webmail 8080 |
-| `catcher` | Accepts every message for every recipient, delivers none of them onward, shows them all in the webmail UI. | SMTP 1025, webmail 8025 |
+| `catcher` | Accepts every message for every recipient — whatever domain it is addressed to — delivers none of them onward, and files them all into one inbox in the webmail UI (`dev` / `dev`). | SMTP 1025, webmail 8025 |
 
 One binary, one parser, one authentication path, one Maildir, one UI — all the
 way from a preview box to production, minus the delivery. The catcher's ports
@@ -167,10 +167,14 @@ they are derived from the same resolution that configures the listeners, so the
 two cannot drift. A server whose 25 was never opened simply receives no mail and
 looks like a DNS problem for a week.
 
-A catcher opens nothing and binds `127.0.0.1`. That is load-bearing: a machine
-that accepts every message for every recipient and shows them in a UI with no
-password is an open relay and an open inbox at once. `expose: true` overrides it,
-and you should have a specific reason.
+A catcher opens nothing and binds `127.0.0.1`. That is load-bearing, and it is
+enforced twice: ts-cloud will not open the ports, and the mail server itself
+refuses to start in catch-all mode on any non-loopback interface. A machine that
+accepts mail for every domain and files it locally is an open relay's more
+embarrassing cousin — it does not forward the spam, it keeps it.
+
+`expose: true` therefore cannot be combined with a catcher; use `mode: 'server'`
+if you need a reachable mail server in a non-production environment.
 
 ## DNS is printed, not published
 

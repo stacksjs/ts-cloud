@@ -141,6 +141,19 @@ describe('buildMailConfigToml', () => {
     expect(toml).toContain('[tls]\nenabled = false')
   })
 
+  it('makes a catcher catch, which takes catch_all', () => {
+    // Without it the trap refuses almost everything it is sent: mail to a
+    // domain the server does not host is correctly 550'd, and for a trap that
+    // is every message an application under test produces.
+    const catcher = buildMailConfigToml(resolveMailService(withMail(true), { environment: 'staging' }))
+    expect(catcher).toContain('catch_all = true')
+
+    // And a real server must never have it. It would accept and file mail for
+    // every domain on earth.
+    const server = buildMailConfigToml(resolveMailService(withMail(true), { environment: 'production' }))
+    expect(server).not.toContain('catch_all')
+  })
+
   it('binds a server to every interface with TLS and ACME on', () => {
     const toml = buildMailConfigToml(resolveMailService(withMail(true), { environment: 'production' }))
     expect(toml).toContain('host = "0.0.0.0"')
