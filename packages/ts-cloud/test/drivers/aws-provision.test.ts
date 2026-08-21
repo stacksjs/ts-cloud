@@ -69,6 +69,27 @@ describe('buildAwsUserData', () => {
     expect(buildAwsUserData(disabled)).not.toContain('swapon /swapfile')
   })
 
+  it('carries declared app updaters into the boot script', () => {
+    // The driver path (RunInstances / Hetzner cloud-init) must render the same
+    // updater units as the CloudFormation path, or a box gets auto-updates
+    // depending on how it happened to be created.
+    const configured: CloudConfig = {
+      ...phpConfig,
+      infrastructure: {
+        compute: {
+          ...phpConfig.infrastructure!.compute,
+          appUpdates: [{ service: 'mail', binary: '/opt/mail/mail-server' }],
+        },
+      },
+    }
+    const ud = buildAwsUserData(configured)
+    expect(ud).toContain('/etc/systemd/system/mail-upgrade.timer')
+    expect(ud).toContain('systemctl enable --now mail-upgrade.timer')
+    expect(ud).toContain('/opt/mail/mail-server upgrade --path /opt/mail/mail-server --service mail')
+
+    expect(buildAwsUserData(phpConfig)).not.toContain('-upgrade.timer')
+  })
+
   it('applies the shared rpx resource limits on AWS too', () => {
     const configured: CloudConfig = {
       ...phpConfig,

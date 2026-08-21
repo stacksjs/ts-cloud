@@ -597,3 +597,43 @@ describe('InfrastructureGenerator: per-environment compute deep-merge', () => {
     expect(stagingInstance.Properties.InstanceType).toBe('t3.small')
   })
 })
+
+describe('compute.appUpdates', () => {
+  /** Pull the decoded UserData off whichever EC2 instance the template defines. */
+  function userDataOf(template: any): string {
+    const instance: any = Object.values(template.Resources)
+      .find((r: any) => r.Type === 'AWS::EC2::Instance')
+    const encoded = instance?.Properties?.UserData
+    const raw = encoded?.['Fn::Base64'] ?? encoded
+    return typeof raw === 'string' ? raw : JSON.stringify(raw)
+  }
+
+  it('renders the updater units into the instance UserData', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure,
+        compute: {
+          ...baseConfig.infrastructure!.compute,
+          appUpdates: [{ service: 'mail', binary: '/opt/mail/mail-server' }],
+        },
+      },
+    })
+    const userData = userDataOf(template)
+
+    // The whole point of the feature: a project declares two facts and the
+    // boot script carries the service, the timer and the enable.
+    expect(userData).toContain('/etc/systemd/system/mail-upgrade.service')
+    expect(userData).toContain('/etc/systemd/system/mail-upgrade.timer')
+    expect(userData).toContain('systemctl enable --now mail-upgrade.timer')
+    expect(userData).toContain('/opt/mail/mail-server upgrade --path /opt/mail/mail-server --service mail')
+    // Appended to the bootstrap, not instead of it.
+    expect(userData).toContain('#!/bin/bash')
+  })
+
+  it('leaves UserData untouched when no tools are declared', () => {
+    const userData = userDataOf(generate(baseConfig))
+    expect(userData).not.toContain('-upgrade.timer')
+    expect(userData).toContain('#!/bin/bash')
+  })
+})
