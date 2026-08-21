@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.10.0...v0.11.0)
+
+## 🚀 Features
+
+- **compute**: keep deployed tools updated, natively ([71d95e1](https://github.com/stacksjs/ts-cloud/commit/71d95e1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.11.0 ([79fbde5](https://github.com/stacksjs/ts-cloud/commit/79fbde5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.9.4...v0.10.0)
 
 ## 🚀 Features
