@@ -3099,6 +3099,24 @@ export interface ComputeConfig {
   autoUpdates?: boolean
 
   /**
+   * Self-updating binaries to keep current on the box.
+   *
+   * `autoUpdates` above covers the *operating system*. This covers the tools
+   * you deploy: anything that ships as a GitHub release and can replace itself
+   * (`<binary> upgrade`). ts-cloud renders the systemd service, timer and pause
+   * switch for each one, so a project never hand-writes that into `userData`:
+   *
+   * ```ts
+   * appUpdates: [{ service: 'mail', binary: '/opt/mail/mail-server' }]
+   * ```
+   *
+   * ts-cloud only schedules the check. Skipping when already current, refusing
+   * to downgrade, and rolling back a binary that will not start are the tool's
+   * own responsibility — list a tool here only if its `upgrade` does those.
+   */
+  appUpdates?: ComputeAppUpdateTarget[]
+
+  /**
    * Scheduled database backups (powered by `ts-backups`), synced to object
    * storage. Off unless configured.
    */
@@ -3264,6 +3282,43 @@ export interface ComputeWafConfig {
 }
 
 /** Scheduled database backup configuration. See {@link ComputeConfig.backups}. */
+/**
+ * One self-updating binary that ts-cloud should keep current. See
+ * `ComputeConfig.appUpdates`.
+ */
+export interface ComputeAppUpdateTarget {
+  /**
+   * systemd service the tool runs as. Also names the generated units
+   * (`<service>-upgrade.service` / `.timer`) and is passed to the tool so it
+   * restarts the right unit after installing.
+   */
+  service: string
+
+  /** Absolute path of the installed binary to replace. */
+  binary: string
+
+  /** Subcommand that performs the self-update. @default 'upgrade' */
+  command?: string
+
+  /** Release channel to follow. @default 'stable' */
+  channel?: 'stable' | 'canary'
+
+  /** systemd `OnCalendar` expression for the check. @default 'daily' */
+  schedule?: string
+
+  /**
+   * Randomized spread applied to the scheduled time, so a fleet does not
+   * stampede the release API at once. @default '4h'
+   */
+  randomizedDelay?: string
+
+  /** Extra flags appended to the update command (e.g. `--repo owner/name`). */
+  args?: string[]
+
+  /** Set false to render nothing for this target. @default true */
+  enabled?: boolean
+}
+
 export interface ComputeBackupConfig {
   /** Enable scheduled backups. @default false */
   enabled?: boolean

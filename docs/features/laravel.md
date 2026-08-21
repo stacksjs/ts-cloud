@@ -55,7 +55,10 @@ export default {
       php: { versions: ['8.3', '8.2'], default: '8.3' },
       managedServices: { mysql: true, redis: true, meilisearch: true },
       firewall: { enabled: true, allowedPorts: [8080] },
-      autoUpdates: true, // unattended-upgrades
+      autoUpdates: true, // unattended-upgrades (the OS)
+      appUpdates: [ // self-updating tools you deploy
+        { service: 'mail', binary: '/opt/mail/mail-server' },
+      ],
       monitoring: true,
       backups: { enabled: true, schedule: '0 2 * * *', retentionCount: 7, bucket: 'acme-backups' },
     },
@@ -563,7 +566,7 @@ for the complete list. The most-used commands:
 | Daemons | systemd | systemd |
 | Recipes | run scripts on servers | `cloud deploy:recipe` (login shell, any user) |
 | Firewall | UFW | UFW (+ Hetzner cloud firewall) |
-| Maintenance | auto updates | unattended-upgrades |
+| Maintenance | auto updates | unattended-upgrades + `appUpdates` timers |
 | Backups | scheduled | scheduled (ts-backups to object storage) |
 | Monitoring | server metrics | metrics + network/per-service health + resource alerts |
 | Notifications | Slack/Discord/Telegram/email/webhook | same |

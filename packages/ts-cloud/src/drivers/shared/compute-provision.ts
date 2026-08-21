@@ -13,6 +13,7 @@ import type { CloudConfig } from '@ts-cloud/core'
 import { mailFirewallPorts, resolveAppDatabase, resolveCloudProvider, resolveMailService } from '@ts-cloud/core'
 import { buildBackupProvisionScript } from './backups'
 import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-provision'
+import { buildAppUpdatesScript } from './app-updates'
 import { buildAutoUpdatesScript } from './maintenance'
 import { buildMonitoringScript } from './monitoring'
 import { buildNginxServiceScript } from './nginx-vhost'
@@ -126,6 +127,9 @@ export function buildComputeProvisionScripts(config: CloudConfig, options?: Comp
   // Both are opt-out rather than opt-in, and the WAF starts detection-only.
   extras.push(...buildProtectionScript({ ddos: compute.ddos, waf: compute.waf }, [...(compute.firewall?.allowedPorts ?? []), ...mailPorts]))
   extras.push(...buildAutoUpdatesScript(compute.autoUpdates ?? phpBox))
+  // OS updates above; the tools we deploy below. Both are opt-in config,
+  // neither is hand-written shell in a project's userData any more.
+  extras.push(...buildAppUpdatesScript(compute.appUpdates))
   extras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
   extras.push(...buildAuthorizedKeysScript(compute.sshKeys))
   if (compute.backups?.enabled) {

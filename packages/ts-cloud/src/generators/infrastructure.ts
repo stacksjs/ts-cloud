@@ -3,6 +3,7 @@
  * Generates CloudFormation templates from cloud.config.ts using all Phase 2 modules
  */
 import type { CloudConfig, ResolvedSftpStorage, SftpConfig } from '@ts-cloud/core'
+import { buildAppUpdatesScript } from '../drivers/shared/app-updates'
 import { AI, ApiGateway, Cache, CDN, Compute, Database, DNS, Email, FileSystem, generateLogicalId, generateResourceName, Monitoring, Network, Permissions, Queue, Redirects, Search, Security, Sftp, Storage, TemplateBuilder } from '@ts-cloud/core'
 
 export interface GenerationOptions {
@@ -1226,13 +1227,21 @@ export class InfrastructureGenerator {
 
     // Bootstrap script — app-agnostic. Per-site systemd services are
     // written by the deploy command at deploy time, not at boot.
-    const userData = Compute.UserData.generateBunAppScript({
+    const bootstrap = Compute.UserData.generateBunAppScript({
       runtime: compute.runtime || 'bun',
       runtimeVersion: compute.runtimeVersion || 'latest',
       systemPackages: compute.systemPackages,
       database: dbEngine,
       caddyfile,
     })
+
+    // Self-updating tools declared on the compute block get their systemd
+    // timer appended to the bootstrap, so a project declares the binary and
+    // the unit and never writes the scheduling shell itself.
+    const appUpdates = buildAppUpdatesScript(compute.appUpdates)
+    const userData = appUpdates.length > 0
+      ? `${bootstrap}\n${appUpdates.join('\n')}\n`
+      : bootstrap
 
     // Open every port that any site needs
     const sitePorts = allSites

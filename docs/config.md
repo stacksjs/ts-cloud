@@ -583,6 +583,61 @@ Two details matter:
 Omitting `occupiedPorts` validates exactly as before, so this is additive for any
 single-project box.
 
+## Keeping deployed tools up to date
+
+`compute.autoUpdates` covers the operating system. `compute.appUpdates` covers
+the tools *you* deploy — anything that ships as a GitHub release and can replace
+itself:
+
+```typescript
+infrastructure: {
+  compute: {
+    appUpdates: [
+      { service: 'mail', binary: '/opt/mail/mail-server' },
+    ],
+  },
+}
+```
+
+That is the whole configuration. ts-cloud renders `mail-upgrade.service`,
+`mail-upgrade.timer` and a pause switch at `/etc/ts-cloud/mail-upgrade.env`, and
+enables the timer during provisioning. Projects used to hand-write those units
+into `userData`; they no longer should.
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `service` | — | The systemd unit the tool runs as. Names the generated units and is passed to the tool so it restarts the right one. |
+| `binary` | — | Absolute path of the installed binary to replace. |
+| `command` | `upgrade` | Subcommand that performs the self-update. |
+| `channel` | `stable` | `canary` follows prereleases instead. |
+| `schedule` | `daily` | Any systemd `OnCalendar` expression. |
+| `randomizedDelay` | `4h` | Spread, so a fleet does not stampede the release API at once. |
+| `args` | — | Extra flags, e.g. `['--repo owner/fork']`. |
+| `enabled` | `true` | `false` renders nothing for this target. |
+
+The invocation is `<binary> <command> --path <binary> --service <service>`, so
+the tool knows both what to replace and what to restart.
+
+### ts-cloud schedules; the tool decides
+
+This is a scheduler, not an installer. Three properties belong to the tool's own
+`upgrade` command, and a tool without them should not be listed here:
+
+- **No-op when already current.** Otherwise a daily tick restarts a live service
+  every day for nothing.
+- **Never downgrade.** A yanked release, or a release list that briefly omits the
+  newest tag, must not walk a server backwards.
+- **Roll back a binary that will not start.** Verify the unit is still up a few
+  seconds after the restart — `systemctl restart` returns once a unit is
+  *started*, not once it has survived — and restore the backup if it is not.
+
+### Pausing updates on one box
+
+`ENABLED=false` in `/etc/ts-cloud/<service>-upgrade.env` stops the checks without
+disabling the unit, and survives reprovisioning: the env file is only written
+when absent, so a redeploy will not silently switch updates back on for a box
+someone deliberately pinned.
+
 ## Preset Configuration
 
 ### Static Site Preset
