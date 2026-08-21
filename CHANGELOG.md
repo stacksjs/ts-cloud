@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.0...v0.11.1)
+
+## 🐛 Bug Fixes
+
+- **dns**: let a migration be reviewed before it is credentialed ([371e9c4](https://github.com/stacksjs/ts-cloud/commit/371e9c4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧪 Tests
+
+- **compute**: prove appUpdates reaches both boot paths ([a5cf817](https://github.com/stacksjs/ts-cloud/commit/a5cf817)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.11.1 ([cc6d44a](https://github.com/stacksjs/ts-cloud/commit/cc6d44a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.10.0...v0.11.0)
 
 ## 🚀 Features
