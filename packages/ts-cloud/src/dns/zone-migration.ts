@@ -98,6 +98,28 @@ function normalizeName(name: string): string {
   return name.replace(/\.$/, '').toLowerCase()
 }
 
+/** Same trailing-dot trim, without folding case — for values, not names. */
+function stripTrailingDot(value: string): string {
+  return value.replace(/\.$/, '')
+}
+
+/**
+ * Render a record's value the way the destination reports it back.
+ *
+ * SRV is the reason this exists. A plan holds the four fields apart
+ * (priority/weight/port + target as `content`), while Cloudflare returns
+ * `content` as the composite `weight port target` with priority alongside.
+ * Comparing the two directly says every SRV record is missing — so a migration
+ * that wrote them perfectly reports six failures and refuses to proceed, and
+ * re-running tries to create duplicates that the API then rejects.
+ */
+function comparableValue(record: { type: DnsRecordType, content: string, weight?: number, port?: number }): string {
+  if (record.type === 'SRV' && record.weight !== undefined && record.port !== undefined)
+    return `${record.weight} ${record.port} ${stripTrailingDot(record.content)}`
+
+  return stripTrailingDot(record.content)
+}
+
 /**
  * Reassemble a TXT value.
  *
@@ -257,6 +279,15 @@ function translateResourceRecord(
  * not strand the other ninety, and the parity check afterwards is what decides
  * whether the migration is actually complete.
  */
+/**
+ * Record types that legitimately hold several values at one name.
+ *
+ * These decide between create and upsert below, and getting the set wrong is
+ * silent: an upsert keyed on name+type collapses every value after the first,
+ * and the zone still looks populated.
+ */
+const MULTI_VALUED: ReadonlySet<DnsRecordType> = new Set<DnsRecordType>(['TXT', 'MX', 'SRV', 'NS', 'CAA'])
+
 export async function applyZoneMigration(
   provider: DnsProvider,
   plan: ZoneMigrationPlan,
@@ -264,15 +295,52 @@ export async function applyZoneMigration(
   const applied: MigratedRecord[] = []
   const failed: Array<{ record: MigratedRecord, message: string }> = []
 
+  // What the destination already holds, read once. Used to decide whether a
+  // multi-valued record is a new value or one already present, so re-running a
+  // migration does not duplicate every TXT in the zone.
+  const existing = new Set<string>()
+  try {
+    const listed = await provider.listRecords(plan.zone)
+    for (const r of listed.records || [])
+      existing.add(`${normalizeName(r.name)}|${r.type}|${comparableValue(r as any)}`)
+  } catch {
+    // A provider that cannot list still migrates; it just cannot dedupe.
+  }
+
   for (const record of plan.records) {
     // Imported DNS-only, always. Proxying is a deploy-time decision that has to
     // wait until the origin can prove it holds a certificate for the hostname —
     // orange-clouding a host before then redirects its ACME challenge to a port
     // where nothing can answer it, and the certificate is never issued.
-    const result = await provider.upsertRecord(plan.zone, { ...record, proxied: false })
+    const payload = { ...record, proxied: false }
+    const key = `${normalizeName(record.name)}|${record.type}|${comparableValue(record)}`
 
-    if (result.success) applied.push(record)
-    else failed.push({ record, message: result.message || 'unknown provider error' })
+    // A/AAAA/CNAME hold one value per name, so upsert is right: re-running the
+    // migration should correct a changed address rather than add a second.
+    //
+    // TXT/MX/SRV/NS/CAA do not. An apex carrying both an SPF policy and a
+    // domain-verification token is two TXT records at one name, and upserting
+    // the second over the first deletes the SPF — mail keeps flowing until a
+    // receiver checks, and nothing in the import reports a problem.
+    if (!MULTI_VALUED.has(record.type)) {
+      const result = await provider.upsertRecord(plan.zone, payload)
+      if (result.success) applied.push(record)
+      else failed.push({ record, message: result.message || 'unknown provider error' })
+      continue
+    }
+
+    if (existing.has(key)) {
+      applied.push(record)
+      continue
+    }
+
+    const result = await provider.createRecord(plan.zone, payload)
+    if (result.success) {
+      existing.add(key)
+      applied.push(record)
+    } else {
+      failed.push({ record, message: result.message || 'unknown provider error' })
+    }
   }
 
   return { applied, failed }
@@ -298,15 +366,18 @@ export async function verifyZoneParity(
   for (const record of listed.records || []) {
     const key = `${normalizeName(record.name)}|${record.type}`
     const values = index.get(key) ?? []
-    values.push(normalizeName(String(record.content)))
+    // Names are case-insensitive; VALUES are not. A base64 DKIM key or
+    // verification token differs from its lowercased self, and folding case
+    // here would report a corrupted record as a match.
+    values.push(comparableValue(record as any))
     index.set(key, values)
   }
 
   for (const record of plan.records) {
     const found = index.get(`${normalizeName(record.name)}|${record.type}`)
-    const wanted = normalizeName(record.content)
+    const wanted = comparableValue(record)
 
-    if (found?.some(value => value === wanted || value.includes(wanted) || wanted.includes(value)))
+    if (found?.some(value => value === wanted))
       matched.push(record)
     else missing.push({ record, found: found?.join(', ') })
   }

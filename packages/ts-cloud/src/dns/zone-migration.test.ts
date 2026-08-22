@@ -1,6 +1,6 @@
 import type { ResourceRecordSet } from '../aws/route53'
 import { describe, expect, it } from 'bun:test'
-import { planZoneMigration } from './zone-migration'
+import { applyZoneMigration, planZoneMigration } from './zone-migration'
 
 const ZONE = 'example.com'
 
@@ -116,5 +116,97 @@ describe('planZoneMigration', () => {
     ])
 
     expect(result.warnings.join(' ')).toContain('health check')
+  })
+})
+
+describe('applyZoneMigration', () => {
+  /** Minimal provider that records how each write was made. */
+  function provider() {
+    const zone: Array<{ name: string, type: string, content: string }> = []
+    const ops: string[] = []
+    return {
+      zone,
+      ops,
+      api: {
+        name: 'fake',
+        async listRecords() {
+          return { success: true, records: zone.map(r => ({ ...r })) as any }
+        },
+        async createRecord(_z: string, r: any) {
+          ops.push(`create ${r.type} ${r.name}`)
+          zone.push({ name: r.name, type: r.type, content: r.content })
+          return { success: true }
+        },
+        async upsertRecord(_z: string, r: any) {
+          ops.push(`upsert ${r.type} ${r.name}`)
+          const i = zone.findIndex(x => x.name === r.name && x.type === r.type)
+          if (i >= 0) zone[i] = { name: r.name, type: r.type, content: r.content }
+          else zone.push({ name: r.name, type: r.type, content: r.content })
+          return { success: true }
+        },
+        async deleteRecord() {
+          return { success: true }
+        },
+        async canManageDomain() {
+          return true
+        },
+        async listDomains() {
+          return []
+        },
+      } as any,
+    }
+  }
+
+  it('keeps both TXT records that share the apex', async () => {
+    // An SPF policy and a verification token live at the same name. Upserting
+    // the second over the first deletes the SPF, and nothing in the import says
+    // so — mail keeps flowing until a receiver actually checks.
+    const p = provider()
+    const plan = {
+      zone: 'example.com',
+      records: [
+        { name: 'example.com', type: 'TXT' as const, content: 'v=spf1 include:amazonses.com ~all' },
+        { name: 'example.com', type: 'TXT' as const, content: 'verification-token-value' },
+      ],
+      skipped: [],
+      warnings: [],
+    }
+
+    const report = await applyZoneMigration(p.api, plan)
+
+    expect(report.failed).toHaveLength(0)
+    expect(p.zone.filter(r => r.type === 'TXT')).toHaveLength(2)
+    expect(p.ops.every(o => o.startsWith('create'))).toBe(true)
+  })
+
+  it('upserts address records so a re-run corrects rather than duplicates', async () => {
+    const p = provider()
+    const plan = {
+      zone: 'example.com',
+      records: [{ name: 'www.example.com', type: 'A' as const, content: '1.2.3.4' }],
+      skipped: [],
+      warnings: [],
+    }
+
+    await applyZoneMigration(p.api, plan)
+    await applyZoneMigration(p.api, plan)
+
+    expect(p.zone.filter(r => r.type === 'A')).toHaveLength(1)
+    expect(p.ops).toEqual(['upsert A www.example.com', 'upsert A www.example.com'])
+  })
+
+  it('does not duplicate a multi-valued record when re-run', async () => {
+    const p = provider()
+    const plan = {
+      zone: 'example.com',
+      records: [{ name: 'example.com', type: 'MX' as const, content: 'mail.example.com', priority: 10 }],
+      skipped: [],
+      warnings: [],
+    }
+
+    await applyZoneMigration(p.api, plan)
+    await applyZoneMigration(p.api, plan)
+
+    expect(p.zone.filter(r => r.type === 'MX')).toHaveLength(1)
   })
 })

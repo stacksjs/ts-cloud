@@ -252,6 +252,13 @@ export function registerDomainCommands(app: CLI): void {
           return
         }
 
+        // The account id is documented as coming from the environment, and
+        // creating a zone is the one call that cannot proceed without it. Left
+        // to the flag alone, a correctly configured environment still failed at
+        // the very last step — after the export, the plan and the confirmation
+        // that everything was ready to write.
+        const accountId = options?.account ?? process.env.CLOUDFLARE_ACCOUNT_ID
+
         try {
           // 1. Export the source zone, in full.
           const route53 = new Route53Client(options?.region || 'us-east-1')
@@ -285,8 +292,8 @@ export function registerDomainCommands(app: CLI): void {
           }
 
           // 3. Create the destination zone (idempotent) and import.
-          const provider = new CloudflareProvider(apiToken!, { accountId: options?.account })
-          const zone = await provider.createZone(domain, { accountId: options?.account })
+          const provider = new CloudflareProvider(apiToken!, { accountId })
+          const zone = await provider.createZone(domain, { accountId })
           cli.success(
             zone.created
               ? `Created Cloudflare zone ${zone.name} (${zone.id})`
@@ -333,13 +340,16 @@ export function registerDomainCommands(app: CLI): void {
 
       const registrar = (options?.registrar || detectRegistrarFromEnv())?.toLowerCase()
       if (!registrar) {
-        cli.error('No registrar credentials found. Set GODADDY_API_KEY/GODADDY_API_SECRET or PORKBUN_API_KEY/PORKBUN_SECRET_KEY.')
+        cli.error('No registrar credentials found. Set GODADDY_PAT (or GODADDY_API_KEY/GODADDY_API_SECRET) or PORKBUN_API_KEY/PORKBUN_SECRET_KEY.')
         return
       }
 
       const client = registrar === 'porkbun'
         ? new PorkbunProvider(process.env.PORKBUN_API_KEY!, process.env.PORKBUN_SECRET_KEY!)
-        : new GoDaddyProvider(process.env.GODADDY_API_KEY!, process.env.GODADDY_API_SECRET!)
+        : new GoDaddyProvider(
+            process.env.GODADDY_PAT || process.env.GODADDY_API_KEY!,
+            process.env.GODADDY_PAT ? '' : process.env.GODADDY_API_SECRET!,
+          )
 
       try {
         const current = await client.getNameServers(domain)
@@ -544,6 +554,7 @@ export function registerDomainCommands(app: CLI): void {
 
 /** Pick a registrar from whichever credentials are present in the environment. */
 function detectRegistrarFromEnv(): 'godaddy' | 'porkbun' | null {
+  if (process.env.GODADDY_PAT) return 'godaddy'
   if (process.env.GODADDY_API_KEY && process.env.GODADDY_API_SECRET) return 'godaddy'
   if (process.env.PORKBUN_API_KEY && process.env.PORKBUN_SECRET_KEY) return 'porkbun'
   return null

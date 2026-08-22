@@ -21,10 +21,33 @@ export class GoDaddyProvider implements DnsProvider {
   private apiSecret: string
   private baseUrl: string
 
-  constructor(apiKey: string, apiSecret: string, environment: 'production' | 'ote' = 'production') {
+  /**
+   * @param apiKey Classic API key, or a personal access token (`gd_pat_…`).
+   * @param apiSecret Classic API secret. Omitted for a personal access token,
+   *   which carries its own authentication.
+   */
+  constructor(apiKey: string, apiSecret = '', environment: 'production' | 'ote' = 'production') {
     this.apiKey = apiKey
     this.apiSecret = apiSecret
     this.baseUrl = environment === 'ote' ? GODADDY_OTE_API_URL : GODADDY_API_URL
+  }
+
+  /**
+   * GoDaddy has two credential formats and two auth schemes, and they are not
+   * interchangeable.
+   *
+   * The classic key/secret pair uses GoDaddy's own `sso-key key:secret`. A
+   * personal access token — now the default the developer portal issues — is a
+   * bearer credential and authenticates alone. Sending a PAT through the
+   * `sso-key` scheme is not rejected as malformed; it comes back as a bare 401,
+   * which reads as "these credentials are wrong" rather than "this is the wrong
+   * scheme for this credential", and sends you looking for a permissions
+   * problem that does not exist.
+   */
+  private authorization(): string {
+    if (!this.apiSecret || this.apiKey.startsWith('gd_pat_')) return `Bearer ${this.apiKey}`
+
+    return `sso-key ${this.apiKey}:${this.apiSecret}`
   }
 
   /**
@@ -34,7 +57,7 @@ export class GoDaddyProvider implements DnsProvider {
     const url = `${this.baseUrl}${endpoint}`
 
     const headers: Record<string, string> = {
-      Authorization: `sso-key ${this.apiKey}:${this.apiSecret}`,
+      Authorization: this.authorization(),
       'Content-Type': 'application/json',
       Accept: 'application/json',
     }

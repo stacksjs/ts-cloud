@@ -542,6 +542,16 @@ export class CloudflareProvider implements DnsProvider {
       )
     }
 
+    // Look before creating. The obvious idempotent shape — POST and treat
+    // "already exists" as success — assumes that is the error a duplicate
+    // produces. It is not always: Cloudflare checks the account's limit on
+    // PENDING (unactivated) zones first, so re-running a migration whose zone
+    // is already created but not yet delegated fails with "exceeded the limit
+    // for adding zones" instead. That reads as a billing problem and hides the
+    // fact that the zone it wanted is sitting right there.
+    const found = await this.getZoneDetails(name)
+    if (found) return { ...found, created: false }
+
     try {
       const response = await this.request<CloudflareZone>('POST', '/zones', {
         name,
