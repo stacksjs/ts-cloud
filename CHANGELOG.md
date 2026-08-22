@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.4...v0.11.5)
+
+## 🚀 Features
+
+- **mail**: MTA-STS, both halves of it ([18c6c95](https://github.com/stacksjs/ts-cloud/commit/18c6c95)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.11.5 ([e8c8a87](https://github.com/stacksjs/ts-cloud/commit/e8c8a87)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.3...v0.11.4)
 
 ## 🐛 Bug Fixes
