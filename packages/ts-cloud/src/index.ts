@@ -414,6 +414,8 @@ export type {
   ListRecordsResult,
 } from './dns'
 export { PROXIABLE_RECORD_TYPES } from './dns'
+export type { MtaStsMode, MtaStsPolicy } from './drivers/shared/mta-sts'
+export { buildMtaStsPolicy, buildMtaStsServer, MTA_STS_PORT } from './drivers/shared/mta-sts'
 export type {
   MigratedRecord,
   SkippedRecord,

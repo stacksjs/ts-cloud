@@ -30,6 +30,7 @@
  */
 
 import type { ResolvedMailService } from '@ts-cloud/core'
+import { buildMtaStsPolicy } from './mta-sts'
 import { PANTRY_PROJECT_DIR, buildPantryInstallScript, PANTRY_PACKAGES } from './package-manager'
 
 /** Where the generated config, environment file and DKIM keys live. */
@@ -263,7 +264,10 @@ export function buildMailUnit(mail: ResolvedMailService): string {
 
 /** A DNS record an operator has to publish for mail to work. */
 export interface MailDnsRecord {
-  type: 'MX' | 'TXT' | 'CNAME'
+  // `A` joined the set for MTA-STS: its policy host must resolve to whatever
+  // serves the policy, and unlike the rest of these it is an address rather
+  // than a name pointing elsewhere.
+  type: 'MX' | 'TXT' | 'CNAME' | 'A'
   /** Record name, e.g. `example.com` or `default._domainkey.example.com`. */
   name: string
   /**
@@ -324,6 +328,25 @@ export function mailDnsRecords(mail: ResolvedMailService): MailDnsRecord[] {
         note: `DKIM. The value is printed by the provision step and read from ${dkimKeyPath(mail, domain)}.`,
       })
     }
+
+    // MTA-STS is two records and a served file, and the pair is listed together
+    // because publishing the TXT alone is worse than publishing neither: it
+    // sends every sender that honours MTA-STS to fetch a policy that 404s, and
+    // they fall back to opportunistic TLS silently. Nothing breaks, so nobody
+    // notices for years.
+    const policy = buildMtaStsPolicy(mail, domain)
+    records.push({
+      type: 'TXT',
+      name: `_mta-sts.${domain}`,
+      value: policy.txt,
+      note: `MTA-STS. Only publish this once ${policy.host} serves the policy — the id changes when the policy does.`,
+    })
+    records.push({
+      type: 'A',
+      name: policy.host,
+      value: '<this box>',
+      note: `Serves https://${policy.host}/.well-known/mta-sts.txt. The spec forbids redirects, so it needs its own vhost and certificate.`,
+    })
   }
 
   return records
