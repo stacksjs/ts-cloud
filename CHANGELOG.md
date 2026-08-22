@@ -1,3 +1,19 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.1...v0.11.2)
+
+## 🐛 Bug Fixes
+
+- **cloudflare**: never proxy a host the edge has no certificate for ([caf48f3](https://github.com/stacksjs/ts-cloud/commit/caf48f3)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dns**: five faults a real zone migration found that tests did not ([06d063c](https://github.com/stacksjs/ts-cloud/commit/06d063c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: fail generate when the template does not validate ([03649af](https://github.com/stacksjs/ts-cloud/commit/03649af)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.11.2 ([27d51d8](https://github.com/stacksjs/ts-cloud/commit/27d51d8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.0...v0.11.1)
 
 ## 🐛 Bug Fixes
