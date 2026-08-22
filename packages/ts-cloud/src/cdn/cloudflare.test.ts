@@ -375,3 +375,22 @@ describe('edgeCertificateCovers', () => {
     expect(edgeCertificateCovers(['*.example.com'], 'www.notexample.com')).toBe(false)
   })
 })
+
+describe('email obfuscation', () => {
+  it('is disabled by default, because it rewrites the origin\'s HTML', () => {
+    // Cloudflare enables this on new zones. It turns `mailto:` links into
+    // script-decoded spans, so a contact link stops working wherever the
+    // script does not run — and every check that does not execute JavaScript
+    // still reports the page as fine.
+    expect(STATIC_SITE_ZONE_SETTINGS.emailObfuscation).toBe(false)
+  })
+
+  it('maps to the setting id Cloudflare expects', () => {
+    expect(toCloudflareZoneSettings({ emailObfuscation: false }).email_obfuscation).toBe('off')
+    expect(toCloudflareZoneSettings({ emailObfuscation: true }).email_obfuscation).toBe('on')
+  })
+
+  it('is left alone when not specified', () => {
+    expect(toCloudflareZoneSettings({}).email_obfuscation).toBeUndefined()
+  })
+})

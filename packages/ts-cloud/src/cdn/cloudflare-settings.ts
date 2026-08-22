@@ -76,6 +76,22 @@ export interface CloudflareZoneSettings {
   /** Proxy WebSocket upgrades. */
   websockets?: boolean
   /**
+   * Cloudflare's email-address obfuscation, which REWRITES the HTML the origin
+   * sent: `mailto:` links become encoded spans that a script decodes in the
+   * browser.
+   *
+   * Cloudflare enables it on new zones, and it is the one edge setting that
+   * changes what a page *is* rather than how it is delivered. A contact link
+   * that used to be a plain `mailto:` stops working wherever the script does
+   * not run, and the page still looks correct in every check that does not
+   * execute JavaScript.
+   *
+   * ts-cloud turns it OFF by default for that reason. Set it to `true` on a
+   * zone that genuinely wants scraper protection more than it wants links that
+   * work without JavaScript.
+   */
+  emailObfuscation?: boolean
+  /**
    * Raw escape hatch: setting ids passed straight through, merged last.
    *
    * The mapped fields above cover what a static site needs; this exists so a
@@ -107,6 +123,7 @@ export function toCloudflareZoneSettings(settings: CloudflareZoneSettings): Reco
     browser_cache_ttl: settings.browserCacheTtl,
     always_online: onOff(settings.alwaysOnline),
     websockets: onOff(settings.websockets),
+    email_obfuscation: onOff(settings.emailObfuscation),
   }
 
   if (settings.hsts) {
@@ -147,6 +164,10 @@ export const STATIC_SITE_ZONE_SETTINGS: CloudflareZoneSettings = {
   http3: true,
   earlyHints: true,
   alwaysOnline: true,
+  // Off: it rewrites `mailto:` links into script-decoded spans, so a contact
+  // link silently stops working without JavaScript. Delivery is the CDN's job;
+  // altering the document is not.
+  emailObfuscation: false,
   // Browser TTL is left to the cache rules, which can distinguish a
   // fingerprinted asset from an HTML document. A blanket zone-level TTL cannot.
   browserCacheTtl: 0,
