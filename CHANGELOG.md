@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.3...v0.11.4)
+
+## 🐛 Bug Fixes
+
+- **types**: let a project actually configure emailObfuscation ([fc7e0a7](https://github.com/stacksjs/ts-cloud/commit/fc7e0a7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.11.4 ([c7f1d61](https://github.com/stacksjs/ts-cloud/commit/c7f1d61)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.2...v0.11.3)
 
 ## 🚀 Features
