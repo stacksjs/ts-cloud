@@ -71,6 +71,16 @@ export interface ReconcileCloudflareCdnOptions {
    * @default false
    */
   skipOriginProbe?: boolean
+  /**
+   * Skip the edge-certificate check and proxy regardless.
+   *
+   * Only safe when you know the zone holds a certificate covering every fronted
+   * host — a custom uploaded certificate, for instance, which this check cannot
+   * see. Skipping it on a zone whose Universal SSL is still validating takes the
+   * site down over HTTPS.
+   * @default false
+   */
+  skipEdgeCertificateCheck?: boolean
 }
 
 export interface CloudflareCdnReport {
@@ -101,6 +111,31 @@ export interface CloudflareCdnReport {
  * a rules permission the token lacks is worth reporting loudly, but it is not
  * worth reporting as "the deploy failed" when the site is up and serving.
  */
+/**
+ * Does any of these certificate hostnames cover `host`?
+ *
+ * A wildcard matches exactly ONE label, which is the rule that catches people
+ * out: `*.example.com` covers `www.example.com` and does not cover
+ * `www.app.example.com`. Universal SSL only ever issues the apex plus a single
+ * wildcard, so a three-label host inside a zone is not covered by it at all and
+ * never will be without a dedicated certificate.
+ */
+export function edgeCertificateCovers(certificateHosts: string[], host: string): boolean {
+  const target = host.replace(/\.$/, '').toLowerCase()
+
+  return certificateHosts.some((raw) => {
+    const pattern = raw.replace(/\.$/, '').toLowerCase()
+    if (pattern === target) return true
+    if (!pattern.startsWith('*.')) return false
+
+    const suffix = pattern.slice(2)
+    if (!target.endsWith(`.${suffix}`)) return false
+
+    // One label only: what precedes the suffix must not itself contain a dot.
+    return !target.slice(0, target.length - suffix.length - 1).includes('.')
+  })
+}
+
 export async function reconcileCloudflareCdn(
   options: ReconcileCloudflareCdnOptions,
 ): Promise<CloudflareCdnReport> {
@@ -117,6 +152,7 @@ export async function reconcileCloudflareCdn(
     purge = true,
     ttl = 300,
     skipOriginProbe = false,
+    skipEdgeCertificateCheck = false,
   } = options
 
   const report: CloudflareCdnReport = {
@@ -137,10 +173,38 @@ export async function reconcileCloudflareCdn(
   // name being ready says nothing about a name added later in the same deploy.
   const proxiedHosts: string[] = []
 
+  // What the EDGE can terminate TLS for. Fetched once: it is a zone-level fact,
+  // and the answer is the same for every host in this run.
+  //
+  // `null` means coverage could not be read at all, which is deliberately NOT
+  // treated as "nothing is covered" — a token missing SSL read would otherwise
+  // silently stop proxying every site on every deploy. An empty array is a
+  // definitive answer and is acted on.
+  const edgeHosts = proxied && !skipEdgeCertificateCheck
+    ? await provider.listEdgeCertificateHosts(zone)
+    : null
+
   for (const host of hosts) {
     let hostProxied = proxied
 
-    if (proxied && !skipOriginProbe) {
+    // Checked BEFORE the origin probe, because it is the cheaper failure to
+    // reason about and the more destructive one to get wrong: an origin without
+    // a certificate yet merely delays proxying, while proxying a host the edge
+    // cannot terminate TLS for takes the name down for every visitor.
+    if (hostProxied && edgeHosts && !edgeCertificateCovers(edgeHosts, host)) {
+      hostProxied = false
+      const reason = edgeHosts.length === 0
+        ? 'the zone has no active edge certificate yet'
+        : `no active edge certificate covers it (${edgeHosts.join(', ')})`
+      report.deferredProxy.push({ host, reason })
+      report.warnings.push(
+        `${host}: publishing DNS-only — ${reason}. Proxying it would make Cloudflare terminate TLS with no certificate for the name, ` +
+          `which fails the handshake outright rather than degrading. Universal SSL covers the apex and ONE level of subdomain, so a deeper ` +
+          `name needs its own certificate; otherwise re-run the deploy once the certificate is active.`,
+      )
+    }
+
+    if (hostProxied && !skipOriginProbe) {
       const probe = await probeOriginTls({ address: ipv4, serverName: host })
       if (!probe.trusted) {
         hostProxied = false

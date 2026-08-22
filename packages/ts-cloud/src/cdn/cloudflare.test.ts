@@ -1,6 +1,7 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
 import { CloudflareProvider } from '../dns/cloudflare'
+import { edgeCertificateCovers } from './cloudflare'
 import { resolveCloudflareCdnPlan, resolveZoneApex } from './cloudflare-plan'
 import { buildOriginGuardRule, buildStaticSiteCacheRules, hostCondition } from './cloudflare-rules'
 import { STATIC_SITE_ZONE_SETTINGS, toCloudflareZoneSettings } from './cloudflare-settings'
@@ -339,5 +340,38 @@ describe('resolveZoneApex', () => {
   it('prefers the configured domain over the last-two-labels guess', () => {
     expect(resolveZoneApex('www.example.co.uk', 'example.co.uk')).toBe('example.co.uk')
     expect(resolveZoneApex('www.example.co.uk')).toBe('co.uk')
+  })
+})
+
+describe('edgeCertificateCovers', () => {
+  it('matches an exact hostname', () => {
+    expect(edgeCertificateCovers(['example.com'], 'example.com')).toBe(true)
+  })
+
+  it('matches one label under a wildcard', () => {
+    expect(edgeCertificateCovers(['*.example.com'], 'www.example.com')).toBe(true)
+  })
+
+  it('does NOT match two labels under a wildcard', () => {
+    // The rule that takes sites down: Universal SSL issues the apex plus a
+    // single wildcard, so a three-label host is never covered by it. Proxying
+    // it anyway fails the TLS handshake outright.
+    expect(edgeCertificateCovers(['*.example.com'], 'www.app.example.com')).toBe(false)
+  })
+
+  it('does not let a wildcard cover the apex it belongs to', () => {
+    expect(edgeCertificateCovers(['*.example.com'], 'example.com')).toBe(false)
+  })
+
+  it('treats an empty certificate list as covering nothing', () => {
+    expect(edgeCertificateCovers([], 'example.com')).toBe(false)
+  })
+
+  it('ignores trailing dots and case', () => {
+    expect(edgeCertificateCovers(['*.Example.com.'], 'WWW.example.com')).toBe(true)
+  })
+
+  it('does not match a different zone that shares a suffix', () => {
+    expect(edgeCertificateCovers(['*.example.com'], 'www.notexample.com')).toBe(false)
   })
 })

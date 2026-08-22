@@ -615,6 +615,44 @@ export class CloudflareProvider implements DnsProvider {
   }
 
   /**
+   * Hostnames the zone's ACTIVE edge certificates cover.
+   *
+   * This is what decides whether a host can safely be proxied. Cloudflare
+   * terminates TLS at the edge, so a proxied record whose name no edge
+   * certificate covers does not degrade — it fails the handshake outright, and
+   * the site is down over HTTPS while port 80 still answers and the origin
+   * stays perfectly healthy. On a freshly activated zone Universal SSL sits in
+   * `pending_validation` for a while, which is exactly the window a first
+   * deploy lands in.
+   *
+   * Returns `null` when coverage cannot be determined — a token without
+   * SSL read, a network failure — which the caller must treat differently from
+   * an empty list. Empty means "certainly nothing is covered"; null means "no
+   * idea", and only the first is safe to act on.
+   */
+  async listEdgeCertificateHosts(domain: string): Promise<string[] | null> {
+    try {
+      const zoneId = await this.getZoneId(domain)
+      const response = await this.request<Array<{ status?: string, hosts?: string[] }>>(
+        'GET',
+        `/zones/${zoneId}/ssl/certificate_packs?per_page=50`,
+      )
+
+      const hosts = new Set<string>()
+      for (const pack of response.result || []) {
+        // Only an active pack terminates TLS. `pending_validation`,
+        // `initializing` and friends are certificates that do not exist yet.
+        if (pack.status !== 'active') continue
+        for (const host of pack.hosts || []) hosts.add(host.toLowerCase())
+      }
+
+      return [...hosts]
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * Purge cache for a domain (Cloudflare-specific)
    */
   async purgeCache(
