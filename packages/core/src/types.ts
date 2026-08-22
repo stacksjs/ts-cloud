@@ -3987,6 +3987,18 @@ export interface CloudflareZoneSettingsConfig {
   alwaysOnline?: boolean
   /** Proxy WebSocket upgrades. */
   websockets?: boolean
+  /**
+   * Cloudflare's email-address obfuscation, which REWRITES the HTML the origin
+   * sent: `mailto:` links become spans a script decodes in the browser.
+   *
+   * Cloudflare enables it on new zones. ts-cloud turns it off by default,
+   * because a contact link that needs JavaScript to work is a change to what
+   * the page IS, not to how it is delivered — and it fails invisibly, since
+   * anything that does not execute scripts still sees a correct-looking page.
+   *
+   * @default false
+   */
+  emailObfuscation?: boolean
   /** Raw Cloudflare setting ids, merged last. */
   raw?: Record<string, unknown>
 }
