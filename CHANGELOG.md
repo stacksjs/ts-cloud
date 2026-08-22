@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.2...v0.11.3)
+
+## 🚀 Features
+
+- **cloudflare**: stop the edge rewriting the origin's HTML ([b698819](https://github.com/stacksjs/ts-cloud/commit/b698819)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.11.3 ([385696b](https://github.com/stacksjs/ts-cloud/commit/385696b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.1...v0.11.2)
 
 ## 🐛 Bug Fixes
