@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.5...v0.11.6)
+
+## 🚀 Features
+
+- **deploy**: restart a service that is alive but no longer answering ([e6a9b88](https://github.com/stacksjs/ts-cloud/commit/e6a9b88)) _(by Chris <chris@stacksjs.com>)_
+
+## 🧹 Chores
+
+- release v0.11.6 ([2cf1d86](https://github.com/stacksjs/ts-cloud/commit/2cf1d86)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.4...v0.11.5)
 
 ## 🚀 Features
