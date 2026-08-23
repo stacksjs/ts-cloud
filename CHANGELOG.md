@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.6...v0.11.7)
+
+## 🐛 Bug Fixes
+
+- **cdn**: stop the edge caching a page's SPA fragment under the page's url ([1b72659](https://github.com/stacksjs/ts-cloud/commit/1b72659)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.11.7 ([dd69554](https://github.com/stacksjs/ts-cloud/commit/dd69554)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.5...v0.11.6)
 
 ## 🚀 Features
