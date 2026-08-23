@@ -24,6 +24,36 @@ export const DEFAULT_STATIC_ASSET_EXTENSIONS: readonly string[] = [
   'pdf', 'wasm',
 ]
 
+/**
+ * Request headers that select a DIFFERENT body at the same url.
+ *
+ * A single-page app's router fetches the url the browser would navigate to and
+ * asks for a fragment of it — no `<head>`, no stylesheet link, no nav — with a
+ * request header. Two representations therefore share one cache key.
+ *
+ * Origins are supposed to declare that with `Vary`, and stx now does. Cloudflare
+ * does not honour `Vary` on anything but `Accept-Encoding`, so on the edge the
+ * declaration changes nothing: whichever representation is fetched first is
+ * stored under the bare url and served to everyone until the TTL expires. When
+ * that is the fragment — one visitor's prefetch is enough — every subsequent
+ * visitor gets an unstyled, headless page. The origin stays healthy throughout,
+ * which is why it survives every check that looks at the box.
+ *
+ * The edge cannot split the key, so it must not hold these at all.
+ */
+export const DEFAULT_NEGOTIATED_REQUEST_HEADERS: readonly NegotiatedRequestHeader[] = [
+  // stx's SPA router (stacksjs/stx#1958).
+  { name: 'x-stx-router', value: 'true' },
+]
+
+/** A request header, optionally narrowed to one value, that renegotiates the body. */
+export interface NegotiatedRequestHeader {
+  /** Header name, lowercase — Cloudflare's header map is lowercase-keyed. */
+  name: string
+  /** Only bypass when the header carries this value. Omit to match its presence. */
+  value?: string
+}
+
 export interface CloudflareCacheRuleSettings {
   /** Generate cache rules at all. @default true */
   enabled?: boolean
@@ -48,6 +78,13 @@ export interface CloudflareCacheRuleSettings {
    * `starts_with`, so `/api` also covers `/api/anything`.
    */
   bypassPaths?: readonly string[]
+  /**
+   * Request headers that select a different body at the same url.
+   *
+   * Defaults to {@link DEFAULT_NEGOTIATED_REQUEST_HEADERS}. Pass `[]` to cache
+   * these too — only correct for a site with no client-side router at all.
+   */
+  negotiatedRequestHeaders?: readonly NegotiatedRequestHeader[]
 }
 
 /** Quote a string for a Cloudflare Ruleset expression literal. */
@@ -58,6 +95,19 @@ function quote(value: string): string {
 /** Render a Ruleset `in {…}` set literal (space-separated, not comma). */
 function set(values: readonly string[]): string {
   return `{${values.map(quote).join(' ')}}`
+}
+
+/**
+ * `any(http.request.headers[…][*] == …)` for one renegotiating header.
+ *
+ * Cloudflare's header map is lowercase-keyed and multi-valued, so the name is
+ * lowered and every value is tested rather than only the first.
+ */
+function negotiatedHeaderCondition(header: NegotiatedRequestHeader): string {
+  const name = `http.request.headers[${quote(header.name.toLowerCase())}]`
+  return header.value === undefined
+    ? `len(${name}) > 0`
+    : `any(${name}[*] == ${quote(header.value)})`
 }
 
 /** `http.host in {…}` for the hosts a rule applies to. */
@@ -81,6 +131,11 @@ export function hostCondition(hosts: readonly string[]): string {
  * Every rule is also scoped to `hosts`. The zone may serve names that have
  * nothing to do with this site, and a catch-all matching them would quietly
  * start caching someone else's dynamic responses.
+ *
+ * The bypass rule comes first and is now always emitted, because it carries the
+ * renegotiating request headers as well as `bypassPaths` — a url that answers
+ * two bodies is not cacheable under the url alone, and the edge has no other
+ * key. See {@link DEFAULT_NEGOTIATED_REQUEST_HEADERS}.
  */
 export function buildStaticSiteCacheRules(
   hosts: readonly string[],
@@ -92,8 +147,19 @@ export function buildStaticSiteCacheRules(
   const rules: CloudflareRule[] = []
 
   const bypassPaths = settings.bypassPaths ?? []
-  const bypassClause = bypassPaths.length > 0
-    ? `(${bypassPaths.map(path => `starts_with(http.request.uri.path, ${quote(path)})`).join(' or ')})`
+  const pathClauses = bypassPaths.map(path => `starts_with(http.request.uri.path, ${quote(path)})`)
+
+  // A url whose body depends on a request header cannot be cached under the url
+  // alone, and the edge keys on nothing else. See
+  // DEFAULT_NEGOTIATED_REQUEST_HEADERS for what caching one anyway does to a
+  // site. Folded into the same bypass as the paths: both mean "not ours to
+  // hold", and one rule is one thing to read in the dashboard.
+  const negotiated = settings.negotiatedRequestHeaders ?? DEFAULT_NEGOTIATED_REQUEST_HEADERS
+  const headerClauses = negotiated.map(negotiatedHeaderCondition)
+
+  const bypassClauses = [...pathClauses, ...headerClauses]
+  const bypassClause = bypassClauses.length > 0
+    ? `(${bypassClauses.join(' or ')})`
     : undefined
 
   if (bypassClause) {

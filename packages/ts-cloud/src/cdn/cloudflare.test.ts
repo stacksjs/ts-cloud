@@ -182,6 +182,56 @@ describe('cache rules', () => {
     ])
   })
 
+  it('bypasses requests that ask the same url for a different body', () => {
+    // An SPA router fetches the url the browser would navigate to and asks for
+    // a fragment of it with a header. The edge keys on the url alone and ignores
+    // `Vary` on anything but `Accept-Encoding`, so caching this stores whichever
+    // representation arrives first and serves it to everyone — and a stored
+    // fragment is a headless, unstyled page for every visitor until it expires.
+    const rules = buildStaticSiteCacheRules(['example.com'])
+    const bypass = rules.find(r => r.description === 'bypass cache')!
+
+    expect(bypass.expression).toContain('any(http.request.headers["x-stx-router"][*] == "true")')
+    expect(bypass.action_parameters).toEqual({ cache: false })
+  })
+
+  it('keeps those requests out of the caching rules as well', () => {
+    // The rules are mutually exclusive by construction, not by order: a document
+    // rule that still matched the fragment request would re-cache it.
+    const rules = buildStaticSiteCacheRules(['example.com'])
+    for (const description of ['cache fingerprinted assets', 'cache documents']) {
+      const rule = rules.find(r => r.description === description)!
+      expect(rule.expression).toContain('not (any(http.request.headers["x-stx-router"][*] == "true"))')
+    }
+  })
+
+  it('emits the bypass rule even with no bypassPaths', () => {
+    // The renegotiating headers are reason enough on their own.
+    const rules = buildStaticSiteCacheRules(['example.com'])
+    expect(rules.map(r => r.description)).toEqual([
+      'bypass cache',
+      'cache fingerprinted assets',
+      'cache documents',
+    ])
+  })
+
+  it('matches a bare header by presence when no value is named', () => {
+    const rules = buildStaticSiteCacheRules(['example.com'], {
+      negotiatedRequestHeaders: [{ name: 'X-Custom-Fragment' }],
+    })
+    const bypass = rules.find(r => r.description === 'bypass cache')!
+
+    expect(bypass.expression).toContain('len(http.request.headers["x-custom-fragment"]) > 0')
+  })
+
+  it('lets a site with no client router opt out entirely', () => {
+    const rules = buildStaticSiteCacheRules(['example.com'], { negotiatedRequestHeaders: [] })
+    expect(rules.map(r => r.description)).toEqual([
+      'cache fingerprinted assets',
+      'cache documents',
+    ])
+  })
+
   it('keeps the document rule from matching assets', () => {
     // Cloudflare applies EVERY matching rule in this phase and lets a later one
     // override an earlier one, so a bare `http.host eq …` catch-all silently
@@ -193,7 +243,21 @@ describe('cache rules', () => {
   })
 
   it('excludes bypassed paths from both caching rules', () => {
+    // The negation carries every bypass reason — paths and renegotiating
+    // headers alike — so assert the path is inside it rather than that it is
+    // the whole of it.
     const rules = buildStaticSiteCacheRules(['example.com'], { bypassPaths: ['/api'] })
+    for (const description of ['cache fingerprinted assets', 'cache documents']) {
+      const rule = rules.find(r => r.description === description)!
+      expect(rule.expression).toContain('and not (starts_with(http.request.uri.path, "/api")')
+    }
+  })
+
+  it('excludes bypassed paths from both caching rules when they are the only reason', () => {
+    const rules = buildStaticSiteCacheRules(['example.com'], {
+      bypassPaths: ['/api'],
+      negotiatedRequestHeaders: [],
+    })
     for (const description of ['cache fingerprinted assets', 'cache documents']) {
       const rule = rules.find(r => r.description === description)!
       expect(rule.expression).toContain('not (starts_with(http.request.uri.path, "/api"))')

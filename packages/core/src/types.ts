@@ -4019,6 +4019,20 @@ export interface CloudflareCacheRulesConfig {
   documentBrowserTtl?: number
   /** Path prefixes that must never be cached, matched with `starts_with`. */
   bypassPaths?: string[]
+  /**
+   * Request headers that select a different body at the same url, and therefore
+   * make it uncacheable at the edge.
+   *
+   * Defaults to stx's SPA-router header. A single-page router fetches the url
+   * the browser would navigate to and asks for a fragment of it — no `<head>`,
+   * no stylesheet, no nav. Cloudflare keys on the url alone and honours `Vary`
+   * for `Accept-Encoding` only, so caching these stores whichever representation
+   * arrived first and serves it to everyone: one prefetch is enough to leave
+   * every visitor on an unstyled, headless page until the TTL expires.
+   *
+   * Pass `[]` only for a site with no client-side router at all.
+   */
+  negotiatedRequestHeaders?: { name: string, value?: string }[]
 }
 
 export interface DatabaseItemConfig {
