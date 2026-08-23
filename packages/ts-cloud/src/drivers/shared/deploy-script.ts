@@ -26,6 +26,90 @@ export function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'
   return `${bin} ${args}`
 }
 
+/**
+ * Shell that installs a recurring liveness check for one ported service.
+ *
+ * Three files: a check script, a oneshot service that runs it, and a timer.
+ * The script resolves the unit to probe at run time rather than baking in a
+ * release id, so it keeps working after the next deploy replaces the instance.
+ *
+ * `curl` without `-f`: any HTTP response means the process is answering, and a
+ * 404 on `/` is a routing opinion, not a wedged event loop. Only a connection
+ * failure or a timeout counts against it.
+ *
+ * A restart needs N consecutive failures, counted in a file under /run, so a
+ * single slow moment cannot bounce a healthy service; the counter resets on the
+ * first good response. flock keeps two ticks from overlapping.
+ */
+export function buildLivenessUnits(options: {
+  unitBase: string
+  /** systemd unit to restart. A `<base>@*.service` glob resolves at run time. */
+  unitPattern: string
+  port: number
+  path?: string
+  intervalSeconds?: number
+  failuresBeforeRestart?: number
+}): string[] {
+  const { unitBase, unitPattern, port } = options
+  const path = options.path && options.path.startsWith('/') ? options.path : '/'
+  const interval = Math.max(10, options.intervalSeconds ?? 60)
+  const failures = Math.max(1, options.failuresBeforeRestart ?? 3)
+  const script = `/usr/local/sbin/${unitBase}-liveness`
+  const templated = unitPattern.includes('@*')
+
+  const resolveUnit = templated
+    ? `TS_CLOUD_UNIT=$(systemctl list-units --plain --no-legend --type=service '${unitPattern}' 2>/dev/null | awk '{print $1}' | head -1)`
+    : `TS_CLOUD_UNIT=${unitPattern}`
+
+  return [
+    `cat > ${script} <<'TS_CLOUD_LIVENESS_EOF'`,
+    '#!/bin/sh',
+    'set -eu',
+    `exec 9>/run/${unitBase}-liveness.lock`,
+    'flock -n 9 || exit 0',
+    resolveUnit,
+    '[ -n "$TS_CLOUD_UNIT" ] || exit 0',
+    // A unit systemd itself considers down is its own problem: Restart=always
+    // is already handling it, and restarting here would fight that.
+    'systemctl is-active --quiet "$TS_CLOUD_UNIT" || exit 0',
+    `if curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${port}${path}"; then`,
+    `  rm -f /run/${unitBase}-liveness.fail`,
+    '  exit 0',
+    'fi',
+    `TS_CLOUD_FAILS=$(cat /run/${unitBase}-liveness.fail 2>/dev/null || echo 0)`,
+    'TS_CLOUD_FAILS=$((TS_CLOUD_FAILS + 1))',
+    `echo "$TS_CLOUD_FAILS" > /run/${unitBase}-liveness.fail`,
+    `[ "$TS_CLOUD_FAILS" -ge ${failures} ] || exit 0`,
+    `logger -t ${unitBase}-liveness "no HTTP response on 127.0.0.1:${port}${path} after $TS_CLOUD_FAILS checks; restarting $TS_CLOUD_UNIT"`,
+    'systemctl restart "$TS_CLOUD_UNIT"',
+    `rm -f /run/${unitBase}-liveness.fail`,
+    'TS_CLOUD_LIVENESS_EOF',
+    `chmod +x ${script}`,
+    `cat > /etc/systemd/system/${unitBase}-liveness.service <<'TS_CLOUD_UNIT_EOF'`,
+    '[Unit]',
+    `Description=Liveness check for ${unitBase} (managed by ts-cloud)`,
+    '',
+    '[Service]',
+    'Type=oneshot',
+    `ExecStart=${script}`,
+    'TS_CLOUD_UNIT_EOF',
+    `cat > /etc/systemd/system/${unitBase}-liveness.timer <<'TS_CLOUD_UNIT_EOF'`,
+    '[Unit]',
+    `Description=Run the ${unitBase} liveness check every ${interval}s`,
+    '',
+    '[Timer]',
+    `OnUnitActiveSec=${interval}s`,
+    `OnBootSec=${interval}s`,
+    'Persistent=true',
+    '',
+    '[Install]',
+    'WantedBy=timers.target',
+    'TS_CLOUD_UNIT_EOF',
+    'systemctl daemon-reload',
+    `systemctl enable --now ${unitBase}-liveness.timer >/dev/null 2>&1 || true`,
+  ]
+}
+
 export interface BuildSiteDeployScriptOptions {
   siteName: string
   slug: string
@@ -84,6 +168,31 @@ export interface BuildSiteDeployScriptOptions {
    * @default 5
    */
   healthGateSeconds?: number
+  /**
+   * Recurring liveness check for a ported site: a timer that asks the service
+   * for an HTTP response and restarts it when it stops answering.
+   *
+   * `Restart=always` only covers a process that EXITS. A process that is alive
+   * and no longer serving is invisible to systemd: it reports `active`, the
+   * port stays bound, and connections pile up in the accept backlog. One app
+   * on a shared box sat like that for eight days with `active (running)` and
+   * 46 queued connections, and nothing anywhere noticed.
+   *
+   * The probe is an HTTP request rather than a listener check for that exact
+   * reason — `ss` would have called the wedged process healthy.
+   *
+   * Set `false` to opt out (a service that legitimately answers nothing on its
+   * port, or one where a restart is more dangerous than an outage).
+   * @default enabled, `/` every 60s, restart after 3 consecutive failures
+   */
+  liveness?: false | {
+    /** Path to request. @default '/' */
+    path?: string
+    /** Seconds between checks. @default 60 */
+    intervalSeconds?: number
+    /** Consecutive failures before a restart. @default 3 */
+    failuresBeforeRestart?: number
+  }
   /**
    * systemd `MemoryHigh` for the app unit. See {@link SiteConfig.memoryHigh}.
    * @default '2G'
@@ -155,6 +264,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     preStartCommands = [],
     healthCheckPath,
     healthGateSeconds = 5,
+    liveness,
     // A shared box runs many tenants. Without a limit, one that leaks fills
     // memory and then swap, and the kernel's OOM killer starts choosing
     // victims box-wide — a leak in one app takes every other tenant down with
@@ -350,6 +460,18 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v -e "^${instance}\$" -e "^${unitBase}@\\.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
       `if [ -f /etc/systemd/system/${serviceName} ]; then systemctl disable ${serviceName} 2>/dev/null || true; rm -f /etc/systemd/system/${serviceName}; systemctl daemon-reload; fi`,
       ...buildPruneReleases(paths, keepReleases),
+      // The deploy gate proves this release came up. Nothing after today
+      // proves it is still answering, which is what the timer below is for.
+      ...(liveness === false
+        ? []
+        : buildLivenessUnits({
+            unitBase,
+            unitPattern: `${unitBase}@*.service`,
+            port,
+            path: liveness?.path ?? healthCheckPath,
+            intervalSeconds: liveness?.intervalSeconds,
+            failuresBeforeRestart: liveness?.failuresBeforeRestart,
+          })),
     ]
   }
 
@@ -392,6 +514,19 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     `systemctl restart ${serviceName}`,
     `systemctl is-active ${serviceName}`,
     ...buildPruneReleases(paths, keepReleases),
+    // Only a ported service can be probed over HTTP. A worker or scheduler has
+    // no port to ask, so it gets no timer rather than a check that would call
+    // every one of them dead.
+    ...(liveness === false || !port
+      ? []
+      : buildLivenessUnits({
+          unitBase,
+          unitPattern: serviceName,
+          port,
+          path: liveness?.path ?? healthCheckPath,
+          intervalSeconds: liveness?.intervalSeconds,
+          failuresBeforeRestart: liveness?.failuresBeforeRestart,
+        })),
   ]
 }
 

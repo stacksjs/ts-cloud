@@ -424,3 +424,89 @@ describe('deploy concurrency and re-deploys of a live release', () => {
     expect(joined).toContain('flock -w 900 9')
   })
 })
+
+describe('liveness watchdog', () => {
+  const base = {
+    siteName: 'web',
+    slug: 'my-app',
+    artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', '/tmp/r.tar.gz'),
+    releaseId: 'abc123',
+    execStart: '/usr/local/bin/bun run server.ts',
+    envEntries: { NODE_ENV: 'production' },
+    port: 3000,
+  }
+
+  /**
+   * `Restart=always` only catches a process that EXITS. The failure this
+   * covers is the other one: a process that is alive and no longer serving.
+   * One app on a shared box sat in exactly that state for eight days -
+   * systemd reporting `active (running)`, the port still bound, 46 connections
+   * queued in the accept backlog, and nothing anywhere noticing.
+   */
+  it('installs a timer that asks the service for an HTTP response', () => {
+    const joined = buildSiteDeployScript(base).join('\n')
+
+    expect(joined).toContain('/usr/local/sbin/my-app-web-liveness')
+    expect(joined).toContain('/etc/systemd/system/my-app-web-liveness.timer')
+    expect(joined).toContain('systemctl enable --now my-app-web-liveness.timer')
+    expect(joined).toContain('curl -s -o /dev/null --max-time 5 "http://127.0.0.1:3000/"')
+  })
+
+  it('probes over HTTP rather than checking the listener', () => {
+    // `ss` would have called the wedged process healthy: it was listening the
+    // whole time. Only a request proves the event loop is still turning.
+    const joined = buildSiteDeployScript(base).join('\n')
+    const script = joined.slice(joined.indexOf('my-app-web-liveness <<'), joined.indexOf('TS_CLOUD_LIVENESS_EOF\nchmod'))
+
+    expect(script).not.toContain('ss -ltn')
+  })
+
+  it('counts a response of any status as alive', () => {
+    // No `-f`: a 404 on / is a routing opinion, not a wedged process, and
+    // restarting on one would bounce a perfectly healthy service every minute.
+    const joined = buildSiteDeployScript(base).join('\n')
+
+    expect(joined).not.toContain('curl -sf -o /dev/null --max-time 5')
+  })
+
+  it('needs consecutive failures, and forgets them after a good response', () => {
+    const joined = buildSiteDeployScript(base).join('\n')
+
+    expect(joined).toContain('[ "$TS_CLOUD_FAILS" -ge 3 ] || exit 0')
+    expect(joined).toContain('rm -f /run/my-app-web-liveness.fail')
+    expect(joined).toContain('flock -n 9 || exit 0')
+  })
+
+  it('resolves the unit at run time, so it survives the next release', () => {
+    // The instance name carries the release id. Baking abc123 into the timer
+    // would leave it probing a unit that no longer exists after one deploy.
+    const joined = buildSiteDeployScript(base).join('\n')
+
+    expect(joined).toContain(`list-units --plain --no-legend --type=service 'my-app-web@*.service'`)
+    expect(joined).not.toContain('systemctl restart my-app-web@abc123.service"')
+  })
+
+  it('leaves a unit systemd already considers down to Restart=always', () => {
+    expect(buildSiteDeployScript(base).join('\n')).toContain('systemctl is-active --quiet "$TS_CLOUD_UNIT" || exit 0')
+  })
+
+  it('honours the health path when one is configured', () => {
+    const joined = buildSiteDeployScript({ ...base, healthCheckPath: '/health' }).join('\n')
+
+    expect(joined).toContain('"http://127.0.0.1:3000/health"')
+  })
+
+  it('can be turned off', () => {
+    const joined = buildSiteDeployScript({ ...base, liveness: false }).join('\n')
+
+    expect(joined).not.toContain('liveness.timer')
+  })
+
+  it('is not installed for a service with no port to ask', () => {
+    // Workers and schedulers answer nothing on a port; a probe would call
+    // every one of them dead.
+    const joined = buildSiteDeployScript({ ...base, port: undefined, zeroDowntime: false }).join('\n')
+
+    expect(joined).not.toContain('liveness.timer')
+  })
+})
