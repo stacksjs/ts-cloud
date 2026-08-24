@@ -119,7 +119,7 @@ describe('buildListScript + parseDbList', () => {
   it('builds a per-database dump script (mysqldump / pg_dump) to a timestamped file', () => {
     const my = buildBackupScript('mysql', 'acme').join('\n')
     expect(my).toContain('mysqldump --socket=')
-    expect(my).toContain('acme-$(date +%Y%m%d-%H%M%S).sql.gz')
+    expect(my).toContain('acme-$TS_CLOUD_BACKUP_STAMP.sql.gz')
     // Local pantry engine: socket (no -h) — TCP loopback demands md5.
     const pg = buildBackupScript('postgres', 'acme').join('\n')
     expect(pg).toContain('pg_dump -p 5432 -U postgres acme')
@@ -134,6 +134,32 @@ describe('buildListScript + parseDbList', () => {
     }).join('\n')
     expect(ext).toContain(`PGPASSWORD='pw' pg_dump -h db.example.com -p 5432 -U admin -w acme`)
   })
+
+  /**
+   * The timestamp has to be taken ONCE. Written inline as `$(date …)` it runs
+   * again in every command that mentions the filename, so a dump crossing a
+   * second boundary writes one file and then reports — and lists — a different
+   * one that does not exist: a backup that succeeds and names a path nobody can
+   * find. Caught on CI by the docker end-to-end test, which is slower than a
+   * laptop and so actually crossed the boundary.
+   */
+  it('names the dump once, so the file it writes is the file it reports', () => {
+    for (const engine of ['postgres', 'mysql', 'mariadb'] as const) {
+      const script = buildBackupScript(engine, 'acme')
+      expect(script.filter(line => line.includes('$(date'))).toHaveLength(1)
+      expect(script.some(line => line.startsWith('TS_CLOUD_BACKUP_STAMP='))).toBe(true)
+
+      // The write, the report and the listing must all name the same thing.
+      const named = script.filter(line => line.includes('acme-'))
+      expect(named).toHaveLength(3)
+      for (const line of named) expect(line).toContain('acme-$TS_CLOUD_BACKUP_STAMP.sql.gz')
+
+      // And the stamp is set before anything uses it.
+      expect(script.findIndex(l => l.startsWith('TS_CLOUD_BACKUP_STAMP=')))
+        .toBeLessThan(script.findIndex(l => l.includes('acme-$TS_CLOUD_BACKUP_STAMP')))
+    }
+  })
+
 
   it('parses BACKUP= lines into database + file, deriving the db from the filename', () => {
     const parsed = parseBackups(
