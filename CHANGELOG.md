@@ -1,3 +1,28 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.7...v0.12.0)
+
+## 🚀 Features
+
+- **pages**: deploy static sites to Cloudflare Pages ([e9ebc00](https://github.com/stacksjs/ts-cloud/commit/e9ebc00)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: refuse to destroy a server still holding a moved site's rollback (#183) ([d660526](https://github.com/stacksjs/ts-cloud/commit/d660526)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#183](https://github.com/stacksjs/ts-cloud/issues/183), [#183](https://github.com/stacksjs/ts-cloud/issues/183))
+
+## 🐛 Bug Fixes
+
+- **db**: name a dump once, so the file written is the file reported (#186) ([1c7bc9b](https://github.com/stacksjs/ts-cloud/commit/1c7bc9b)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#186](https://github.com/stacksjs/ts-cloud/issues/186), [#186](https://github.com/stacksjs/ts-cloud/issues/186))
+- **ui**: stop passing a type argument to a chart helper that has none (#185) ([ffe7a10](https://github.com/stacksjs/ts-cloud/commit/ffe7a10)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#185](https://github.com/stacksjs/ts-cloud/issues/185), [#185](https://github.com/stacksjs/ts-cloud/issues/185))
+
+## 🧪 Tests
+
+- **fleet**: prove the database and hostname halves of a transfer on real machines (#184) ([7e5165e](https://github.com/stacksjs/ts-cloud/commit/7e5165e)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#184](https://github.com/stacksjs/ts-cloud/issues/184), [#184](https://github.com/stacksjs/ts-cloud/issues/184))
+
+## 🧹 Chores
+
+- release v0.12.0 ([8b82a0d](https://github.com/stacksjs/ts-cloud/commit/8b82a0d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _Glenn Michael Torregosa <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.6...v0.11.7)
 
 ## 🐛 Bug Fixes
