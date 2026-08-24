@@ -149,6 +149,17 @@ describe('buildSetHostnameScript', () => {
   it('replaces the existing 127.0.1.1 line rather than appending a second', () => {
     const script = buildSetHostnameScript('hq-production-server')
     expect(script).toContain('s/^127\\.0\\.1\\.1.*/127.0.1.1\\thq-production-server/')
-    expect(script).toContain('if grep -q "127.0.1.1" /etc/hosts; then')
+    expect(script).toContain('if grep -q "^127.0.1.1" /etc/hosts; then')
+  })
+
+  /**
+   * `sed -i` renames a temp file over the target, which fails outright when
+   * /etc/hosts is a bind mount — every container — or is hard-linked. Writing
+   * the content back in place keeps the inode and works either way.
+   */
+  it('rewrites /etc/hosts in place rather than renaming over it', () => {
+    const script = buildSetHostnameScript('hq-production-server')
+    expect(script).not.toContain('sed -i')
+    expect(script).toContain('> /etc/hosts')
   })
 })
