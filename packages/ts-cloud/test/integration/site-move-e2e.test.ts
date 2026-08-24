@@ -24,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { buildDrainedSiteScanScript, parseDrainedSites } from '../../src/operations/drained-sites'
 import {
   buildCertificatePackScript,
   buildCertificateStateScript,
@@ -318,10 +319,32 @@ describe.skipIf(!canRun)('site:move between two boxes (docker)', () => {
     expect((await exec(SOURCE, `test -f /etc/systemd/system/${SLUG}-${SITE}.service`)).code).toBe(0)
   })
 
+  /**
+   * The drained tree is the rollback, and a teardown would take it. The scan has
+   * to see that on a real box: the site's files present, nothing running for it.
+   */
+  it('is reported as a drained site, so a teardown can refuse', async () => {
+    const scan = await run(SOURCE, buildDrainedSiteScanScript(SLUG).join('\n'))
+    const drained = parseDrainedSites(scan)
+    expect(drained.map(site => site.name)).toContain(SITE)
+    expect(drained[0].size).not.toBe('?')
+  })
+
+  it('is not reported as drained on the target, which is serving it', async () => {
+    const scan = await run(TARGET, buildDrainedSiteScanScript(SLUG).join('\n'))
+    expect(parseDrainedSites(scan)).toEqual([])
+  })
+
   it('comes back on the source by restarting it, with its data intact', async () => {
     await run(SOURCE, `systemctl start ${SLUG}-${SITE}.service`)
     const health = await exec(SOURCE, buildHealthGateScript(PORT, '/'))
     expect(health.code).toBe(0)
     expect((await run(SOURCE, `cat ${APP_BASE}/shared/database/app.sqlite`)).trim()).toBe(SHARED_DB_CONTENT)
+  })
+
+  /** Once the source is serving again, it is no longer holding anyone's rollback. */
+  it('stops being reported as drained once it serves again', async () => {
+    const scan = await run(SOURCE, buildDrainedSiteScanScript(SLUG).join('\n'))
+    expect(parseDrainedSites(scan)).toEqual([])
   })
 })
