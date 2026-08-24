@@ -440,11 +440,19 @@ export function buildBackupScript(
   destDir: string = DB_BACKUP_DIR,
   database?: DatabaseConfig,
 ): string[] {
-  const file = `${destDir}/${name}-$(date +%Y%m%d-%H%M%S).sql.gz`
+  // The timestamp is taken ONCE into a variable rather than embedded as a
+  // command substitution. Written inline, `$(date …)` runs again in every
+  // command that mentions the filename — so a dump that happens to cross a
+  // second boundary writes one file and then reports, and lists, a different
+  // one that does not exist. The backup succeeds and names a path nobody can
+  // find, which is the worst way for a backup to fail.
+  const stamp = 'TS_CLOUD_BACKUP_STAMP="$(date +%Y%m%d-%H%M%S)"'
+  const file = `${destDir}/${name}-$TS_CLOUD_BACKUP_STAMP.sql.gz`
   const mkdir = `mkdir -p ${destDir}`
   if (engine === 'postgres')
     return [
       mkdir,
+      stamp,
       `${pgAdminCommand(database, 'pg_dump')} ${name} | gzip > "${file}"`,
       `echo "BACKUP=${file}"`,
       `ls -l "${file}"`,
@@ -452,6 +460,7 @@ export function buildBackupScript(
   const sock = engine === 'mariadb' ? SOCKETS.mariadb : SOCKETS.mysql
   return [
     mkdir,
+    stamp,
     `mysqldump --socket=${sock} -u root ${name} | gzip > "${file}"`,
     `echo "BACKUP=${file}"`,
     `ls -l "${file}"`,
