@@ -111,8 +111,11 @@ export function renderDeploymentSparkline(records: DeploymentPoint[]): string {
     record,
   }))
 
+  // `line` is not generic: @ts-charts/shape declares it
+  // `createLine(x?: any, y?: any): any`, so the accessors below carry the
+  // typing instead. It was generic before 0.2.x.
   const path =
-    line<any>()
+    line()
       .x((d: any) => d.x)
       .y((d: any) => d.y)
       .curve(curveMonotoneX)(buckets) ?? ''
