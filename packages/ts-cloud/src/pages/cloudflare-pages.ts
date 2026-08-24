@@ -209,6 +209,22 @@ export class CloudflarePagesProvider {
   }
 
   /**
+   * Record hashes as present in the account's asset store.
+   *
+   * Uploading bytes is not by itself enough to make them findable: until the
+   * hashes are upserted, `check-missing` keeps reporting them absent, and every
+   * subsequent deploy re-uploads the entire site. Skipping this call is not
+   * visible in a single deploy — it only shows up as an upload that never gets
+   * cheaper.
+   *
+   * @param jwt - Upload token
+   * @param hashes - Every hash in the manifest, not only the newly uploaded ones
+   */
+  private async upsertHashes(jwt: string, hashes: string[]): Promise<void> {
+    await requestWithAuth('POST', '/pages/assets/upsert-hashes', `Bearer ${jwt}`, { hashes })
+  }
+
+  /**
    * Upload one batch of assets.
    *
    * @param jwt - Upload token
@@ -293,6 +309,10 @@ export class CloudflarePagesProvider {
       done += window.reduce((sum, batch) => sum + batch.length, 0)
       options.onProgress?.(done, pending.length)
     }
+
+    // Register every hash in the manifest, not just the ones uploaded now:
+    // the store's index is what makes the next deploy incremental.
+    await this.upsertHashes(jwt, assets.map(asset => asset.hash))
 
     const deployment = await this.createDeployment(options.project, assets, options.branch)
 
