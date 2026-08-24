@@ -99,7 +99,8 @@
   "dependencies": {
     "@stacksjs/ts-xml": "^0.1.0",
     "@ts-cloud/aws-types": "workspace:*",
-    "@ts-cloud/core": "workspace:*"
+    "@ts-cloud/core": "workspace:*",
+    "hash-wasm": "^4.12.0"
   },
   "devDependencies": {
     "better-dx": "^0.2.16",

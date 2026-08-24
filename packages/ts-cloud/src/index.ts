@@ -452,3 +452,6 @@ export type {
   CloudFrontCacheBehavior,
   CloudFrontOrigin,
 } from '@ts-cloud/aws-types'
+
+// Cloudflare Pages: direct-upload static site hosting
+export * from './pages'
