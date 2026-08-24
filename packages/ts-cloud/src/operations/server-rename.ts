@@ -177,8 +177,15 @@ export function buildSetHostnameScript(next: string): string {
     `hostnamectl set-hostname ${quoted} 2>/dev/null || { echo ${quoted} > /etc/hostname && hostname ${quoted}; }`,
     // Replace the old name where it stands rather than appending: a second
     // 127.0.1.1 line would leave the box resolving its own name two ways.
-    `if grep -q "127.0.1.1" /etc/hosts; then`,
-    `  sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1\\t${next}/" /etc/hosts`,
+    //
+    // Rewritten through a variable and truncating redirect rather than `sed -i`,
+    // which renames a temp file over the target and so fails outright when
+    // /etc/hosts is a bind mount (every container), is hard-linked, or lives on
+    // a filesystem the rename cannot cross. Writing in place keeps the inode and
+    // works in all of those.
+    `if grep -q "^127.0.1.1" /etc/hosts; then`,
+    `  TS_CLOUD_HOSTS="$(sed -E "s/^127\\.0\\.1\\.1.*/127.0.1.1\\t${next}/" /etc/hosts)"`,
+    `  printf '%s\\n' "$TS_CLOUD_HOSTS" > /etc/hosts`,
     'else',
     `  printf '127.0.1.1\\t%s\\n' ${quoted} >> /etc/hosts`,
     'fi',
