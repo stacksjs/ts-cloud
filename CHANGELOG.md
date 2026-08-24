@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.0...v0.12.1)
+
+## 🐛 Bug Fixes
+
+- **pages**: register uploaded hashes so redeploys are incremental ([b65899b](https://github.com/stacksjs/ts-cloud/commit/b65899b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.12.1 ([16ba63b](https://github.com/stacksjs/ts-cloud/commit/16ba63b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.11.7...v0.12.0)
 
 ## 🚀 Features
