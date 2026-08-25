@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.2...v0.12.3)
+
+## 🚀 Features
+
+- **deploy**: resolve memoryHigh from the box, and say what it has been promised ([346075a](https://github.com/stacksjs/ts-cloud/commit/346075a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.12.3 ([fab0356](https://github.com/stacksjs/ts-cloud/commit/fab0356)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.1...v0.12.2)
 
 ## 🐛 Bug Fixes
