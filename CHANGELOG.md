@@ -1,3 +1,19 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.1...v0.12.2)
+
+## 🐛 Bug Fixes
+
+- **deploy**: reconcile the implicit template slice so it cannot cap the service ([7f0f614](https://github.com/stacksjs/ts-cloud/commit/7f0f614)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.12.2 ([5bbfed4](https://github.com/stacksjs/ts-cloud/commit/5bbfed4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deps**: update all non-major dependencies (#181) ([b05b335](https://github.com/stacksjs/ts-cloud/commit/b05b335)) _(by [renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot]))_ ([#181](https://github.com/stacksjs/ts-cloud/issues/181), [#181](https://github.com/stacksjs/ts-cloud/issues/181))
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _[renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot])_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.0...v0.12.1)
 
 ## 🐛 Bug Fixes
