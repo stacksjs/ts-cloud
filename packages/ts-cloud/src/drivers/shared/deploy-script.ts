@@ -41,6 +41,62 @@ export function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'
  * single slow moment cannot bounce a healthy service; the counter resets on the
  * first good response. flock keeps two ticks from overlapping.
  */
+/**
+ * Stop the implicit per-template slice from silently capping the service.
+ *
+ * systemd puts an instantiated unit into a slice derived from its template
+ * name: `acme-web@sha.service` lands in `system-acme\x2dweb.slice`, with no
+ * `Slice=` anywhere in the unit and nothing in this file asking for it. The
+ * memory ceilings that ARE in this file go on the service. Nothing ever wrote
+ * to the slice, so whatever it happened to be holding was never reconciled.
+ *
+ * Two ways that bites, and both were observed on one shared box:
+ *
+ *  1. **Stale values outlive the config that set them.** A limit put on the
+ *     slice once - by hand during an incident, or by an older release of this
+ *     tool - stays there forever. The kernel enforces the MINIMUM down the
+ *     hierarchy, so a slice holding 512M silently caps a service whose unit
+ *     says 2G. Four tenants on that box were pinned that way, each reading
+ *     `MemoryHigh=2G` in its own unit while actually living under 512M, and
+ *     nothing in any repo said so.
+ *
+ *  2. **The cutover overlap doubles the tenant's footprint.** The whole point
+ *     of the templated layout is that the old and new instances run at once on
+ *     a SO_REUSEPORT socket. They share this slice. So a slice limit equal to
+ *     the per-instance limit is guaranteed to be breached by every successful
+ *     deploy - and a cgroup over `memory.high` is throttled in
+ *     `mem_cgroup_handle_over_high`, which is uninterruptible sleep. A process
+ *     there answers no requests AND no SIGTERM, so systemd waits out
+ *     `TimeoutStopSec` while the replacement starts into the same over-budget
+ *     slice and wedges in turn. That is an outage that repeats on every deploy
+ *     and needs a SIGKILL by hand to clear.
+ *
+ * So the slice is reset to unlimited on every deploy and the service keeps the
+ * only ceiling. That is the honest arrangement: `memoryHigh` in config means a
+ * bound on one instance, one authority, visible in the repo. It also makes the
+ * fix self-healing - a box carrying stale slice caps is corrected by its next
+ * deploy rather than needing someone to find them.
+ *
+ * The slice name is read back from systemd rather than derived here, because
+ * deriving it means reimplementing systemd's escaping (`-` becomes `\x2d`)
+ * and being wrong about a name is how you reset the wrong cgroup. Units that
+ * are not templated report `system.slice`, which is shared with every other
+ * service on the box and is skipped explicitly.
+ *
+ * Both stores are written: a `--runtime` property in /run outranks the
+ * persistent one in /etc, so setting only one leaves the other free to win.
+ */
+export function buildSliceReconcile(instance: string): string[] {
+  return [
+    `TS_CLOUD_SLICE=$(systemctl show ${instance} -p Slice --value 2>/dev/null || true)`,
+    // `system.slice` is the box-wide default and belongs to every tenant.
+    'if [ -n "$TS_CLOUD_SLICE" ] && [ "$TS_CLOUD_SLICE" != "system.slice" ]; then'
+    + ' systemctl set-property --runtime "$TS_CLOUD_SLICE" MemoryHigh=infinity MemoryMax=infinity 2>/dev/null || true;'
+    + ' systemctl set-property "$TS_CLOUD_SLICE" MemoryHigh=infinity MemoryMax=infinity 2>/dev/null || true;'
+    + ' fi',
+  ]
+}
+
 export function buildLivenessUnits(options: {
   unitBase: string
   /** systemd unit to restart. A `<base>@*.service` glob resolves at run time. */
@@ -398,6 +454,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       'WantedBy=multi-user.target',
       'TS_CLOUD_UNIT_EOF',
       'systemctl daemon-reload',
+      ...buildSliceReconcile(instance),
       // Remember what is serving right now — retired only after the gate.
       `TS_CLOUD_OLD_UNITS=$(systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" || true)`,
       // Migration from the pre-templated layout: a release started before

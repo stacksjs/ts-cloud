@@ -61,16 +61,77 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     // A shared box runs many tenants. Unbounded, one that leaks fills memory
     // and swap and the kernel starts OOM-killing arbitrary victims, so a leak
     // in one app takes every other tenant down with it.
-    const joined = buildSiteDeployScript(opts).join('\n')
+    const script = buildSiteDeployScript(opts)
+    const joined = script.join('\n')
     expect(joined).toContain('MemoryAccounting=true')
     expect(joined).toContain('MemoryHigh=2G')
-    // Soft by default: a hard cap would turn a heavy-but-healthy app into a
-    // restart loop, and the default has to be safe for unmeasured workloads.
-    expect(joined).not.toContain('MemoryMax=')
+    /*
+     * Soft by default: a hard cap would turn a heavy-but-healthy app into a
+     * restart loop, and the default has to be safe for unmeasured workloads.
+     *
+     * Asserted against the unit's own directives rather than the whole script.
+     * The slice reconcile below legitimately writes `MemoryMax=infinity` - to
+     * REMOVE a ceiling, not impose one - and a substring match over the joined
+     * script could not tell the two apart.
+     */
+    const unitDirectives = script.filter(line => /^Memory(?:High|Max)=/.test(line))
+    expect(unitDirectives).toEqual(['MemoryHigh=2G'])
 
     const tuned = buildSiteDeployScript({ ...opts, memoryHigh: '512M', memoryMax: '768M' }).join('\n')
     expect(tuned).toContain('MemoryHigh=512M')
     expect(tuned).toContain('MemoryMax=768M')
+  })
+
+  it('resets the implicit template slice so it cannot cap the service', () => {
+    /*
+     * systemd puts `my-app-web@abc123.service` into `system-my\x2dapp\x2dweb.slice`
+     * on its own. Nothing here asks for that slice and nothing used to write to
+     * it, so any value it picked up - stale, hand-set during an incident, or
+     * left by an older release - silently capped the service, because the
+     * kernel enforces the minimum down the hierarchy. Four tenants on one box
+     * were pinned to 512M while their units read 2G.
+     */
+    const joined = buildSiteDeployScript(opts).join('\n')
+
+    expect(joined).toContain('-p Slice --value')
+    expect(joined).toContain('MemoryHigh=infinity MemoryMax=infinity')
+    // Both stores: a --runtime property in /run outranks the persistent one.
+    expect(joined).toContain('set-property --runtime "$TS_CLOUD_SLICE"')
+    expect(joined).toContain('set-property "$TS_CLOUD_SLICE"')
+  })
+
+  it('never resets system.slice, which every other tenant shares', () => {
+    // A non-templated unit reports `system.slice`. Clearing that would lift the
+    // ceiling off every service on the box.
+    const joined = buildSiteDeployScript(opts).join('\n')
+    expect(joined).toContain('"$TS_CLOUD_SLICE" != "system.slice"')
+  })
+
+  it('reconciles the slice before the new instance is started', () => {
+    /*
+     * Order matters. The cutover deliberately runs the old and new instances
+     * together on a SO_REUSEPORT socket, and they share this slice - so the
+     * tenant's footprint doubles at exactly the moment of the deploy. Reset the
+     * slice after starting and the overlap is throttled in
+     * `mem_cgroup_handle_over_high`, which is uninterruptible sleep: no
+     * response, and no reaction to SIGTERM either.
+     */
+    const script = buildSiteDeployScript(opts)
+    const reconcile = script.findIndex(l => l.includes('MemoryHigh=infinity'))
+    const start = script.findIndex(l => l === 'systemctl restart my-app-web@abc123.service')
+
+    expect(reconcile).toBeGreaterThan(-1)
+    expect(start).toBeGreaterThan(-1)
+    expect(reconcile).toBeLessThan(start)
+  })
+
+  it('leaves the per-instance ceiling as the only authority', () => {
+    // The point of clearing the slice is not "no limits" - it is one limit, on
+    // the service, declared in config and visible in the repo.
+    const joined = buildSiteDeployScript({ ...opts, memoryHigh: '1G', memoryMax: '1400M' }).join('\n')
+    expect(joined).toContain('MemoryHigh=1G')
+    expect(joined).toContain('MemoryMax=1400M')
+    expect(joined).toContain('MemoryHigh=infinity MemoryMax=infinity')
   })
 
   it('lets a site opt out of the memory ceiling', () => {
