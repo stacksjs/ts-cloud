@@ -64,22 +64,70 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     const script = buildSiteDeployScript(opts)
     const joined = script.join('\n')
     expect(joined).toContain('MemoryAccounting=true')
-    expect(joined).toContain('MemoryHigh=2G')
+
     /*
-     * Soft by default: a hard cap would turn a heavy-but-healthy app into a
-     * restart loop, and the default has to be safe for unmeasured workloads.
+     * The default is `auto`, resolved against the box rather than baked in, so
+     * the unit carries no `MemoryHigh=` of its own - the drop-in written on the
+     * target supplies it. A flat number here was generous on a 15G host and
+     * larger than the whole machine on a 2G one.
      *
-     * Asserted against the unit's own directives rather than the whole script.
-     * The slice reconcile below legitimately writes `MemoryMax=infinity` - to
-     * REMOVE a ceiling, not impose one - and a substring match over the joined
-     * script could not tell the two apart.
+     * Asserted against the unit's own directives rather than the joined script:
+     * the slice reconcile legitimately writes `MemoryMax=infinity` - to REMOVE
+     * a ceiling, not impose one - and a substring match cannot tell them apart.
      */
     const unitDirectives = script.filter(line => /^Memory(?:High|Max)=/.test(line))
-    expect(unitDirectives).toEqual(['MemoryHigh=2G'])
+    expect(unitDirectives).toEqual([])
+    expect(joined).toContain('50-ts-cloud-memory.conf')
+    expect(joined).toContain('TS_CLOUD_HIGH_MB=$((TS_CLOUD_MEM_MB / 8))')
+    // Floored and capped: never below 512M on a tiny box, never above 4G on a
+    // huge one, because this is a runaway guard and not a fair share.
+    expect(joined).toContain('-lt 512 ] && TS_CLOUD_HIGH_MB=512')
+    expect(joined).toContain('-gt 4096 ] && TS_CLOUD_HIGH_MB=4096')
 
     const tuned = buildSiteDeployScript({ ...opts, memoryHigh: '512M', memoryMax: '768M' }).join('\n')
     expect(tuned).toContain('MemoryHigh=512M')
     expect(tuned).toContain('MemoryMax=768M')
+  })
+
+  it('an explicit memoryHigh still wins over the box-resolved default', () => {
+    // `auto` is a default, not a policy. A site that has measured itself must
+    // be able to say so and have that be the end of it.
+    const script = buildSiteDeployScript({ ...opts, memoryHigh: '1G', memoryMax: '1400M' })
+    const joined = script.join('\n')
+
+    expect(script.filter(l => /^Memory(?:High|Max)=/.test(l))).toEqual(['MemoryHigh=1G', 'MemoryMax=1400M'])
+    // No drop-in when the value came from config.
+    expect(joined).not.toContain('50-ts-cloud-memory.conf')
+  })
+
+  it('reports what the box has been promised, so 500% committed is visible', () => {
+    /*
+     * The box this was written for carried 43 units declaring 76G of ceilings
+     * against 15G of RAM. Every unit looked reasonable alone; nothing summed
+     * them. Ceilings that add past the machine are not protection, they are
+     * arithmetic nobody did.
+     */
+    const script = buildSiteDeployScript(opts)
+    expect(script.join('\n')).toContain('% committed')
+
+    /*
+     * Reports, never refuses: soft ceilings are guards rather than
+     * reservations, so being committed over 100% is normal and refusing a
+     * deploy over it would be worse than the problem. Asserted on the report's
+     * own lines - the script exits non-zero elsewhere for good reasons (the
+     * deploy lock, the health gate) and a whole-script match would catch those.
+     */
+    const reportLines = script.filter(l => l.includes('TS_CLOUD_COMMIT') || l.includes('TS_CLOUD_PCT'))
+    expect(reportLines.length).toBeGreaterThan(0)
+    for (const line of reportLines)
+      expect(line).not.toContain('exit 1')
+  })
+
+  it('reports commitment even when the ceiling came from config', () => {
+    // The warning is about the box, not about this site, so opting out of the
+    // auto default must not opt you out of knowing.
+    const joined = buildSiteDeployScript({ ...opts, memoryHigh: '1G' }).join('\n')
+    expect(joined).toContain('TS_CLOUD_COMMIT')
   })
 
   it('resets the implicit template slice so it cannot cap the service', () => {
@@ -294,12 +342,13 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
     expect(bounded).toContain('MemoryHigh=512M')
     expect(bounded).toContain('MemoryMax=768M')
 
-    // Absent config it inherits the same generous soft default as a ported
+    // Absent config it inherits the same box-resolved default as a ported
     // site, rather than staying unbounded. A portless unit shares the box with
     // everyone else, so "no ceiling" is the one setting that lets it take the
     // host down — which is the incident this default exists for.
     const defaulted = buildSiteDeployScript(portless).join('\n')
-    expect(defaulted).toContain('MemoryHigh=2G')
+    expect(defaulted).toContain('50-ts-cloud-memory.conf')
+    expect(defaulted).toContain('MemoryHigh=%sM')
     // Still no hard cap unless asked: a soft limit throttles, and only an
     // explicit `memoryMax` should be able to kill a worker outright.
     expect(defaulted).not.toContain('MemoryMax=')

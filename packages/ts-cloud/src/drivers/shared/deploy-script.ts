@@ -86,6 +86,75 @@ export function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'
  * Both stores are written: a `--runtime` property in /run outranks the
  * persistent one in /etc, so setting only one leaves the other free to win.
  */
+/**
+ * Resolve `memoryHigh: 'auto'` against the box the deploy is landing on.
+ *
+ * The ceiling exists to contain ONE runaway, not to ration memory between
+ * tenants, and those want different numbers. A fair share - RAM divided by the
+ * number of units - sounds principled and is wrong: this box carries 43 units
+ * on 15 GB, so an even split is 290 MB and would throttle healthy apps that
+ * legitimately sit at 800 MB. The ceiling has to sit well ABOVE normal usage
+ * and still be low enough that one leak cannot take the machine.
+ *
+ * So it is a fraction of the box: an eighth, floored at 512 MB and capped at
+ * 4 GB. On the 15 GB host this was written for that resolves to ~1.9 GB, which
+ * is what the old hard-coded 2G was doing - the point is that a 4 GB box now
+ * gets 512 MB instead of a ceiling larger than the machine, and a 64 GB box
+ * gets 4 GB instead of being pinned to a number chosen for someone else's
+ * hardware.
+ *
+ * Computed on the target rather than at config time because that is the only
+ * place the answer is known. An explicit `memoryHigh` always wins - this is a
+ * default, not a policy - and it is written as a drop-in so the unit file
+ * itself stays byte-identical across deploys and stays diffable.
+ *
+ * The report at the end is the other half. 43 units on that box declared 76 GB
+ * of ceilings against 15 GB of RAM, 502 per cent committed, and nothing
+ * anywhere said so: every unit looked reasonable on its own. Ceilings that sum
+ * past the machine are not protection, they are arithmetic nobody did, so the
+ * deploy now does it out loud.
+ */
+export function buildAutoMemoryHigh(unitFile: string): string[] {
+  return [
+    // An eighth of RAM, in MB, clamped. `/proc/meminfo` is in kB.
+    `TS_CLOUD_MEM_MB=$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo)`,
+    'TS_CLOUD_HIGH_MB=$((TS_CLOUD_MEM_MB / 8))',
+    '[ "$TS_CLOUD_HIGH_MB" -lt 512 ] && TS_CLOUD_HIGH_MB=512',
+    '[ "$TS_CLOUD_HIGH_MB" -gt 4096 ] && TS_CLOUD_HIGH_MB=4096',
+    `mkdir -p /etc/systemd/system/${unitFile}.d`,
+    `printf '# Written by ts-cloud: memoryHigh resolved from this box.\n# An eighth of %sMB RAM. Set memoryHigh in config to override.\n[Service]\nMemoryAccounting=true\nMemoryHigh=%sM\n' "$TS_CLOUD_MEM_MB" "$TS_CLOUD_HIGH_MB" > /etc/systemd/system/${unitFile}.d/50-ts-cloud-memory.conf`,
+    'systemctl daemon-reload',
+    `echo "[ts-cloud] memoryHigh=auto resolved to \${TS_CLOUD_HIGH_MB}M (one eighth of \${TS_CLOUD_MEM_MB}M)"`,
+    ...buildCommitmentReport(),
+  ]
+}
+
+/**
+ * Say what the box has now been promised, so oversubscription is visible.
+ *
+ * Sums `memory.high` across every service cgroup and compares it to RAM. It
+ * only ever prints - refusing a deploy over a number this crude would be worse
+ * than the problem, since a soft ceiling is a guard rather than a reservation
+ * and being committed past 100 per cent is normal and fine. What is not fine
+ * is being at 500 per cent and nobody knowing.
+ */
+export function buildCommitmentReport(): string[] {
+  return [
+    // Leaf `.service` cgroups only. A glob that also matched slice directories
+    // would count a slice AND every service inside it, and a warning that
+    // overstates is worse than none - the first person to check it stops
+    // believing the next one. This total does include infrastructure services
+    // (clamav, postgres) alongside app units, which is correct: they are
+    // claiming the same RAM.
+    `TS_CLOUD_COMMIT=$(for f in /sys/fs/cgroup/system.slice/*.service/memory.high /sys/fs/cgroup/system.slice/*.slice/*.service/memory.high; do [ -f "$f" ] || continue; v=$(cat "$f" 2>/dev/null); [ "$v" = "max" ] && continue; echo "$v"; done | awk '{s+=$1} END {print int(s/1048576)}')`,
+    `TS_CLOUD_RAM=$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo)`,
+    `if [ -n "$TS_CLOUD_COMMIT" ] && [ "$TS_CLOUD_COMMIT" -gt 0 ] && [ "$TS_CLOUD_RAM" -gt 0 ]; then`
+    + ` TS_CLOUD_PCT=$((TS_CLOUD_COMMIT * 100 / TS_CLOUD_RAM));`
+    + ` if [ "$TS_CLOUD_PCT" -gt 300 ]; then echo "[ts-cloud] WARNING: services on this box declare \${TS_CLOUD_COMMIT}M of MemoryHigh against \${TS_CLOUD_RAM}M of RAM (\${TS_CLOUD_PCT}% committed). Soft ceilings, so this is not fatal - but no ceiling can protect the box once enough of them are drawn on at once.";`
+    + ` else echo "[ts-cloud] memory commitment: \${TS_CLOUD_COMMIT}M declared against \${TS_CLOUD_RAM}M RAM (\${TS_CLOUD_PCT}%)"; fi; fi`,
+  ]
+}
+
 export function buildSliceReconcile(instance: string): string[] {
   return [
     `TS_CLOUD_SLICE=$(systemctl show ${instance} -p Slice --value 2>/dev/null || true)`,
@@ -321,15 +390,23 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     healthCheckPath,
     healthGateSeconds = 5,
     liveness,
-    // A shared box runs many tenants. Without a limit, one that leaks fills
-    // memory and then swap, and the kernel's OOM killer starts choosing
-    // victims box-wide — a leak in one app takes every other tenant down with
-    // it, which is exactly how a 15G host was lost to a single service that
-    // had grown to 3.2G. `MemoryHigh` squeezes the offender's own cgroup
-    // first. Soft by default and generous on purpose: it throttles and
-    // reclaims rather than killing, so it cannot turn a heavy-but-healthy app
-    // into a restart loop. Set `memoryMax` per site once its ceiling is known.
-    memoryHigh = '2G',
+    /*
+     * A shared box runs many tenants. Without a limit, one that leaks fills
+     * memory and then swap, and the kernel's OOM killer starts choosing
+     * victims box-wide — a leak in one app takes every other tenant down with
+     * it, which is exactly how a 15G host was lost to a single service that
+     * had grown to 3.2G. `MemoryHigh` squeezes the offender's own cgroup
+     * first. Soft on purpose: it throttles and reclaims rather than killing,
+     * so it cannot turn a heavy-but-healthy app into a restart loop. Set
+     * `memoryMax` per site once its ceiling is known.
+     *
+     * `'auto'` rather than a constant, because the right ceiling is a property
+     * of the BOX and this file cannot know which box it is being deployed to.
+     * A flat 2G is generous on a 15G host and larger than the whole machine on
+     * a 2G one. See {@link buildAutoMemoryHigh} for what auto resolves to and
+     * why it is a fraction rather than a fair share.
+     */
+    memoryHigh = 'auto',
     memoryMax,
     cpuWeight,
     ioWeight,
@@ -444,7 +521,9 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       'Restart=always',
       'RestartSec=5',
       'MemoryAccounting=true',
-      ...(memoryHigh ? [`MemoryHigh=${memoryHigh}`] : []),
+      // `auto` is resolved on the box and lands in a drop-in below, so the
+      // unit file stays byte-identical across deploys and remains diffable.
+      ...(memoryHigh && memoryHigh !== 'auto' ? [`MemoryHigh=${memoryHigh}`] : []),
       ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
       ...qosDirectives,
       `EnvironmentFile=${paths.releases}/%i/.env`,
@@ -454,6 +533,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       'WantedBy=multi-user.target',
       'TS_CLOUD_UNIT_EOF',
       'systemctl daemon-reload',
+      ...(memoryHigh === 'auto' ? buildAutoMemoryHigh(`${unitBase}@.service`) : buildCommitmentReport()),
       ...buildSliceReconcile(instance),
       // Remember what is serving right now — retired only after the gate.
       `TS_CLOUD_OLD_UNITS=$(systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" || true)`,
@@ -555,7 +635,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // 311M: throttled 180,379 times, invisible to the repo, and surviving
     // every deploy because nothing in config had an opinion to overwrite it.
     'MemoryAccounting=true',
-    ...(memoryHigh ? [`MemoryHigh=${memoryHigh}`] : []),
+    ...(memoryHigh && memoryHigh !== 'auto' ? [`MemoryHigh=${memoryHigh}`] : []),
     ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
     ...qosDirectives,
     `EnvironmentFile=${paths.current}/.env`,
@@ -565,6 +645,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     'WantedBy=multi-user.target',
     'TS_CLOUD_UNIT_EOF',
     'systemctl daemon-reload',
+    ...(memoryHigh === 'auto' ? buildAutoMemoryHigh(serviceName) : buildCommitmentReport()),
     `systemctl enable ${serviceName}`,
     // Atomically promote the new release, THEN restart so the service comes up on it.
     ...buildActivateRelease(paths),
