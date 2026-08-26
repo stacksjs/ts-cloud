@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.5...v0.12.6)
+
+## 🚀 Features
+
+- **deploy**: show the part of the script bash rejected ([7a8fd5a](https://github.com/stacksjs/ts-cloud/commit/7a8fd5a)) _(by Chris <chris@stacksjs.com>)_
+
+## 🧹 Chores
+
+- release v0.12.6 ([c739d74](https://github.com/stacksjs/ts-cloud/commit/c739d74)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.4...v0.12.5)
 
 ## 🚀 Features
