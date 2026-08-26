@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.4...v0.12.5)
+
+## 🚀 Features
+
+- **config**: let a project say it has retired a domain ([1232478](https://github.com/stacksjs/ts-cloud/commit/1232478)) _(by Chris <chris@stacksjs.com>)_
+
+## 🐛 Bug Fixes
+
+- **deploy**: stage the remote script instead of running it off stdin ([2fb287f](https://github.com/stacksjs/ts-cloud/commit/2fb287f)) _(by Chris <chris@stacksjs.com>)_
+
+## 🧹 Chores
+
+- release v0.12.5 ([c13b1df](https://github.com/stacksjs/ts-cloud/commit/c13b1df)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.3...v0.12.4)
 
 ## 🐛 Bug Fixes
