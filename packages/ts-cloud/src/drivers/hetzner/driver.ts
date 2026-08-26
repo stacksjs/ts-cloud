@@ -1270,6 +1270,7 @@ export class HetznerDriver implements CloudDriver {
 
       try {
         const output = this.sshExec(target.publicIp, script)
+        surfaceRemoteNotices(output)
         perInstance.push({
           instanceId: target.id,
           status: 'Success',
@@ -1632,6 +1633,33 @@ export class HetznerDriver implements CloudDriver {
       // error.message would publish every deployment secret to CI logs.
       throw new Error(formatSshFailure(error))
     }
+  }
+}
+
+/**
+ * Print the lines a remote deploy script meant a human to read.
+ *
+ * The remote stdout has always been captured and then dropped on the floor,
+ * which is why nothing the box says has ever reached a CI log: not the
+ * memory-commitment report, not `migrate`, not `catalog:sync`. A deploy that
+ * cannot tell you what it did on the box is one you have to SSH in to
+ * understand, and by then you are debugging rather than reading.
+ *
+ * Only `[ts-cloud]`-prefixed lines are surfaced, and that restraint is
+ * deliberate rather than tidy. The script fed to `bash -s` carries the runtime
+ * environment here-document - database credentials, APP_KEY, provider tokens -
+ * which is why {@link formatSshFailure} refuses to echo a failing command back.
+ * Remote *stdout* is not the script, so it does not contain those secrets by
+ * construction, but it is whatever arbitrary `preStart` commands chose to
+ * print, and an app that logs its own config on boot would leak it here. An
+ * explicit marker means ts-cloud only ever republishes lines ts-cloud wrote.
+ */
+function surfaceRemoteNotices(output: string): void {
+  for (const line of output.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('[ts-cloud]')) continue
+    // eslint-disable-next-line no-console
+    console.warn(trimmed)
   }
 }
 

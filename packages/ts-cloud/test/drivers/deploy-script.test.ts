@@ -620,3 +620,54 @@ describe('liveness watchdog', () => {
     expect(joined).not.toContain('liveness.timer')
   })
 })
+
+describe('remote notices reach the log', () => {
+  /*
+   * The commitment report and every other thing the box says used to be
+   * captured into `perInstance[].output` and never printed. A warning nobody
+   * sees is not a warning, so `surfaceRemoteNotices` republishes the marked
+   * lines - and only the marked lines, because remote stdout is whatever
+   * arbitrary preStart commands chose to print.
+   */
+  const surface = (output: string): string[] => {
+    const seen: string[] = []
+    const original = console.warn
+    console.warn = (...args: unknown[]) => { seen.push(String(args[0])) }
+    try {
+      for (const line of output.split('\n')) {
+        const t = line.trim()
+        if (t.startsWith('[ts-cloud]')) console.warn(t)
+      }
+    } finally {
+      console.warn = original
+    }
+    return seen
+  }
+
+  it('surfaces ts-cloud notices', () => {
+    const out = [
+      'bun install v1.3.14',
+      '  [ts-cloud] memory commitment: 78367M declared against 15613M RAM (501%)',
+      'Catalog synced.',
+    ].join('\n')
+
+    expect(surface(out)).toEqual([
+      '[ts-cloud] memory commitment: 78367M declared against 15613M RAM (501%)',
+    ])
+  })
+
+  it('republishes nothing an app happened to print', () => {
+    /*
+     * The reason for the marker. The script carries the env here-document, and
+     * an app that logs its own config on boot would otherwise have it echoed
+     * straight into a public CI log.
+     */
+    const out = [
+      'APP_KEY=super-secret-value',
+      'DB_PASSWORD=hunter2',
+      'listening on :3000',
+    ].join('\n')
+
+    expect(surface(out)).toEqual([])
+  })
+})
