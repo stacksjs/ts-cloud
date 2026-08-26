@@ -127,3 +127,29 @@ export async function waitForCloudInit(host: string, options: WaitOptions = {}):
   }
   throw new Error(`cloud-init did not finish on ${host} after ${timeoutMs}ms`)
 }
+
+/**
+ * How a deploy script is executed on the box.
+ *
+ * `bash -s` reads the script from stdin, which makes the script and the
+ * commands inside it share one file descriptor: the first command that reads
+ * stdin — a package manager prompting, a build tool, `tar`, anything — consumes
+ * the rest of the script. bash then reaches EOF partway through a construct it
+ * can no longer close and reports `syntax error: unexpected end of file`,
+ * pointing at the end of the file rather than at whatever ate it. A deploy that
+ * had already installed, built, and bundled dies at the line that would have
+ * restarted the service, and the error names none of it.
+ *
+ * Staging first removes the sharing: `cat` drains stdin to a private temp file
+ * before a single line runs, and the script then executes with its own stdin on
+ * /dev/null. Secrets still travel over stdin rather than argv (the reason for
+ * `-s` in the first place), and `mktemp` creates the file 0600, so the window
+ * where they touch disk is both short and unreadable to other users.
+ */
+export const REMOTE_SCRIPT_RUNNER: string = [
+  'set -e',
+  'ts_cloud_script=$(mktemp /tmp/ts-cloud-deploy.XXXXXXXX)',
+  'trap \'rm -f "$ts_cloud_script"\' EXIT',
+  'cat > "$ts_cloud_script"',
+  'bash "$ts_cloud_script" < /dev/null',
+].join('\n')

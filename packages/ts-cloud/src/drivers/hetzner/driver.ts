@@ -1,4 +1,5 @@
 import type { CloudDriver, ComputeProxyConfig, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, ProvisionComputeOptions, ReachableResource, RemoteDeployResult, RunRemoteDeployOptions, SiteConfig, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
+import { REMOTE_SCRIPT_RUNNER } from '../shared/remote-exec'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import type { HetznerDriverState } from './state'
@@ -27,6 +28,7 @@ import { readDriverState, writeDriverState } from './state'
 
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
 const SSH_MAX_BUFFER = 1024 * 1024 * 256
+
 const SSH_ERROR_OUTPUT_LIMIT = 8_000
 
 function shellQuote(value: string): string {
@@ -1621,7 +1623,7 @@ export class HetznerDriver implements CloudDriver {
     // stdin so runtime environment and database credentials never appear in
     // the local process table as SSH command-line arguments.
     try {
-      return execFileSync('ssh', [...this.sshBaseArgs(host), 'bash -s'], {
+      return execFileSync('ssh', [...this.sshBaseArgs(host), REMOTE_SCRIPT_RUNNER], {
         encoding: 'utf8',
         input: script,
         stdio: ['pipe', 'pipe', 'pipe'],
