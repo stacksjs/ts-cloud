@@ -58,6 +58,43 @@ function sshErrorOutput(value: unknown): string {
   )
 }
 
+/**
+ * The part of the deploy script bash refused to parse.
+ *
+ * A syntax error names a line number in a file that only ever existed on the
+ * box, and the deploy deletes it on the way out — so the one thing needed to
+ * understand the failure is the one thing nobody can look at. Without this you
+ * are reduced to guessing which generated fragment is unbalanced, or to
+ * reproducing the whole script by hand from its builders.
+ *
+ * Only a window around the reported line, and every `KEY="value"` line inside
+ * it is redacted: the script carries the runtime environment, and a deploy
+ * failure must not become the reason a database password is in a CI log.
+ */
+export function describeScriptSyntaxError(error: unknown, script: string): string {
+  const stderr = sshErrorOutput((error as { stderr?: unknown })?.stderr)
+  const match = /line (\d+): syntax error/.exec(stderr)
+  if (!match)
+    return ''
+
+  const reported = Number(match[1])
+  const lines = script.split('\n')
+  const from = Math.max(1, reported - 12)
+  const to = Math.min(lines.length, reported + 2)
+
+  const window = lines.slice(from - 1, to).map((line, index) => {
+    const number = from + index
+    const safe = /^[A-Z_][A-Z0-9_]*=/.test(line) ? line.replace(/=.*/, '=<redacted>') : line
+    return `  ${String(number).padStart(4)}${number === reported ? ' >' : '  '} ${safe}`
+  })
+
+  return [
+    '',
+    `The deploy script bash rejected is ${lines.length} lines; it stopped at ${reported}.`,
+    ...window,
+  ].join('\n')
+}
+
 export function formatSshFailure(error: unknown): string {
   const childError = error as { status?: number | null; signal?: string | null; stdout?: unknown; stderr?: unknown }
   const status = typeof childError?.status === 'number' ? ` (exit ${childError.status})` : ''
@@ -1633,7 +1670,7 @@ export class HetznerDriver implements CloudDriver {
       // Node's child-process error message embeds the complete command. The
       // command includes the runtime environment here-document, so forwarding
       // error.message would publish every deployment secret to CI logs.
-      throw new Error(formatSshFailure(error))
+      throw new Error(`${formatSshFailure(error)}${describeScriptSyntaxError(error, script)}`)
     }
   }
 }

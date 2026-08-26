@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { REMOTE_SCRIPT_RUNNER } from '../../src/drivers/shared/remote-exec'
+import { describeScriptSyntaxError } from '../../src/drivers/hetzner/driver'
 
 /**
  * A deploy script is delivered over stdin so its secrets never reach argv.
@@ -65,5 +66,34 @@ describe('remote script runner', () => {
     runStaged('echo ok\n')
     const leftovers = execFileSync('bash', ['-c', 'ls /tmp/ts-cloud-deploy.* 2>/dev/null | wc -l'], { encoding: 'utf8' })
     expect(leftovers.trim()).toBe('0')
+  })
+})
+
+describe('describeScriptSyntaxError', () => {
+  const script = [
+    'echo one',
+    'DB_PASSWORD="hunter2"',
+    'if [ -f x ]; then',
+    'echo two',
+    'echo three',
+  ].join('\n')
+
+  it('shows the window around the line bash named', () => {
+    const out = describeScriptSyntaxError({ stderr: '/tmp/x: line 5: syntax error: unexpected end of file' }, script)
+
+    expect(out).toContain('is 5 lines; it stopped at 5')
+    expect(out).toContain('if [ -f x ]; then')
+    expect(out).toContain('echo three')
+  })
+
+  it('never prints an environment value', () => {
+    const out = describeScriptSyntaxError({ stderr: '/tmp/x: line 5: syntax error: unexpected end of file' }, script)
+
+    expect(out).toContain('DB_PASSWORD=<redacted>')
+    expect(out).not.toContain('hunter2')
+  })
+
+  it('says nothing when the failure was not a syntax error', () => {
+    expect(describeScriptSyntaxError({ stderr: 'connection refused' }, script)).toBe('')
   })
 })
