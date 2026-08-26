@@ -45,6 +45,25 @@ export interface CloudProviderConfig {
    * @see https://github.com/stacksjs/ts-cloud/issues/169
    */
   attachTo?: string
+
+  /**
+   * Hosts this project used to serve on the shared gateway and deliberately
+   * does not any more.
+   *
+   * The deploy refuses to replace `/etc/rpx/sites.d/<slug>.json` when the copy
+   * on the box serves a domain the config no longer declares, because that is
+   * how one tenant silently deletes another's routes. The guard is right, and
+   * without this it has no false branch: declaring a domain keeps serving it
+   * and not declaring it is refused, so RETIRING a hostname cannot be
+   * expressed. The ways around it are worse - hand-editing the fragment, or
+   * renaming the slug and stranding the old fragment on a dead release.
+   *
+   * Listed rather than merely absent, because "I removed a line" and "I forgot
+   * a line" look identical to a guard reading a config file. Keeping it in
+   * config also leaves the decision in git, beside the sites it used to sit
+   * among.
+   */
+  retiredDomains?: string[]
 }
 
 /**
