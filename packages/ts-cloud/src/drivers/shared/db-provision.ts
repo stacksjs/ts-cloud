@@ -237,6 +237,7 @@ export function buildDatabaseSetupScript(
       // Additional users (read-only / extra logins) with their own grants.
       ...extraUsers.flatMap((u) => [...pgEnsureRole(u.username, u.password), ...pgGrant(u)]),
       'TS_CLOUD_PG_EOF',
+      ...pgConnectionCapacityWarning(database),
     ]
   }
 
@@ -291,6 +292,44 @@ export function buildDatabaseSetupScript(
  * database. Merge into a site's `env` so `DB_*` is set without hand-copying
  * credentials. Returns `{}` when there's nothing to wire.
  */
+/**
+ * Say so, before the migration, when the server is nearly out of connections.
+ *
+ * A shared box fills up quietly: every co-located app holds a pool, the pools
+ * idle rather than close, and one day a deploy's migration cannot get a slot.
+ * What it reports then is Postgres' own message — `remaining connection slots
+ * are reserved for roles with the SUPERUSER attribute` — which reads like a
+ * permissions problem in the app that happened to deploy last, names none of
+ * the apps actually holding the connections, and sends you looking in the wrong
+ * repository. One box ran 29 projects against `max_connections = 100`, and 55
+ * of the 100 had been idle for over an hour.
+ *
+ * This runs before the migration and prints the breakdown while there is still
+ * something to read. Deliberately a warning, not a gate: a deploy that would
+ * have worked must not start failing because a neighbour is noisy, and the
+ * threshold is about telling you where the wall is before you hit it.
+ */
+export function pgConnectionCapacityWarning(database: DatabaseConfig | undefined): string[] {
+  return [
+    `${pgAdminCommand(database)} -tA <<'TS_CLOUD_PG_CAP_EOF' || true`,
+    `\\set QUIET on`,
+    `SELECT CASE WHEN used::float / NULLIF(cap, 0) >= 0.8`,
+    `  THEN '[ts-cloud] postgres is at ' || used || '/' || cap || ' connections on this server.'`,
+    `       || ' Raise max_connections (ALTER SYSTEM SET max_connections = ...; then restart) or'`,
+    `       || ' set idle_session_timeout so abandoned pools are reclaimed.'`,
+    `  ELSE NULL END`,
+    `FROM (SELECT (SELECT count(*) FROM pg_stat_activity) AS used,`,
+    `             (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') AS cap) c`,
+    `WHERE CASE WHEN used::float / NULLIF(cap, 0) >= 0.8 THEN true ELSE false END;`,
+    `SELECT '[ts-cloud]   ' || coalesce(datname, '(background)') || ': ' || count(*) || ' connection(s), oldest idle ' ||`,
+    `       coalesce(round(extract(epoch from max(now() - state_change)) / 60)::text || 'm', 'n/a')`,
+    `FROM pg_stat_activity`,
+    `WHERE (SELECT count(*)::float / NULLIF((SELECT setting::int FROM pg_settings WHERE name = 'max_connections'), 0) FROM pg_stat_activity) >= 0.8`,
+    `GROUP BY datname ORDER BY count(*) DESC;`,
+    'TS_CLOUD_PG_CAP_EOF',
+  ]
+}
+
 export function buildManagedDbEnv(database: DatabaseConfig | undefined): Record<string, string> {
   if (!database?.name) return {}
   // SingleStore and Vitess both speak the MySQL wire protocol, but each keeps
