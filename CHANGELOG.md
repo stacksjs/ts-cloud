@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.6...v0.12.7)
+
+## 🚀 Features
+
+- **deploy**: say when postgres is running out of connections ([3c57bc0](https://github.com/stacksjs/ts-cloud/commit/3c57bc0)) _(by Chris <chris@stacksjs.com>)_
+
+## 🧹 Chores
+
+- release v0.12.7 ([38f3c80](https://github.com/stacksjs/ts-cloud/commit/38f3c80)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.5...v0.12.6)
 
 ## 🚀 Features
