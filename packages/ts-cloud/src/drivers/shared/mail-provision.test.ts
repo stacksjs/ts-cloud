@@ -10,6 +10,7 @@ import {
   buildMailProvisionScript,
   buildMailUnit,
   dkimKeyPath,
+  mailDbPath,
   mailDnsRecords,
   MAIL_USER,
 } from './mail-provision'
@@ -251,7 +252,47 @@ describe('buildMailAccountScript', () => {
     // Against the server's own database, as the service account — as root it
     // would create a second database beside the one the server reads.
     expect(script[0]).toContain(`runuser -u ${MAIL_USER}`)
-    expect(script[0]).toContain("SMTP_DB_PATH='/var/lib/mail/mail.db'")
+    // Resolved on the box from the env file, not written in here: a server
+    // provisioned under a different name still has its accounts in that file.
+    expect(script[0]).toContain('SMTP_DB_PATH="$TS_CLOUD_MAIL_DB"')
+    expect(script[1]).toContain('SMTP_DB_PATH="$TS_CLOUD_MAIL_DB"')
+  })
+})
+
+/**
+ * The env file and the `user:local` calls have to name the same database.
+ *
+ * When they disagree nothing errors: accounts are created in a file the server
+ * never opens, every command reports success, and it surfaces later as
+ * mailboxes that cannot authenticate. On a shared box that is every tenant.
+ */
+describe('the account database path', () => {
+  const mail = (accounts: Array<{ address: string, password: string }> = []) =>
+    resolveMailService(withMail({ mode: 'server', accounts }), { environment: 'production' })
+
+  it('defaults to smtp.db, the name deployed servers already use', () => {
+    expect(mailDbPath(mail())).toBe('/var/lib/mail/smtp.db')
+  })
+
+  it('is the same path in the env file the server reads', () => {
+    expect(buildMailEnvFile(mail())).toContain(`SMTP_DB_PATH=${mailDbPath(mail())}`)
+  })
+
+  it('keeps the path a provisioned box is already using', () => {
+    const script = buildMailProvisionScript(mail([{ address: 'app@example.com', password: 'secret' }])).join('\n')
+
+    // Read before the heredoc replaces the file...
+    expect(script).toContain(`TS_CLOUD_MAIL_DB="$(grep -sE '^SMTP_DB_PATH=' /etc/mail/mail.env | head -1 | cut -d= -f2- || true)"`)
+    // ...defaulted only when the box has none...
+    expect(script).toContain(`[ -n "$TS_CLOUD_MAIL_DB" ] || TS_CLOUD_MAIL_DB='${mailDbPath(mail())}'`)
+    // ...and put back afterwards, so a rewrite never repoints a running server.
+    expect(script).toContain('sed -i "s|^SMTP_DB_PATH=.*|SMTP_DB_PATH=$TS_CLOUD_MAIL_DB|" /etc/mail/mail.env')
+
+    // The capture has to precede both the overwrite and any account command.
+    const captured = script.indexOf('TS_CLOUD_MAIL_DB="$(grep')
+    expect(captured).toBeGreaterThan(-1)
+    expect(captured).toBeLessThan(script.indexOf('TS_CLOUD_MAIL_ENV_EOF'))
+    expect(captured).toBeLessThan(script.indexOf('user:local create'))
   })
 })
 
