@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.7...v0.12.8)
+
+## 🐛 Bug Fixes
+
+- **mail**: provision accounts into the database the server reads ([6e0f6a4](https://github.com/stacksjs/ts-cloud/commit/6e0f6a4)) _(by Chris <chris@stacksjs.com>)_
+
+## 🧹 Chores
+
+- release v0.12.8 ([a82bec1](https://github.com/stacksjs/ts-cloud/commit/a82bec1)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.6...v0.12.7)
 
 ## 🚀 Features
