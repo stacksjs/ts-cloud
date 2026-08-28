@@ -46,6 +46,10 @@
       "types": "./dist/drivers/index.d.ts",
       "import": "./dist/drivers/index.js"
     },
+    "./operations": {
+      "types": "./dist/operations/index.d.ts",
+      "import": "./dist/operations/index.js"
+    },
     "./push": {
       "types": "./dist/push/index.d.ts",
       "import": "./dist/push/index.js"

@@ -1,4 +1,5 @@
 export * from './config'
+export * from './operations'
 export * from './auth'
 export * from './automation'
 export * from './api'
@@ -260,7 +261,22 @@ export {
   resolveSiteDeployTarget,
   resolveSiteKind,
   shipsARelease,
+  siteInstallBase,
   validateDeploymentConfig,
+  // Co-tenancy on a shared box: the ports the host already serves and for whom,
+  // and the config editors that write an attach back. Reachable only since
+  // https://github.com/stacksjs/ts-cloud/issues/191.
+  addSiteToCloudConfig,
+  allocateSitePorts,
+  buildHostSitePortsScript,
+  HOST_SITES_DIR,
+  occupiedHostPorts,
+  parseHostSiteFragments,
+  parseUpstreamPort,
+  removeSiteFromCloudConfig,
+  setAttachToInCloudConfig,
+  setSitePropertyInCloudConfig,
+  updateSiteInCloudConfig,
   // Serverless application pipeline (Laravel-Vapor-equivalent)
   buildAndPushServerlessImage,
   buildFunctionEnv,
