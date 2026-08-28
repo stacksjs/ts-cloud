@@ -4,6 +4,12 @@
  */
 
 export * from './site-target'
+// Co-tenancy on a shared box: which ports the host already serves and for whom
+// (`site-ports`), and the config editors that write the result back
+// (`site-config-editor`). Both shipped declarations with no reachable runtime
+// until this line - see https://github.com/stacksjs/ts-cloud/issues/191.
+export * from './site-config-editor'
+export * from './site-ports'
 export * from './server-dns'
 export * from './dashboard-control-plane'
 export * from './dashboard-route-manifest'

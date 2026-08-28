@@ -358,3 +358,66 @@ function findMatchingBrace(text: string, start: number): number {
 
   throw new Error('Could not find the closing brace for sites: { ... } in cloud.config.ts')
 }
+
+export interface SetAttachToInput {
+  configText: string
+  /** Slug of the project that owns the box this one is joining. */
+  owner: string
+}
+
+/**
+ * Set `cloud.attachTo`, joining this project to a server another project owns.
+ *
+ * Deliberately narrow. This edits TypeScript source with text, which is only
+ * defensible while it refuses everything it does not certainly understand, so
+ * it handles exactly the shape the templates generate:
+ *
+ *     cloud: {
+ *       provider: 'hetzner',
+ *     },
+ *
+ * Anything else - two `cloud:` blocks, a nested object inside one, no block at
+ * all - throws with what it saw, and the caller prints the edit for a person to
+ * make. A config mangled by a clever regex is a far worse outcome than a config
+ * the tool declined to touch.
+ *
+ * Idempotent: a config already attached to `owner` comes back byte for byte.
+ *
+ * @see https://github.com/stacksjs/ts-cloud/issues/167
+ */
+export function setAttachToInCloudConfig(input: SetAttachToInput): string {
+  const { configText, owner } = input
+  const blocks = [...configText.matchAll(/\n( {2})cloud: \{\n([\s\S]*?)\n\1\},\n/g)]
+
+  const [match] = blocks
+  if (!match) throw new Error('No `cloud: { ... }` block found in the cloud config')
+  if (blocks.length > 1) {
+    throw new Error(`Found ${blocks.length} \`cloud: { ... }\` blocks in the cloud config, so which one to edit is ambiguous`)
+  }
+
+  const [whole, indent, body] = match
+  if (indent === undefined || body === undefined) {
+    throw new Error('The `cloud: { ... }` block did not parse into an indent and a body')
+  }
+
+  if (body.includes('{')) {
+    throw new Error('The `cloud: { ... }` block holds a nested object, which this edit does not attempt to rewrite')
+  }
+
+  const existing = body.match(/^\s*attachTo:\s*(['"])([^'"]*)\1\s*,?\s*$/m)
+  if (existing) {
+    const [line, quote = '\'', current = ''] = existing
+    if (current === owner) return configText
+
+    return configText.replace(whole, whole.replace(line, line.replace(`${quote}${current}${quote}`, `'${owner}'`)))
+  }
+
+  const inner = `${indent}  `
+  return configText.replace(
+    whole,
+    whole.replace(
+      `\n${indent}},\n`,
+      `\n${inner}// Deploy onto the box '${owner}' owns rather than provisioning one.\n${inner}attachTo: '${owner}',\n${indent}},\n`,
+    ),
+  )
+}

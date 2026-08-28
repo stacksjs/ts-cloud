@@ -69,12 +69,28 @@ export const DEFAULT_SITE_PORT_RANGE: SitePortRange = { start: 3000, end: 3999 }
  * One project's registry fragment, as written by the deploy:
  * `JSON.stringify({ slug, ...RpxGatewayConfig })`.
  *
- * Only the fields this module reads are declared. A fragment written by an older
- * ts-cloud may be missing `slug`, which the writer defaults to `'app'`.
+ * Only the fields a reader here needs are declared. A fragment written by an
+ * older ts-cloud may be missing `slug`, which the writer defaults to `'app'`.
+ *
+ * The route fields beyond `from` are declared for the fleet inventory
+ * (`operations/inventory`), which answers "what is this box serving, for
+ * whom" from these same files. They are optional and additive: this module's
+ * port allocator still reads only `from`.
  */
 export interface HostSiteFragment {
   slug?: string
-  proxies?: Array<{ from?: string | string[] }>
+  proxies?: Array<{
+    /** Public host the route is served under. */
+    to?: string
+    /** Path prefix within the host. Omitted means `/`. */
+    path?: string
+    /** Upstream(s) for an app route. */
+    from?: string | string[]
+    /** Served directory for a static route. */
+    static?: string | { dir?: string }
+    /** Target for a redirect route. */
+    redirect?: string | { to?: string }
+  }>
 }
 
 /** Port -> the slug of the project that already serves it on this box. */
