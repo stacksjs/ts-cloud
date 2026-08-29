@@ -190,6 +190,9 @@ export type {
   OriginationPhoneNumber,
   DescribePhoneNumbersParams,
   DescribePhoneNumbersResult,
+  SandboxPhone,
+  AddSandboxPhoneResult,
+  VerifySandboxPhoneResult,
 } from './aws'
 
 // Export AWS module - types with prefixed names where needed
