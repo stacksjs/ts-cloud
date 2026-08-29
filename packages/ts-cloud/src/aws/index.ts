@@ -199,6 +199,7 @@ export * from './sms'
 export * from './voice'
 export * from './support'
 export * from './setup-sms'
+export * from './sms-voice'
 export * from './efs'
 
 // DNS Provider integrations (Route53, Porkbun, GoDaddy)

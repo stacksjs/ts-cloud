@@ -171,6 +171,25 @@ export {
   VoiceClient,
   SupportClient,
   EFSClient,
+  // The SMS setup surface. `src/aws/index.ts` has always exported these, but
+  // this entry re-exports AWS by an explicit list and they were never added to
+  // it - so the whole of `setup-sms.ts` was unreachable from the package, and
+  // a consumer importing `getSmsInfrastructureStatus` got `undefined` with no
+  // error to say why.
+  setupSmsInfrastructure,
+  getSmsInfrastructureStatus,
+  createSmsInfrastructure,
+  // AWS End User Messaging, which owns the phone-number inventory. `SmsClient`
+  // above sends through SNS and cannot see it.
+  SmsVoiceClient,
+} from './aws'
+
+export type {
+  SmsSetupConfig,
+  SmsSetupResult,
+  OriginationPhoneNumber,
+  DescribePhoneNumbersParams,
+  DescribePhoneNumbersResult,
 } from './aws'
 
 // Export AWS module - types with prefixed names where needed
