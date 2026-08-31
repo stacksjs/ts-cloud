@@ -80,6 +80,53 @@ function text(value: unknown): string | undefined {
 }
 
 /**
+ * One provider server record, as a listing returns it.
+ *
+ * Every field is optional and `unknown` because this is JSON from an external
+ * API: `text()` is what turns each one into a string or nothing. The nested
+ * fields are Hetzner's spelling; the flat ones beside them are the fallback a
+ * driver with a simpler listing can answer with, which is what lets one type
+ * cover more than one provider.
+ */
+export interface ProviderServerPayload {
+  id?: unknown
+  name?: unknown
+  status?: unknown
+  labels?: Record<string, unknown>
+  public_net?: { ipv4?: { ip?: unknown } | null, ipv6?: { ip?: unknown } | null } | null
+  server_type?: { name?: unknown } | null
+  /**
+   * Legacy shape. Hetzner has stopped returning this and sends an explicit
+   * `null` in its place, which is why the null belongs in the type: it is what
+   * a live listing contains today. See `location`.
+   */
+  datacenter?: { name?: unknown, location?: { name?: unknown } | null } | null
+  ipv4?: unknown
+  ipv6?: unknown
+  type?: unknown
+  /**
+   * Current Hetzner shape is an object; a simpler driver may answer a bare
+   * string. {@link placeName} reads both.
+   */
+  location?: unknown
+}
+
+/**
+ * A place name that arrives either as `{ name }` or as a bare string.
+ *
+ * Hetzner's current listing nests it and its retired `datacenter` field did
+ * too, so reading only the string form reported no location at all for every
+ * live box. `resize.ts` and `role-swap.ts` already carry the same fallback.
+ */
+function placeName(value: unknown): string | undefined {
+  if (typeof value === 'string')
+    return text(value)
+  if (value && typeof value === 'object')
+    return text((value as { name?: unknown }).name)
+  return undefined
+}
+
+/**
  * Shape one provider server record into {@link InventoryServer}.
  *
  * Written against the Hetzner payload, but touches only fields any provider
@@ -90,7 +137,7 @@ function text(value: unknown): string | undefined {
  * or by a ts-cloud old enough not to have labelled it, is exactly the kind a
  * consolidation needs to see; requiring the labels would hide it.
  */
-export function toInventoryServer(raw: any): InventoryServer {
+export function toInventoryServer(raw: ProviderServerPayload | null | undefined): InventoryServer {
   const labels: Record<string, string> = {}
   for (const [key, value] of Object.entries(raw?.labels ?? {})) {
     if (typeof value === 'string') labels[key] = value
@@ -103,7 +150,7 @@ export function toInventoryServer(raw: any): InventoryServer {
     ipv4: text(raw?.public_net?.ipv4?.ip) ?? text(raw?.ipv4),
     ipv6: text(raw?.public_net?.ipv6?.ip) ?? text(raw?.ipv6),
     type: text(raw?.server_type?.name) ?? text(raw?.type),
-    location: text(raw?.datacenter?.location?.name) ?? text(raw?.datacenter?.name) ?? text(raw?.location),
+    location: placeName(raw?.location) ?? placeName(raw?.datacenter?.location) ?? placeName(raw?.datacenter),
     labels,
     project: text(labels[PROJECT_LABEL]),
     environment: text(labels[ENVIRONMENT_LABEL]),
