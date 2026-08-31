@@ -63,6 +63,26 @@ describe('shaping a provider server', () => {
       .toMatchObject({ ipv4: '1.2.3.4', type: 'medium', location: 'nbg1' })
   })
 
+  it('reads the location off the shape the API actually returns today', () => {
+    // The regression this guards. Hetzner retired `datacenter` and nests the
+    // place under `location`, which this read as a bare string - so every live
+    // box reported no location at all. `resize.ts` and `role-swap.ts` already
+    // carry the same fallback; this is the third reader to need it.
+    expect(toInventoryServer({
+      id: 3,
+      name: 'stacks-production-app',
+      status: 'running',
+      datacenter: null,
+      location: { id: 1, name: 'fsn1', city: 'Falkenstein' },
+      labels: {},
+    })).toMatchObject({ location: 'fsn1' })
+  })
+
+  it('still prefers the legacy datacenter when a recorded fixture carries one', () => {
+    expect(toInventoryServer({ id: 4, name: 'box', status: 'running', datacenter: { name: 'fsn1-dc14' }, labels: {} }))
+      .toMatchObject({ location: 'fsn1-dc14' })
+  })
+
   it('keeps an unlabelled box rather than dropping it', () => {
     // A box provisioned by hand, or by a ts-cloud old enough not to label, is
     // exactly the kind a consolidation needs to see.
