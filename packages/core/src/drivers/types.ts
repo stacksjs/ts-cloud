@@ -38,6 +38,13 @@ export interface ComputeStackOutputs {
   servicesPrivateIp?: string
   /** Fleet: public IP of the load balancer fronting the app servers. */
   loadBalancerIp?: string
+  /**
+   * On-box path to the LAN certificate authority's certificate, for a host
+   * whose gateway signs its own TLS (`ssh.lan.tls: 'local-ca'`). Reported so a
+   * caller can fetch the file and trust it on a laptop or a phone; absent for
+   * every publicly-resolvable deploy, which uses Let's Encrypt instead.
+   */
+  lanCaCertPath?: string
 }
 
 export interface RemoteDeployInstanceResult {

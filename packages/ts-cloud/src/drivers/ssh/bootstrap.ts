@@ -23,10 +23,12 @@
  *   swapfile and bounds the journal.
  */
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import type { RpxLanOptions } from '../shared/rpx-gateway'
 import type { SshLanConfig, SshProfile } from './config'
 import type { SshPreflightFacts } from './preflight'
+import { isIP } from 'node:net'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
-import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxProvisionScript, RPX_SITES_DIR } from '../shared/rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxProvisionScript, localCaCertPath, RPX_SITES_DIR } from '../shared/rpx-gateway'
 import { buildUbuntuBootstrapScript } from '../shared/ubuntu-bootstrap'
 import { enabled as vitessEnabled } from '../shared/vitess-provision'
 
@@ -47,20 +49,40 @@ export interface SshBootstrapOptions {
   config: CloudConfig
   environment: EnvironmentType
   profile: SshProfile
-  /** Preflight facts, when the host has been probed; `arch` gates x86_64-only services. */
-  facts?: Pick<SshPreflightFacts, 'arch'>
+  /**
+   * Preflight facts, when the host has been probed. `arch` gates x86_64-only
+   * services; `lanIp` becomes the LAN certificate's iPAddress SAN.
+   */
+  facts?: Pick<SshPreflightFacts, 'arch'> & Partial<Pick<SshPreflightFacts, 'lanIp'>>
   /**
    * The non-root deploy user, when there is one. Makes the artifact and
    * staging directories group-writable for it and manages its
    * `authorized_keys` rather than root's.
    */
   sudoUser?: string
-  /** LAN settings; recorded in the script header today, wired to the gateway by the local-CA work. */
+  /** LAN settings; recorded in the script header and wired into the gateway's local CA. */
   lan?: SshLanConfig
+  /**
+   * The box's LAN address, when the caller knows one that is not in `facts`
+   * (the configured ssh host, when that host is an IP literal). Wins over
+   * `facts.lanIp`. Never guessed: an address absent here is simply left off
+   * the certificate.
+   */
+  lanIp?: string
 }
 
 function isArm64(arch: string | undefined): boolean {
   return arch === 'aarch64' || arch === 'arm64'
+}
+
+/**
+ * The box's LAN address, or `undefined`. An explicit `lanIp` (the driver's
+ * IP-literal ssh host) beats the preflight's `hostname -I`, and anything that
+ * is not an address at all is dropped rather than put on a certificate.
+ */
+function lanIpFor(options: SshBootstrapOptions): string | undefined {
+  const candidate = options.lanIp?.trim() || options.facts?.lanIp?.trim()
+  return candidate && isIP(candidate) !== 0 ? candidate : undefined
 }
 
 /**
@@ -156,14 +178,26 @@ export function buildSshBootstrapScript(options: SshBootstrapOptions): string {
   const slug = config.project.slug
 
   // Opt-in rpx gateway, exactly as the Hetzner driver composes it: the
-  // fragment lands in the same `/etc/rpx/sites.d/<slug>.json`.
-  const rpxConfig = compute.proxy?.engine === 'rpx' ? buildRpxConfig(sites, { proxy: compute.proxy, slug }) : undefined
+  // fragment lands in the same `/etc/rpx/sites.d/<slug>.json`. What the cloud
+  // drivers never pass is `lan`: a host with no public DNS gets its TLS from a
+  // certificate authority the box keeps itself, and the fragment is where that
+  // setting lives (see buildRpxConfig's note on the seam).
+  const lan: RpxLanOptions | undefined = options.lan
+    ? {
+        ...(options.lan.hostname ? { hostname: options.lan.hostname } : {}),
+        tls: options.lan.tls ?? 'local-ca',
+        ...(lanIpFor(options) ? { ip: lanIpFor(options) } : {}),
+      }
+    : undefined
+  const rpxConfig =
+    compute.proxy?.engine === 'rpx' ? buildRpxConfig(sites, { proxy: compute.proxy, slug, lan }) : undefined
   const rpxProvision =
     compute.proxy?.engine === 'rpx' && rpxConfig
       ? buildRpxProvisionScript({
           proxy: compute.proxy,
           config: rpxConfig,
           slug,
+          profile,
           bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
         })
       : undefined
@@ -200,11 +234,17 @@ export function buildSshBootstrapScript(options: SshBootstrapOptions): string {
     .replace(/^#!\/bin\/bash\nset -euo pipefail\n/, '')
 
   const marker = sshBootstrapMarkerPath()
-  const lan = options.lan?.hostname ? ` lan=${options.lan.hostname} tls=${options.lan.tls ?? 'local-ca'}` : ''
+  // The header is now a description of what the script actually does, not a
+  // claim about it: the same `lan` object above is what configures the gateway.
+  const lanHeader = rpxConfig?.localCa
+    ? ` lan=${rpxConfig.localCa.hosts.join(',')} tls=local-ca`
+    : lan
+      ? ` lan=${lan.hostname ?? `${slug}.local`} tls=${lan.tls ?? 'local-ca'}`
+      : ''
 
   let script = `#!/bin/bash
 set -euo pipefail
-# ts-cloud ssh bootstrap v${SSH_BOOTSTRAP_VERSION} profile=${profile}${lan}
+# ts-cloud ssh bootstrap v${SSH_BOOTSTRAP_VERSION} profile=${profile}${lanHeader}
 
 # Idempotence guard. This script may run again (a cloud-init rerun, a repeated
 # adopt, a deploy): once this version has been applied, only the gateway's
@@ -229,5 +269,13 @@ install -d -m 0755 ${shellSingleQuote(SSH_BOOTSTRAP_MARKER_DIR)}
 date -u +%Y-%m-%dT%H:%M:%SZ > ${shellSingleQuote(marker)}
 echo "[ts-cloud] bootstrap v${SSH_BOOTSTRAP_VERSION} applied (${profile}); gateway fragment at ${RPX_SITES_DIR}/${slug}.json"
 `
+  if (rpxConfig?.localCa) {
+    // The CA certificate is the one file a laptop or a phone needs, and it is
+    // created by the gateway on its first start rather than by this script, so
+    // say where it will be instead of trying to print it.
+    script += `echo "[ts-cloud] LAN certificate authority for ${rpxConfig.localCa.hosts.join(', ')} at ${localCaCertPath(
+      rpxConfig.localCa.dir,
+    )} (copy it to a client to trust this box)"\n`
+  }
   return script
 }

@@ -205,6 +205,41 @@ describe('SshDriver.runRemoteDeploy', () => {
   })
 })
 
+describe('SshDriver.provisionComputeInfrastructure (LAN TLS)', () => {
+  const lanConfig: CloudConfig = { ...config, ssh: { ...config.ssh!, lan: { hostname: 'pi-app.local' } } }
+
+  it('reports where the LAN certificate authority lives, so it can be trusted', async () => {
+    const outputs = await driver({ lan: { hostname: 'pi-app.local' } }).provisionComputeInfrastructure({
+      config: lanConfig,
+      environment: 'production',
+    })
+    expect(outputs.lanCaCertPath).toBe('/etc/rpx/local-ca/rpx-root-ca.crt')
+  })
+
+  it('puts the preflight address on the certificate as an iPAddress SAN', async () => {
+    await driver({ lan: { hostname: 'pi-app.local' } }).provisionComputeInfrastructure({
+      config: lanConfig,
+      environment: 'production',
+    })
+    const bootstrap = transport.execs().at(-1)!
+    expect(bootstrap.script).toContain('"192.168.1.42"')
+    expect(bootstrap.script).toContain('"dir": "/etc/rpx/local-ca"')
+  })
+
+  it('reports no CA path when the operator chose plain HTTP', async () => {
+    const outputs = await driver({ lan: { hostname: 'pi-app.local', tls: 'off' } }).provisionComputeInfrastructure({
+      config: { ...config, ssh: { ...config.ssh!, lan: { hostname: 'pi-app.local', tls: 'off' } } },
+      environment: 'production',
+    })
+    expect(outputs.lanCaCertPath).toBeUndefined()
+  })
+
+  it('reports no CA path for a host with no LAN configuration', async () => {
+    const outputs = await driver().provisionComputeInfrastructure({ config, environment: 'production' })
+    expect(outputs.lanCaCertPath).toBeUndefined()
+  })
+})
+
 describe('SshDriver.provisionComputeInfrastructure (adopt)', () => {
   it('pins, waits, checks, bootstraps and records, in that order', async () => {
     const outputs = await driver().provisionComputeInfrastructure({ config, environment: 'production' })

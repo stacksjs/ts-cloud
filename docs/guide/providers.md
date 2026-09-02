@@ -125,9 +125,24 @@ const config: CloudConfig = {
 | `sudo` | Run remote scripts through `sudo -n` | `true` unless the user is `root` |
 | `profile` | `raspberry-pi` tunes swap, journald and the clock wait for an SD-card ARM board. Env: `TS_CLOUD_SSH_PROFILE` | `generic` |
 | `publicIp` | Address DNS should point at: `auto` or a literal | `auto` |
-| `lan` | `{ hostname, tls }` for a host only reachable on the LAN | unset |
+| `lan` | `{ hostname, tls }` for a host only reachable on the LAN. See below | unset |
 
 Listing `ssh.hosts` without a `cloud.provider` selects the ssh provider. The sizing keys under `infrastructure.compute` (`size`, `appServers`, `image`, ...) have no effect and are reported as warnings; `cloud.attachTo`, more than one host, and `managedServices.vitess` on ARM are refused. Teardown (`cloud compute:destroy`) clears local state only and never touches the host.
+
+#### TLS on a host with no public DNS
+
+`ssh.lan` is the only setting that changes how the gateway terminates TLS, and it applies to the `ssh` provider alone: a cloud box has no LAN an operator can reach, so `ssh.lan` on an AWS or Hetzner deploy is ignored rather than acted on.
+
+| `lan.tls` | What the gateway does |
+| --- | --- |
+| unset or `'local-ca'` | Creates a certificate authority in `/etc/rpx/local-ca`, signs one certificate covering the LAN names, installs the CA in the box's own trust store, and renews before expiry. Served per server name and as the default TLS context, so an IP-literal URL with no SNI gets it too. |
+| `'off'` | Plain HTTP. rpx binds the HTTP port only and nothing on `:443`. |
+
+The certificate covers `lan.hostname` (default `<project.slug>.local`), `dashboard.<that name>` when the project deploys the management dashboard, every site `domain` that is a `.local` or bare single-label name, and the box's LAN address as an IP SAN when the preflight found one. Nothing is guessed: an address ts-cloud does not know is left off the certificate.
+
+The CA certificate is written to `/etc/rpx/local-ca/rpx-root-ca.crt`. `cloud deploy` prints the path and the command to fetch it, and the driver returns it as `lanCaCertPath`. Trusting it on a laptop and on a phone, and when plain HTTP is the better trade, are covered in [Raspberry Pi](/guide/raspberry-pi#the-lan-certificate-authority); the certificate mechanism itself is rpx's `localCa`, documented there.
+
+One hostname cannot be both LAN and public. A name claimed by `ssh.lan` and by `compute.proxy.onDemandTls` is refused at build time, naming the host and both sources, because the two issuance paths would otherwise fight over one SNI name and ACME would be asked for a name it can never issue.
 
 For the Raspberry Pi flow end to end, see [Raspberry Pi](/guide/raspberry-pi).
 

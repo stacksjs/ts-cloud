@@ -122,9 +122,16 @@ export function resolveSshPublicIp(config?: CloudConfig, explicit?: string): str
   return first(explicit, config?.ssh?.publicIp) ?? SSH_DEFAULTS.publicIp
 }
 
-/** LAN access settings; empty when unset. */
-export function resolveSshLan(config?: CloudConfig, explicit?: SshLanConfig): SshLanConfig {
-  return explicit ?? config?.ssh?.lan ?? {}
+/**
+ * LAN access settings, or `undefined` when the project configured none.
+ *
+ * This used to answer `{}` for "unset", which reads as a LAN with defaults
+ * once anything acts on it: with the gateway now wired to `lan`, that sentinel
+ * would give every adopted host a local certificate authority for
+ * `<slug>.local` that nobody asked for. Absent has to be absent.
+ */
+export function resolveSshLan(config?: CloudConfig, explicit?: SshLanConfig): SshLanConfig | undefined {
+  return explicit ?? config?.ssh?.lan
 }
 
 /** One host with every per-host value resolved. */
@@ -143,7 +150,8 @@ export interface ResolvedSshSettings {
   sudo: boolean
   profile: SshProfile
   publicIp: string
-  lan: SshLanConfig
+  /** LAN access settings, or `undefined` when this project configured none. */
+  lan?: SshLanConfig
 }
 
 export interface SshOverrides {

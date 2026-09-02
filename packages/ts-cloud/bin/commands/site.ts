@@ -14,7 +14,7 @@ import { siteInstallBase } from '../../src/deploy/site-target'
 import { buildBackupScript } from '../../src/deploy/dashboard-database'
 import { buildDatabaseSetupScript, isLocalDatabase } from '../../src/drivers/shared/db-provision'
 import { buildBackupRestoreScript } from '../../src/drivers/shared/backups'
-import { buildRpxConfig, buildRpxFragmentRefreshScript, DEFAULT_RPX_CERTS_DIR } from '../../src/drivers/shared/rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, DEFAULT_RPX_CERTS_DIR, resolveGatewayLan } from '../../src/drivers/shared/rpx-gateway'
 import { FleetStore, SystemFleetSshTransport } from '../../src/fleet'
 import { applyPlan, formatPlan, resolvePlan } from '../../src/operations/plan'
 import {
@@ -171,7 +171,13 @@ async function runSiteMove(siteName: string, options: SiteMoveCommandOptions): P
         // The SAME builder the deploy uses to write the fragment — one code
         // path, so a moved site is routed byte-identically to a deployed one.
         await execOn(transport, target, buildRpxFragmentRefreshScript({
-          config: buildRpxConfig(config.sites ?? {}, { proxy, slug }),
+          // `lan` for the same reason the deploy passes it: this rewrites the
+          // target's whole route fragment, and dropping the LAN certificate
+          // authority out of it would leave that box serving a certificate
+          // nothing on the network trusts. The box's address is not known
+          // here, so the leaf covers the LAN names but no iPAddress SAN until
+          // the next deploy of that project puts one back.
+          config: buildRpxConfig(config.sites ?? {}, { proxy, slug, lan: resolveGatewayLan(config) }),
           slug,
           preserveManagementDashboardRoutes: true,
         }).join('\n'))

@@ -1,5 +1,5 @@
 import type { CloudConfig, CloudDriver, DeploySiteReleaseOptions, DeploySiteReleaseResult, EnvironmentType } from '@ts-cloud/core'
-import type { RpxLbAppBox } from './rpx-gateway'
+import type { RpxLanOptions, RpxLbAppBox } from './rpx-gateway'
 import { copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,6 +11,7 @@ import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
 import { buildAwsArtifactFetch, buildHostCleanupScript, buildLocalArtifactFetch, buildSiteDeployScript, buildStaticSiteDeployScript, releaseTarballTmpPath, resolveExecStart } from './deploy-script'
+import { readDriverState } from './driver-state'
 import { buildFleetServicesEnv } from './fleet'
 import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-deploy'
 import { buildManagedServicesProbeScript, declaredManagedServices, formatMissingManagedServicesError, parseMissingManagedServices } from './managed-services-probe'
@@ -18,7 +19,7 @@ import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { resolveNotifications, sendNotifications } from './notifications'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
-import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, resolveGatewayLan, resolveGatewayProfile, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
 import { inferSqliteSharedPath } from './sqlite-shared-path'
 
 export interface ComputeDeployLogger {
@@ -846,6 +847,27 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
  *    provision script runs on the app targets. Re-runnable: it rewrites the
  *    launcher + unit and `systemctl restart`s, reloading the new routes.
  */
+/**
+ * The LAN gateway settings for a deploy, with the box's address filled in from
+ * the driver state the adopt recorded.
+ *
+ * The address matters because it is an iPAddress SAN on the LAN certificate:
+ * derived only from `cloud.config.ts` it would be absent, the leaf would be
+ * re-minted without it on the next deploy, and reaching the box by address
+ * over HTTPS would start failing on a machine where it had been working.
+ */
+async function resolveDeployLan(
+  config: CloudConfig,
+  stackName: string,
+  cwd?: string,
+): Promise<RpxLanOptions | undefined> {
+  const lan = resolveGatewayLan(config)
+  if (!lan || lan.tls === 'off') return lan
+  const state = await readDriverState(stackName, cwd)
+  const lanIp = state?.provider === 'ssh' ? state.lanIp : undefined
+  return lanIp ? { ...lan, ip: lanIp } : lan
+}
+
 export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<boolean> {
   const { config, environment, driver, logger = noopLogger } = options
   // Always regenerate the gateway from the FULL site model (never a single-site
@@ -906,7 +928,12 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     return true
   }
 
-  const rpxConfig = buildRpxConfig(sites, { proxy, slug })
+  // A LAN box's gateway settings have to be re-derived on EVERY deploy. This
+  // rewrites the same `sites.d/<slug>.json` the bootstrap wrote, so omitting
+  // them here would silently strip the local CA from a working box on its
+  // next deploy and leave it serving a certificate nothing trusts.
+  const lan = await resolveDeployLan(config, stackName, options.cwd)
+  const rpxConfig = buildRpxConfig(sites, { proxy, slug, lan })
   if (rpxConfig.proxies.length === 0) {
     logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
     return true
@@ -928,6 +955,10 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     proxy,
     config: rpxConfig,
     slug,
+    // Same reason as `lan` above: this rewrites the gateway's systemd unit, so
+    // a profile-tuned memory ceiling has to be re-derived or the next deploy
+    // resets a Pi to the cloud-box defaults.
+    profile: resolveGatewayProfile(config),
     preserveManagementDashboardRoutes: options.managementDashboard === false,
   })
   const result = await driver.runRemoteDeploy({

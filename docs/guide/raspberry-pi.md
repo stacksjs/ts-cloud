@@ -56,14 +56,112 @@ The preflight refuses a host that cannot work rather than letting the bootstrap 
 
 ## What the profile changes
 
-`profile: 'raspberry-pi'` keeps the shared recipe and adjusts what an SD card cares about: a 1 GB swapfile instead of 2 (an explicit `compute.swapGb` still wins), a journal bounded to 128 MB and seven days, `psmisc` and `ca-certificates` installed explicitly (a minimal Debian lacks `fuser`, which frees :80/:443 for the gateway), and an early refusal of services that only ship x86_64 builds. `generic` is the recipe unchanged, for any other Debian or Ubuntu host.
+`profile: 'raspberry-pi'` keeps the shared recipe and adjusts what an SD card cares about: a 1 GB swapfile instead of 2 (an explicit `compute.swapGb` still wins), a journal bounded to 128 MB and seven days, `psmisc` and `ca-certificates` installed explicitly (a minimal Debian lacks `fuser`, which frees :80/:443 for the gateway), an early refusal of services that only ship x86_64 builds, and lower memory ceilings on the gateway's systemd unit: `MemoryHigh=256M` / `MemoryMax=384M` instead of 512M / 768M. The gateway's steady state is well under 100 MB either way, but a 768 MB ceiling on a 2 GB board is not a bound at all, and the reclaim it eventually triggers lands on the SD card. Setting `compute.proxy.memoryHigh` or `memoryMax` yourself overrides both. `generic` is the recipe unchanged, for any other Debian or Ubuntu host.
 
 ## LAN or public
 
 Sites on a Pi are usually reached one of two ways, and the config says which:
 
 - **Public**: your router forwards :80 and :443 to the Pi. Set `ssh.publicIp` to the address DNS should point at (or leave `auto`), and the rpx gateway issues Let's Encrypt certificates as it does on a cloud box.
-- **LAN only**: set `ssh.lan.hostname` to the mDNS name (`pi-app.local`) and `ssh.lan.tls` to `local-ca` or `off`. The gateway wiring for a locally issued CA is being added to rpx; until it lands the setting is recorded and the gateway serves the public configuration.
+- **LAN only**: set `ssh.lan`. The gateway then signs its own certificates for the LAN names, or serves plain HTTP, depending on `ssh.lan.tls`.
+
+Both are possible at once, on different hostnames. What is never possible is one hostname in both sets: a name is either LAN-only, with a certificate from the box's own authority, or public, with one from Let's Encrypt. ts-cloud refuses that configuration with a message naming the host and where each claim came from, rather than letting the gateway discover it after the deploy has reported success.
+
+## The LAN certificate authority
+
+`ssh.lan` with no `tls`, or `tls: 'local-ca'`, is the default: a certificate authority that lives on the Pi and signs one certificate for the box's LAN names.
+
+```typescript
+ssh: {
+  hosts: [{ host: 'pi-app.local', user: 'pi' }],
+  profile: 'raspberry-pi',
+  lan: { hostname: 'pi-app.local' },   // tls defaults to 'local-ca'
+},
+```
+
+On the next deploy the gateway creates a root CA under `/etc/rpx/local-ca`, signs one leaf covering every LAN name it serves, installs the CA in the Pi's own trust store, and renews the leaf before it expires. rpx registers that leaf per server name **and** as the default TLS context, so reaching the box by address (`https://192.168.1.20`) works too, without SNI. The mechanism is rpx's; see its `localCa` documentation for the details this page does not repeat.
+
+The names on the certificate are:
+
+- `ssh.lan.hostname`, or `<project.slug>.local` when you did not set one.
+- `dashboard.<that hostname>`, when this project deploys the management dashboard.
+- every site `domain` a public CA could not issue for anyway: a `.local` name, or a bare single-label hostname like `intranet`.
+- the box's LAN address as an IP SAN, when the preflight reported one (or the host you configured is itself an address). Never a guessed address: without one, the certificate simply carries no IP.
+
+A name that only gets a certificate still needs a route to serve anything. Give a site the `.local` `domain` you want reachable; `ssh.lan.hostname` on its own puts the name on the certificate but routes nothing.
+
+Where the CA lives:
+
+```
+/etc/rpx/local-ca/rpx-root-ca.crt    # the certificate to trust on your devices
+/etc/rpx/local-ca/rpx-root-ca.key    # the private key, mode 0600, never leaves the box
+```
+
+`cloud deploy` prints the path and the `scp` line to fetch it, and the ssh driver returns it as `lanCaCertPath` for anything scripting on top.
+
+### Trusting it on a laptop
+
+Copy the CA certificate off the box, then add it to the system trust store:
+
+```bash
+scp pi@pi-app.local:/etc/rpx/local-ca/rpx-root-ca.crt ./pi-root-ca.crt
+
+# macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ./pi-root-ca.crt
+
+# Debian / Ubuntu
+sudo cp ./pi-root-ca.crt /usr/local/share/ca-certificates/pi-root-ca.crt
+sudo update-ca-certificates
+```
+
+[tlsx](https://github.com/stacksjs/tlsx) (0.13.19 or newer, the same library rpx issues with) prints the steps for any platform rather than making you look them up:
+
+```bash
+tlsx trust-instructions --platform macos --ca ./pi-root-ca.crt
+tlsx trust-instructions            # every platform it knows
+```
+
+Firefox keeps its own trust store and ignores the system one. Import the file under Settings, Privacy & Security, Certificates, View Certificates, Authorities, Import.
+
+### Trusting it on an iPhone or iPad
+
+iOS will not install a bare `.crt` from a file. Wrap it in a configuration profile first:
+
+```bash
+tlsx export-ca --ca ./pi-root-ca.crt --format mobileconfig --out ./pi-root-ca.mobileconfig
+tlsx trust-instructions --platform ios --ca ./pi-root-ca.mobileconfig
+```
+
+AirDrop or mail the `.mobileconfig` to the device, then, and this is the step people miss, install it **and** enable it:
+
+1. Settings, Profile Downloaded, Install.
+2. Settings, General, About, Certificate Trust Settings, and turn the switch on for the CA.
+
+Without step 2 the profile is installed and the certificate is still not trusted, which looks exactly like the certificate being wrong. Android is the same shape; `tlsx trust-instructions --platform android` has the current menu path.
+
+### When to choose `tls: 'off'` instead
+
+```typescript
+ssh: { hosts: [{ host: 'pi-app.local', user: 'pi' }], lan: { tls: 'off' } },
+```
+
+The gateway then binds `:80` only, serves plain HTTP, and binds nothing on `:443`. No certificate, nothing to trust, nothing to renew. Choose it when:
+
+- every client is a device you cannot install a CA on: a TV, a printer, a smart plug, a colleague's phone you are not going to configure.
+- the traffic is genuinely not worth protecting on a network you control, and the trust step is a bigger cost than the risk.
+- you are bringing your own TLS in front of the Pi anyway (a tunnel, a mesh VPN, another reverse proxy).
+
+Everything on the wire is then readable by anything on that LAN, including any session cookie the dashboard sets, so it is a real trade rather than a convenience. Browsers also withhold service workers, clipboard access and several other APIs on plain HTTP, and the management dashboard is a worse experience without them.
+
+## Exposing a LAN Pi publicly
+
+The local CA is for names the public internet cannot reach. Publishing a site properly needs the public path instead, which is a different set of things:
+
+- a route to the box: a port forward for :80 and :443, or a tunnel.
+- public DNS pointing at the address `ssh.publicIp` names (set it to a literal when your router has one and `auto` cannot see past NAT).
+- `compute.proxy.onDemandTls` with an email, so the gateway issues Let's Encrypt certificates over http-01 and renews them daily. This is the path documented in [Providers](/guide/providers), and it is what the public hostnames use.
+
+Keep the two sets of names apart. A public hostname and a LAN hostname on one box is a normal, supported setup; the same hostname in both is the configuration ts-cloud refuses.
 
 ## Limits
 

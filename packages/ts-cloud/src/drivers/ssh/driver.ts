@@ -33,8 +33,10 @@ import type { ResolvedSshHost, ResolvedSshSettings, SshLanConfig } from './confi
 import type { SshPreflightFacts } from './preflight'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
+import { isIP } from 'node:net'
 import { resolveProjectStackName } from '@ts-cloud/core'
 import { readDriverState, writeDriverState } from '../shared/driver-state'
+import { lanTlsMode, localCaCertPath, usesRpxProxy } from '../shared/rpx-gateway'
 import { summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
 import { sshKnownHostsPath, SystemSshTransport } from '../shared/ssh-transport'
 import { enabled as vitessEnabled } from '../shared/vitess-provision'
@@ -357,6 +359,13 @@ export class SshDriver implements CloudDriver {
     // present AND running; a finished or absent cloud-init needs no wait.
     if (facts.cloudInitPresent && /running/i.test(facts.cloudInitStatus ?? '')) await this.waitForCloudInit(target.host)
 
+    // The address the LAN certificate can carry as an iPAddress SAN. The
+    // preflight's `hostname -I` is the box's own answer and so the first
+    // choice; a host configured as a bare address is the fallback, because
+    // that address is demonstrably one this machine answers on. Nothing else
+    // is guessed: no SAN at all beats a wrong one.
+    const lanIp = facts.lanIp?.trim() || (isIP(target.host) !== 0 ? target.host : undefined)
+
     let bootstrappedAt = existing?.provider === 'ssh' ? existing.bootstrappedAt : undefined
     if (!skipBootstrap) {
       const script = buildSshBootstrapScript({
@@ -366,6 +375,7 @@ export class SshDriver implements CloudDriver {
         facts,
         sudoUser: target.user !== 'root' ? target.user : undefined,
         lan: this.settings.lan,
+        lanIp,
       })
       surfaceRemoteNotices(await this.exec(target.host, script))
       bootstrappedAt = new Date().toISOString()
@@ -387,7 +397,20 @@ export class SshDriver implements CloudDriver {
     }
     await writeDriverState(stackName, state, this.cwd)
 
-    return this.getComputeOutputs()
+    const outputs = await this.getComputeOutputs()
+    // A LAN box's certificate chains to a CA that exists only on that box, so
+    // the deploy is not finished for a human until they know where to fetch
+    // it. Additive: a caller that ignores the field sees exactly what it saw
+    // before, and the path is absent whenever no local CA is configured.
+    if (usesRpxProxy(config.infrastructure?.compute) && lanTlsMode(this.settings.lan) === 'local-ca') {
+      outputs.lanCaCertPath = localCaCertPath()
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ts-cloud] LAN certificate authority on ${target.host} at ${outputs.lanCaCertPath}. `
+        + `Fetch it with: scp ${target.user}@${target.host}:${outputs.lanCaCertPath} ./rpx-root-ca.crt`,
+      )
+    }
+    return outputs
   }
 
   /**

@@ -19,14 +19,39 @@
  * It replaces the old Caddyfile generation — pantry/stacks use rpx (their own
  * tooling), so the gateway is rpx, not Caddy.
  */
-import type { ComputeProxyConfig, RpxLoadBalancerConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
+import type { CloudConfig, ComputeProxyConfig, RpxLoadBalancerConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
+import { isIP } from 'node:net'
+import { isManagementDashboardSiteName } from '@ts-cloud/core'
 import { resolveProxyUpstreams, resolveSiteKind } from '../../deploy/site-target'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
 export const DEFAULT_RPX_CERTS_DIR = '/etc/rpx/certs'
 
-/** Whether the gateway adds a `www.` redirect for `domain` on its own. */
+/**
+ * Where the LAN certificate authority lives on the box. rpx writes the CA
+ * (`rpx-root-ca.crt` / `.key`) and the leaf it signs here; the CA cert is the
+ * one file an operator copies off the box to trust on a laptop or a phone.
+ */
+export const DEFAULT_LOCAL_CA_DIR = '/etc/rpx/local-ca'
+
+/** rpx's own filename for the CA certificate inside {@link DEFAULT_LOCAL_CA_DIR}. */
+export const LOCAL_CA_ROOT_CERT_FILENAME = 'rpx-root-ca.crt'
+
+/** Absolute path to the CA certificate a client has to trust. */
+export function localCaCertPath(dir: string = DEFAULT_LOCAL_CA_DIR): string {
+  return `${dir.replace(/\/+$/, '')}/${LOCAL_CA_ROOT_CERT_FILENAME}`
+}
+
+/**
+ * Whether the gateway adds a `www.` redirect for `domain` on its own.
+ *
+ * Apex domains only, and never an mDNS name: `pi-app.local` also has two
+ * labels, but nobody types `www.pi-app.local`, no LAN resolves it, and the
+ * route it would create is a host the LAN certificate does not cover, so it
+ * is a browser warning on a name that exists for no reason.
+ */
 export function hasAutoWwwVariant(domain: string): boolean {
+  if (domain.toLowerCase().endsWith('.local')) return false
   return domain.split('.').length === 2
 }
 
@@ -173,6 +198,177 @@ export function resolveRouteAuth(site: SiteConfig): RpxRoute['auth'] {
   }
 }
 
+/**
+ * The gateway's LAN certificate authority, mirroring rpx's `LocalCaConfig`
+ * (see `@stacksjs/rpx`'s `types.ts`, available since 0.11.49). rpx loads or
+ * creates the CA under `dir`, signs ONE leaf covering `hosts` + `ips`, and
+ * registers it both per server name and as the default TLS context, so a
+ * connection that sends no SNI at all (an IP-literal URL) still gets it.
+ */
+export interface RpxLocalCaConfig {
+  /** Directory holding the CA and the leaf it signs. See {@link DEFAULT_LOCAL_CA_DIR}. */
+  dir: string
+  /** dNSName SANs on the leaf, e.g. `['pi-app.local']`. Never empty. */
+  hosts: string[]
+  /** iPAddress SANs, so the box is also reachable by address over TLS. */
+  ips?: string[]
+  /** Install the CA into the box's OWN system trust store (rpx runs as root here). */
+  installTrust?: boolean
+  /** Leaf validity in days. Omitted so rpx applies its documented default (825). */
+  validityDays?: number
+  /** Re-mint when fewer than this many days remain. Omitted for rpx's default (30). */
+  renewBeforeDays?: number
+}
+
+/**
+ * LAN settings for a gateway on a host that is not on the public internet.
+ *
+ * This is the ONLY input that makes {@link buildRpxConfig} emit `localCa` or
+ * `https: false`, and it is passed exclusively on the ssh-provider path (see
+ * {@link resolveGatewayLan}), which is what keeps every cloud driver's
+ * emitted config byte-identical to what it produced before LAN TLS existed.
+ */
+export interface RpxLanOptions {
+  /** The LAN name the gateway's certificate covers. Defaults to `<slug>.local`. */
+  hostname?: string
+  /** `'local-ca'` issues a LAN certificate; `'off'` serves plain HTTP. @default 'local-ca' */
+  tls?: 'local-ca' | 'off'
+  /**
+   * The box's LAN address, when it is actually known: the ssh preflight's
+   * `lanIp`, else the configured ssh host when that is an IP literal. Never
+   * guessed: a wrong iPAddress SAN is worse than an absent one.
+   */
+  ip?: string
+}
+
+/** `lan.tls` with its default applied, or `undefined` when there is no LAN config. */
+export function lanTlsMode(lan?: RpxLanOptions): 'local-ca' | 'off' | undefined {
+  if (!lan) return undefined
+  return lan.tls ?? 'local-ca'
+}
+
+/**
+ * The LAN options for a config, or `undefined` when LAN TLS does not apply.
+ *
+ * The provider gate lives HERE, in one function, rather than at each call
+ * site: `ssh.lan` is meaningless for a cloud box (a Hetzner host has no LAN an
+ * operator can reach), and a driver that reads it anyway would start emitting
+ * a `localCa` the box can never use. Callers with resolved ssh settings should
+ * pass those instead; this reads `cloud.config.ts` alone, so a `TS_CLOUD_SSH_*`
+ * override is not visible to it.
+ */
+export function resolveGatewayLan(
+  config: Pick<CloudConfig, 'cloud' | 'ssh'>,
+  lanIp?: string,
+): RpxLanOptions | undefined {
+  if (config.cloud?.provider !== 'ssh') return undefined
+  const lan = config.ssh?.lan
+  if (!lan) return undefined
+  return {
+    ...(lan.hostname ? { hostname: lan.hostname } : {}),
+    tls: lan.tls ?? 'local-ca',
+    ...(lanIp ? { ip: lanIp } : {}),
+  }
+}
+
+/** The host profile the gateway unit should be tuned for, when one is known. */
+export function resolveGatewayProfile(
+  config: Pick<CloudConfig, 'cloud' | 'ssh'>,
+): 'raspberry-pi' | 'generic' | undefined {
+  if (config.cloud?.provider !== 'ssh') return undefined
+  return config.ssh?.profile
+}
+
+/**
+ * Is `domain` a name only a LAN can resolve? Either an mDNS `.local` name or a
+ * bare single-label hostname. Public CAs cannot issue for either, so these are
+ * exactly the names that need the box's own CA instead.
+ */
+export function isLanHostname(domain: string): boolean {
+  const host = domain.trim().toLowerCase()
+  if (!host || host.startsWith('*') || host.includes(':') || host.includes('/') || host.includes(' ')) return false
+  if (isIP(host) !== 0) return false
+  return host.endsWith('.local') || !host.includes('.')
+}
+
+/** One LAN hostname plus where it came from, so an overlap can name its source. */
+interface LanHostSource {
+  host: string
+  source: string
+}
+
+/**
+ * Every hostname the LAN certificate has to cover, in a stable order:
+ * the LAN hostname itself, the dashboard host under it when this project
+ * deploys a management dashboard, then any site domain a public CA could
+ * never issue for.
+ */
+function collectLocalCaHosts(
+  sites: Record<string, SiteConfig | undefined>,
+  lan: RpxLanOptions,
+  slug: string,
+): LanHostSource[] {
+  const out: LanHostSource[] = []
+  const seen = new Set<string>()
+  const add = (host: string, source: string): void => {
+    const normalized = host.trim().toLowerCase()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    out.push({ host: normalized, source })
+  }
+
+  const configured = lan.hostname?.trim()
+  const lanHost = (configured || `${slug}.local`).toLowerCase()
+  add(lanHost, configured ? 'ssh.lan.hostname' : `the ssh provider's default LAN name for project "${slug}"`)
+
+  // The dashboard is served on its own host, so a LAN certificate that only
+  // covers the app name leaves the control panel on a warning page, and that
+  // is the one page an operator opens first on a box with no public DNS.
+  const hasDashboard = Object.entries(sites).some(([name, site]) => !!site && isManagementDashboardSiteName(name))
+  if (hasDashboard) add(`dashboard.${lanHost}`, 'the management dashboard site')
+
+  for (const [name, site] of Object.entries(sites)) {
+    if (!site?.domain) continue
+    if (resolveSiteKind(site) === 'bucket') continue
+    if (!isLanHostname(site.domain)) continue
+    add(site.domain, `site "${name}"`)
+  }
+
+  return out
+}
+
+/** rpx's own suffix match for `onDemandTls.allowedSuffixes` (see its `matchesAllowedSuffix`). */
+function matchesAllowedSuffix(host: string, suffixes: string[] | undefined): string | undefined {
+  if (!suffixes?.length) return undefined
+  return suffixes.find((entry) => {
+    const suffix = (entry.startsWith('.') ? entry.slice(1) : entry).toLowerCase()
+    return host === suffix || host.endsWith(`.${suffix}`)
+  })
+}
+
+/**
+ * Refuse a config where one host is claimed by both the LAN CA and public
+ * on-demand TLS. rpx throws on this too, but only once the gateway restarts on
+ * the box, by which point the deploy has already reported success and the
+ * operator is reading a systemd journal. Failing here names the host AND both
+ * sources, which is the difference between a fixable message and a puzzle.
+ */
+function assertNoLocalCaOverlap(hosts: LanHostSource[], onDemandTls: RpxGatewayConfig['onDemandTls']): void {
+  if (!onDemandTls?.enabled) return
+  for (const { host, source } of hosts) {
+    const suffix = matchesAllowedSuffix(host, onDemandTls.allowedSuffixes)
+    if (!suffix) continue
+    throw new Error(
+      `The LAN certificate authority and public on-demand TLS both claim "${host}". `
+      + `LAN source: ${source}. Public source: the on-demand TLS allowed suffix "${suffix}", `
+      + 'which is derived from the site domains. A host is either LAN-only, with a certificate '
+      + "signed by the box's own CA, or public, with one issued by Let's Encrypt, never both. "
+      + 'Give the LAN a name no site domain covers (ssh.lan.hostname), or take that domain out '
+      + 'of the sites this deploy routes.',
+    )
+  }
+}
+
 /** The rpx daemon/proxy config produced from a sites model. */
 export interface RpxGatewayConfig {
   /** Multi-proxy route list (host + path keyed). */
@@ -194,8 +390,18 @@ export interface RpxGatewayConfig {
    * down to free `:80`. Omitted ⇒ the `:80` server only redirects.
    */
   acmeChallengeWebroot?: string
-  /** Always `true` — the gateway terminates TLS on the box. */
-  https: true
+  /**
+   * `true` (the only value any public deploy produces) terminates TLS on the
+   * box. `false` is the LAN opt-out (`ssh.lan.tls: 'off'`): rpx then binds the
+   * HTTP port only, and nothing on `:443`.
+   */
+  https: boolean
+  /**
+   * LAN certificate authority: rpx signs one leaf for these names with a CA it
+   * keeps on the box. Emitted ONLY on the ssh-provider path; see
+   * {@link RpxLanOptions}.
+   */
+  localCa?: RpxLocalCaConfig
   /** Never touch `/etc/hosts` on a real server with real DNS. */
   hostsManagement: false
   /** Don't remove certs/hosts on exit. */
@@ -220,6 +426,12 @@ export interface BuildRpxConfigOptions {
    * wrong directory.
    */
   slug?: string
+  /**
+   * LAN settings for a host with no public DNS. Passed on the ssh-provider
+   * path only (see {@link resolveGatewayLan}); every other driver leaves it
+   * undefined and gets exactly the config it always got.
+   */
+  lan?: RpxLanOptions
 }
 
 /**
@@ -428,6 +640,44 @@ function buildRpxConfigInternal(
     }
   }
 
+  // LAN mode, last so it can see the resolved `onDemandTls` set it must not
+  // collide with. Only the ssh-provider path supplies `lan`, so every other
+  // driver's emitted config is unchanged down to the key order: `https` keeps
+  // its position in the literal above and is only reassigned here.
+  //
+  // WHY THIS LIVES IN THE PER-SLUG FRAGMENT, not the assembled launcher.
+  // `localCa` is a gateway-wide setting, so the launcher looks like its
+  // natural home, but the launcher is REWRITTEN verbatim by every
+  // buildRpxProvisionScript run on the box, including a co-tenant's deploy
+  // that knows nothing about this project's LAN. Baked into the launcher, the
+  // CA would survive exactly until the next unrelated deploy and then quietly
+  // disappear, taking the box's only certificate with it. Carried in
+  // `sites.d/<slug>.json` it is owned by the project that configured it, and
+  // the assembler unions every fragment's `localCa` at startup into the one
+  // gateway-wide setting rpx wants. That is the same shape `onDemandTls` and
+  // `originGuard` already use, for the same reason.
+  if (options.lan) {
+    if (lanTlsMode(options.lan) === 'off') {
+      // Plain HTTP on the LAN: rpx binds the HTTP port only, no `:443` and no
+      // HTTP to HTTPS redirect, even though productionCerts is still set.
+      config.https = false
+    }
+    else {
+      const lanHosts = collectLocalCaHosts(sites, options.lan, installSlug)
+      assertNoLocalCaOverlap(lanHosts, config.onDemandTls)
+      const lanIps = options.lan.ip && isIP(options.lan.ip) !== 0 ? [options.lan.ip] : []
+      config.localCa = {
+        dir: DEFAULT_LOCAL_CA_DIR,
+        hosts: lanHosts.map(entry => entry.host),
+        ...(lanIps.length > 0 ? { ips: lanIps } : {}),
+        // The gateway runs as root, and the box itself is a client of its own
+        // names: health checks, the dashboard's own API calls and any `curl`
+        // an operator runs over ssh all go through this certificate.
+        installTrust: true,
+      }
+    }
+  }
+
   return config
 }
 
@@ -550,6 +800,31 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
   let acmeChallengeWebroot: string | undefined
   let guard: { header: string; value: string } | undefined
   let anyProduction = false
+  let localCa: RpxLocalCaConfig | undefined
+  const localCaHosts = new Set<string>()
+  const localCaIps = new Set<string>()
+  // TLS stays on unless EVERY fragment asks for plain HTTP. One co-tenant
+  // opting out of HTTPS must not unbind `:443` for a tenant that needs it:
+  // that is a total outage for the second tenant, where the first merely keeps
+  // serving over TLS it did not ask for.
+  let anyTls = false
+
+  for (const f of fragments) {
+    if (f.https !== false) anyTls = true
+    if (f.localCa) {
+      // The CA is a property of the box, so the first fragment's directory is
+      // the box's directory and later fragments contribute names to the same
+      // leaf. A fragment naming a different directory still contributes its
+      // hosts: a name left off the leaf gets no certificate at all, which is a
+      // worse outcome than a CA living somewhere the fragment did not expect.
+      localCa ??= { dir: f.localCa.dir, hosts: [] }
+      for (const host of f.localCa.hosts ?? []) localCaHosts.add(host)
+      for (const ip of f.localCa.ips ?? []) localCaIps.add(ip)
+      if (f.localCa.installTrust) localCa.installTrust = true
+      localCa.validityDays ??= f.localCa.validityDays
+      localCa.renewBeforeDays ??= f.localCa.renewBeforeDays
+    }
+  }
 
   for (const f of fragments) {
     for (const p of f.proxies ?? []) {
@@ -597,6 +872,12 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
     merged.onDemandTls = { enabled: true, allowedSuffixes: [...suffixes], email, certsDir, staging: !anyProduction }
   if (acmeChallengeWebroot) merged.acmeChallengeWebroot = acmeChallengeWebroot
   if (guard) merged.originGuard = { header: guard.header, value: guard.value, hosts: [...guardHosts] }
+  if (localCa) {
+    localCa.hosts = [...localCaHosts]
+    if (localCaIps.size > 0) localCa.ips = [...localCaIps]
+    merged.localCa = localCa
+  }
+  if (fragments.length > 0) merged.https = anyTls
   return merged
 }
 
@@ -627,6 +908,16 @@ let certsDir = ${JSON.stringify(defaultCertsDir)}
 let acmeChallengeWebroot
 let guard
 let anyProduction = false
+// LAN certificate authority, unioned across fragments. It is gateway-wide, but
+// it is carried per fragment because THIS file is rewritten wholesale by every
+// deploy on the box: a co-tenant's deploy would erase a CA baked in here, while
+// a fragment belongs to the project that configured it.
+let localCa
+const localCaHosts = new Set()
+const localCaIps = new Set()
+// TLS stays on unless every fragment asks for plain HTTP.
+let fragmentCount = 0
+let anyTls = false
 let files = []
 try { files = readdirSync(dir).filter(n => n.endsWith('.json')).sort() } catch {}
 for (const f of files) {
@@ -638,6 +929,17 @@ for (const f of files) {
   // fragment can't take every other app down, but the drop is now visible.
   try { frag = JSON.parse(readFileSync(dir + '/' + f, 'utf8')) }
   catch (err) { console.error('[rpx-assembler] SKIPPING malformed fragment ' + f + ' — its host(s) will 404 until fixed: ' + err); continue }
+  fragmentCount++
+  if (frag.https !== false) anyTls = true
+  if (frag.localCa) {
+    if (!localCa) localCa = { dir: frag.localCa.dir }
+    else if (frag.localCa.dir !== localCa.dir) console.warn('[rpx-assembler] ' + f + ' asks for a local CA in ' + frag.localCa.dir + '; the box already uses ' + localCa.dir + ', so its hosts join that CA instead')
+    for (const h of frag.localCa.hosts ?? []) localCaHosts.add(h)
+    for (const ip of frag.localCa.ips ?? []) localCaIps.add(ip)
+    if (frag.localCa.installTrust) localCa.installTrust = true
+    if (localCa.validityDays === undefined) localCa.validityDays = frag.localCa.validityDays
+    if (localCa.renewBeforeDays === undefined) localCa.renewBeforeDays = frag.localCa.renewBeforeDays
+  }
   for (const p of frag.proxies ?? []) {
     const key = p.id || (p.to + (p.path ?? ''))
     if (seen.has(key)) {
@@ -672,6 +974,10 @@ for (const f of files) {
     }
   }
 }
+if (localCa) {
+  localCa.hosts = [...localCaHosts]
+  if (localCaIps.size > 0) localCa.ips = [...localCaIps]
+}
 const config = {
   proxies,
   productionCerts: {
@@ -681,7 +987,7 @@ const config = {
     // OpenSSL SNI contexts when no current route can select them.
     certsDirServerNames: [...new Set(proxies.map(p => p.to).filter(Boolean))],
   },
-  https: true,
+  https: fragmentCount === 0 ? true : anyTls,
   hostsManagement: false,
   cleanup: { hosts: false, certs: false },
   // Verbose is the hard default for ts-cloud-installed gateways: without it,
@@ -693,6 +999,7 @@ const config = {
   ...(suffixes.size > 0 ? { onDemandTls: { enabled: true, allowedSuffixes: [...suffixes], email, certsDir, staging: !anyProduction } } : {}),
   ...(acmeChallengeWebroot ? { acmeChallengeWebroot } : {}),
   ...(guard ? { originGuard: { header: guard.header, value: guard.value, hosts: [...guardHosts] } } : {}),
+  ...(localCa && localCa.hosts.length > 0 ? { localCa } : {}),
 }
 
 await startProxies(config)
@@ -792,7 +1099,27 @@ export interface BuildRpxProvisionOptions {
   bunBin?: string
   /** Keep the dashboard route currently running on the box during an app-only deploy. */
   preserveManagementDashboardRoutes?: boolean
+  /**
+   * Host profile, when the caller knows it (the ssh provider resolves one; the
+   * cloud drivers do not and leave this undefined, keeping their unit byte for
+   * byte what it was). `raspberry-pi` lowers the gateway's memory ceilings, see
+   * {@link RASPBERRY_PI_PROXY_MEMORY}.
+   */
+  profile?: 'raspberry-pi' | 'generic'
 }
+
+/**
+ * Gateway cgroup ceilings by host profile.
+ *
+ * The generic defaults are sized for a 4G+ cloud box. A Pi is commonly a 2G
+ * board also running the app, a database and swap on an SD card, where a
+ * 768M ceiling is not a bound at all: the gateway can take a third of RAM
+ * before systemd notices, and the reclaim that follows lands on the SD card.
+ * The gateway's steady state is well under 100M on either machine, so the
+ * lower pair still leaves the same order of magnitude of burst room.
+ */
+export const RASPBERRY_PI_PROXY_MEMORY = { high: '256M', max: '384M' } as const
+export const DEFAULT_PROXY_MEMORY = { high: '512M', max: '768M' } as const
 
 export const RPX_CERT_RENEW_SCRIPT = '/etc/rpx/renew-certs.sh'
 export const RPX_CERT_RENEW_SERVICE = 'rpx-cert-renew.service'
@@ -989,9 +1316,12 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
   // gateway spike inside its own cgroup so global pressure cannot make the
   // kernel choose the mail server or another unrelated service as the victim.
   // The gateway normally stays well below 100M; these defaults leave ample
-  // burst room while remaining safe on a 4G host.
-  const memoryHigh = proxy.memoryHigh ?? '512M'
-  const memoryMax = proxy.memoryMax ?? '768M'
+  // burst room while remaining safe on a 4G host, and the raspberry-pi profile
+  // scales them down for a board that has a fraction of that RAM. An explicit
+  // `proxy.memoryHigh` / `proxy.memoryMax` always wins over either default.
+  const memoryDefaults = options.profile === 'raspberry-pi' ? RASPBERRY_PI_PROXY_MEMORY : DEFAULT_PROXY_MEMORY
+  const memoryHigh = proxy.memoryHigh ?? memoryDefaults.high
+  const memoryMax = proxy.memoryMax ?? memoryDefaults.max
 
   return [
     'set -euo pipefail',
