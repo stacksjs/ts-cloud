@@ -31,7 +31,7 @@ cloud.config.ts
       ▼
 resolveCloudProvider(config)          createCloudDriver({ config })
   cloud.provider, or auto-detected ───────────────►┌──────────────────────────┐
-  from hetzner credentials                         │        CloudDriver       │
+  from ssh.hosts / hetzner token                   │        CloudDriver       │
                                                    │                          │
                                                    │  provisionCompute  /     │
                                                    │  getComputeOutputs /     │
@@ -40,17 +40,18 @@ resolveCloudProvider(config)          createCloudDriver({ config })
                                                    │  destroyCompute          │
                                                    └────────────┬─────────────┘
                                                                 │
-                     ┌──────────────────────┬───────────────────┴──────┐
-                     ▼                      ▼                          ▼
-              ┌────────────┐        ┌──────────────┐           ┌─────────────┐
-              │ AwsDriver  │        │ HetznerDriver│           │LocalBoxDriver│
-              └────────────┘        └──────────────┘           └─────────────┘
+          ┌──────────────┬──────────────┬─────────┴────────────┐
+          ▼              ▼              ▼                      ▼
+   ┌────────────┐ ┌──────────────┐ ┌───────────┐       ┌─────────────┐
+   │ AwsDriver  │ │ HetznerDriver│ │ SshDriver │       │LocalBoxDriver│
+   └────────────┘ └──────────────┘ └───────────┘       └─────────────┘
 ```
 
 | Driver | Compute | Deploys via | Release staging | Infrastructure model |
 |--------|---------|-------------|-----------------|----------------------|
 | `aws` | EC2 (CloudFormation stacks or a lightweight single-box boot) | SSM `AWS-RunShellScript` | S3 deploy bucket | Clean, reviewable CloudFormation templates |
 | `hetzner` | Hetzner Cloud servers, cloud firewalls, private networks, native load balancers | SSH + cloud-init bootstrap | `/var/ts-cloud/staging` on the box | Direct Hetzner Cloud API calls |
+| `ssh` | A Linux host you already own (a Raspberry Pi, a colocated box) | SSH; the host is adopted, preflighted and bootstrapped in place | `/var/ts-cloud/staging` on the host | None: nothing is created or destroyed |
 | `local-box` | The machine ts-cloud runs on | Local shell | — | On-box management dashboard (box mode) |
 
 New providers implement the same interface (`packages/core/src/drivers/types.ts`) and register with the factory — DNS stays provider-agnostic via the separate `DnsProvider` abstraction (Cloudflare, Porkbun, GoDaddy, Route53).

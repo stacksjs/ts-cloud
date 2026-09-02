@@ -43,6 +43,7 @@ const config: BunPressConfig = {
       text: 'Guide',
       items: [
         { text: 'Cloud Providers', link: '/guide/providers' },
+        { text: 'Raspberry Pi', link: '/guide/raspberry-pi' },
         { text: 'Deployment', link: '/guide/deployment' },
       ],
     },

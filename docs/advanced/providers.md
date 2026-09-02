@@ -106,9 +106,10 @@ See [Cloud Providers](/guide/providers#choosing-an-object-storage-provider) for 
 There is no plugin entry point — adding a provider means contributing to the framework:
 
 1. Implement the `CloudDriver` interface for the new provider.
-2. Add its name to `CloudProviderName` (`packages/core/src/drivers/types.ts`).
-3. Wire it into `createCloudDriver` (`packages/ts-cloud/src/drivers/factory.ts`).
-4. For a CloudFormation-style provider, generate templates; for an SSH-style provider, follow `HetznerDriver`'s provision-then-deploy approach.
+2. Add its name to `CloudProviderName` (`packages/core/src/drivers/types.ts`). `CloudProviderContract<T>` is keyed by that union, so every provider-contract test (for example `test/drivers/provider-resilience.test.ts`) fails to typecheck until the new provider has an entry: that is the tripwire, not a nuisance.
+3. Teach `resolveCloudProvider` (same file) how the new provider is inferred from a config without an explicit `cloud.provider`, if it should be inferred at all.
+4. Wire it into `createCloudDriver` (`packages/ts-cloud/src/drivers/factory.ts`), passing every field of its config block through. Copy the reflection test (`src/drivers/hetzner/factory-wiring.test.ts`, `src/drivers/ssh/factory-wiring.test.ts`) so a config field nobody reads is a failing test rather than a silent no-op.
+5. For a CloudFormation-style provider, generate templates; for an SSH-style provider, follow `HetznerDriver`'s provision-then-deploy approach, or `SshDriver`'s adopt-then-deploy approach for hosts the provider does not create. `LocalBoxDriver` (`drivers/local-box/driver.ts`) is the degenerate case: the box the dashboard runs on, reached without SSH at all.
 
 ## Next Steps
 

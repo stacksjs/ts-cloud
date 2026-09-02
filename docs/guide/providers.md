@@ -1,6 +1,6 @@
 # Cloud Providers
 
-ts-cloud deploys to **AWS** or **Hetzner Cloud** for compute, and can put object storage on **AWS S3**, **Backblaze B2**, or **Hetzner Object Storage** — independently of where compute runs. You pick all of this in `cloud.config.ts`; there is no separate provider plugin to install.
+ts-cloud deploys to **AWS**, **Hetzner Cloud**, or **your own Linux hosts over SSH** for compute, and can put object storage on **AWS S3**, **Backblaze B2**, or **Hetzner Object Storage**, independently of where compute runs. You pick all of this in `cloud.config.ts`; there is no separate provider plugin to install.
 
 ## Choosing a compute provider
 
@@ -19,7 +19,7 @@ const config: CloudConfig = {
     production: { type: 'production', region: 'us-east-1' },
   },
 
-  // Compute provider — 'aws' (default) or 'hetzner'
+  // Compute provider: 'aws' (default), 'hetzner' or 'ssh'
   cloud: {
     provider: 'aws',
   },
@@ -31,8 +31,9 @@ export default config
 Provider selection is resolved by `resolveCloudProvider(config)`, which follows this order:
 
 1. `cloud.provider`, if set.
-2. `'hetzner'` if `hetzner.apiToken` is present.
-3. `'aws'` otherwise.
+2. `'ssh'` if `ssh.hosts` lists a host.
+3. `'hetzner'` if `hetzner.apiToken` is present.
+4. `'aws'` otherwise.
 
 ### AWS
 
@@ -88,6 +89,47 @@ const config: CloudConfig = {
 | `sshUser` | SSH user for deploy commands | `root` |
 
 If you set `hetzner.apiToken` but no `cloud.provider`, the provider resolves to `'hetzner'` automatically.
+
+### SSH (bring your own host)
+
+The `ssh` provider deploys to a Linux host you already have: a Raspberry Pi on the LAN, a colocated box, a VM from a provider ts-cloud has no API driver for. Nothing is created or destroyed on your behalf. ts-cloud **adopts** the host: it pins the host key, runs a preflight (`cloud ssh:preflight`), bootstraps the same stack the Hetzner driver installs at first boot, and from then on deploys exactly as it would to a cloud box.
+
+```typescript
+const config: CloudConfig = {
+  project: { name: 'Pi App', slug: 'pi-app', region: 'home' },
+  environments: { production: { type: 'production' } },
+
+  cloud: { provider: 'ssh' },
+
+  ssh: {
+    hosts: [{ host: 'pi-app.local', user: 'pi' }], // exactly one host today
+    hostKey: 'pin',                                 // pin | accept-new | insecure (default: pin)
+    profile: 'raspberry-pi',                        // raspberry-pi | generic (default: generic)
+  },
+
+  infrastructure: {
+    compute: { runtime: 'bun', proxy: { engine: 'rpx' } },
+  },
+}
+```
+
+`SshConfig` fields:
+
+| Field | Description | Default |
+| --- | --- | --- |
+| `hosts[].host` | Hostname or IP. Env: `TS_CLOUD_SSH_HOST` | required |
+| `hosts[].user` | SSH user. Non-root users need passwordless sudo. Env: `TS_CLOUD_SSH_USER` | `root` |
+| `hosts[].port` | SSH port. Env: `TS_CLOUD_SSH_PORT` | `22` |
+| `hosts[].privateKeyPath` | Private key for deploy commands. Env: `TS_CLOUD_SSH_KEY` | `~/.ssh/id_ed25519` |
+| `hostKey` | `pin` records the key on first contact in `<stateDir>/ssh/known_hosts` and refuses any other afterwards. Env: `TS_CLOUD_SSH_HOST_KEY` | `pin` |
+| `sudo` | Run remote scripts through `sudo -n` | `true` unless the user is `root` |
+| `profile` | `raspberry-pi` tunes swap, journald and the clock wait for an SD-card ARM board. Env: `TS_CLOUD_SSH_PROFILE` | `generic` |
+| `publicIp` | Address DNS should point at: `auto` or a literal | `auto` |
+| `lan` | `{ hostname, tls }` for a host only reachable on the LAN | unset |
+
+Listing `ssh.hosts` without a `cloud.provider` selects the ssh provider. The sizing keys under `infrastructure.compute` (`size`, `appServers`, `image`, ...) have no effect and are reported as warnings; `cloud.attachTo`, more than one host, and `managedServices.vitess` on ARM are refused. Teardown (`cloud compute:destroy`) clears local state only and never touches the host.
+
+For the Raspberry Pi flow end to end, see [Raspberry Pi](/guide/raspberry-pi).
 
 ## Choosing an object storage provider
 
