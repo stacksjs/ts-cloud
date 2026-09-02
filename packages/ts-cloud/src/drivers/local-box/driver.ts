@@ -11,8 +11,10 @@ import type { CloudDriver, ComputeStackOutputs, ComputeTarget, FindComputeTarget
  */
 export class LocalBoxDriver implements CloudDriver {
   // Label only — the dashboard uses runRemoteDeploy/findComputeTargets directly
-  // and never branches on the provider name for a local box.
-  readonly name = 'hetzner' as const
+  // and never branches on the provider name for a local box. `ssh` is the
+  // honest label: the box was reached over SSH (or is localhost), and it is
+  // not necessarily a Hetzner server.
+  readonly name = 'ssh' as const
   readonly usesCloudFormation = false
 
   async getComputeOutputs(): Promise<ComputeStackOutputs> {

@@ -113,6 +113,28 @@ describe('createCloudDriver', () => {
     expect(driver.usesCloudFormation).toBe(false)
   })
 
+  it('returns SshDriver when cloud.provider is ssh', () => {
+    const config: CloudConfig = {
+      ...baseConfig,
+      cloud: { provider: 'ssh' },
+      hetzner: undefined,
+      ssh: { hosts: [{ host: 'pi.local', user: 'pi' }] },
+    }
+    const driver = createCloudDriver({ config })
+    expect(driver.name).toBe('ssh')
+    expect(driver.usesCloudFormation).toBe(false)
+  })
+
+  it('infers the ssh provider from ssh.hosts when cloud.provider is unset', () => {
+    const config: CloudConfig = {
+      ...baseConfig,
+      cloud: undefined,
+      hetzner: undefined,
+      ssh: { hosts: [{ host: 'pi.local' }] },
+    }
+    expect(createCloudDriver({ config }).name).toBe('ssh')
+  })
+
   it('allows an attached project to construct a state-only Hetzner driver', () => {
     const config: CloudConfig = {
       ...baseConfig,

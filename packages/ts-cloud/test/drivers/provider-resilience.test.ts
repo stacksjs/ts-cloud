@@ -2,6 +2,7 @@ import type { CloudConfig, CloudProviderContract } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
 import { buildAwsUserData } from '../../src/drivers/aws/provision'
 import { generateUbuntuAppCloudInit } from '../../src/drivers/hetzner/cloud-init'
+import { buildSshBootstrapScript } from '../../src/drivers/ssh/bootstrap'
 
 type ResilienceRenderer = (config: CloudConfig) => string
 
@@ -12,6 +13,7 @@ const renderers = {
       runtime: config.infrastructure?.compute?.runtime,
       swapGb: config.infrastructure?.compute?.swapGb,
     }),
+  ssh: (config) => buildSshBootstrapScript({ config, environment: 'production', profile: 'generic' }),
 } satisfies CloudProviderContract<ResilienceRenderer>
 
 describe('compute resilience provider contract', () => {

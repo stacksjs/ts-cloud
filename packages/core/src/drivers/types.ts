@@ -1,6 +1,6 @@
 import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
 
-export type CloudProviderName = 'aws' | 'hetzner'
+export type CloudProviderName = 'aws' | 'hetzner' | 'ssh'
 
 /**
  * Exhaustive provider map. Provider-specific contract tests key off this type,
@@ -192,10 +192,17 @@ export interface DeploySiteReleaseResult {
 
 /**
  * Resolve the configured cloud provider. Defaults to AWS for backward compatibility.
- * Environment-based auto-detection is handled when constructing the Hetzner driver.
+ *
+ * An explicit `cloud.provider` always wins. Without one, the config itself is
+ * the tell: a project that lists `ssh.hosts` is deploying to hosts it already
+ * owns, and a project with a Hetzner token is deploying to Hetzner. The ssh
+ * provider is never inferred from the environment alone (`TS_CLOUD_SSH_HOST`
+ * is a per-machine override, not a statement of intent); the Hetzner token
+ * check keeps the behaviour it always had.
  */
 export function resolveCloudProvider(config: CloudConfig): CloudProviderName {
   if (config.cloud?.provider) return config.cloud.provider
+  if (config.ssh?.hosts?.length) return 'ssh'
   if (config.hetzner?.apiToken) return 'hetzner'
   return 'aws'
 }

@@ -358,6 +358,21 @@ export {
   cloudDrivers,
   AwsDriver,
   HetznerDriver,
+  // Bring-your-own hosts over SSH (a Raspberry Pi, a colocated box).
+  SshDriver,
+  SystemSshTransport,
+  resolveSshSettings,
+  buildSshBootstrapScript,
+  SSH_BOOTSTRAP_VERSION,
+  evaluatePreflight,
+  formatPreflightFindings,
+  parsePreflightFacts,
+  preflightFailed,
+  SSH_PREFLIGHT_SCRIPT,
+  buildCloudInitFirstBoot,
+  driverStatePath,
+  readDriverState,
+  writeDriverState,
   HetznerClient,
   resolveHetznerApiToken,
   normalizeSshPublicKey,
@@ -392,6 +407,18 @@ export {
   hasAutoWwwVariant,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
+export type {
+  DriverState,
+  FirstBootBundle,
+  FirstBootIdentity,
+  FirstBootOs,
+  ResolvedSshSettings,
+  SshDriverOptions,
+  SshDriverState,
+  SshPreflightFacts,
+  SshTransport,
+  SshTransportOptions,
+} from './drivers'
 export {
   dashboardActions,
   resolveDashboardAction,

@@ -10,6 +10,8 @@
 export interface RemoteExecOptions {
   /** SSH user. @default 'root' */
   user?: string
+  /** SSH port. Omit for the ambient default (22, or whatever `~/.ssh/config` says). */
+  port?: number
   /** Private key passed as `ssh -i`. Omit to use the ambient SSH config/agent. */
   identityFile?: string
   /** SSH `ConnectTimeout` in seconds. @default 10 */
@@ -26,10 +28,14 @@ export interface RemoteExecResult {
  * The ssh/scp CLI arguments implied by {@link RemoteExecOptions}. Host key
  * checking is disabled because these helpers target freshly-created servers
  * whose host keys cannot be known in advance.
+ *
+ * `scp` spells the port flag differently (`-P`; its `-p` preserves file
+ * times), so say which binary the arguments are for.
  */
-export function buildSshArgs(options: RemoteExecOptions = {}): string[] {
+export function buildSshArgs(options: RemoteExecOptions = {}, binary: 'ssh' | 'scp' = 'ssh'): string[] {
   const args: string[] = []
   if (options.identityFile) args.push('-i', options.identityFile)
+  if (options.port) args.push(binary === 'scp' ? '-P' : '-p', String(options.port))
   args.push(
     '-o',
     'StrictHostKeyChecking=no',
@@ -76,7 +82,7 @@ export async function scpUpload(
   options: RemoteExecOptions = {},
 ): Promise<void> {
   const proc = Bun.spawn(
-    ['scp', ...buildSshArgs(options), ...localPaths, `${options.user ?? 'root'}@${host}:${remoteDir}`],
+    ['scp', ...buildSshArgs(options, 'scp'), ...localPaths, `${options.user ?? 'root'}@${host}:${remoteDir}`],
     {
       stdout: 'pipe',
       stderr: 'pipe',
@@ -146,10 +152,21 @@ export async function waitForCloudInit(host: string, options: WaitOptions = {}):
  * `-s` in the first place), and `mktemp` creates the file 0600, so the window
  * where they touch disk is both short and unreadable to other users.
  */
-export const REMOTE_SCRIPT_RUNNER: string = [
-  'set -e',
-  'ts_cloud_script=$(mktemp /tmp/ts-cloud-deploy.XXXXXXXX)',
-  'trap \'rm -f "$ts_cloud_script"\' EXIT',
-  'cat > "$ts_cloud_script"',
-  'bash "$ts_cloud_script" < /dev/null',
-].join('\n')
+export function remoteScriptRunner(options: { sudo?: boolean } = {}): string {
+  // A non-root deploy user stages the script as itself and hands only the
+  // execution to root: the temp file is created 0600 by the user, `sudo -n`
+  // refuses to prompt (a password prompt over a piped stdin would hang the
+  // deploy), and `-H` gives the script root's HOME so installers that
+  // dereference $HOME (bun's, for one) land in /root as they do on a cloud box.
+  const run = options.sudo ? 'sudo -n -H bash "$ts_cloud_script" < /dev/null' : 'bash "$ts_cloud_script" < /dev/null'
+  return [
+    'set -e',
+    'ts_cloud_script=$(mktemp /tmp/ts-cloud-deploy.XXXXXXXX)',
+    'trap \'rm -f "$ts_cloud_script"\' EXIT',
+    'cat > "$ts_cloud_script"',
+    run,
+  ].join('\n')
+}
+
+/** The runner for a root deploy user; see {@link remoteScriptRunner}. */
+export const REMOTE_SCRIPT_RUNNER: string = remoteScriptRunner()

@@ -1,5 +1,5 @@
 import type { FleetDriver, FleetServer, ServerFacts, ServerProvider } from './index'
-import { createHash } from 'node:crypto'
+import { scanHostKey, sshHostKeyFingerprint } from '../drivers/shared/ssh-transport'
 
 export interface FleetSshTransport {
   scan(endpoint: string, port: number): Promise<{ algorithm: string; key: string }>
@@ -16,15 +16,7 @@ const run = async (command: string[]): Promise<{ code: number; stdout: string; s
 }
 export class SystemFleetSshTransport implements FleetSshTransport {
   async scan(endpoint: string, port: number): Promise<{ algorithm: string; key: string }> {
-    const result = await run(['ssh-keyscan', '-T', '10', '-p', String(port), '-t', 'ed25519', endpoint]),
-      fields = result.stdout
-        .split('\n')
-        .find((line) => line && !line.startsWith('#'))
-        ?.trim()
-        .split(/\s+/)
-    if (result.code !== 0 || !fields?.[1] || !fields[2])
-      throw new Error(`SSH host-key scan failed: ${result.stderr.trim() || 'no key returned'}`)
-    return { algorithm: fields[1], key: fields[2] }
+    return scanHostKey(endpoint, port)
   }
   async exec(server: FleetServer, command: string): Promise<{ code: number; stdout: string; stderr: string }> {
     if (server.trustState !== 'pinned') throw new Error('SSH host key must be pinned before remote execution.')
@@ -43,8 +35,7 @@ export class SystemFleetSshTransport implements FleetSshTransport {
     ])
   }
 }
-const fingerprint = (key: string): string =>
-  `SHA256:${createHash('sha256').update(Buffer.from(key, 'base64')).digest('base64').replace(/=+$/, '')}`
+const fingerprint = sshHostKeyFingerprint
 const FACTS = `set -eu; printf '{'; printf '"os":"%s",' "$(. /etc/os-release 2>/dev/null; printf %s "\${PRETTY_NAME:-Linux}")"; printf '"arch":"%s",' "$(uname -m)"; printf '"cpuCores":%s,' "$(getconf _NPROCESSORS_ONLN)"; printf '"memoryBytes":%s,' "$(awk '/MemTotal/{print $2*1024}' /proc/meminfo)"; printf '"diskBytes":%s,' "$(df -B1 / | awk 'NR==2{print $2}')"; printf '"diskFreeBytes":%s,' "$(df -B1 / | awk 'NR==2{print $4}')"; printf '"dnsOk":'; getent hosts example.com >/dev/null && printf true || printf false; printf ',"timeSkewSeconds":0,"tools":{"curl":"'; command -v curl >/dev/null && printf installed; printf '","tar":"'; command -v tar >/dev/null && printf installed; printf '"},"privilege":"'; sudo -n true >/dev/null 2>&1 && printf sudo || printf user; printf '"}'`
 export class SshFleetDriver implements FleetDriver {
   constructor(

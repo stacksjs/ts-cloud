@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { REMOTE_SCRIPT_RUNNER } from '../../src/drivers/shared/remote-exec'
+import { REMOTE_SCRIPT_RUNNER, remoteScriptRunner } from '../../src/drivers/shared/remote-exec'
 import { describeScriptSyntaxError } from '../../src/drivers/hetzner/driver'
 
 /**
@@ -60,6 +60,21 @@ describe('remote script runner', () => {
     expect(runStaged('echo ok\nexit 7\n').status).toBe(7)
     expect(runStaged('echo ok\n').status).toBe(0)
     expect(runStaged('set -e\nfalse\necho unreachable\n').status).toBe(1)
+  })
+
+  it('is the sudo-less variant of remoteScriptRunner', () => {
+    expect(remoteScriptRunner()).toBe(REMOTE_SCRIPT_RUNNER)
+    expect(REMOTE_SCRIPT_RUNNER.endsWith('bash "$ts_cloud_script" < /dev/null')).toBe(true)
+    expect(REMOTE_SCRIPT_RUNNER).not.toContain('sudo')
+  })
+
+  it('hands only the execution to root for a non-root deploy user', () => {
+    const runner = remoteScriptRunner({ sudo: true })
+    // Staged as the user (0600 temp file), run as root with root's HOME, no
+    // password prompt possible over the piped stdin.
+    expect(runner.endsWith('sudo -n -H bash "$ts_cloud_script" < /dev/null')).toBe(true)
+    expect(runner).toContain('cat > "$ts_cloud_script"')
+    expect(runner.split('\n').slice(0, -1)).toEqual(REMOTE_SCRIPT_RUNNER.split('\n').slice(0, -1))
   })
 
   it('leaves no staged script behind', () => {

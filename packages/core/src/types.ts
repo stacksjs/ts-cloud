@@ -4,9 +4,14 @@
 export interface CloudProviderConfig {
   /**
    * Infrastructure provider for compute and related resources.
+   *
+   * `'ssh'` deploys to Linux hosts you already own and reach over SSH (a
+   * Raspberry Pi on the LAN, a colocated box, a VM from a provider ts-cloud
+   * has no API driver for). Nothing is created or destroyed on your behalf;
+   * see {@link SshConfig}.
    * @default 'aws'
    */
-  provider?: 'aws' | 'hetzner'
+  provider?: 'aws' | 'hetzner' | 'ssh'
 
   /**
    * Attach this project's sites to a box owned by ANOTHER project instead of
@@ -136,6 +141,88 @@ export interface HetznerConfig {
 }
 
 /**
+ * One bring-your-own host the ssh provider deploys to.
+ */
+export interface SshHostConfig {
+  /** Hostname or IP address ts-cloud connects to, e.g. `pi-app.local` or `203.0.113.7`. */
+  host: string
+  /** SSH user. Env: `TS_CLOUD_SSH_USER`. @default 'root' */
+  user?: string
+  /** SSH port. Env: `TS_CLOUD_SSH_PORT`. @default 22 */
+  port?: number
+  /** Path to the SSH private key used for deploy commands. Env: `TS_CLOUD_SSH_KEY`. @default '~/.ssh/id_ed25519' */
+  privateKeyPath?: string
+  /**
+   * What the host does. Only `app` exists today: one host runs the gateway,
+   * the sites and the managed services. Declared so a future services or
+   * load-balancer role does not have to change the shape of the list.
+   * @default 'app'
+   */
+  role?: 'app'
+}
+
+/**
+ * Bring-your-own hosts, deployed to over SSH (when `cloud.provider` is `'ssh'`).
+ *
+ * The ssh provider ADOPTS a machine rather than provisioning one: you install
+ * the OS, ts-cloud checks the host (`cloud ssh:preflight`), bootstraps the
+ * same stack the Hetzner driver installs at first boot, and from then on
+ * deploys exactly as it would to a cloud box. Teardown clears local state
+ * only and never touches the host.
+ *
+ * Every value here can also come from the environment (`TS_CLOUD_SSH_*`),
+ * and what is written here always wins over the environment, for the same
+ * reason as {@link HetznerConfig}: a stray shell export must not silently
+ * redirect a deploy to another machine. Resolution lives in one place:
+ * `resolveSshSettings` in `@stacksjs/ts-cloud` (`drivers/ssh/config.ts`).
+ */
+export interface SshConfig {
+  /** The hosts to deploy to. Exactly one host is supported today. Env: `TS_CLOUD_SSH_HOST`. */
+  hosts: SshHostConfig[]
+  /**
+   * How the host's SSH key is trusted. `pin` records the key on first contact
+   * (in `<stateDir>/ssh/known_hosts`) and refuses a different one afterwards;
+   * `accept-new` lets ssh record it on first contact; `insecure` never
+   * checks, which is what the cloud drivers do because their provider API is
+   * what identifies the box. A bring-your-own host has no such API, so the
+   * default pins. Env: `TS_CLOUD_SSH_HOST_KEY`.
+   * @default 'pin'
+   */
+  hostKey?: 'pin' | 'accept-new' | 'insecure'
+  /**
+   * Run the remote scripts through `sudo -n`. Defaults to true for any user
+   * other than root, which is the only sensible reading: a deploy user that
+   * cannot become root cannot install packages, write systemd units or bind
+   * :80 and :443. Set to false to insist on a root-capable user.
+   */
+  sudo?: boolean
+  /**
+   * Host profile. `raspberry-pi` tunes the bootstrap for an SD-card ARM
+   * board: a smaller swapfile, a bounded journal, a wait for time sync before
+   * apt runs (a Pi 5 has no battery-backed clock), and an early refusal of
+   * services that only ship x86_64 builds. Env: `TS_CLOUD_SSH_PROFILE`.
+   * @default 'generic'
+   */
+  profile?: 'raspberry-pi' | 'generic'
+  /**
+   * The public IP DNS should point at. `auto` asks the host for its own
+   * address; a literal address is used as-is (a home connection behind NAT
+   * whose router forwards :80/:443 to the host, for instance).
+   * @default 'auto'
+   */
+  publicIp?: 'auto' | string
+  /**
+   * LAN access, for a host that is not reachable from the internet at all.
+   * `hostname` is the mDNS name the gateway also answers on (`pi-app.local`);
+   * `tls` chooses between a locally issued CA for that name and plain HTTP.
+   */
+  lan?: {
+    hostname?: string
+    tls?: 'local-ca' | 'off'
+  }
+}
+
+/**
  * AWS-specific configuration
  */
 export interface AwsConfig {
@@ -184,6 +271,13 @@ export interface CloudConfig {
    * Hetzner Cloud configuration (when cloud.provider is 'hetzner')
    */
   hetzner?: HetznerConfig
+
+  /**
+   * Bring-your-own hosts reached over SSH (when cloud.provider is 'ssh').
+   * Listing hosts here without setting `cloud.provider` selects the ssh
+   * provider.
+   */
+  ssh?: SshConfig
 
   /**
    * Object storage provider selection (AWS S3, Backblaze B2, Hetzner Object Storage).

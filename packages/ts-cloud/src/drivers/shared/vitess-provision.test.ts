@@ -54,6 +54,18 @@ describe('opt-in', () => {
   })
 })
 
+describe('architecture', () => {
+  it('refuses a non-x86_64 box before downloading anything, since Vitess ships x86_64 tarballs only', () => {
+    const script = buildVitessProvisionScript(true)
+    const guard = script.findIndex((line) => line.includes('uname -m'))
+    const install = script.findIndex((line) => line.includes('pantry'))
+    expect(guard).toBeGreaterThanOrEqual(0)
+    expect(guard).toBeLessThan(install)
+    expect(script[guard]).toContain('"$(uname -m)" != "x86_64"')
+    expect(script.slice(guard, guard + 4).join('\n')).toContain('exit 1')
+  })
+})
+
 describe('packages', () => {
   it('installs vitess, etcd, and mysql for a self-contained cluster', () => {
     // Pinned to the same GA release planServices installs. Unpinned resolves

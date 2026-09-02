@@ -21,21 +21,41 @@ export {
  * inline under `runcmd:` silently breaks bun/caddy installation. Writing the
  * file (shebang preserved) and running `bash <file>` guarantees a bash shell.
  */
-export function wrapCloudInitUserData(bootstrapScript: string): string {
-  const scriptPath = '/var/lib/cloud/ts-cloud-bootstrap.sh'
+export interface CloudInitUserDataExtras {
+  /** Where the script is written on the box. @default '/var/lib/cloud/ts-cloud-bootstrap.sh' */
+  scriptPath?: string
+  /** File mode of the written script. @default '0755' */
+  permissions?: string
+  /**
+   * Top-level cloud-config YAML emitted before `write_files:` (hostname,
+   * users, packages, ...). Complete lines, already at top-level indentation.
+   */
+  before?: string
+  /** Top-level cloud-config YAML emitted after `runcmd:`. */
+  after?: string
+}
+
+function yamlBlock(value: string | undefined): string {
+  if (!value) return ''
+  return value.endsWith('\n') ? value : `${value}\n`
+}
+
+export function wrapCloudInitUserData(bootstrapScript: string, extras: CloudInitUserDataExtras = {}): string {
+  const scriptPath = extras.scriptPath ?? '/var/lib/cloud/ts-cloud-bootstrap.sh'
+  const permissions = extras.permissions ?? '0755'
   const indented = bootstrapScript
     .split('\n')
     .map((line) => `      ${line}`)
     .join('\n')
 
   return `#cloud-config
-write_files:
+${yamlBlock(extras.before)}write_files:
   - path: ${scriptPath}
-    permissions: '0755'
+    permissions: '${permissions}'
     owner: root:root
     content: |
 ${indented}
 runcmd:
   - [ bash, ${scriptPath} ]
-`
+${yamlBlock(extras.after)}`
 }

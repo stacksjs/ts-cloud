@@ -604,6 +604,15 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
   launchers.clear()
 
   const out: string[] = [
+    // Vitess publishes x86_64 release tarballs only (see
+    // `buildVtctldClientInstallScript` for the same guard on the local side).
+    // On an arm64 box the pantry install below would fail on a URL that was
+    // silently wrong; failing here with the reason beats that, and the ssh
+    // driver refuses the config before ever contacting a known-ARM host.
+    'if [ "$(uname -m)" != "x86_64" ]; then',
+    '  echo "vitess: Vitess publishes only x86_64 release tarballs; this box is $(uname -m). Drop managedServices.vitess or use an x86_64 host." >&2',
+    '  exit 1',
+    'fi',
     ...buildPantryInstallScript(vitessPackages(config)),
     // Register mysqld's own library directory with the dynamic linker.
     //

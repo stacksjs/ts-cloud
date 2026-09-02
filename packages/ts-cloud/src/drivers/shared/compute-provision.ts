@@ -50,6 +50,13 @@ export interface ComputeProvisionOptions {
    * than one that offers SMTP to the internet.
    */
   environment?: string
+  /**
+   * Where the managed `authorized_keys` block is written. Defaults to root's
+   * file; a bootstrap that deploys as another user (the ssh provider with a
+   * `pi` or `deploy` user) points it at that user's home, or the operator
+   * keys in `compute.sshKeys` would authorize logins for the wrong account.
+   */
+  authorizedKeysPath?: string
 }
 
 /**
@@ -131,7 +138,7 @@ export function buildComputeProvisionScripts(config: CloudConfig, options?: Comp
   // neither is hand-written shell in a project's userData any more.
   extras.push(...buildAppUpdatesScript(compute.appUpdates))
   extras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
-  extras.push(...buildAuthorizedKeysScript(compute.sshKeys))
+  extras.push(...buildAuthorizedKeysScript(compute.sshKeys, { path: options?.authorizedKeysPath }))
   if (compute.backups?.enabled) {
     extras.push(
       ...buildBackupProvisionScript({

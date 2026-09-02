@@ -3,6 +3,7 @@ import { resolveCloudProvider } from '@ts-cloud/core'
 import { AwsDriver } from './aws/driver'
 import { HetznerDriver } from './hetzner/driver'
 import { isBoxMode, LocalBoxDriver } from './local-box/driver'
+import { SshDriver } from './ssh/driver'
 
 export interface CreateCloudDriverOptions {
   config: CloudConfig
@@ -35,6 +36,16 @@ export function createCloudDriver(options: CreateCloudDriverOptions): CloudDrive
         sshPublicKeyPath: options.config.hetzner?.sshPublicKeyPath,
         sshUser: options.config.hetzner?.sshUser,
         location: options.config.hetzner?.location,
+      })
+    case 'ssh':
+      // Same rule: every `ssh.*` field goes through, or setting it does nothing.
+      return new SshDriver({
+        hosts: options.config.ssh?.hosts,
+        hostKey: options.config.ssh?.hostKey,
+        sudo: options.config.ssh?.sudo,
+        profile: options.config.ssh?.profile,
+        publicIp: options.config.ssh?.publicIp,
+        lan: options.config.ssh?.lan,
       })
     default:
       throw new Error(`Unknown cloud provider: ${(options.provider ?? resolveCloudProvider(options.config)) as string}`)
