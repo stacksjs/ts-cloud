@@ -1,3 +1,30 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.10...v0.12.11)
+
+## ✨ Features
+
+- **ssh**: deploy to a Linux host you already own ([0719e68](https://github.com/stacksjs/ts-cloud/commit/0719e68)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **operations**: the inventory read a location Hetzner no longer sends (#193) ([ba6c2f2](https://github.com/stacksjs/ts-cloud/commit/ba6c2f2)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_ ([#193](https://github.com/stacksjs/ts-cloud/issues/193), [#193](https://github.com/stacksjs/ts-cloud/issues/193))
+
+## ♻️ Code Refactoring
+
+- **state**: share the driver state and honour the configured state dir ([e6bc13d](https://github.com/stacksjs/ts-cloud/commit/e6bc13d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📝 Documentation
+
+- the ssh provider and the Raspberry Pi guide ([c47448c](https://github.com/stacksjs/ts-cloud/commit/c47448c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.12.11 ([8f79aa7](https://github.com/stacksjs/ts-cloud/commit/8f79aa7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _Glenn Michael Torregosa <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.7...v0.12.8)
 
 ## 🐛 Bug Fixes
