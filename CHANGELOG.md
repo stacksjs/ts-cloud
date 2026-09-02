@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.11...v0.12.12)
+
+## ✨ Features
+
+- **ssh**: serve LAN hosts from the box's own certificate authority ([0e0283e](https://github.com/stacksjs/ts-cloud/commit/0e0283e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.12.12 ([6929dd3](https://github.com/stacksjs/ts-cloud/commit/6929dd3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.10...v0.12.11)
 
 ## ✨ Features
