@@ -7,8 +7,10 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { resolveProjectStackName } from '@ts-cloud/core'
 import { createCloudDriver } from '../drivers'
 import { resolveHetznerLocation } from '../drivers/hetzner/config'
+import { driverStatePath } from '../drivers/shared/driver-state'
 import { buildServerTopology } from './dashboard-topology'
 import { resolveSiteKind, siteInstallBase } from './site-target'
 import { describeSshKeys } from './ssh-config-editor'
@@ -378,7 +380,11 @@ function configuredBandwidthBudgetBytes(config: CloudConfig): number {
 }
 
 function loadLocalState(config: CloudConfig, environment: EnvironmentType): LocalState | null {
-  const statePath = join(process.cwd(), 'storage', 'cloud', 'state', `${config.project.slug}-${environment}.json`)
+  // The same path the driver wrote to: `project.stackName` overrides the
+  // `<slug>-<environment>` convention, and a configured state directory moves
+  // the file. Spelling either by hand here is how the dashboard reported a
+  // box as missing while the deploy that created it had just succeeded.
+  const statePath = driverStatePath(resolveProjectStackName(config, environment))
   if (!existsSync(statePath)) return null
 
   try {

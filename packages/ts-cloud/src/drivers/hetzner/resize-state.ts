@@ -2,7 +2,7 @@ import type { HetznerResizePhase } from './resize'
 import type { HetznerResizeManifest } from './resize-remote'
 import { mkdir, readFile, rename, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { STATE_DIR } from './state'
+import { driverStateDir } from '../shared/driver-state'
 
 export interface HetznerResizeCheckpoint {
   schemaVersion: 1
@@ -23,11 +23,11 @@ export interface HetznerResizeCheckpoint {
 }
 
 export function resizeCheckpointPath(stackName: string): string {
-  return join(process.cwd(), STATE_DIR, `${stackName}-resize.json`)
+  return join(driverStateDir(), `${stackName}-resize.json`)
 }
 
 export function resizeLockPath(stackName: string): string {
-  return join(process.cwd(), STATE_DIR, `${stackName}-resize.lock`)
+  return join(driverStateDir(), `${stackName}-resize.lock`)
 }
 
 export async function readResizeCheckpoint(stackName: string): Promise<HetznerResizeCheckpoint | null> {
@@ -40,7 +40,7 @@ export async function readResizeCheckpoint(stackName: string): Promise<HetznerRe
 
 export async function writeResizeCheckpoint(checkpoint: HetznerResizeCheckpoint): Promise<void> {
   const path = resizeCheckpointPath(checkpoint.stackName)
-  await mkdir(join(process.cwd(), STATE_DIR), { recursive: true })
+  await mkdir(driverStateDir(), { recursive: true })
   const tempPath = `${path}.${process.pid}.tmp`
   await writeFile(tempPath, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf8')
   await rename(tempPath, path)
@@ -51,7 +51,7 @@ export async function acquireResizeLock(
   staleAfterMs: number = 30 * 60_000,
 ): Promise<() => Promise<void>> {
   const path = resizeLockPath(stackName)
-  await mkdir(join(process.cwd(), STATE_DIR), { recursive: true })
+  await mkdir(driverStateDir(), { recursive: true })
   try {
     await mkdir(path)
   } catch (error) {

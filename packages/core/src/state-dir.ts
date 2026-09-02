@@ -47,6 +47,18 @@ export function setStateDir(dir?: string | null): void {
 }
 
 /**
+ * Whether anything configured the state directory (config or environment).
+ *
+ * The driver state files predate the configurable directory and have their
+ * own legacy home (`storage/cloud/state`, meant to be committed). They only
+ * move under the state directory when a project actually chose one, so a
+ * standalone project keeps its committed state where it always was.
+ */
+export function isStateDirConfigured(): boolean {
+  return Boolean(process.env[STATE_DIR_ENV_VAR]?.trim() || configuredStateDir)
+}
+
+/**
  * The configured state directory, as written — relative or absolute.
  */
 export function stateDir(): string {

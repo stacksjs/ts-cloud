@@ -1,5 +1,15 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+/**
+ * Hetzner driver state.
+ *
+ * The file handling itself lives in `../shared/driver-state` (one reader and
+ * writer for every SSH-style driver); this module keeps the Hetzner-typed
+ * view of it so the driver, the dashboard and the CLI read `serverId` and
+ * friends without a cast at every call site.
+ */
+import type { DriverState } from '../shared/driver-state'
+import { driverStatePath as sharedDriverStatePath, readDriverState as sharedReadDriverState, writeDriverState as sharedWriteDriverState } from '../shared/driver-state'
+
+export { LEGACY_DRIVER_STATE_DIR } from '../shared/driver-state'
 
 export interface HetznerDriverState {
   provider: 'hetzner'
@@ -34,33 +44,21 @@ export interface HetznerDriverState {
   appServerIds?: number[]
 }
 
-// Deploy state lives under the project's `storage/` tree (the Stacks storage
-// convention) rather than a hidden `.ts-cloud/` folder — and, unlike the
-// gitignored `storage/framework/`, `storage/cloud/` is meant to be COMMITTED so
-// CI (which never has a local .ts-cloud) can resolve the existing box by its
-// recorded serverId instead of trying to provision a new one.
-export const STATE_DIR = 'storage/cloud/state'
+/**
+ * The legacy, project-relative driver-state directory. Kept for callers that
+ * spell the path by hand; new code should ask `driverStateDir()` instead,
+ * which also honours a configured state directory.
+ */
+export const STATE_DIR: string = 'storage/cloud/state'
 
 export function driverStatePath(stackName: string): string {
-  return join(process.cwd(), STATE_DIR, `${stackName}.json`)
+  return sharedDriverStatePath(stackName)
 }
 
 export async function readDriverState(stackName: string): Promise<HetznerDriverState | null> {
-  try {
-    const raw = await readFile(driverStatePath(stackName), 'utf8')
-    return JSON.parse(raw) as HetznerDriverState
-  } catch {
-    return null
-  }
+  return sharedReadDriverState<HetznerDriverState>(stackName)
 }
 
-export async function writeDriverState(stackName: string, state: HetznerDriverState): Promise<void> {
-  const path = driverStatePath(stackName)
-  await mkdir(join(process.cwd(), STATE_DIR), { recursive: true })
-  // Atomic write: a crash mid-write would corrupt the JSON, and the reader's
-  // catch-all would then lose the pinned serverId (silently re-provisioning a
-  // duplicate box). Temp file + rename on the same filesystem is atomic.
-  const tmp = `${path}.${process.pid}.tmp`
-  await writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8')
-  await rename(tmp, path)
+export async function writeDriverState(stackName: string, state: DriverState): Promise<void> {
+  await sharedWriteDriverState(stackName, state)
 }
