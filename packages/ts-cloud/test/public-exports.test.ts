@@ -69,5 +69,9 @@ describe('package root re-exports its subpaths', () => {
     for (const helper of ['resolveAppDatabase', 'isLocalDatabase', 'siteInstallBase', 'reloadRpxGateway', 'gatewayHostnames', 'sshExec', 'scpUpload', 'readDriverState', 'writeDriverState']) {
       expect(typeof (root as Record<string, unknown>)[helper]).toBe('function')
     }
+
+    // `site:move`'s certificate scripts all take this directory. A caller that
+    // cannot read it here hardcodes the path instead.
+    expect(root.DEFAULT_RPX_CERTS_DIR).toBe('/etc/rpx/certs')
   })
 })

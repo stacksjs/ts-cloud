@@ -409,6 +409,11 @@ export {
   // to another tenant.
   gatewayHostnames,
   hasAutoWwwVariant,
+  // Where the box keeps its real per-domain certificates. `site:move`'s
+  // certificate scripts all take this directory, so a caller that cannot
+  // read it here has to hardcode the path - which is the duplication that
+  // drifts the day the gateway's layout changes.
+  DEFAULT_RPX_CERTS_DIR,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
 export type {
