@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.13...v0.12.14)
+
+## 🐛 Bug Fixes
+
+- **exports**: surface DEFAULT_RPX_CERTS_DIR for site:move's certificate effects ([b38aee8](https://github.com/stacksjs/ts-cloud/commit/b38aee8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.12.14 ([4b1fa23](https://github.com/stacksjs/ts-cloud/commit/4b1fa23)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.12...v0.12.13)
 
 ## 🐛 Bug Fixes
