@@ -157,6 +157,11 @@ export {
   reloadRpxGateway,
   renewRpxCertificates,
 } from './shared/compute-deploy'
+// `site:move` refuses to be built for a project whose database lives on the box
+// and has no way to be carried, and this is how a caller tells the two apart -
+// so it has to be reachable from the package root, alongside the operation that
+// demands it.
+export { isLocalDatabase } from './shared/db-provision'
 export {
   buildRpxConfig,
   buildRpxFragmentRefreshScript,

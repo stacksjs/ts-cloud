@@ -394,6 +394,10 @@ export {
   resolveExecStart,
   deployAllComputeSites,
   deploySiteRelease,
+  // `site:move` refuses to be built for a project whose database lives on
+  // the box and has no way to be carried; this is how a caller tells that
+  // case from an external database, so it belongs beside the operation.
+  isLocalDatabase,
   // Re-exported so a deploy can re-run cert issuance and reload after DNS
   // lands: a brand-new subdomain has no A record when the gateway is first
   // reloaded, so ACME cannot have issued a certificate for it yet.

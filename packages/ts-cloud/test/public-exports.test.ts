@@ -16,6 +16,7 @@
 import { describe, expect, it } from 'bun:test'
 import * as cdn from '../src/cdn'
 import * as dns from '../src/dns'
+import * as operations from '../src/operations'
 import * as root from '../src/index'
 
 /** Names a subpath exports that the root does not. */
@@ -47,5 +48,26 @@ describe('package root re-exports its subpaths', () => {
   it('exports the Cloudflare CDN entry points a deploy needs', () => {
     expect(typeof root.reconcileCloudflareCdn).toBe('function')
     expect(typeof root.resolveCloudflareCdnPlan).toBe('function')
+  })
+
+  it('surfaces every runtime value from ./operations', () => {
+    expect(missingFromRoot(operations)).toEqual([])
+  })
+
+  /**
+   * An operation's contract names the helpers a caller has to supply its effects
+   * with, and those are as much a part of the surface as the planner is. Every
+   * one of these WAS reachable except `isLocalDatabase`, which `site:move`'s
+   * docs tell a caller to narrow `resolveAppDatabase` by so the plan can refuse
+   * to move an app and leave its database behind. It lives in the drivers
+   * barrel, which the root re-exports by an explicit list rather than wholesale,
+   * so it resolved to `undefined` at the call site with no error - the caller's
+   * choice was between guessing at the config shape and shipping the refusal
+   * the operation exists to make.
+   */
+  it('exports the helpers an operation tells its caller to build effects from', () => {
+    for (const helper of ['resolveAppDatabase', 'isLocalDatabase', 'siteInstallBase', 'reloadRpxGateway', 'gatewayHostnames', 'sshExec', 'scpUpload', 'readDriverState', 'writeDriverState']) {
+      expect(typeof (root as Record<string, unknown>)[helper]).toBe('function')
+    }
   })
 })
