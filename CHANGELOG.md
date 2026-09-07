@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.14...v0.12.15)
+
+## 🐛 Bug Fixes
+
+- **exports**: surface the rpx gateway builders site:move refreshes with ([a822ca7](https://github.com/stacksjs/ts-cloud/commit/a822ca7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.12.15 ([26fd679](https://github.com/stacksjs/ts-cloud/commit/26fd679)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.13...v0.12.14)
 
 ## 🐛 Bug Fixes
