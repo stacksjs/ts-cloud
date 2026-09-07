@@ -414,6 +414,13 @@ export {
   // read it here has to hardcode the path - which is the duplication that
   // drifts the day the gateway's layout changes.
   DEFAULT_RPX_CERTS_DIR,
+  // The gateway config and the script that rewrites one project's route
+  // fragment and restarts the assembler. `site:move`'s `refreshTargetGateway`
+  // has to run against the TARGET box specifically, which `reloadRpxGateway`
+  // cannot do - it deploys to the driver's own compute targets, and during a
+  // move those are still the source.
+  buildRpxConfig,
+  buildRpxFragmentRefreshScript,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
 export type {

@@ -66,7 +66,7 @@ describe('package root re-exports its subpaths', () => {
    * the operation exists to make.
    */
   it('exports the helpers an operation tells its caller to build effects from', () => {
-    for (const helper of ['resolveAppDatabase', 'isLocalDatabase', 'siteInstallBase', 'reloadRpxGateway', 'gatewayHostnames', 'sshExec', 'scpUpload', 'readDriverState', 'writeDriverState']) {
+    for (const helper of ['resolveAppDatabase', 'isLocalDatabase', 'siteInstallBase', 'reloadRpxGateway', 'gatewayHostnames', 'sshExec', 'scpUpload', 'readDriverState', 'writeDriverState', 'buildRpxConfig', 'buildRpxFragmentRefreshScript']) {
       expect(typeof (root as Record<string, unknown>)[helper]).toBe('function')
     }
 
