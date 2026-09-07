@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.12...v0.12.13)
+
+## 🐛 Bug Fixes
+
+- **exports**: surface isLocalDatabase, which site:move tells callers to use ([a2e8449](https://github.com/stacksjs/ts-cloud/commit/a2e8449)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.12.13 ([b69fdef](https://github.com/stacksjs/ts-cloud/commit/b69fdef)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.11...v0.12.12)
 
 ## ✨ Features
