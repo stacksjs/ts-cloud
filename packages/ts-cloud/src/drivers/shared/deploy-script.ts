@@ -10,7 +10,7 @@
  * release (no window where the code is half-replaced). Old releases are kept for
  * instant rollback. See {@link import('./releases')}.
  */
-import type { SharedPathEntry } from '@ts-cloud/core'
+import type { HostCleanupConfig, HostCleanupRuleConfig, SharedPathEntry } from '@ts-cloud/core'
 import { formatEnvFile } from './env-file'
 import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
@@ -751,28 +751,163 @@ export function buildLocalArtifactFetch(localPath: string, destPath: string): st
   ]
 }
 
+/** Root-filesystem usage (%) at or above which retention windows are shortened. */
+const DEFAULT_ESCALATE_AT_PERCENT = 85
+/** Root-filesystem usage (%) below which caches worth re-downloading are left alone. */
+const DEFAULT_RELAXED_BELOW_PERCENT = 50
+/** Divisor applied to configurable windows once {@link DEFAULT_ESCALATE_AT_PERCENT} is reached. */
+const DEFAULT_ESCALATION_FACTOR = 4
+
+const CLEANUP_SCRIPT_PATH = '/usr/local/sbin/ts-cloud-cleanup'
+const CLEANUP_UNIT = 'ts-cloud-cleanup'
+
+function resolveCleanupRules(options: HostCleanupConfig): HostCleanupRuleConfig[] {
+  const staging = Math.max(1, options.stagingMaxAgeMinutes ?? 60)
+  return [
+    { path: '/var/ts-cloud/staging', maxAgeMinutes: staging, fixedWindow: true },
+    { path: '/tmp', pattern: '*-release.tar.gz', maxAgeMinutes: staging, fixedWindow: true },
+    // Content-addressed upload cache. Retention used to be inlined in the
+    // Hetzner driver's upload path, where it only ran on a cache MISS — so the
+    // box reusing the cache most pruned it least — and its `*.tar.gz` filter
+    // could never match the `.<digest>-<uuid>.tmp` files a died-mid-SCP upload
+    // leaves behind, which therefore leaked permanently. Both belong here.
+    { path: '/var/ts-cloud/artifacts', pattern: '*.tar.gz', maxAgeMinutes: Math.max(1, options.artifactMaxAgeMinutes ?? 2880) },
+    // Same case the staging rule above already handles, one directory over.
+    { path: '/var/ts-cloud/artifacts', pattern: '.*.tmp', maxAgeMinutes: staging, fixedWindow: true },
+    // Retained releases contain installed dependencies; these are only download
+    // caches. Left alone on a host with room, since re-fetching costs network.
+    {
+      path: '/root/.bun/install/cache',
+      maxAgeMinutes: Math.max(1, options.bunCacheMaxAgeMinutes ?? 10080),
+      recursive: true,
+      pruneEmptyDirs: true,
+      onlyUnderPressure: true,
+    },
+    ...(options.rules ?? []),
+  ]
+}
+
+function renderCleanupRule(rule: HostCleanupRuleConfig): string[] {
+  const depth = rule.recursive ? '' : ' -maxdepth 1'
+  const name = rule.pattern ? ` -name ${JSON.stringify(rule.pattern)}` : ''
+  const type = rule.directories ? ' -type d' : ' -type f'
+  // Fixed windows are literals; the rest divide by the pressure factor the
+  // preamble resolved, so one script covers both the normal and escalated pass.
+  const age = rule.fixedWindow ? `${rule.maxAgeMinutes}` : `$((${rule.maxAgeMinutes} / TS_CLOUD_DIV))`
+  const find = `find ${rule.path} -xdev${depth}${rule.directories ? ' -depth' : ''}${type}${name} -mmin +${age} -delete 2>/dev/null || true`
+  const lines = [find]
+  if (rule.pruneEmptyDirs)
+    lines.push(`find ${rule.path} -xdev -depth -type d -empty -delete 2>/dev/null || true`)
+  return rule.onlyUnderPressure ? lines.map((line) => `  ${line}`) : lines
+}
+
 /**
- * Bounded, multi-tenant-safe host maintenance run after a successful deploy.
- * Current and rollback releases are deliberately out of scope: their retention
- * is managed by buildPruneReleases. This only removes abandoned staging/temp
- * archives, aged package caches, unused container images, and old journals.
+ * The cleanup pass itself, as a POSIX `sh` program.
+ *
+ * Bounded and multi-tenant-safe. Current and rollback releases are deliberately
+ * out of scope: their retention is `buildPruneReleases`' job. This only removes
+ * abandoned staging/temp archives, aged upload and package caches, unused
+ * container images, and old journals.
  */
-export function buildHostCleanupScript(): string[] {
+function buildCleanupProgram(options: HostCleanupConfig): string[] {
+  const relaxedBelow = options.relaxedBelowPercent ?? DEFAULT_RELAXED_BELOW_PERCENT
+  const escalateAt = options.escalateAtPercent ?? DEFAULT_ESCALATE_AT_PERCENT
+  const factor = Math.max(1, options.escalationFactor ?? DEFAULT_ESCALATION_FACTOR)
+  const rules = resolveCleanupRules(options)
+  const [pressured, always] = [
+    rules.filter((rule) => rule.onlyUnderPressure),
+    rules.filter((rule) => !rule.onlyUnderPressure),
+  ]
+
   return [
     'echo "[ts-cloud] host cleanup (disk before): $(df -h / | tail -1)"',
-    // One hour protects concurrent deploys on a shared box while bounding
-    // uploads stranded by failed or cancelled deploys.
-    'find /var/ts-cloud/staging -xdev -maxdepth 1 -type f -mmin +60 -delete 2>/dev/null || true',
-    'find /tmp -xdev -maxdepth 1 -type f -name "*-release.tar.gz" -mmin +60 -delete 2>/dev/null || true',
-    // Retained releases contain installed dependencies; these are only
-    // download caches. Keep a week to avoid unnecessary network churn.
-    'find /root/.bun/install/cache -xdev -type f -mtime +7 -delete 2>/dev/null || true',
-    'find /root/.bun/install/cache -xdev -depth -type d -empty -delete 2>/dev/null || true',
-    'journalctl --vacuum-time=14d --vacuum-size=512M >/dev/null 2>&1 || true',
-    // Only unused, week-old images qualify. Daemon-less hosts skip this.
-    'if command -v docker >/dev/null 2>&1; then docker image prune --all --force --filter "until=168h" >/dev/null 2>&1 || true; fi',
-    'if command -v podman >/dev/null 2>&1; then podman image prune --all --force --filter "until=168h" >/dev/null 2>&1 || true; fi',
-    'if command -v apt-get >/dev/null 2>&1; then apt-get clean >/dev/null 2>&1 || true; fi',
+    // Root usage drives the whole pass. Anything unparseable reads as 0, which
+    // is the conservative answer: cheap rules only, no shortened windows.
+    // `|| true` matters: this pass is also embedded inline at the tail of a
+    // deploy script running under `set -euo pipefail`, where a bare assignment
+    // from a failing pipeline would abort a deploy whose release is already live.
+    'TS_CLOUD_PCT=$(df -P / 2>/dev/null | awk \'NR==2 { gsub(/%/, "", $5); print $5 }\') || true',
+    'case "${TS_CLOUD_PCT:-}" in \'\'|*[!0-9]*) TS_CLOUD_PCT=0 ;; esac',
+    'TS_CLOUD_DIV=1',
+    `if [ "$TS_CLOUD_PCT" -ge ${escalateAt} ]; then`,
+    `  TS_CLOUD_DIV=${factor}`,
+    `  echo "[ts-cloud] host cleanup: root at \${TS_CLOUD_PCT}% (>= ${escalateAt}%) — shortening retention windows ${factor}x"`,
+    'fi',
+    ...always.flatMap(renderCleanupRule),
+    // Caches that cost network to rebuild, and journals. A host with room keeps
+    // them; a filling one does not.
+    `if [ "$TS_CLOUD_PCT" -ge ${relaxedBelow} ]; then`,
+    ...pressured.flatMap(renderCleanupRule),
+    `  journalctl --vacuum-time=${options.journalMaxAge ?? '14d'} --vacuum-size=${options.journalMaxSize ?? '512M'} >/dev/null 2>&1 || true`,
+    // Only unused, aged images qualify. Daemon-less hosts skip this.
+    `  if command -v docker >/dev/null 2>&1; then docker image prune --all --force --filter "until=${options.imageMaxAge ?? '168h'}" >/dev/null 2>&1 || true; fi`,
+    `  if command -v podman >/dev/null 2>&1; then podman image prune --all --force --filter "until=${options.imageMaxAge ?? '168h'}" >/dev/null 2>&1 || true; fi`,
+    '  if command -v apt-get >/dev/null 2>&1; then apt-get clean >/dev/null 2>&1 || true; fi',
+    'else',
+    `  echo "[ts-cloud] host cleanup: root at \${TS_CLOUD_PCT}% (< ${relaxedBelow}%) — keeping rebuildable caches"`,
+    'fi',
     'echo "[ts-cloud] host cleanup (disk after): $(df -h / | tail -1)"',
+  ]
+}
+
+/**
+ * Install the host cleanup pass and run it once.
+ *
+ * The pass is installed as a script plus a systemd timer rather than only being
+ * executed inline, because cleanup that runs solely as a side effect of
+ * deploying stops entirely on a box that stops deploying — and a deploy that
+ * fails, the run most likely to have stranded something, skips it too. The
+ * timer makes retention a property of the host; the inline run keeps a deploy's
+ * own leftovers from waiting for it.
+ */
+export function buildHostCleanupScript(options: HostCleanupConfig = {}): string[] {
+  const program = buildCleanupProgram(options)
+  if (options.timer === false)
+    return program
+
+  return [
+    // Every step here is guarded. This runs at the very end of a deploy, after
+    // the release is already live, so a host that cannot take the timer — no
+    // systemd, read-only /etc — must degrade to the inline pass, never fail a
+    // deploy that otherwise succeeded.
+    'if command -v systemctl >/dev/null 2>&1; then',
+    `cat > ${CLEANUP_SCRIPT_PATH} <<'TS_CLOUD_CLEANUP_EOF'`,
+    '#!/bin/sh',
+    // Deliberately not `set -e`: every rule is individually guarded, and a host
+    // missing one of these directories must not skip the rest of the pass.
+    'set -u',
+    ...program,
+    'TS_CLOUD_CLEANUP_EOF',
+    `chmod +x ${CLEANUP_SCRIPT_PATH}`,
+    `cat > /etc/systemd/system/${CLEANUP_UNIT}.service <<'TS_CLOUD_UNIT_EOF'`,
+    '[Unit]',
+    'Description=Reclaim stale deploy artifacts and caches (managed by ts-cloud)',
+    '',
+    '[Service]',
+    'Type=oneshot',
+    `ExecStart=${CLEANUP_SCRIPT_PATH}`,
+    'TS_CLOUD_UNIT_EOF',
+    `cat > /etc/systemd/system/${CLEANUP_UNIT}.timer <<'TS_CLOUD_UNIT_EOF'`,
+    '[Unit]',
+    `Description=Run ts-cloud host cleanup (${options.onCalendar ?? 'daily'})`,
+    '',
+    '[Timer]',
+    `OnCalendar=${options.onCalendar ?? 'daily'}`,
+    // A box that was off at the scheduled time still cleans when it comes back.
+    'Persistent=true',
+    'RandomizedDelaySec=30m',
+    '',
+    '[Install]',
+    'WantedBy=timers.target',
+    'TS_CLOUD_UNIT_EOF',
+    'systemctl daemon-reload >/dev/null 2>&1 || true',
+    `systemctl enable --now ${CLEANUP_UNIT}.timer >/dev/null 2>&1 || true`,
+    'fi',
+    // The timer's own first run may be up to a day out; this deploy's leftovers
+    // should not wait for it. Falls back to the inline pass wherever the
+    // install above was skipped or failed.
+    `if [ -x ${CLEANUP_SCRIPT_PATH} ]; then ${CLEANUP_SCRIPT_PATH} || true; else`,
+    ...program,
+    'fi',
   ]
 }

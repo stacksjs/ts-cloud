@@ -322,7 +322,7 @@ export async function deploySiteRelease(
     ...staticVhost,
     ...staticSsl,
     ...servicesScript,
-    ...buildHostCleanupScript(),
+    ...buildHostCleanupScript(compute?.cleanup),
   ]
 
   logger.step(`Deploying to ${targets.length} target(s)...`)

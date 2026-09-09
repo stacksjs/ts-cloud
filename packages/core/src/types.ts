@@ -2692,6 +2692,75 @@ export interface ContainerItemConfig {
   }
 }
 
+/**
+ * A directory whose aged files a host may reclaim.
+ *
+ * Components that write timestamped output outside the paths ts-cloud owns —
+ * backup dirs, rollback snapshots, exported certs — register a rule here rather
+ * than leaving it to accumulate unattended.
+ */
+export interface HostCleanupRuleConfig {
+  /** Absolute directory to prune. A missing directory is skipped silently. */
+  path: string
+  /** `find -name` pattern. @default '*' */
+  pattern?: string
+  /** Delete entries last modified more than this many minutes ago. */
+  maxAgeMinutes: number
+  /** Descend below the top level. @default false */
+  recursive?: boolean
+  /** Delete matching directories rather than files. @default false */
+  directories?: boolean
+  /** Remove directories left empty afterwards. @default false */
+  pruneEmptyDirs?: boolean
+  /** Exempt this window from disk-pressure shortening. @default false */
+  fixedWindow?: boolean
+  /** Skip while usage is below {@link HostCleanupConfig.relaxedBelowPercent}. @default false */
+  onlyUnderPressure?: boolean
+}
+
+/**
+ * Host disk retention.
+ *
+ * Cleanup runs on a timer as well as after each deploy, and reads root-filesystem
+ * usage first: below `relaxedBelowPercent` it leaves caches that cost network to
+ * rebuild, and at or above `escalateAtPercent` it divides every window here by
+ * `escalationFactor`. Bounds that exist for correctness rather than retention —
+ * an in-flight upload belonging to a concurrent deploy — never move.
+ */
+export interface HostCleanupConfig {
+  /**
+   * Content-addressed upload cache window. The dominant payoff is intra-deploy
+   * reuse — one upload, N sites copying it locally seconds later — so the
+   * default is deliberately short. @default 2880 (2 days)
+   */
+  artifactMaxAgeMinutes?: number
+  /** In-flight upload/staging bound. @default 60 */
+  stagingMaxAgeMinutes?: number
+  /** Bun download cache window. @default 10080 (7 days) */
+  bunCacheMaxAgeMinutes?: number
+  /** `journalctl --vacuum-time`. @default '14d' */
+  journalMaxAge?: string
+  /** `journalctl --vacuum-size`. @default '512M' */
+  journalMaxSize?: string
+  /** Container image prune cutoff. @default '168h' */
+  imageMaxAge?: string
+  /** Extra retention rules for paths ts-cloud does not own. */
+  rules?: HostCleanupRuleConfig[]
+  /** Below this root usage %, keep caches that cost network to rebuild. @default 50 */
+  relaxedBelowPercent?: number
+  /** At or above this root usage %, shorten every configurable window. @default 85 */
+  escalateAtPercent?: number
+  /** Divisor applied to configurable windows when escalating. @default 4 */
+  escalationFactor?: number
+  /**
+   * Install a systemd timer so the host keeps cleaning itself once it stops
+   * deploying. @default true
+   */
+  timer?: boolean
+  /** Timer cadence, as a systemd `OnCalendar=` expression. @default 'daily' */
+  onCalendar?: string
+}
+
 export interface ComputeConfig {
   /**
    * Compute mode: 'server' for EC2, 'serverless' for Fargate/Lambda
@@ -3068,6 +3137,14 @@ export interface ComputeConfig {
    * share it across sites (Forge's nginx templates).
    */
   nginxTemplates?: Record<string, string[]>
+
+  /**
+   * Host disk retention. ts-cloud reclaims stale deploy artifacts and caches on
+   * a timer and after every deploy; this tunes what it keeps. Omit for defaults
+   * sized to a typical box — a host packing many sites onto one disk is the
+   * case worth tuning.
+   */
+  cleanup?: HostCleanupConfig
 
   /**
    * On-box managed services to install (Forge's single-server model): the

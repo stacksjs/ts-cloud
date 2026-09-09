@@ -96,6 +96,50 @@ cloud release:pin <release-id> --remove
 
 Retention candidates never include active, activating, awaiting-approval, pinned, or currently referenced rollback releases. The store keeps a configurable minimum per resource and exposes candidates rather than deleting provider artifacts implicitly.
 
+## Host disk retention
+
+Release history is one thing a box accumulates; deploy machinery is another. Compute hosts also carry a content-addressed upload cache, staging tarballs, package caches, container images, and journals. These are reclaimed by a cleanup pass that runs **on a systemd timer as well as after each deploy** — a box that stops deploying keeps cleaning itself, and a deploy that fails no longer skips the pass that would have collected its leftovers.
+
+The pass reads root-filesystem usage before it does anything, and behaves differently by band:
+
+| Root usage | Behavior |
+| --- | --- |
+| Below `relaxedBelowPercent` (default 50%) | Reclaims deploy leftovers only. Caches that cost network to rebuild — the Bun download cache, container images, apt — are left alone. |
+| Between the two thresholds | Full pass at the configured windows. |
+| At or above `escalateAtPercent` (default 85%) | Full pass with every configurable window divided by `escalationFactor` (default 4). |
+
+Bounds that exist for correctness rather than retention never move with pressure: an in-flight upload belonging to a concurrent deploy on a shared box survives its hour however full the disk is.
+
+Defaults suit a typical box. A host packing many sites onto one disk is the case worth tuning:
+
+```ts
+infrastructure: {
+  compute: {
+    cleanup: {
+      // The upload cache mostly pays for itself within a single deploy — one
+      // upload, N sites copying it locally seconds later. Keep it short.
+      artifactMaxAgeMinutes: 720,
+      escalateAtPercent: 80,
+      onCalendar: 'daily',
+    },
+  },
+}
+```
+
+Components that write timestamped output to paths ts-cloud does not own register their own rules rather than accumulating unattended:
+
+```ts
+cleanup: {
+  rules: [
+    { path: '/root/rpx-backups', pattern: 'cert-backup-*', maxAgeMinutes: 4320, directories: true },
+  ],
+}
+```
+
+Each run prints root usage before and after, so the deploy log carries the trend. Set `timer: false` to keep the deploy-time pass and schedule the host's cleanup yourself.
+
+Rollback depth is separate and unchanged: `keepReleases` (default 4) governs how many past releases stay on the box, and cleanup never touches active or rollback releases.
+
 ## Automation API
 
 The versioned OpenAPI document and TypeScript client expose:
