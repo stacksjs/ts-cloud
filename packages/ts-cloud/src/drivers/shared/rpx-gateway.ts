@@ -1106,6 +1106,23 @@ export interface BuildRpxProvisionOptions {
    * {@link RASPBERRY_PI_PROXY_MEMORY}.
    */
   profile?: 'raspberry-pi' | 'generic'
+  /**
+   * Is this project a TENANT on a box another project owns (`cloud.attachTo`)?
+   *
+   * A tenant publishes its own routes and its own certificate renewal, and
+   * nothing else. The rpx install, the compiled launcher and the systemd unit
+   * are box-wide and belong to the owner: a tenant that rewrites them imposes
+   * its `proxy.version`, its memory ceilings and its pool settings on every
+   * other project sharing the machine.
+   *
+   * That was not theoretical. One tenant of an eight-tenant box pinned
+   * `proxy.version: '0.11.45'`, so each of its deploys reinstalled and
+   * recompiled the shared gateway at that release - rolling the box back from
+   * 0.11.52 twice in one evening and re-breaking a redirect fix that had just
+   * shipped, for every tenant at once. Nobody could see it from the tenant's
+   * config, which reads like a local setting.
+   */
+  tenant?: boolean
 }
 
 /**
@@ -1160,7 +1177,12 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
   if (!proxy.onDemandTls || !webroot || domains.length === 0) return []
 
   const bunBin = options.bunBin ?? '/usr/local/bin/bun'
-  const version = proxy.version ?? 'latest'
+  // tlsx is its own package on its own release line. This used to install
+  // `@stacksjs/tlsx@${proxy.version}` - fine while that was `latest`, and a
+  // guaranteed miss the moment anyone pinned rpx, since no tlsx release shares
+  // rpx's version numbers. The `|| true` below meant the box simply ended up
+  // without an ACME client and renewal failed silently.
+  const tlsxVersion = proxy.tlsxVersion ?? 'latest'
   const certsDir = config.productionCerts.certsDir
   const email = proxy.onDemandTlsEmail ?? `webmaster@${domains[0]}`
   const tlsxCli = `${bunBin} ${RPX_INSTALL_DIR}/node_modules/@stacksjs/tlsx/dist/bin/cli.js`
@@ -1269,7 +1291,9 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
 
   return [
     `mkdir -p ${webroot}`,
-    `(cd ${RPX_INSTALL_DIR} && ${bunBin} add @stacksjs/tlsx@${version}) || true`,
+    // The shared install is the owner's; a tenant renews its own certs with
+    // the client already on the box.
+    ...(options.tenant ? [] : [`(cd ${RPX_INSTALL_DIR} && ${bunBin} add @stacksjs/tlsx@${tlsxVersion}) || true`]),
     ...writeFileHeredoc(renewScriptPath, renewScript, 'TS_CLOUD_RENEW_EOF'),
     `chmod +x ${renewScriptPath}`,
     ...writeFileHeredoc(`/etc/systemd/system/${renewServiceName}`, renewService, 'TS_CLOUD_RENEW_SVC_EOF'),
@@ -1301,6 +1325,29 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
   const slug = (options.slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
   const fragment = JSON.stringify({ slug, ...config }, null, 2)
   const assembler = renderRpxAssembler(RPX_SITES_DIR, certsDir)
+
+  // A tenant publishes routes and certs; the gateway itself stays the owner's.
+  if (options.tenant) {
+    return [
+      'set -euo pipefail',
+      // Fail loudly rather than half-provisioning someone else's box. A tenant
+      // has no version to install and no unit to write, so if the owner has
+      // not deployed yet there is nothing here to attach to.
+      `if [ ! -x ${RPX_BINARY_PATH} ] || [ ! -d ${RPX_INSTALL_DIR}/node_modules/@stacksjs/rpx ]; then`,
+      `  echo "ts-cloud: no rpx gateway on this box. This project attaches to another project's compute, so it does not provision one - deploy the owning project first." >&2`,
+      '  exit 1',
+      'fi',
+      `mkdir -p ${RPX_SITES_DIR} ${certsDir}`,
+      ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
+        bunBin,
+        preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
+      }),
+      // The assembler re-reads every fragment at start, so this is what makes
+      // the tenant's own routes live - and the only box-wide effect it has.
+      `systemctl restart ${RPX_SERVICE_NAME}`,
+      ...buildCertManagementCommands(options),
+    ]
+  }
 
   // Bound stalled upstreams. rpx's pooled transport caps connections per
   // upstream and queues requests for a free slot; with no inactivity timeout a

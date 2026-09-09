@@ -950,11 +950,24 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     return true
   }
 
+  // A project that attaches to someone else's compute is a TENANT of that
+  // box's gateway: it writes its own routes and renews its own certs, and
+  // leaves the rpx install, the compiled launcher and the systemd unit to the
+  // owner. Without this, every tenant deploy reinstalled and recompiled the
+  // shared gateway at whatever version that ONE project asked for.
+  const tenant = Boolean(config.cloud?.attachTo)
+  if (tenant && (proxy.version || proxy.tlsxVersion)) {
+    logger.warn(
+      `rpx gateway: ignoring proxy.version/tlsxVersion — this project attaches to '${config.cloud?.attachTo}' and the gateway belongs to that box's owner.`,
+    )
+  }
+
   logger.step(`Reloading rpx gateway with ${rpxConfig.proxies.length} route(s)...`)
   const script = buildRpxProvisionScript({
     proxy,
     config: rpxConfig,
     slug,
+    tenant,
     // Same reason as `lan` above: this rewrites the gateway's systemd unit, so
     // a profile-tuned memory ceiling has to be re-derived or the next deploy
     // resets a Pi to the cloud-box defaults.

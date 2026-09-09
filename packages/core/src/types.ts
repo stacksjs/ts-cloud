@@ -3832,9 +3832,30 @@ export interface ComputeProxyConfig {
   engine: 'rpx'
   /**
    * npm version/range of `@stacksjs/rpx` to install on the box.
+   *
+   * The box OWNER's setting. There is one gateway per machine, and every
+   * provisioning deploy reinstalls and recompiles it, so this version is
+   * imposed on every project routed through that box - a tenant that pins an
+   * old release rolls the whole machine back to it. A project with
+   * `cloud.attachTo` set therefore does not provision the gateway at all and
+   * this field is ignored for it.
+   *
    * @default 'latest'
    */
   version?: string
+  /**
+   * npm version/range of `@stacksjs/tlsx`, the ACME client the cert-renewal
+   * timer runs. Owner-only, for the same reason as {@link version}.
+   *
+   * Separate from {@link version} because they are separate packages: the
+   * renewal step used to install `@stacksjs/tlsx@<the rpx version>`, which
+   * resolved to nothing whenever rpx was pinned, failed, and was swallowed by
+   * its own `|| true` - leaving the box with no ACME client and renewal
+   * failing silently until a cert expired.
+   *
+   * @default 'latest'
+   */
+  tlsxVersion?: string
   /**
    * Directory on the box holding real TLS certs (PEM `<domain>.crt`/`.key`),
    * served per-SNI by rpx. @default '/etc/rpx/certs'

@@ -686,6 +686,82 @@ describe('buildRpxProvisionScript', () => {
   })
 })
 
+// A shared box has one gateway, and it belongs to whoever owns the machine.
+// An attached tenant used to run the full provisioning script, so ITS
+// `proxy.version` reinstalled and recompiled the gateway for everyone: one
+// tenant pinned 0.11.45 and rolled an eight-tenant box back from 0.11.52 twice
+// in one evening.
+describe('buildRpxProvisionScript for an attached tenant', () => {
+  const tenantScript = (proxy: ComputeProxyConfig = rpxProxy): string =>
+    buildRpxProvisionScript({ proxy, config: buildRpxConfig(sites, { proxy }), slug: 'wildloop', tenant: true }).join('\n')
+
+  it('never touches the shared rpx install, launcher, binary or unit', () => {
+    const script = tenantScript({ engine: 'rpx', version: '0.11.45' })
+
+    expect(script).not.toContain('bun add @stacksjs/rpx')
+    expect(script).not.toContain('0.11.45')
+    expect(script).not.toContain('--compile')
+    expect(script).not.toContain(RPX_LAUNCHER_PATH)
+    expect(script).not.toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
+    expect(script).not.toContain('systemctl daemon-reload')
+    expect(script).not.toContain(`mv ${'/opt/rpx-gateway'} /opt/rpx-gateway.prev`)
+  })
+
+  it('writes its own fragment and restarts the gateway so its routes go live', () => {
+    const script = tenantScript()
+
+    expect(script).toContain(`mktemp "${RPX_SITES_DIR}/wildloop.json.XXXXXX"`)
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/wildloop.json`)
+    expect(script).toContain(`systemctl restart ${RPX_SERVICE_NAME}`)
+  })
+
+  it('fails loudly when the owner has not provisioned a gateway yet', () => {
+    const script = tenantScript()
+
+    expect(script).toContain('if [ ! -x /etc/rpx/gateway ] || [ ! -d /opt/rpx-gateway/node_modules/@stacksjs/rpx ]; then')
+    expect(script).toContain('deploy the owning project first')
+    expect(script).toContain('exit 1')
+  })
+
+  it('still installs its own certificate renewal, without adding tlsx to the shared install', () => {
+    const proxy: ComputeProxyConfig = { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'hello@stacksjs.com' }
+    const script = tenantScript(proxy)
+
+    expect(script).toContain('rpx-cert-renew-wildloop.timer')
+    expect(script).toContain('acme:issue')
+    expect(script).not.toContain('bun add @stacksjs/tlsx')
+  })
+
+  it('leaves the owner path provisioning exactly as before', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const owner = buildRpxProvisionScript({ proxy: rpxProxy, config, slug: 'stacks' }).join('\n')
+
+    expect(owner).toContain('bun add @stacksjs/rpx@latest')
+    expect(owner).toContain('--compile')
+    expect(owner).toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
+  })
+})
+
+// tlsx is a separate package with its own release line. Installing it at the
+// rpx version worked only while that was `latest`; a pinned rpx asked for a
+// tlsx release that has never existed, and `|| true` hid the failure, leaving
+// the box with no ACME client.
+describe('tlsx version is independent of the rpx version', () => {
+  const tlsProxy: ComputeProxyConfig = { engine: 'rpx', onDemandTls: true, version: '0.11.45' }
+
+  it('installs tlsx@latest even when rpx is pinned', () => {
+    const joined = buildCertManagementCommands({ proxy: tlsProxy, config: buildRpxConfig(sites, { proxy: tlsProxy }) }).join('\n')
+    expect(joined).toContain('bun add @stacksjs/tlsx@latest')
+    expect(joined).not.toContain('@stacksjs/tlsx@0.11.45')
+  })
+
+  it('honors an explicit tlsxVersion', () => {
+    const proxy: ComputeProxyConfig = { ...tlsProxy, tlsxVersion: '0.13.19' }
+    const joined = buildCertManagementCommands({ proxy, config: buildRpxConfig(sites, { proxy }) }).join('\n')
+    expect(joined).toContain('bun add @stacksjs/tlsx@0.13.19')
+  })
+})
+
 describe('buildRpxFragmentRefreshScript', () => {
   it('rewrites only this app fragment (atomically, root-only) and restarts the gateway', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
