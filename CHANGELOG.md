@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.15...v0.12.16)
+
+## 🐛 Bug Fixes
+
+- **rpx**: a tenant deploy no longer reprovisions the box's gateway ([c046ad1](https://github.com/stacksjs/ts-cloud/commit/c046ad1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.12.16 ([6b58b32](https://github.com/stacksjs/ts-cloud/commit/6b58b32)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.14...v0.12.15)
 
 ## 🐛 Bug Fixes
