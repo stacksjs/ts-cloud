@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.16...v0.13.0)
+
+## ✨ Features
+
+- **dns**: delegate a zone to its provider from config, on deploy ([ed901af](https://github.com/stacksjs/ts-cloud/commit/ed901af)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.13.0 ([6743978](https://github.com/stacksjs/ts-cloud/commit/6743978)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.12.15...v0.12.16)
 
 ## 🐛 Bug Fixes
