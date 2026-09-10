@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { delegateZoneFromConfig, describeDelegation } from './delegate-from-config'
+import { applyDeclaredZoneSettings, delegateZoneFromConfig, describeDelegation, describeZoneSettings } from './delegate-from-config'
 
 const CREDS = {
   porkbunApiKey: 'pk',
@@ -96,5 +96,74 @@ describe('describeDelegation', () => {
 
     expect(lines).toContain('1 record(s) copied')
     expect(lines).toContain('propagate')
+  })
+})
+
+describe('applyDeclaredZoneSettings', () => {
+  const base = { domain: 'example.com', provider: 'cloudflare' as const }
+
+  it('skips a project that declares no zone settings', async () => {
+    const result = await applyDeclaredZoneSettings(base, { credentials: CREDS })
+    expect(result).toMatchObject({ status: 'skipped' })
+    expect((result as any).reason).toContain('no dns.zone')
+  })
+
+  it('skips a provider that has no zone settings', async () => {
+    const result = await applyDeclaredZoneSettings(
+      { ...base, provider: 'porkbun', zone: { ssl: 'strict' } },
+      { credentials: CREDS },
+    )
+    expect(result).toMatchObject({ status: 'skipped' })
+  })
+
+  it('skips, rather than throws, without a token', async () => {
+    const result = await applyDeclaredZoneSettings(
+      { ...base, zone: { ssl: 'strict' } },
+      { credentials: { ...CREDS, cloudflareApiToken: undefined } },
+    )
+    expect(result).toMatchObject({ status: 'skipped' })
+    expect((result as any).reason).toContain('CLOUDFLARE_API_TOKEN')
+  })
+
+  it('skips when the zone block is present but empty', async () => {
+    const result = await applyDeclaredZoneSettings({ ...base, zone: {} }, { credentials: CREDS })
+    expect(result).toMatchObject({ status: 'skipped' })
+    expect((result as any).reason).toContain('no settings')
+  })
+})
+
+describe('describeZoneSettings', () => {
+  it('names what it changed, which is the drift being corrected', () => {
+    const lines = describeZoneSettings({
+      status: 'applied',
+      domain: 'example.com',
+      changed: [{ id: 'ssl', from: 'full', to: 'strict' }],
+      failed: [],
+    }).join('\n')
+
+    expect(lines).toContain('ssl: full → strict')
+  })
+
+  it('reports a plan-gated setting without pretending it applied', () => {
+    const lines = describeZoneSettings({
+      status: 'unchanged',
+      domain: 'example.com',
+      changed: [],
+      failed: [{ id: 'min_tls_version', error: 'not available on this plan' }],
+    }).join('\n')
+
+    expect(lines).toContain('could not set min_tls_version')
+    expect(lines).not.toContain('already as declared')
+  })
+
+  it('says so when nothing needed doing', () => {
+    const lines = describeZoneSettings({
+      status: 'unchanged',
+      domain: 'example.com',
+      changed: [],
+      failed: [],
+    }).join('\n')
+
+    expect(lines).toContain('already as declared')
   })
 })

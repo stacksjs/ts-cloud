@@ -461,10 +461,12 @@ export {
   // through the `/dns` subpath made the documented flow impossible to write
   // from the package root, while `CloudflareProviderOptions` right below
   // exported fine and made the gap look like a bug in the consumer's import.
+  applyDeclaredZoneSettings,
   CloudflareProvider,
   delegateZone,
   delegateZoneFromConfig,
   describeDelegation,
+  describeZoneSettings,
   isNameserverRegistrar,
   isZoneHost,
   policyTag,

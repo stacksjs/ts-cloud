@@ -27,6 +27,14 @@ export interface DelegationConfig {
     dryRun?: boolean
     delegate?: boolean
   }
+  zone?: ZoneSettingsConfig
+}
+
+/** Zone settings a deploy keeps true. Mirrors `DnsZoneConfig` in core. */
+export interface ZoneSettingsConfig {
+  ssl?: 'off' | 'flexible' | 'full' | 'strict'
+  alwaysUseHttps?: boolean
+  minTlsVersion?: '1.0' | '1.1' | '1.2' | '1.3'
 }
 
 export interface DelegationCredentials {
@@ -160,6 +168,104 @@ export function describeDelegation(result: DelegationReport | DelegationSkipped)
 
   for (const warning of result.warnings)
     lines.push(`  ${warning}`)
+
+  return lines
+}
+
+/**
+ * Translate the config's names into Cloudflare's setting ids.
+ *
+ * Kept as an explicit map rather than a snake_case transform, because the two
+ * vocabularies genuinely differ — `alwaysUseHttps` is `always_use_https`, but
+ * `ssl` is `ssl` — and a transform that is right four times out of five fails
+ * silently on the fifth: Cloudflare 404s an unknown setting id, which
+ * `applyZoneSettings` collects as a failure nobody reads.
+ *
+ * Cloudflare spells booleans 'on' / 'off'.
+ */
+function toCloudflareSettings(zone: ZoneSettingsConfig): Record<string, unknown> {
+  const desired: Record<string, unknown> = {}
+
+  if (zone.ssl !== undefined)
+    desired.ssl = zone.ssl
+  if (zone.alwaysUseHttps !== undefined)
+    desired.always_use_https = zone.alwaysUseHttps ? 'on' : 'off'
+  if (zone.minTlsVersion !== undefined)
+    desired.min_tls_version = zone.minTlsVersion
+
+  return desired
+}
+
+export interface ZoneSettingsReport {
+  status: 'applied' | 'unchanged'
+  domain: string
+  changed: Array<{ id: string, from: unknown, to: unknown }>
+  failed: Array<{ id: string, error: string }>
+}
+
+/**
+ * Reconcile `dns.zone` against the provider, on every deploy.
+ *
+ * Separate from the delegation on purpose: delegating happens once, but a zone
+ * setting is something a person can change in a dashboard at any time, and the
+ * point of declaring it is that the next deploy puts it back. Running only at
+ * delegation would make `ssl: 'strict'` true exactly once and then let it
+ * drift for the life of the zone.
+ *
+ * A setting the plan does not allow is reported, never thrown — `applyZoneSettings`
+ * collects those, and one unavailable toggle must not fail a deploy that has
+ * already shipped code.
+ */
+export async function applyDeclaredZoneSettings(
+  config: DelegationConfig,
+  options: { credentials?: DelegationCredentials, env?: Record<string, string | undefined> } = {},
+): Promise<ZoneSettingsReport | DelegationSkipped> {
+  if (!config.zone)
+    return { status: 'skipped', reason: 'no dns.zone configured' }
+
+  if (!config.domain)
+    return { status: 'skipped', reason: 'no dns.domain configured' }
+
+  if (config.provider !== 'cloudflare')
+    return { status: 'skipped', reason: `zone settings are not supported for ${config.provider ?? 'this provider'}` }
+
+  const desired = toCloudflareSettings(config.zone)
+  if (Object.keys(desired).length === 0)
+    return { status: 'skipped', reason: 'dns.zone declares no settings' }
+
+  const credentials = options.credentials ?? credentialsFromEnv(options.env ?? process.env)
+  if (!credentials.cloudflareApiToken)
+    return { status: 'skipped', reason: 'CLOUDFLARE_API_TOKEN is not set' }
+
+  const provider = new CloudflareProvider(credentials.cloudflareApiToken, {
+    accountId: credentials.cloudflareAccountId,
+  })
+
+  const { changed, failed } = await provider.applyZoneSettings(config.domain, desired)
+
+  return {
+    status: changed.length > 0 ? 'applied' : 'unchanged',
+    domain: config.domain,
+    changed,
+    failed,
+  }
+}
+
+/** One line per outcome, for a deploy log. */
+export function describeZoneSettings(result: ZoneSettingsReport | DelegationSkipped): string[] {
+  if (result.status === 'skipped')
+    return [`dns: zone settings skipped — ${result.reason}`]
+
+  const lines: string[] = []
+
+  for (const change of result.changed)
+    lines.push(`dns: ${result.domain} ${change.id}: ${String(change.from)} → ${String(change.to)}`)
+
+  if (result.status === 'unchanged' && result.failed.length === 0)
+    lines.push(`dns: ${result.domain} zone settings already as declared`)
+
+  for (const failure of result.failed)
+    lines.push(`dns: ${result.domain} could not set ${failure.id} — ${failure.error}`)
 
   return lines
 }

@@ -37,10 +37,14 @@ export type {
   DelegationConfig,
   DelegationCredentials,
   DelegationSkipped,
+  ZoneSettingsConfig,
+  ZoneSettingsReport,
 } from './delegate-from-config'
 export {
+  applyDeclaredZoneSettings,
   delegateZoneFromConfig,
   describeDelegation,
+  describeZoneSettings,
 } from './delegate-from-config'
 export { Route53Provider } from './route53-adapter'
 export type {

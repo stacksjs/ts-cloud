@@ -1945,6 +1945,47 @@ export interface SftpConfig {
 }
 
 /**
+ * Zone settings reconciled on every deploy, where the provider has them.
+ *
+ * Cloudflare's defaults are not the right ones for an origin ts-cloud built.
+ * A new zone lands on `ssl: 'full'`, which encrypts to the origin but does not
+ * VALIDATE it — so anything that can get between the edge and the box can
+ * present its own certificate and be believed. The origin here terminates a
+ * real Let's Encrypt certificate, so `'strict'` costs nothing and closes that.
+ *
+ * Declared rather than defaulted. Turning `strict` on implicitly would be the
+ * right call for a ts-cloud origin and the wrong one for a zone pointed at
+ * something else — a self-signed appliance, a third-party host — where it
+ * takes the site down on the next deploy. Saying it in config is cheap; having
+ * a deploy silently change how TLS is verified is not.
+ *
+ * Only settings named here are touched. Anything else in the zone is left
+ * alone, including things somebody set by hand.
+ */
+export interface DnsZoneConfig {
+  /**
+   * TLS between the edge and the origin.
+   *
+   *  - `strict` — encrypt AND validate the origin certificate. Correct for any
+   *    origin with a real certificate, which is every ts-cloud server deploy.
+   *  - `full` — encrypt without validating. Cloudflare's default for a new zone.
+   *  - `flexible` — plaintext to the origin. With an origin that redirects to
+   *    HTTPS this produces an infinite redirect loop, which is the single most
+   *    common way a Cloudflare migration appears to break the site.
+   *  - `off` — no TLS at the edge at all.
+   */
+  ssl?: 'off' | 'flexible' | 'full' | 'strict'
+  /** Redirect http:// to https:// at the edge. */
+  alwaysUseHttps?: boolean
+  /**
+   * Oldest TLS version the edge will negotiate. `1.2` is the usual floor;
+   * some plans reject anything above `1.0`, and a rejected setting is
+   * reported rather than failing the deploy.
+   */
+  minTlsVersion?: '1.0' | '1.1' | '1.2' | '1.3'
+}
+
+/**
  * The registrar half of {@link DnsConfig}.
  */
 export interface DnsRegistrarConfig {
@@ -2019,6 +2060,13 @@ export interface DnsConfig {
    * }
    */
   registrar?: DnsRegistrarConfig
+  /**
+   * Zone settings to reconcile on every deploy — see {@link DnsZoneConfig}.
+   *
+   * Chiefly `ssl: 'strict'`, which a Cloudflare zone does not get by default
+   * and which is the correct setting for an origin holding a real certificate.
+   */
+  zone?: DnsZoneConfig
   /**
    * Records to publish on every deploy, alongside the address records ts-cloud
    * derives from `sites`.
