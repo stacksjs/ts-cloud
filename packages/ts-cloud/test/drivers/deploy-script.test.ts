@@ -671,3 +671,45 @@ describe('remote notices reach the log', () => {
     expect(surface(out)).toEqual([])
   })
 })
+
+describe('resolveExecStart with an executable entry point', () => {
+  const RELEASE = '/var/www/acme-main/releases/%i'
+
+  it('runs a relative executable directly instead of feeding it to the runtime', () => {
+    // The bug this exists for: `bun ./buddy serve` made bun parse a shell
+    // script as JavaScript, and the unit crash-looped on its first line.
+    expect(resolveExecStart('./buddy serve', 'bun', RELEASE))
+      .toBe('/var/www/acme-main/releases/%i/buddy serve')
+  })
+
+  it('keeps every argument after the executable', () => {
+    expect(resolveExecStart('./buddy serve --verbose', 'bun', RELEASE))
+      .toBe('/var/www/acme-main/releases/%i/buddy serve --verbose')
+  })
+
+  it('leaves an already-absolute executable alone', () => {
+    expect(resolveExecStart('/usr/bin/env myserver', 'bun', RELEASE)).toBe('/usr/bin/env myserver')
+  })
+
+  it('still hands a module to the runtime', () => {
+    expect(resolveExecStart('dist/index.js', 'bun', RELEASE)).toBe('/usr/local/bin/bun dist/index.js')
+    expect(resolveExecStart('server.ts', 'bun', RELEASE)).toBe('/usr/local/bin/bun server.ts')
+    expect(resolveExecStart('./app/Worker.ts', 'bun', RELEASE)).toBe('/usr/local/bin/bun ./app/Worker.ts')
+  })
+
+  it('still swaps a leading runtime word for the absolute binary', () => {
+    expect(resolveExecStart('bun run server.ts', 'bun', RELEASE)).toBe('/usr/local/bin/bun run server.ts')
+    expect(resolveExecStart('bun storage/serve.js', 'bun', RELEASE)).toBe('/usr/local/bin/bun storage/serve.js')
+  })
+
+  it('does not invent an absolute path when it has nowhere to resolve from', () => {
+    // systemd rejects a relative ExecStart, so emitting one would trade a
+    // confusing failure for a different confusing failure.
+    expect(resolveExecStart('./buddy serve', 'bun')).toBe('/usr/local/bin/bun ./buddy serve')
+  })
+
+  it('trims a trailing slash off the release directory', () => {
+    expect(resolveExecStart('./buddy serve', 'bun', '/var/www/acme/releases/%i/'))
+      .toBe('/var/www/acme/releases/%i/buddy serve')
+  })
+})

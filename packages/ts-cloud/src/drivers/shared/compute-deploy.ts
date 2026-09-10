@@ -260,7 +260,15 @@ export async function deploySiteRelease(
           artifactFetch,
           releaseId: sha,
           // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
-          execStart: resolveExecStart(site.start!, runtime as 'bun' | 'node' | 'deno'),
+          // The release directory as systemd will see it. `%i` is the unit's
+          // instance (the release id) and is expanded in ExecStart just as it
+          // is in WorkingDirectory, so a start command naming an executable in
+          // the release resolves to the release actually being started.
+          execStart: resolveExecStart(
+            site.start!,
+            runtime as 'bun' | 'node' | 'deno',
+            `${appBase.replace(/\/+$/, '')}/releases/%i`,
+          ),
           envEntries: envWithServices,
           port: site.port,
           preStartCommands: site.preStart,

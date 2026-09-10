@@ -15,15 +15,65 @@ import { formatEnvFile } from './env-file'
 import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
 
+/** Extensions that mark the first token as something a runtime should be given. */
+const MODULE_EXTENSIONS = /\.(?:[cm]?[jt]sx?)$/
+
 /**
- * Translate a `start` command (e.g. "bun run server.ts") into an absolute
- * systemd ExecStart by swapping the leading runtime word for its absolute path.
+ * Translate a `start` command into an absolute systemd ExecStart.
+ *
+ * Three shapes, because a site's entry point is not always a module:
+ *
+ *  1. `bun run server.ts` — a leading runtime word is swapped for its absolute
+ *     path, which is where the runtime actually lives on the box.
+ *  2. `dist/index.js` — a bare module gets the runtime put in front of it.
+ *  3. `./buddy serve` — an EXECUTABLE in the release, run directly.
+ *
+ * The third used to be impossible: every start was prefixed with the runtime,
+ * so pointing at a CLI wrapper — a shell script with a shebang, which is what
+ * `./buddy` is — had systemd run `bun ./buddy serve`, and bun parsed the shell
+ * as JavaScript. The service crash-looped on the wrapper's first line before
+ * it ever bound its port, which reads as an application crash rather than as
+ * the deploy handing the file to the wrong interpreter.
+ *
+ * That mattered because a project's CLI is the documented way to start it.
+ * Without this an app had to keep a bundled JS entry point beside the CLI it
+ * otherwise uses for everything, and keep the two in step by hand.
+ *
+ * `workingDirectory` is where a relative executable is resolved from —
+ * systemd requires an absolute ExecStart and does NOT resolve one against
+ * `WorkingDirectory`. Relative executables are left untouched without it,
+ * rather than emitting a unit that fails to start.
  */
-export function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'): string {
+export function resolveExecStart(
+  start: string,
+  runtime: 'bun' | 'node' | 'deno',
+  workingDirectory?: string,
+): string {
   const bin =
     runtime === 'bun' ? '/usr/local/bin/bun' : runtime === 'deno' ? '/usr/local/bin/deno' : '/usr/local/bin/node'
-  const args = start.replace(/^(bun|node|deno)\s+/, '')
-  return `${bin} ${args}`
+
+  const command = start.trim()
+
+  // 1. An explicit runtime word: swap it for the absolute binary.
+  if (/^(?:bun|node|deno)\s+/.test(command))
+    return `${bin} ${command.replace(/^(?:bun|node|deno)\s+/, '')}`
+
+  const [first = '', ...rest] = command.split(/\s+/)
+
+  // 3. Anything that is not a module is an executable, run as itself.
+  if (first && !MODULE_EXTENSIONS.test(first)) {
+    const executable = first.startsWith('/')
+      ? first
+      : workingDirectory && first.startsWith('./')
+        ? `${workingDirectory.replace(/\/+$/, '')}/${first.replace(/^\.\//, '')}`
+        : undefined
+
+    if (executable)
+      return [executable, ...rest].join(' ')
+  }
+
+  // 2. A module, or a relative executable with nowhere to resolve it from.
+  return `${bin} ${command}`
 }
 
 /**
