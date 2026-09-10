@@ -443,7 +443,13 @@ export class PorkbunProvider implements DnsProvider {
   async getNameServers(domain: string): Promise<string[]> {
     try {
       const rootDomain = this.getRootDomain(domain)
-      const response = await this.request<PorkbunApiResponse & { ns?: string[] }>(`/dns/getNS/${rootDomain}`)
+      // `/domain/getNs/`, not `/dns/getNS/`. Nameservers are a property of the
+      // DOMAIN — who answers for it — rather than a record inside the zone, and
+      // Porkbun's API splits on exactly that line. The wrong path 404s, which
+      // this catch turned into an empty list: indistinguishable from "this
+      // domain has no nameservers", so the delegation check silently believed
+      // the zone was undelegated on every single run.
+      const response = await this.request<PorkbunApiResponse & { ns?: string[] }>(`/domain/getNs/${rootDomain}`)
       return response.ns || []
     } catch {
       return []
@@ -456,7 +462,11 @@ export class PorkbunProvider implements DnsProvider {
   async updateNameServers(domain: string, nameservers: string[]): Promise<boolean> {
     try {
       const rootDomain = this.getRootDomain(domain)
-      await this.request(`/dns/updateNS/${rootDomain}`, {
+      // See getNameServers: `/domain/updateNs/`, not `/dns/updateNS/`. The
+      // wrong path 404s and this catch reported it as `false`, so a delegation
+      // could never complete — and the failure looked like Porkbun declining
+      // the change rather than the request never reaching it.
+      await this.request(`/domain/updateNs/${rootDomain}`, {
         ns: nameservers,
       })
       return true
