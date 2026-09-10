@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.13.1...v0.14.0)
+
+## ✨ Features
+
+- **dns**: reconcile declared zone settings on every deploy ([49d4120](https://github.com/stacksjs/ts-cloud/commit/49d4120)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.14.0 ([ba38196](https://github.com/stacksjs/ts-cloud/commit/ba38196)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.13.0...v0.13.1)
 
 ## 🐛 Bug Fixes
