@@ -19,6 +19,29 @@ export {
   reconcileDeclaredRecords,
   resolveDeclaredRecords,
 } from './declared-records'
+export type {
+  DelegationOptions,
+  DelegationRecordOutcome,
+  DelegationReport,
+  DelegationStatus,
+  NameserverRegistrar,
+  ZoneHost,
+} from './delegation'
+export {
+  delegateZone,
+  isNameserverRegistrar,
+  isZoneHost,
+  sameNameservers,
+} from './delegation'
+export type {
+  DelegationConfig,
+  DelegationCredentials,
+  DelegationSkipped,
+} from './delegate-from-config'
+export {
+  delegateZoneFromConfig,
+  describeDelegation,
+} from './delegate-from-config'
 export { Route53Provider } from './route53-adapter'
 export type {
   MigratedRecord,

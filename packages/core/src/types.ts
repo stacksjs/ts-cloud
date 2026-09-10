@@ -1944,6 +1944,40 @@ export interface SftpConfig {
   serviceUser?: string
 }
 
+/**
+ * The registrar half of {@link DnsConfig}.
+ */
+export interface DnsRegistrarConfig {
+  /** Who the domain is registered with. Must be able to set nameservers. */
+  provider: 'porkbun' | 'godaddy'
+  /**
+   * Hostnames to serve through the DNS provider's edge proxy, where it has one
+   * (Cloudflare's "orange cloud").
+   *
+   * Opt-in per host, never "every address record". Proxying a mail host is the
+   * classic way to break a domain quietly: Cloudflare does not proxy SMTP, and
+   * the proxy replaces the origin address that the domain's own SPF record
+   * authorises — so delivery degrades hours later with nothing visibly wrong.
+   * Listing only the web hosts is what keeps that from being the default.
+   */
+  proxied?: string[]
+  /**
+   * Report what the delegation would do and change nothing.
+   *
+   * Worth leaving on for a deploy or two before the real move: the report
+   * names every record that would be copied, so a missing DKIM key is
+   * something you read rather than something you discover.
+   */
+  dryRun?: boolean
+  /**
+   * Skip the delegation entirely.
+   *
+   * For a zone that is deliberately delegated somewhere ts-cloud does not
+   * manage, where the check would otherwise try to correct it on every deploy.
+   */
+  delegate?: boolean
+}
+
 export interface DnsConfig {
   domain?: string
   hostedZoneId?: string
@@ -1953,6 +1987,38 @@ export interface DnsConfig {
    * instead of Route53
    */
   provider?: 'route53' | 'cloudflare' | 'porkbun' | 'godaddy'
+  /**
+   * Where the domain is REGISTERED, when that is not where its DNS is served.
+   *
+   * A domain has two homes people conflate: the registrar it was bought from,
+   * and the provider whose nameservers answer for it. Setting this says "the
+   * zone belongs on `provider`, and `registrar` is what has to be pointed at
+   * it" — and lets a deploy perform that move instead of an operator doing it
+   * by hand at two dashboards and hoping the record sets match.
+   *
+   * On deploy, when the registrar's nameservers do not already point at
+   * `provider`, ts-cloud creates the zone, copies the registrar's records
+   * across, verifies record for record that they arrived, and only then
+   * updates the nameservers. A verification failure leaves the delegation
+   * alone: pointing a live domain at a half-populated zone is the one outcome
+   * an operator cannot quickly undo, because the old zone keeps answering only
+   * until caches expire.
+   *
+   * Once delegated it is a no-op. The zone's new host is authoritative from
+   * that point, so the registrar's copy of the records is stale and
+   * re-importing it would resurrect anything deleted since.
+   *
+   * @example
+   * dns: {
+   *   provider: 'cloudflare',   // serves the zone
+   *   domain: 'example.com',
+   *   registrar: {
+   *     provider: 'porkbun',    // owns the delegation
+   *     proxied: ['example.com', 'www.example.com'],
+   *   },
+   * }
+   */
+  registrar?: DnsRegistrarConfig
   /**
    * Records to publish on every deploy, alongside the address records ts-cloud
    * derives from `sites`.

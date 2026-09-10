@@ -462,10 +462,16 @@ export {
   // from the package root, while `CloudflareProviderOptions` right below
   // exported fine and made the gap look like a bug in the consumer's import.
   CloudflareProvider,
+  delegateZone,
+  delegateZoneFromConfig,
+  describeDelegation,
+  isNameserverRegistrar,
+  isZoneHost,
   policyTag,
   qualifyName,
   reconcileDeclaredRecords,
   resolveDeclaredRecords,
+  sameNameservers,
   UnifiedDnsValidator,
   createPorkbunValidator,
   createGoDaddyValidator,
