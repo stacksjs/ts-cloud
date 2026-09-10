@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.15.0...v0.15.1)
+
+## 🐛 Bug Fixes
+
+- **dns**: say when a managed transform id is not one Cloudflare knows ([bff70a6](https://github.com/stacksjs/ts-cloud/commit/bff70a6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.15.1 ([3d7075d](https://github.com/stacksjs/ts-cloud/commit/3d7075d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.14.0...v0.15.0)
 
 ## ✨ Features
