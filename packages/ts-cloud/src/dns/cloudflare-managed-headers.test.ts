@@ -102,6 +102,52 @@ describe('CloudflareProvider managed request headers', () => {
     expect(calls).toEqual([])
   })
 
+  it('names an id the zone does not know, instead of PATCHing into a generic error', async () => {
+    const calls = mockCloudflare([{ id: 'add_visitor_location_headers', enabled: false }])
+
+    const result = await new CloudflareProvider('token')
+      .applyManagedRequestHeaders('example.com', { add_visitors_location_header: true })
+
+    expect(result.changed).toEqual([])
+    expect(result.failed[0]).toMatchObject({ id: 'add_visitors_location_header' })
+    expect(result.failed[0].error).toContain('not a managed request header transform')
+    expect(calls.some(c => c.method === 'PATCH')).toBe(false)
+  })
+
+  it('applies the transforms it recognises even when another id is wrong', async () => {
+    mockCloudflare([
+      { id: 'add_visitor_location_headers', enabled: false },
+      { id: 'add_true_client_ip_headers', enabled: false },
+    ])
+
+    const result = await new CloudflareProvider('token').applyManagedRequestHeaders('example.com', {
+      add_visitor_location_headers: true,
+      nonsense_transform: true,
+    })
+
+    expect(result.changed).toEqual([{ id: 'add_visitor_location_headers', from: false, to: true }])
+    expect(result.failed).toHaveLength(1)
+  })
+
+  it('reports every declared transform when the catalogue cannot be read', async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const href = String(url)
+      if (href.includes('/zones?name=')) {
+        return new Response(
+          JSON.stringify({ success: true, errors: [], messages: [], result: [{ id: 'zone-1', name: 'example.com' }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response(JSON.stringify({ success: false, errors: [{ message: 'token lacks Zone Settings:Read' }] }), { status: 403 })
+    }) as typeof fetch
+
+    const result = await new CloudflareProvider('token')
+      .applyManagedRequestHeaders('example.com', { add_visitor_location_headers: true })
+
+    expect(result.changed).toEqual([])
+    expect(result.failed[0].error).toContain('could not read managed headers')
+  })
+
   it('collects a failure per transform rather than throwing the deploy', async () => {
     globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url)

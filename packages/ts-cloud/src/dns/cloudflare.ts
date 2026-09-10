@@ -869,9 +869,33 @@ export class CloudflareProvider implements DnsProvider {
       return { changed, failed }
 
     const zoneId = await this.getZoneId(domain)
-    const current = await this.getManagedRequestHeaders(domain).catch(() => ({}) as Record<string, boolean>)
 
-    const pending = entries.filter(([id, value]) => current[id] !== value)
+    // The catalogue is read first and used as the authority on what exists.
+    // Cloudflare returns every transform it knows about, enabled or not, so an
+    // id that is absent from it is a name this zone will never accept — worth
+    // saying out loud, because the alternative is a PATCH that fails with a
+    // generic error and reads like a permissions problem.
+    let current: Record<string, boolean>
+    try {
+      current = await this.getManagedRequestHeaders(domain)
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      for (const [id] of entries)
+        failed.push({ id, error: `could not read managed headers — ${message}` })
+      return { changed, failed }
+    }
+
+    const pending: Array<[string, boolean]> = []
+    for (const [id, value] of entries) {
+      if (!(id in current)) {
+        failed.push({ id, error: 'not a managed request header transform on this zone' })
+        continue
+      }
+      if (current[id] !== value)
+        pending.push([id, value])
+    }
+
     if (pending.length === 0)
       return { changed, failed }
 
