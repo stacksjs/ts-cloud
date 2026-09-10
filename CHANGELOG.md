@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.14.0...v0.15.0)
+
+## ✨ Features
+
+- **dns**: declare visitor location headers on the zone ([98b7140](https://github.com/stacksjs/ts-cloud/commit/98b7140)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.15.0 ([18ff67d](https://github.com/stacksjs/ts-cloud/commit/18ff67d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.13.1...v0.14.0)
 
 ## ✨ Features
