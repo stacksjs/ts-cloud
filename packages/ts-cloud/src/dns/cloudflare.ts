@@ -51,6 +51,18 @@ export interface CloudflareZoneSetting {
 }
 
 /**
+ * The zone's managed header transforms, as `/zones/{id}/managed_headers`
+ * returns them.
+ *
+ * Cloudflare answers with the whole catalogue whether or not any are on, so
+ * `enabled: false` entries are the normal state and not an absence.
+ */
+export interface CloudflareManagedHeaders {
+  managed_request_headers?: Array<{ id: string, enabled?: boolean, has_conflict?: boolean }>
+  managed_response_headers?: Array<{ id: string, enabled?: boolean, has_conflict?: boolean }>
+}
+
+/**
  * A rule inside a phase entrypoint ruleset (cache rules, transform rules, …).
  * Only the fields ts-cloud writes or has to preserve are modelled.
  */
@@ -809,6 +821,76 @@ export class CloudflareProvider implements DnsProvider {
       catch (error) {
         failed.push({ id, error: error instanceof Error ? error.message : String(error) })
       }
+    }
+
+    return { changed, failed }
+  }
+
+  /**
+   * Read the zone's managed request-header transforms, keyed by id.
+   *
+   * A zone that has never had one configured answers with the full catalogue
+   * and every entry disabled, so this needs no empty-state handling.
+   */
+  async getManagedRequestHeaders(domain: string): Promise<Record<string, boolean>> {
+    const zoneId = await this.getZoneId(domain)
+    const response = await this.request<CloudflareManagedHeaders>('GET', `/zones/${zoneId}/managed_headers`)
+
+    const headers: Record<string, boolean> = {}
+    for (const header of response.result?.managed_request_headers || [])
+      headers[header.id] = header.enabled === true
+    return headers
+  }
+
+  /**
+   * Turn managed request-header transforms on or off, skipping any already set.
+   *
+   * These are not zone settings and do not live under `/settings` — Cloudflare
+   * models them as header transforms, which is why enabling visitor location
+   * headers cannot be done through {@link applyZoneSettings}. They matter
+   * because `CF-IPCountry` is the ONLY geo header a zone sends by default: an
+   * origin reading `cf-ipcity` or `cf-iplatitude` gets nothing at all until
+   * `add_visitor_location_headers` is enabled, and nothing about that failure
+   * is visible from the edge — the request arrives, it is simply missing the
+   * headers the origin was written against.
+   *
+   * Failures are collected, not thrown, for the same reason as zone settings:
+   * one unavailable transform must not abort a deploy that already shipped.
+   */
+  async applyManagedRequestHeaders(
+    domain: string,
+    desired: Record<string, boolean>,
+  ): Promise<{ changed: Array<{ id: string, from: unknown, to: unknown }>, failed: Array<{ id: string, error: string }> }> {
+    const changed: Array<{ id: string, from: unknown, to: unknown }> = []
+    const failed: Array<{ id: string, error: string }> = []
+
+    const entries = Object.entries(desired).filter(([, value]) => value !== undefined)
+    if (entries.length === 0)
+      return { changed, failed }
+
+    const zoneId = await this.getZoneId(domain)
+    const current = await this.getManagedRequestHeaders(domain).catch(() => ({}) as Record<string, boolean>)
+
+    const pending = entries.filter(([id, value]) => current[id] !== value)
+    if (pending.length === 0)
+      return { changed, failed }
+
+    // One PATCH for the batch. The endpoint takes the whole list rather than a
+    // single transform, and Cloudflare requires both arrays to be present even
+    // when only the request side is being touched.
+    try {
+      await this.request('PATCH', `/zones/${zoneId}/managed_headers`, {
+        managed_request_headers: pending.map(([id, enabled]) => ({ id, enabled })),
+        managed_response_headers: [],
+      })
+
+      for (const [id, value] of pending)
+        changed.push({ id, from: current[id], to: value })
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      for (const [id] of pending)
+        failed.push({ id, error: message })
     }
 
     return { changed, failed }

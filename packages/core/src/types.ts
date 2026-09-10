@@ -1978,6 +1978,20 @@ export interface DnsZoneConfig {
   /** Redirect http:// to https:// at the edge. */
   alwaysUseHttps?: boolean
   /**
+   * Send the visitor's city, region and coordinates to the origin.
+   *
+   * A Cloudflare zone sends `CF-IPCountry` and nothing else by default, so an
+   * origin that reads `cf-ipcity` or `cf-iplatitude` — anything doing
+   * "near you" — receives no value and silently falls back, with a request
+   * that otherwise looks completely normal. Cloudflare models this as a
+   * managed header transform rather than a zone setting, which is why it is
+   * not reachable through the settings API and is easy to miss entirely.
+   *
+   * Off unless declared: these headers carry a visitor's approximate location
+   * to the application, and that is a decision a project should make out loud.
+   */
+  visitorLocationHeaders?: boolean
+  /**
    * Oldest TLS version the edge will negotiate. `1.2` is the usual floor;
    * some plans reject anything above `1.0`, and a rejected setting is
    * reported rather than failing the deploy.

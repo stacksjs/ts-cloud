@@ -480,6 +480,7 @@ export {
   createRoute53Validator,
 } from './dns'
 export type {
+  CloudflareManagedHeaders,
   CloudflareProviderOptions,
   CloudflareRule,
   CloudflareRulesetPhase,

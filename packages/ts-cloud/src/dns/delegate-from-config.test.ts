@@ -130,6 +130,18 @@ describe('applyDeclaredZoneSettings', () => {
     expect(result).toMatchObject({ status: 'skipped' })
     expect((result as any).reason).toContain('no settings')
   })
+
+  it('does not treat a header-only zone block as empty', async () => {
+    // `visitorLocationHeaders` is not a zone setting and produces nothing in
+    // the settings map, so a block declaring only it used to fall through the
+    // "declares no settings" guard and never reach the header endpoint.
+    const result = await applyDeclaredZoneSettings(
+      { ...base, zone: { visitorLocationHeaders: true } },
+      { credentials: { ...CREDS, cloudflareApiToken: undefined } },
+    )
+    expect(result).toMatchObject({ status: 'skipped' })
+    expect((result as any).reason).toContain('CLOUDFLARE_API_TOKEN')
+  })
 })
 
 describe('describeZoneSettings', () => {

@@ -35,6 +35,19 @@ export interface ZoneSettingsConfig {
   ssl?: 'off' | 'flexible' | 'full' | 'strict'
   alwaysUseHttps?: boolean
   minTlsVersion?: '1.0' | '1.1' | '1.2' | '1.3'
+  visitorLocationHeaders?: boolean
+}
+
+/**
+ * Managed request-header transforms, by config name.
+ *
+ * Separate from the settings map because Cloudflare keeps these behind a
+ * different endpoint entirely — `/managed_headers`, not `/settings` — so they
+ * cannot be reconciled by the same call even though a project declares them in
+ * the same `zone` block.
+ */
+const MANAGED_REQUEST_HEADERS: Record<string, keyof ZoneSettingsConfig> = {
+  add_visitor_location_headers: 'visitorLocationHeaders',
 }
 
 export interface DelegationCredentials {
@@ -196,6 +209,25 @@ function toCloudflareSettings(zone: ZoneSettingsConfig): Record<string, unknown>
   return desired
 }
 
+/**
+ * The managed header transforms the config asks for, by Cloudflare's id.
+ *
+ * Same reasoning as {@link toCloudflareSettings}: an explicit map, because the
+ * id (`add_visitor_location_headers`) and the config name
+ * (`visitorLocationHeaders`) are not mechanically related.
+ */
+function toManagedRequestHeaders(zone: ZoneSettingsConfig): Record<string, boolean> {
+  const desired: Record<string, boolean> = {}
+
+  for (const [id, key] of Object.entries(MANAGED_REQUEST_HEADERS)) {
+    const value = zone[key]
+    if (typeof value === 'boolean')
+      desired[id] = value
+  }
+
+  return desired
+}
+
 export interface ZoneSettingsReport {
   status: 'applied' | 'unchanged'
   domain: string
@@ -230,7 +262,9 @@ export async function applyDeclaredZoneSettings(
     return { status: 'skipped', reason: `zone settings are not supported for ${config.provider ?? 'this provider'}` }
 
   const desired = toCloudflareSettings(config.zone)
-  if (Object.keys(desired).length === 0)
+  const desiredHeaders = toManagedRequestHeaders(config.zone)
+
+  if (Object.keys(desired).length === 0 && Object.keys(desiredHeaders).length === 0)
     return { status: 'skipped', reason: 'dns.zone declares no settings' }
 
   const credentials = options.credentials ?? credentialsFromEnv(options.env ?? process.env)
@@ -241,7 +275,17 @@ export async function applyDeclaredZoneSettings(
     accountId: credentials.cloudflareAccountId,
   })
 
-  const { changed, failed } = await provider.applyZoneSettings(config.domain, desired)
+  const settings = await provider.applyZoneSettings(config.domain, desired)
+
+  // Header transforms go through their own endpoint, but they are declared in
+  // the same block and read the same way in a log, so the two sets of outcomes
+  // are reported as one.
+  const headers = Object.keys(desiredHeaders).length > 0
+    ? await provider.applyManagedRequestHeaders(config.domain, desiredHeaders)
+    : { changed: [], failed: [] }
+
+  const changed = [...settings.changed, ...headers.changed]
+  const failed = [...settings.failed, ...headers.failed]
 
   return {
     status: changed.length > 0 ? 'applied' : 'unchanged',
