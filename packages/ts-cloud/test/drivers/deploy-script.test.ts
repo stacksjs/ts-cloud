@@ -455,6 +455,100 @@ describe('buildHostCleanupScript', () => {
     expect(joined).not.toContain('/var/www')
     expect(joined).not.toContain('releases/')
   })
+
+  /**
+   * The artifact cache used to be pruned inline in the Hetzner driver's upload
+   * path, which put retention on the cache-MISS branch: the box reusing the
+   * cache most pruned it least. One production host reached 23 GB there.
+   */
+  it('prunes the artifact cache, including the .tmp files a failed upload strands', () => {
+    const joined = buildHostCleanupScript().join('\n')
+    expect(joined).toContain('find /var/ts-cloud/artifacts -xdev -maxdepth 1 -type f -name "*.tar.gz"')
+    expect(joined).toContain('find /var/ts-cloud/artifacts -xdev -maxdepth 1 -type f -name ".*.tmp"')
+  })
+
+  it('installs a timer so a host that stops deploying keeps cleaning itself', () => {
+    const joined = buildHostCleanupScript().join('\n')
+    expect(joined).toContain('/etc/systemd/system/ts-cloud-cleanup.timer')
+    expect(joined).toContain('OnCalendar=daily')
+    expect(joined).toContain('Persistent=true')
+    expect(joined).toContain('systemctl enable --now ts-cloud-cleanup.timer')
+    // The timer's first run can be a day out; this deploy's own leftovers
+    // should not wait for it, and it must never fail a live release.
+    expect(joined).toContain('/usr/local/sbin/ts-cloud-cleanup || true')
+  })
+
+  it('emits the bare pass with timer: false, for callers that schedule it themselves', () => {
+    const script = buildHostCleanupScript({ timer: false })
+    expect(script.join('\n')).not.toContain('systemctl')
+    // A bare pass, safe to embed: no shebang and no shell options of its own.
+    expect(script[0]).toContain('host cleanup (disk before)')
+    expect(script.join('\n')).not.toContain('#!/bin/sh')
+  })
+
+  it('honours configured retention windows', () => {
+    const joined = buildHostCleanupScript({
+      artifactMaxAgeMinutes: 120,
+      stagingMaxAgeMinutes: 15,
+      bunCacheMaxAgeMinutes: 1440,
+      journalMaxAge: '3d',
+      journalMaxSize: '128M',
+      imageMaxAge: '24h',
+      onCalendar: 'hourly',
+    }).join('\n')
+    expect(joined).toContain('-name "*.tar.gz" -mmin +$((120 / TS_CLOUD_DIV))')
+    expect(joined).toContain('find /var/ts-cloud/staging -xdev -maxdepth 1 -type f -mmin +15')
+    expect(joined).toContain('journalctl --vacuum-time=3d --vacuum-size=128M')
+    expect(joined).toContain('until=24h')
+    expect(joined).toContain('OnCalendar=hourly')
+  })
+
+  /**
+   * Windows that exist for correctness rather than retention must not move with
+   * disk pressure: an in-flight upload belonging to a concurrent deploy has to
+   * survive its hour however full the box is.
+   */
+  it('shortens retention windows under pressure but leaves in-flight bounds fixed', () => {
+    const joined = buildHostCleanupScript({ escalateAtPercent: 90, escalationFactor: 6 }).join('\n')
+    expect(joined).toContain('if [ "$TS_CLOUD_PCT" -ge 90 ]; then')
+    expect(joined).toContain('TS_CLOUD_DIV=6')
+    expect(joined).toContain('find /var/ts-cloud/staging -xdev -maxdepth 1 -type f -mmin +60 -delete')
+    expect(joined).toContain('-name ".*.tmp" -mmin +60 -delete')
+  })
+
+  it('leaves rebuildable caches alone while the host has room', () => {
+    const joined = buildHostCleanupScript({ relaxedBelowPercent: 40 }).join('\n')
+    expect(joined).toContain('if [ "$TS_CLOUD_PCT" -ge 40 ]; then')
+    const gate = joined.indexOf('if [ "$TS_CLOUD_PCT" -ge 40 ]; then')
+    // The bun cache and image prunes cost network to rebuild, so they sit
+    // behind the gate; the artifact rules do not and must run unconditionally.
+    expect(joined.indexOf('/root/.bun/install/cache')).toBeGreaterThan(gate)
+    expect(joined.indexOf('/var/ts-cloud/artifacts')).toBeLessThan(gate)
+  })
+
+  /**
+   * The pass is appended to a deploy script that has `set -euo pipefail` in
+   * effect, and it runs after the release is already live. A bare assignment
+   * from a failing pipeline (`df` on an odd host) would abort the deploy there.
+   */
+  it('cannot fail a deploy whose release is already live', () => {
+    const script = buildHostCleanupScript()
+    const usage = script.find((line) => line.startsWith('TS_CLOUD_PCT='))
+    expect(usage).toBeDefined()
+    expect(usage).toEndWith('|| true')
+    for (const line of script) {
+      if (line.startsWith('find ') || line.trimStart().startsWith('find '))
+        expect(line).toEndWith('|| true')
+    }
+    expect(script.join('\n')).toContain('systemctl daemon-reload >/dev/null 2>&1 || true')
+  })
+
+  it('accepts retention rules from components that own their own paths', () => {
+    const joined = buildHostCleanupScript({
+      rules: [{ path: '/root/rpx-backups', pattern: 'cert-backup-*', maxAgeMinutes: 4320, directories: true }],
+    }).join('\n')
+    expect(joined).toContain('find /root/rpx-backups -xdev -maxdepth 1 -depth -type d -name "cert-backup-*" -mmin +$((4320 / TS_CLOUD_DIV)) -delete')
+  })
 })
 
 describe('releaseTarballTmpPath', () => {
