@@ -5,7 +5,7 @@
   "license": "MIT",
   "keywords": ["laravel", "serverless", "lambda", "aws", "ts-cloud"],
   "require": {
-    "php": "^8.5.9",
+    "php": "^8.5.10",
     "illuminate/support": "10.49.0",
     "illuminate/queue": "10.49.0",
     "illuminate/console": "10.49.0"
