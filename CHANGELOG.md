@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.0...v0.16.1)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: raise MaxStartups above what a parallel deploy needs ([d0710ea](https://github.com/stacksjs/ts-cloud/commit/d0710ea)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.1 ([f9446a6](https://github.com/stacksjs/ts-cloud/commit/f9446a6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.15.1...v0.16.0)
 
 ## ✨ Features
