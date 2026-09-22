@@ -28,6 +28,7 @@ describe('Hetzner host optimization', () => {
       autoUpdates: true,
       swapGb: 4,
       sshPasswordAuthentication: false,
+      sshMaxStartups: '100:30:200',
       journalMaxUse: '256M',
       journalRetention: '14day',
     })
@@ -44,6 +45,19 @@ describe('Hetzner host optimization', () => {
     expect(script).toContain('fail2ban')
     expect(script).toContain('ufw --force reset')
     expect(script).toContain('ufw allow 587/tcp')
+  })
+
+  it('raises MaxStartups above what a parallel deploy needs', () => {
+    // sshd's 10:30:100 default starts dropping unauthenticated connections at
+    // ten in flight. A deploy opens more than that on its own, and the ones
+    // that lose the draw surface as a bare `exit 255` — no mention anywhere
+    // that a limit was involved.
+    const script = buildHetznerHostOptimizationScript(config).join('\n')
+    expect(script).toContain('MaxStartups 100:30:200')
+    // Raising the trip point must not touch what actually stops brute force.
+    expect(script).toContain('MaxAuthTries 4')
+    expect(script).toContain('PasswordAuthentication no')
+    expect(script).toContain('fail2ban')
   })
 
   it('retires legacy proxy units when rpx owns ports 80 and 443', () => {

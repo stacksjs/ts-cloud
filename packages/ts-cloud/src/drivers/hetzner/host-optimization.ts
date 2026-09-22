@@ -13,6 +13,8 @@ export interface HetznerHostOptimizationPlan {
   autoUpdates: boolean
   swapGb: number
   sshPasswordAuthentication: false
+  /** sshd `MaxStartups`, as `start:rate:full`. */
+  sshMaxStartups: string
   journalMaxUse: string
   journalRetention: string
 }
@@ -98,6 +100,19 @@ export function resolveHetznerHostOptimizationPlan(config: CloudConfig): Hetzner
     autoUpdates: compute.autoUpdates !== false,
     swapGb: Math.max(0, Math.floor(compute.swapGb ?? 2)),
     sshPasswordAuthentication: false,
+    // sshd's default is 10:30:100 — it begins dropping unauthenticated
+    // connections at ten concurrent ones. A deploy opens far more than that:
+    // ts-cloud fans out parallel SSH for the release, the services and the
+    // dashboard reconciliation, and a host with several projects attached
+    // multiplies it again. The connections that lose the draw fail as
+    // `kex_exchange_identification: Connection reset by peer`, which reaches
+    // the operator as a bare `exit 255` with no hint that a limit was hit.
+    //
+    // Raising the trip point is the fix, not raising the hard cap. Brute-force
+    // protection here is key-only auth, `MaxAuthTries 4` and the fail2ban jail
+    // below — none of which this touches, because MaxStartups only governs how
+    // many unauthenticated handshakes may be in flight at once.
+    sshMaxStartups: '100:30:200',
     journalMaxUse: '256M',
     journalRetention: '14day',
   }
@@ -113,6 +128,7 @@ function hardeningScript(plan: HetznerHostOptimizationPlan): string[] {
     'PermitRootLogin prohibit-password',
     'MaxAuthTries 4',
     'LoginGraceTime 30',
+    `MaxStartups ${plan.sshMaxStartups}`,
     'TS_CLOUD_SSH_EOF',
     'sshd -t',
     'systemctl reload ssh',
