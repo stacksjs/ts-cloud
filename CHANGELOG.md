@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.4...v0.16.5)
+
+## 🐛 Bug Fixes
+
+- **deploy**: give the port its own, longer wait ([d7a8ce5](https://github.com/stacksjs/ts-cloud/commit/d7a8ce5)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.5 ([cdb4f32](https://github.com/stacksjs/ts-cloud/commit/cdb4f32)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.3...v0.16.4)
 
 ## 🐛 Bug Fixes
