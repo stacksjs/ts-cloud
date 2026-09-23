@@ -296,6 +296,23 @@ const HEALTH_GATE_ATTEMPTS = 20
 const HEALTH_GATE_ATTEMPT_INTERVAL = 3
 const HEALTH_GATE_ATTEMPT_TIMEOUT = 5
 
+/**
+ * How long to wait for the new release to take the port, separately from how
+ * long to wait for it to answer.
+ *
+ * These are different waits. Once a server is listening it answers more or
+ * less at once, so the response poll above is generous already. Getting to
+ * listening is open-ended: a server that binds late on purpose does its whole
+ * startup first, and that work is measured on a shared box under whatever load
+ * its co-tenants are applying. One site's image pass took 13s on a laptop and
+ * over 66s there, which is a perfectly good release that could not deploy.
+ *
+ * 60 attempts, 3s apart: three minutes, matching what the liveness probe
+ * tolerates before it restarts a unit, so the two cannot fight each other over
+ * the same slow start.
+ */
+const HEALTH_GATE_BIND_ATTEMPTS = 60
+
 export interface BuildSiteDeployScriptOptions {
   siteName: string
   slug: string
@@ -651,7 +668,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // a deploy over a missing `ss` capability.
       `if ss -ltnpH "sport = :${port}" >/dev/null 2>&1; then`,
       `  TS_CLOUD_BOUND=0`,
-      `  for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_ATTEMPTS}); do`,
+      `  for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_BIND_ATTEMPTS}); do`,
       `    TS_CLOUD_NEW_PID="$(systemctl show -p MainPID --value ${instance} 2>/dev/null || true)"`,
       `    if [ -n "\$TS_CLOUD_NEW_PID" ] && [ "\$TS_CLOUD_NEW_PID" != "0" ] && ss -ltnpH "sport = :${port}" 2>/dev/null | grep -q "pid=\$TS_CLOUD_NEW_PID,"; then TS_CLOUD_BOUND=1; break; fi`,
       `    sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}`,

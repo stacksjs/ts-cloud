@@ -304,6 +304,19 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(bindIdx).toBeLessThan(healthIdx)
   })
 
+  // Getting to "listening" and getting to "answering" are different waits: one
+  // is a whole startup on a contended box, the other is a round trip.
+  it('waits longer for the port than for a reply', () => {
+    const joined = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' }).join('\n')
+    const bind = Number(joined.match(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do\s*\n?\s*TS_CLOUD_NEW_PID/)?.[1]
+      ?? joined.match(/seq 1 (\d+)\); do`?\s*TS_CLOUD_NEW_PID/)?.[1])
+    const reply = Number(joined.match(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do if curl -sf/)?.[1])
+
+    expect(bind).toBeGreaterThan(reply)
+    // Three minutes, so a slow cold start is not mistaken for a dead release.
+    expect(bind * 3).toBeGreaterThanOrEqual(180)
+  })
+
   // A missing `ss -p` capability is not a broken release.
   it('falls back to the response gate where listener PIDs cannot be read', () => {
     const joined = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' }).join('\n')
