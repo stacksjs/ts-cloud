@@ -148,10 +148,34 @@ function normalizeContent(record: { type: DnsRecordType, content: string }): str
   return record.type === 'TXT' ? unquoted : normalizeHost(unquoted)
 }
 
+/** Types whose priority is part of what the record says. */
+const PRIORITIZED: ReadonlySet<DnsRecordType> = new Set<DnsRecordType>(['MX', 'SRV'])
+
+/**
+ * Types a deploy may correct in place: one value per name, so an upsert keyed
+ * on name + type updates the address instead of adding a second one.
+ */
+const SINGLE_VALUED: ReadonlySet<DnsRecordType> = new Set<DnsRecordType>(['A', 'AAAA', 'CNAME'])
+
+/**
+ * What makes a record this record and not another one at the same name.
+ *
+ * Name and type alone are not enough: an apex routinely holds an SPF policy
+ * and a verification token as two TXT records, a domain has a primary and a
+ * backup MX, a name can round-robin over several A records. Keying on
+ * name + type collapses each of those to whichever value was written last.
+ * Priority counts only where it means something; some registrars report
+ * `prio=0` on every record type.
+ */
+export function recordIdentity(record: { type: DnsRecordType, name: string, content: string, priority?: number | string }): string {
+  const priority = PRIORITIZED.has(record.type) && record.priority !== undefined && record.priority !== null
+    ? String(Number(record.priority))
+    : ''
+  return `${record.type}|${normalizeHost(record.name)}|${normalizeContent(record)}|${priority}`
+}
+
 function sameRecord(a: DnsRecord, b: DnsRecordResult): boolean {
-  return a.type === b.type
-    && normalizeHost(a.name) === normalizeHost(b.name)
-    && normalizeContent(a) === normalizeContent(b)
+  return recordIdentity(a) === recordIdentity(b)
 }
 
 /**
@@ -227,15 +251,49 @@ export async function delegateZone(options: DelegationOptions): Promise<Delegati
     return report
   }
 
+  // How many values each name + type carries in the source. An upsert is keyed
+  // on name + type, so it is only safe where there is exactly one: two TXT
+  // values upserted one after the other leave only the second, and the copy
+  // reports success for both. Everything else is created, value by value.
+  const valuesPerName = new Map<string, number>()
   for (const record of planned) {
+    const key = `${record.type}|${normalizeHost(record.name)}`
+    valuesPerName.set(key, (valuesPerName.get(key) ?? 0) + 1)
+  }
+
+  // What the destination already holds, so a re-run creates only what is
+  // missing instead of duplicating every multi-valued record.
+  const present = new Set<string>()
+  try {
+    const before = await host.listRecords(domain)
+    for (const record of before.records ?? [])
+      present.add(recordIdentity(record))
+  }
+  catch {
+    // A host that cannot list still copies; it just cannot skip duplicates.
+  }
+
+  for (const record of planned) {
+    const upsert = SINGLE_VALUED.has(record.type)
+      && valuesPerName.get(`${record.type}|${normalizeHost(record.name)}`) === 1
+
+    if (!upsert && present.has(recordIdentity(record))) {
+      report.records.push({ record, status: 'present' })
+      continue
+    }
+
     let result: CreateRecordResult
     try {
-      result = await host.upsertRecord(domain, record)
+      result = upsert
+        ? await host.upsertRecord(domain, record)
+        : await host.createRecord(domain, record)
     }
     catch (error) {
       result = { success: false, message: error instanceof Error ? error.message : String(error) }
     }
 
+    if (result.success)
+      present.add(recordIdentity(record))
     report.records.push(
       result.success
         ? { record, status: 'copied' }

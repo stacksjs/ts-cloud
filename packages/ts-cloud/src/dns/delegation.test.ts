@@ -48,22 +48,40 @@ function fakeRegistrar(records: DnsRecordResult[], nameservers = REGISTRAR_NS) {
   }
 }
 
-/** A destination that hosts the zone. `swallow` drops a record silently. */
-function fakeHost(options: { swallow?: (r: DnsRecord) => boolean, nameServers?: string[] } = {}) {
-  const zone: DnsRecordResult[] = []
+/**
+ * A destination that hosts the zone, with Cloudflare's semantics: an upsert
+ * finds the first record with the same name and type and overwrites it, a
+ * create always adds. `swallow` drops a record silently; `mangle` stores a
+ * changed copy; `initial` seeds the zone.
+ */
+function fakeHost(options: {
+  swallow?: (r: DnsRecord) => boolean
+  mangle?: (r: DnsRecord) => DnsRecord
+  nameServers?: string[]
+  initial?: DnsRecordResult[]
+} = {}) {
+  const zone: DnsRecordResult[] = [...(options.initial ?? [])]
+  const store = (record: DnsRecord): DnsRecordResult => ({ ...(options.mangle?.(record) ?? record) } as DnsRecordResult)
   const base: DnsProvider = {
     name: 'cloudflare',
     async listRecords() {
       return { success: true, records: [...zone] }
     },
-    async createRecord() {
-      return { success: true }
-    },
-    async upsertRecord(_domain, record) {
+    async createRecord(_domain, record) {
       // A provider that reports success and stores nothing is exactly the
       // failure the read-back exists to catch.
       if (!options.swallow?.(record))
-        zone.push({ ...record } as DnsRecordResult)
+        zone.push(store(record))
+      return { success: true }
+    },
+    async upsertRecord(_domain, record) {
+      if (options.swallow?.(record))
+        return { success: true }
+      const at = zone.findIndex(r => r.type === record.type && r.name === record.name)
+      if (at === -1)
+        zone.push(store(record))
+      else
+        zone[at] = store(record)
       return { success: true }
     },
     async deleteRecord() {
@@ -135,6 +153,77 @@ describe('delegateZone', () => {
     expect(host.zone.find(r => r.name === 'mail.example.com')?.proxied).toBe(false)
     expect(host.zone.find(r => r.name === 'www.example.com')?.proxied).toBe(true)
     // SPF and DMARC came across.
+    expect(host.zone.filter(r => r.type === 'TXT')).toHaveLength(2)
+  })
+
+  it('copies every value when several records share a name and type', async () => {
+    // chrisbreuer.me, 2026-09-23: two TXT _acme-challenge values, only the
+    // second survived, and delegation was blocked on the one that vanished.
+    const registrar = fakeRegistrar([
+      rec('A', 'example.com', '203.0.113.10'),
+      rec('A', 'rr.example.com', '203.0.113.21'),
+      rec('A', 'rr.example.com', '203.0.113.22'),
+      rec('MX', 'example.com', 'mx1.example.com', { priority: 10 }),
+      rec('MX', 'example.com', 'mx2.example.com', { priority: 20 }),
+      rec('TXT', 'example.com', 'v=spf1 ip4:203.0.113.10 ~all'),
+      rec('TXT', 'example.com', 'google-site-verification=abc123'),
+      rec('TXT', '_acme-challenge.example.com', 'WIi5IN5uHr2vmQsgkETRVdltZxl3X6r0yoBPQYP-KZ4'),
+      rec('TXT', '_acme-challenge.example.com', '4ynsv7umhS6wI7rij_XhQGbuRgwvLAoDCkVra7KqwQE'),
+    ])
+    const host = fakeHost()
+
+    const report = await delegateZone({ domain: 'example.com', registrar, host })
+
+    expect(report.missing).toEqual([])
+    expect(report.status).toBe('delegated')
+    const values = (type: string, name: string) =>
+      host.zone.filter(r => r.type === type && r.name === name).map(r => r.content).sort()
+    expect(values('TXT', '_acme-challenge.example.com')).toEqual([
+      '4ynsv7umhS6wI7rij_XhQGbuRgwvLAoDCkVra7KqwQE',
+      'WIi5IN5uHr2vmQsgkETRVdltZxl3X6r0yoBPQYP-KZ4',
+    ])
+    expect(values('TXT', 'example.com')).toEqual(['google-site-verification=abc123', 'v=spf1 ip4:203.0.113.10 ~all'])
+    expect(values('A', 'rr.example.com')).toEqual(['203.0.113.21', '203.0.113.22'])
+    expect(host.zone.filter(r => r.type === 'MX').map(r => `${r.priority} ${r.content}`).sort())
+      .toEqual(['10 mx1.example.com', '20 mx2.example.com'])
+  })
+
+  it('counts an MX with the wrong priority as missing', async () => {
+    const registrar = fakeRegistrar([
+      rec('MX', 'example.com', 'mx1.example.com', { priority: 10 }),
+      rec('MX', 'example.com', 'mx2.example.com', { priority: 20 }),
+    ])
+    // The backup MX lands as a second primary: same host, wrong priority.
+    const host = fakeHost({ mangle: r => (r.type === 'MX' && r.content === 'mx2.example.com' ? { ...r, priority: 10 } : r) })
+
+    const report = await delegateZone({ domain: 'example.com', registrar, host })
+
+    expect(report.status).toBe('blocked')
+    expect(report.missing.map(r => `${r.priority} ${r.content}`)).toEqual(['20 mx2.example.com'])
+    expect(registrar.nameservers).toEqual(REGISTRAR_NS)
+  })
+
+  it('ignores the priority a registrar reports on types that have none', async () => {
+    // Porkbun lists prio=0 on A and TXT records; Cloudflare reports none.
+    const registrar = fakeRegistrar([rec('TXT', 'example.com', 'v=spf1 -all', { priority: 0 })])
+    const host = fakeHost({ mangle: r => ({ ...r, priority: undefined }) })
+
+    const report = await delegateZone({ domain: 'example.com', registrar, host })
+
+    expect(report.status).toBe('delegated')
+  })
+
+  it('does not duplicate a value the destination already holds', async () => {
+    const registrar = fakeRegistrar([
+      rec('TXT', '_acme-challenge.example.com', 'first'),
+      rec('TXT', '_acme-challenge.example.com', 'second'),
+    ])
+    const host = fakeHost({ initial: [rec('TXT', '_acme-challenge.example.com', 'second')] })
+
+    const report = await delegateZone({ domain: 'example.com', registrar, host })
+
+    expect(report.status).toBe('delegated')
+    expect(report.records.map(o => `${o.record.content}:${o.status}`)).toEqual(['first:copied', 'second:present'])
     expect(host.zone.filter(r => r.type === 'TXT')).toHaveLength(2)
   })
 
