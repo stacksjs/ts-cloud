@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.1...v0.16.2)
+
+## 🐛 Bug Fixes
+
+- **rpx**: stop a tenant deploy restarting the shared gateway for nothing ([4b39fe9](https://github.com/stacksjs/ts-cloud/commit/4b39fe9)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.2 ([27b0d1e](https://github.com/stacksjs/ts-cloud/commit/27b0d1e)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.0...v0.16.1)
 
 ## 🐛 Bug Fixes
