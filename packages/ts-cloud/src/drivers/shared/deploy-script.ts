@@ -635,6 +635,31 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // A release that is merely slow to warm is not a broken release. One
       // that is broken never answers, and still fails — just after
       // ${HEALTH_GATE_ATTEMPTS} attempts instead of one.
+      // First: wait for the NEW instance to be on the port itself.
+      //
+      // The probe below cannot tell the instances apart. During the overlap
+      // the previous release is still listening and still healthy, so a server
+      // that binds late — deliberately, to keep visitors off itself while it
+      // warms — would have its gate answered by the release it is replacing.
+      // The gate would pass on the strength of the old instance, the old
+      // instance would then be retired, and the port would be empty until the
+      // new one finally bound. Asking whose PID holds the socket is what
+      // separates "the new release is serving" from "something is serving".
+      //
+      // Tolerant by design: where listener PIDs cannot be read, this says so
+      // and leaves the response gate to do the work alone, rather than failing
+      // a deploy over a missing `ss` capability.
+      `if ss -ltnpH "sport = :${port}" >/dev/null 2>&1; then`,
+      `  TS_CLOUD_BOUND=0`,
+      `  for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_ATTEMPTS}); do`,
+      `    TS_CLOUD_NEW_PID="$(systemctl show -p MainPID --value ${instance} 2>/dev/null || true)"`,
+      `    if [ -n "\$TS_CLOUD_NEW_PID" ] && [ "\$TS_CLOUD_NEW_PID" != "0" ] && ss -ltnpH "sport = :${port}" 2>/dev/null | grep -q "pid=\$TS_CLOUD_NEW_PID,"; then TS_CLOUD_BOUND=1; break; fi`,
+      `    sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}`,
+      `  done`,
+      `  if [ "\$TS_CLOUD_BOUND" -ne 1 ]; then echo "[ts-cloud] release ${releaseId} never joined ${port} alongside the previous release" >&2; ${failGate}; fi`,
+      'else',
+      `  echo "[ts-cloud] cannot read listener PIDs on this host — the response gate runs without the bind check" >&2`,
+      'fi',
       ...(gatePath
         ? [
             `TS_CLOUD_HEALTHY=0; for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_ATTEMPTS}); do if curl -sf -o /dev/null --max-time ${HEALTH_GATE_ATTEMPT_TIMEOUT} "http://127.0.0.1:${port}${gatePath}"; then TS_CLOUD_HEALTHY=1; break; fi; sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}; done`,

@@ -285,6 +285,33 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(gateIdx).toBeLessThan(activateIdx)
   })
 
+  // A server may bind late on purpose, to keep visitors off itself while it
+  // warms. The response probe cannot tell the two instances apart, so without
+  // this the old release answers the gate for the new one, gets retired on the
+  // strength of its own reply, and leaves the port empty.
+  it('waits for the new instance to hold the port before trusting a response', () => {
+    const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
+    const joined = script.join('\n')
+
+    expect(joined).toContain('systemctl show -p MainPID --value my-app-web@abc123.service')
+    expect(joined).toContain('grep -q "pid=$TS_CLOUD_NEW_PID,"')
+    expect(joined).toContain('never joined 3000 alongside the previous release')
+
+    // The bind check has to come before the response probe, or it proves nothing.
+    const bindIdx = joined.indexOf('TS_CLOUD_BOUND')
+    const healthIdx = joined.indexOf('TS_CLOUD_HEALTHY')
+    expect(bindIdx).toBeGreaterThan(-1)
+    expect(bindIdx).toBeLessThan(healthIdx)
+  })
+
+  // A missing `ss -p` capability is not a broken release.
+  it('falls back to the response gate where listener PIDs cannot be read', () => {
+    const joined = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' }).join('\n')
+
+    expect(joined).toContain('if ss -ltnpH "sport = :3000" >/dev/null 2>&1; then')
+    expect(joined).toContain('the response gate runs without the bind check')
+  })
+
   it('migrates off the legacy single unit with a one-time cutover and removes it', () => {
     const joined = buildSiteDeployScript(opts).join('\n')
     expect(joined).toContain('retiring pre-zero-downtime unit my-app-web.service')
