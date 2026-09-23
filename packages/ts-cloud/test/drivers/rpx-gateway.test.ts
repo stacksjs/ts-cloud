@@ -715,6 +715,29 @@ describe('buildRpxProvisionScript for an attached tenant', () => {
     expect(script).toContain(`systemctl restart ${RPX_SERVICE_NAME}`)
   })
 
+  // The gateway is shared, and its unit frees :80/:443 before it starts, so a
+  // restart is a hard second of downtime for every tenant on the box. A
+  // redeploy that ships identical routes must not buy that for nothing.
+  it('only restarts the shared gateway when this tenant changed its routes', () => {
+    const script = tenantScript()
+
+    expect(script).toContain(`__tsc_rpx_before="$(sha256sum ${RPX_SITES_DIR}/wildloop.json 2>/dev/null | cut -d' ' -f1 || true)"`)
+    expect(script).toContain(`__tsc_rpx_after="$(sha256sum ${RPX_SITES_DIR}/wildloop.json 2>/dev/null | cut -d' ' -f1 || true)"`)
+    expect(script).toContain('if [ "$__tsc_rpx_before" != "$__tsc_rpx_after" ]')
+
+    // The restart is inside that guard, never on its own line.
+    const restartLines = script.split('\n').filter(line => line.includes(`systemctl restart ${RPX_SERVICE_NAME}`))
+    expect(restartLines).toHaveLength(1)
+    expect(restartLines[0].startsWith('  ')).toBe(true)
+  })
+
+  // An unchanged fragment must never be a reason to leave a dead gateway dead.
+  it('restarts anyway when the gateway is not currently serving', () => {
+    const script = tenantScript()
+
+    expect(script).toContain(`|| ! systemctl is-active --quiet ${RPX_SERVICE_NAME}; then`)
+  })
+
   it('fails loudly when the owner has not provisioned a gateway yet', () => {
     const script = tenantScript()
 

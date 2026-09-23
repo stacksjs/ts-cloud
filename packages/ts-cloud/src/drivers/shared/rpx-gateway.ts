@@ -1338,13 +1338,30 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
       '  exit 1',
       'fi',
       `mkdir -p ${RPX_SITES_DIR} ${certsDir}`,
+      // Hash the fragment before and after writing it: the restart below is
+      // conditional on this tenant having actually changed something.
+      `__tsc_rpx_before="$(sha256sum ${RPX_SITES_DIR}/${slug}.json 2>/dev/null | cut -d' ' -f1 || true)"`,
       ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
         bunBin,
         preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
       }),
-      // The assembler re-reads every fragment at start, so this is what makes
-      // the tenant's own routes live - and the only box-wide effect it has.
-      `systemctl restart ${RPX_SERVICE_NAME}`,
+      `__tsc_rpx_after="$(sha256sum ${RPX_SITES_DIR}/${slug}.json 2>/dev/null | cut -d' ' -f1 || true)"`,
+      // The assembler re-reads every fragment at start, so a restart is what
+      // makes the tenant's own routes live - and the only box-wide effect it
+      // has. Box-wide is the problem: this is the shared gateway, and the unit
+      // kills whatever holds :80/:443 before it starts, so every restart is a
+      // second of hard downtime for EVERY tenant on the machine, not just this
+      // one. A redeploy that ships the same routes - which is almost all of
+      // them - used to buy that for nothing.
+      //
+      // So restart only when this tenant's routes actually changed, or when
+      // the gateway is not currently serving (an unchanged fragment must never
+      // leave a dead gateway dead).
+      `if [ "$__tsc_rpx_before" != "$__tsc_rpx_after" ] || ! systemctl is-active --quiet ${RPX_SERVICE_NAME}; then`,
+      `  systemctl restart ${RPX_SERVICE_NAME}`,
+      'else',
+      `  echo "[ts-cloud] rpx routes for ${slug} unchanged - leaving the shared gateway alone"`,
+      'fi',
       ...buildCertManagementCommands(options),
     ]
   }
