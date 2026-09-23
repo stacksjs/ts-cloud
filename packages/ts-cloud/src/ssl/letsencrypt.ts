@@ -5,8 +5,8 @@
  * Supports both HTTP-01 and DNS-01 challenges with multiple DNS providers.
  */
 import type { DnsProvider, DnsProviderConfig } from '../dns/types'
-import { Route53Client } from '../aws/route53'
 import { createDnsProvider } from '../dns'
+import { Route53Provider } from '../dns/route53-adapter'
 
 export interface LetsEncryptConfig {
   /**
@@ -425,21 +425,30 @@ function generateDnsDeleteRecordScript(config: DnsProviderConfig): string {
   switch (config.provider) {
     case 'porkbun':
       return `
-# Extract root domain
+# Extract root domain, and the challenge's subdomain the way the auth hook did
 ROOT_DOMAIN=$(echo "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+SUBDOMAIN="_acme-challenge"
+if [ "$DOMAIN" != "$ROOT_DOMAIN" ]; then
+  SUBDOMAIN="_acme-challenge.$(echo "$DOMAIN" | sed "s/\\.$ROOT_DOMAIN$//")"
+fi
 
-echo "Deleting TXT record via Porkbun for _acme-challenge.$DOMAIN"
+echo "Deleting TXT record via Porkbun for $RECORD_NAME"
 
-# First, get all TXT records to find the ID
-RECORDS=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/$ROOT_DOMAIN/TXT" \\
+# The challenge's own TXT records. Without the subdomain this endpoint returns
+# the ROOT's TXT records only, so the lookup never found a challenge and
+# nothing was ever cleaned up.
+RECORDS=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/$ROOT_DOMAIN/TXT/$SUBDOMAIN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "apikey": "'"$PORKBUN_API_KEY"'",
     "secretapikey": "'"$PORKBUN_SECRET_KEY"'"
   }')
 
-# Extract record ID for _acme-challenge and delete it
-RECORD_ID=$(echo "$RECORDS" | jq -r '.records[] | select(.name | contains("_acme-challenge")) | .id' | head -1)
+# Delete THIS challenge's record: exact name and this run's value, so the
+# sibling challenge (a domain and its wildcard share the name) or a value
+# another process published is left alone.
+RECORD_ID=$(echo "$RECORDS" | jq -r --arg name "$RECORD_NAME" --arg value "$VALIDATION" \\
+  '.records[] | select(.name == $name and .content == $value) | .id' | head -1)
 
 if [ -n "$RECORD_ID" ] && [ "$RECORD_ID" != "null" ]; then
   curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/delete/$ROOT_DOMAIN/$RECORD_ID" \\
@@ -632,101 +641,71 @@ async function handleRequest(request: Request): Promise<Response> {
 }
 
 /**
+ * Add one ACME DNS-01 challenge value, alongside any already there.
+ *
+ * A certificate for `example.com` and `*.example.com` validates both names at
+ * `_acme-challenge.example.com`, with two different values that must be
+ * published at the same time. Writing the second with an upsert (keyed on name
+ * and type) replaced the first, so one of the two validations always failed.
+ * The value is created instead, and only if that exact value is not present.
+ */
+export async function addDns01ChallengeRecord(provider: DnsProvider, domain: string, value: string): Promise<void> {
+  const name = `_acme-challenge.${domain}`
+  if (await hasChallengeValue(provider, domain, name, value))
+    return
+
+  const result = await provider.createRecord(domain, { name, type: 'TXT', content: value, ttl: 60 })
+  if (!result.success)
+    throw new Error(`Failed to create DNS challenge record: ${result.message}`)
+}
+
+/**
+ * Remove exactly this challenge's value, leaving any other at the same name:
+ * the sibling challenge that may still be validating, or a value some other
+ * process published.
+ */
+export async function removeDns01ChallengeRecord(provider: DnsProvider, domain: string, value: string): Promise<void> {
+  const result = await provider.deleteRecord(domain, { name: `_acme-challenge.${domain}`, type: 'TXT', content: value })
+  if (!result.success)
+    console.warn(`Failed to delete DNS challenge record: ${result.message}`)
+}
+
+async function hasChallengeValue(provider: DnsProvider, domain: string, name: string, value: string): Promise<boolean> {
+  try {
+    const listed = await provider.listRecords(domain, 'TXT')
+    const wanted = name.replace(/\.$/, '').toLowerCase()
+    return (listed.records ?? []).some(record =>
+      record.name.replace(/\.$/, '').toLowerCase() === wanted
+      && record.content.replace(/^"|"$/g, '') === value)
+  }
+  catch {
+    return false
+  }
+}
+
+/** The provider a challenge config names: a DNS provider, or a Route53 hosted zone. */
+function challengeProvider(options: Dns01ChallengeConfig): DnsProvider {
+  const { hostedZoneId, dnsProvider, region = 'us-east-1' } = options
+  if (dnsProvider)
+    return createDnsProvider(dnsProvider)
+  if (hostedZoneId)
+    return new Route53Provider(region, hostedZoneId)
+  throw new Error('Either dnsProvider or hostedZoneId must be provided')
+}
+
+/**
  * Setup DNS-01 challenge programmatically using any DNS provider
  * This is the unified API that works with Route53, Porkbun, GoDaddy, etc.
  */
 export async function setupDns01Challenge(options: Dns01ChallengeConfig): Promise<void> {
-  const { domain, challengeValue, hostedZoneId, dnsProvider, region = 'us-east-1' } = options
-
-  // Use the unified DNS provider abstraction if available
-  if (dnsProvider) {
-    const provider: DnsProvider = createDnsProvider(dnsProvider)
-    const result = await provider.upsertRecord(domain, {
-      name: `_acme-challenge.${domain}`,
-      type: 'TXT',
-      content: challengeValue,
-      ttl: 60,
-    })
-
-    if (!result.success) {
-      throw new Error(`Failed to create DNS challenge record: ${result.message}`)
-    }
-    return
-  }
-
-  // Legacy: Use Route53 directly if hostedZoneId is provided
-  if (hostedZoneId) {
-    const r53 = new Route53Client(region)
-
-    await r53.changeResourceRecordSets({
-      HostedZoneId: hostedZoneId,
-      ChangeBatch: {
-        Comment: 'ACME DNS-01 challenge',
-        Changes: [
-          {
-            Action: 'UPSERT',
-            ResourceRecordSet: {
-              Name: `_acme-challenge.${domain}`,
-              Type: 'TXT',
-              TTL: 60,
-              ResourceRecords: [{ Value: `"${challengeValue}"` }],
-            },
-          },
-        ],
-      },
-    })
-    return
-  }
-
-  throw new Error('Either dnsProvider or hostedZoneId must be provided')
+  await addDns01ChallengeRecord(challengeProvider(options), options.domain, options.challengeValue)
 }
 
 /**
  * Clean up DNS-01 challenge record using any DNS provider
  */
 export async function cleanupDns01Challenge(options: Dns01ChallengeConfig): Promise<void> {
-  const { domain, challengeValue, hostedZoneId, dnsProvider, region = 'us-east-1' } = options
-
-  // Use the unified DNS provider abstraction if available
-  if (dnsProvider) {
-    const provider: DnsProvider = createDnsProvider(dnsProvider)
-    const result = await provider.deleteRecord(domain, {
-      name: `_acme-challenge.${domain}`,
-      type: 'TXT',
-      content: challengeValue,
-    })
-
-    if (!result.success) {
-      console.warn(`Failed to delete DNS challenge record: ${result.message}`)
-    }
-    return
-  }
-
-  // Legacy: Use Route53 directly if hostedZoneId is provided
-  if (hostedZoneId) {
-    const r53 = new Route53Client(region)
-
-    await r53.changeResourceRecordSets({
-      HostedZoneId: hostedZoneId,
-      ChangeBatch: {
-        Comment: 'Remove ACME DNS-01 challenge',
-        Changes: [
-          {
-            Action: 'DELETE',
-            ResourceRecordSet: {
-              Name: `_acme-challenge.${domain}`,
-              Type: 'TXT',
-              TTL: 60,
-              ResourceRecords: [{ Value: `"${challengeValue}"` }],
-            },
-          },
-        ],
-      },
-    })
-    return
-  }
-
-  throw new Error('Either dnsProvider or hostedZoneId must be provided')
+  await removeDns01ChallengeRecord(challengeProvider(options), options.domain, options.challengeValue)
 }
 
 /**

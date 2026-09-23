@@ -66,6 +66,40 @@ export class Route53Provider implements DnsProvider {
     return `${record}.${zone}.`
   }
 
+  /** A record's value as Route53 stores it: TXT quoted, MX with its priority. */
+  private formatValue(record: DnsRecord): string {
+    let value = record.content
+    if (record.type === 'TXT' && !value.startsWith('"'))
+      value = `"${value}"`
+    if (record.type === 'MX' && record.priority !== undefined)
+      value = `${record.priority} ${value}`
+    return value
+  }
+
+  /**
+   * The record set currently at `name`/`type`, or null.
+   *
+   * Route53 holds one SET per name and type, and its three actions all act on
+   * the whole set: CREATE fails if any value is already there, UPSERT replaces
+   * every value, DELETE must name the set exactly. Every other provider here
+   * treats a record as one value among possibly several, and so does the
+   * DnsProvider contract. Reading the set first is what lets create add one
+   * value and delete remove one, the way callers (an ACME challenge for a
+   * domain and its wildcard, a zone migration) rely on.
+   */
+  private async currentSet(hostedZoneId: string, name: string, type: string): Promise<{ ttl: number, values: string[] } | null> {
+    const page = await this.client.listResourceRecordSets({
+      HostedZoneId: hostedZoneId,
+      StartRecordName: name,
+      StartRecordType: type,
+      MaxItems: '1',
+    })
+    const set = page.ResourceRecordSets?.[0]
+    if (!set || set.Name.toLowerCase() !== name.toLowerCase() || set.Type !== type || set.AliasTarget || set.SetIdentifier)
+      return null
+    return { ttl: set.TTL ?? 300, values: (set.ResourceRecords ?? []).map(r => r.Value) }
+  }
+
   async createRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult> {
     try {
       const hostedZoneId = await this.getHostedZoneId(domain)
@@ -77,30 +111,27 @@ export class Route53Provider implements DnsProvider {
       }
 
       const recordName = this.normalizeName(domain, record.name)
-      let recordValue = record.content
+      const recordValue = this.formatValue(record)
 
-      // TXT records need to be quoted
-      if (record.type === 'TXT' && !recordValue.startsWith('"')) {
-        recordValue = `"${recordValue}"`
-      }
+      // Add the value to whatever set is already at this name, rather than
+      // CREATE, which Route53 refuses once the name holds any value.
+      const current = await this.currentSet(hostedZoneId, recordName, record.type)
+      if (current?.values.includes(recordValue))
+        return { success: true, message: 'Record already present' }
 
-      // MX records need priority prefix
-      if (record.type === 'MX' && record.priority !== undefined) {
-        recordValue = `${record.priority} ${recordValue}`
-      }
-
+      const values = [...(current?.values ?? []), recordValue]
       const result = await this.client.changeResourceRecordSets({
         HostedZoneId: hostedZoneId,
         ChangeBatch: {
           Comment: `Created by ts-cloud DNS provider`,
           Changes: [
             {
-              Action: 'CREATE',
+              Action: current ? 'UPSERT' : 'CREATE',
               ResourceRecordSet: {
                 Name: recordName,
                 Type: record.type,
-                TTL: record.ttl || 300,
-                ResourceRecords: [{ Value: recordValue }],
+                TTL: current?.ttl ?? record.ttl ?? 300,
+                ResourceRecords: values.map(Value => ({ Value })),
               },
             },
           ],
@@ -131,17 +162,7 @@ export class Route53Provider implements DnsProvider {
       }
 
       const recordName = this.normalizeName(domain, record.name)
-      let recordValue = record.content
-
-      // TXT records need to be quoted
-      if (record.type === 'TXT' && !recordValue.startsWith('"')) {
-        recordValue = `"${recordValue}"`
-      }
-
-      // MX records need priority prefix
-      if (record.type === 'MX' && record.priority !== undefined) {
-        recordValue = `${record.priority} ${recordValue}`
-      }
+      const recordValue = this.formatValue(record)
 
       const result = await this.client.changeResourceRecordSets({
         HostedZoneId: hostedZoneId,
@@ -185,30 +206,28 @@ export class Route53Provider implements DnsProvider {
       }
 
       const recordName = this.normalizeName(domain, record.name)
-      let recordValue = record.content
+      const recordValue = this.formatValue(record)
 
-      // TXT records need to be quoted
-      if (record.type === 'TXT' && !recordValue.startsWith('"')) {
-        recordValue = `"${recordValue}"`
-      }
+      // Remove this value and keep the rest. A DELETE naming one value of a
+      // two-value set is rejected outright, so cleaning up one ACME challenge
+      // used to fail while the other was still in place.
+      const current = await this.currentSet(hostedZoneId, recordName, record.type)
+      if (!current || !current.values.includes(recordValue))
+        return { success: true, message: 'Record already absent' }
 
-      // MX records need priority prefix
-      if (record.type === 'MX' && record.priority !== undefined) {
-        recordValue = `${record.priority} ${recordValue}`
-      }
-
+      const remaining = current.values.filter(value => value !== recordValue)
       await this.client.changeResourceRecordSets({
         HostedZoneId: hostedZoneId,
         ChangeBatch: {
           Comment: `Deleted by ts-cloud DNS provider`,
           Changes: [
             {
-              Action: 'DELETE',
+              Action: remaining.length > 0 ? 'UPSERT' : 'DELETE',
               ResourceRecordSet: {
                 Name: recordName,
                 Type: record.type,
-                TTL: record.ttl || 300,
-                ResourceRecords: [{ Value: recordValue }],
+                TTL: current.ttl,
+                ResourceRecords: (remaining.length > 0 ? remaining : current.values).map(Value => ({ Value })),
               },
             },
           ],
