@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.6...v0.16.7)
+
+## 🐛 Bug Fixes
+
+- **ssl**: publish a domain's and its wildcard's DNS challenges together ([5383770](https://github.com/stacksjs/ts-cloud/commit/5383770)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.7 ([e8c7947](https://github.com/stacksjs/ts-cloud/commit/e8c7947)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.5...v0.16.6)
 
 ## 🐛 Bug Fixes
