@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.3...v0.16.4)
+
+## 🐛 Bug Fixes
+
+- **deploy**: check which instance holds the port before trusting the gate ([6620e63](https://github.com/stacksjs/ts-cloud/commit/6620e63)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.4 ([8222aa8](https://github.com/stacksjs/ts-cloud/commit/8222aa8)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.2...v0.16.3)
 
 ## 🐛 Bug Fixes
