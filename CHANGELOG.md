@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.2...v0.16.3)
+
+## 🐛 Bug Fixes
+
+- **deploy**: poll the health gate instead of asking once ([1edf61e](https://github.com/stacksjs/ts-cloud/commit/1edf61e)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.3 ([926703d](https://github.com/stacksjs/ts-cloud/commit/926703d)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.1...v0.16.2)
 
 ## 🐛 Bug Fixes
