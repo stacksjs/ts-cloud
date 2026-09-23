@@ -52,7 +52,7 @@
     "format:fix": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode format --config pickier.config.ts --write",
     "changelog": "bun x logsmith --verbose",
     "changelog:generate": "bun x logsmith --output CHANGELOG.md",
-    "release": "bun x --bun bumpx prompt --recursive",
+    "release": "bun x --bun @stacksjs/bumpx prompt --recursive",
     "release:patch": "bun x --bun bumpx patch --recursive --commit --tag --push --yes",
     "release:minor": "bun x --bun bumpx minor --recursive --commit --tag --push --yes",
     "release:major": "bun x --bun bumpx major --recursive --commit --tag --push --yes",
@@ -64,6 +64,7 @@
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
+    "@stacksjs/bumpx": "^0.2.17",
     "better-dx": "^0.2.25"
   },
   "overrides": {
