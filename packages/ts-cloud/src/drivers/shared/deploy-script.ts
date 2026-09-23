@@ -285,6 +285,17 @@ export function buildLivenessUnits(options: {
   ]
 }
 
+/**
+ * How long the post-cutover health probe keeps asking before it gives up.
+ *
+ * 20 attempts, 3s apart, each allowed 5s — about a minute and a half at worst.
+ * Long enough for a cold start on a loaded shared box, short enough that a
+ * release which never answers still fails the deploy rather than hanging it.
+ */
+const HEALTH_GATE_ATTEMPTS = 20
+const HEALTH_GATE_ATTEMPT_INTERVAL = 3
+const HEALTH_GATE_ATTEMPT_TIMEOUT = 5
+
 export interface BuildSiteDeployScriptOptions {
   siteName: string
   slug: string
@@ -612,7 +623,24 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // … and, when configured, answer 2xx/3xx on the health path. (With both
       // instances on the port the probe may hit either — combined with the
       // is-active window that still catches dead-new and dead-port alike.)
-      ...(gatePath ? [`curl -sf -o /dev/null --max-time 10 "http://127.0.0.1:${port}${gatePath}" || ${failGate}`] : []),
+      //
+      // Polled rather than asked once. A single attempt makes the gate a race
+      // against whatever the app does before its first response — warming
+      // caches, deriving assets, rebuilding an import barrel — and that is not
+      // a fixed cost: it is work measured on a shared box, under whatever load
+      // the co-tenants happen to be putting on it. One site's startup image
+      // pass came in under two seconds on a laptop and over fourteen on the
+      // box, which turned a perfectly good release into a failed deploy.
+      //
+      // A release that is merely slow to warm is not a broken release. One
+      // that is broken never answers, and still fails — just after
+      // ${HEALTH_GATE_ATTEMPTS} attempts instead of one.
+      ...(gatePath
+        ? [
+            `TS_CLOUD_HEALTHY=0; for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_ATTEMPTS}); do if curl -sf -o /dev/null --max-time ${HEALTH_GATE_ATTEMPT_TIMEOUT} "http://127.0.0.1:${port}${gatePath}"; then TS_CLOUD_HEALTHY=1; break; fi; sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}; done`,
+            `[ "\$TS_CLOUD_HEALTHY" -eq 1 ] || ${failGate}`,
+          ]
+        : []),
       // Promote: flip `current` (tooling + gateway reference), persist across
       // boots, then retire whatever served the previous release.
       ...buildActivateRelease(paths),

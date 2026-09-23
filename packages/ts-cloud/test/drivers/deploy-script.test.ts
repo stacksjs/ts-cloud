@@ -256,6 +256,35 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(curlIdx).toBeLessThan(activateIdx)
   })
 
+  // A single attempt made the gate a race against whatever the app does before
+  // its first response, on a box whose speed depends on its co-tenants. One
+  // site's startup image pass took under two seconds on a laptop and over
+  // fourteen on the box, and a good release failed to deploy.
+  it('keeps asking the health path rather than giving the release one chance', () => {
+    const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
+    const joined = script.join('\n')
+
+    expect(joined).toContain('TS_CLOUD_HEALTHY=0')
+    expect(joined).toContain('TS_CLOUD_HEALTHY=1; break')
+    expect(joined).toContain('[ "$TS_CLOUD_HEALTHY" -eq 1 ] ||')
+    // Several attempts, spaced, each individually bounded.
+    expect(joined).toMatch(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do if curl -sf/)
+    const attempts = Number(joined.match(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do if curl -sf/)?.[1])
+    expect(attempts).toBeGreaterThan(1)
+    expect(joined).not.toContain('curl -sf -o /dev/null --max-time 10 "http://127.0.0.1:3000/health" ||')
+  })
+
+  // Still a gate: a release that never answers must not be promoted.
+  it('still fails the deploy when the health path never answers', () => {
+    const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
+    const gateIdx = script.findIndex(l => l.includes('TS_CLOUD_HEALTHY') && l.includes('-eq 1'))
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+
+    expect(gateIdx).toBeGreaterThan(-1)
+    expect(script[gateIdx]).toContain('failed its health gate')
+    expect(gateIdx).toBeLessThan(activateIdx)
+  })
+
   it('migrates off the legacy single unit with a one-time cutover and removes it', () => {
     const joined = buildSiteDeployScript(opts).join('\n')
     expect(joined).toContain('retiring pre-zero-downtime unit my-app-web.service')
