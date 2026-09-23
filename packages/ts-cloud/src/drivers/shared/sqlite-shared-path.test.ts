@@ -44,6 +44,32 @@ describe('inferSqliteSharedPath', () => {
     expect(warning).toContain('DB_DATABASE')
   })
 
+  /**
+   * A Stacks app spells the SQLite file `DB_DATABASE_PATH` — its
+   * `config/database.ts` reads `env.DB_DATABASE_PATH || 'database/stacks.sqlite'`
+   * — and leaves `DB_DATABASE` for the server-based drivers. Reading only
+   * `DB_DATABASE` warned such an app on every deploy that its data might be
+   * discarded, while it was already storing it outside the releases.
+   */
+  it('reads the sqlite path a Stacks app actually sets', () => {
+    expect(inferSqliteSharedPath({ DB_CONNECTION: 'sqlite', DB_DATABASE_PATH: 'database/stacks.sqlite' }))
+      .toEqual({ path: 'database/stacks.sqlite' })
+  })
+
+  it('does not warn when DB_DATABASE_PATH is absolute', () => {
+    expect(inferSqliteSharedPath({ DB_CONNECTION: 'sqlite', DB_DATABASE_PATH: '/var/lib/chrisbreuer/stacks.sqlite' }))
+      .toEqual({})
+  })
+
+  /** The sqlite-specific name wins: the other may name a database, not a file. */
+  it('prefers DB_DATABASE_PATH over DB_DATABASE', () => {
+    expect(inferSqliteSharedPath({
+      DB_CONNECTION: 'sqlite',
+      DB_DATABASE_PATH: 'database/real.sqlite',
+      DB_DATABASE: 'stacks',
+    })).toEqual({ path: 'database/real.sqlite' })
+  })
+
   it('does not duplicate a path the site already declares', () => {
     const env = { DB_CONNECTION: 'sqlite', DB_DATABASE: 'database/app.sqlite' }
     expect(inferSqliteSharedPath(env, ['database/app.sqlite'])).toEqual({})

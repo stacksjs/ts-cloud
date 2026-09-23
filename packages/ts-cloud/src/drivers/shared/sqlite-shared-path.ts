@@ -12,7 +12,8 @@
  * after it starts the app on an empty database with no warning — the whole
  * dataset is one deploy from being orphaned inside a pruned release.
  *
- * So: read `DB_CONNECTION`/`DB_DATABASE` out of the site's resolved env, and
+ * So: read `DB_CONNECTION` and the database path out of the site's resolved
+ * env, and
  * when they describe a release-relative SQLite file, share it automatically.
  * When they say SQLite but do not say where, say so loudly instead of guessing
  * a filename — a wrong guess would share a path the app never writes and leave
@@ -78,7 +79,17 @@ export function inferSqliteSharedPath(
 ): SqliteSharedPathInference {
   if (!usesSqlite(env)) return {}
 
-  const configured = env?.DB_DATABASE?.trim()
+  // `DB_DATABASE_PATH` first, because that is the one a Stacks app sets for
+  // SQLite: its `config/database.ts` reads
+  // `env.DB_DATABASE_PATH || 'database/stacks.sqlite'`, and leaves
+  // `DB_DATABASE` for the server-based drivers, where it names a database
+  // rather than a file. Reading only `DB_DATABASE` meant an app that had done
+  // exactly what the warning below asks - an absolute path outside the
+  // releases - was told on every single deploy that its database might be
+  // discarded. A warning that fires when nothing is wrong is one an operator
+  // learns to scroll past, and this one then hid a real question about where
+  // the data lived.
+  const configured = env?.DB_DATABASE_PATH?.trim() || env?.DB_DATABASE?.trim()
   // An in-memory database has no file to keep — nothing to share, and nothing
   // an operator could do about it if there were.
   if (configured && IN_MEMORY.has(configured.toLowerCase())) return {}
@@ -90,9 +101,10 @@ export function inferSqliteSharedPath(
     // safe when it is not, so name the problem instead.
     return {
       warning:
-        'DB_CONNECTION is sqlite but DB_DATABASE names no file, so ts-cloud cannot tell where the database lives. '
+        'DB_CONNECTION is sqlite but neither DB_DATABASE_PATH nor DB_DATABASE names a file, '
+        + 'so ts-cloud cannot tell where the database lives. '
         + 'If it is written inside the release directory, the next deploy discards it. '
-        + "Set DB_DATABASE, or list the file in the site's `sharedPaths`.",
+        + "Set DB_DATABASE_PATH, or list the file in the site's `sharedPaths`.",
     }
   }
 
