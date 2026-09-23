@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.5...v0.16.6)
+
+## 🐛 Bug Fixes
+
+- **dns**: copy every value when records share a name, and verify them ([b10cbc5](https://github.com/stacksjs/ts-cloud/commit/b10cbc5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **release**: point the release script at @stacksjs/bumpx ([d70fd2c](https://github.com/stacksjs/ts-cloud/commit/d70fd2c)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.6 ([6d92318](https://github.com/stacksjs/ts-cloud/commit/6d92318)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.4...v0.16.5)
 
 ## 🐛 Bug Fixes
