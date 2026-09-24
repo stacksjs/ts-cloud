@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.9...v0.16.10)
+
+## 🐛 Bug Fixes
+
+- **dns**: let Porkbun upsert find records below the apex ([060d24b](https://github.com/stacksjs/ts-cloud/commit/060d24b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.10 ([fbbbecf](https://github.com/stacksjs/ts-cloud/commit/fbbbecf)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.8...v0.16.9)
 
 ## 🐛 Bug Fixes
