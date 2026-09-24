@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.10...v0.16.11)
+
+## 🐛 Bug Fixes
+
+- **cdn**: stop one tenant's deploy erasing every other tenant's rules ([41c80c5](https://github.com/stacksjs/ts-cloud/commit/41c80c5)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.11 ([e1a1909](https://github.com/stacksjs/ts-cloud/commit/e1a1909)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.9...v0.16.10)
 
 ## 🐛 Bug Fixes
