@@ -77,6 +77,7 @@ async function build() {
       join(__dirname, 'bin/cli.ts'),
       join(__dirname, 'bin/dashboard-server.ts'),
       join(__dirname, 'bin/stacks-scheduler.ts'),
+      join(__dirname, 'bin/stacks-queue-worker.ts'),
     ],
     outdir: join(__dirname, 'dist/bin'),
     target: 'node',

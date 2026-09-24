@@ -23,12 +23,14 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     expect(script).toContain(`rm -f ${schedulerCronPath('acme', 'app')}`)
   })
 
-  it('runs bun buddy queue:work with a bare ExecStart + Environment= (no shell wrapper)', () => {
+  it('runs the queue worker from the installed package, with a bare ExecStart + Environment= (no shell wrapper)', () => {
     const site: SiteConfig = { root: '.', queues: [{ queue: 'default', tries: 5 }] }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
     expect(script).toContain(
-      'ExecStart=/usr/local/bin/bun /var/www/app/current/storage/framework/core/buddy/src/cli.ts queue:work',
+      'ExecStart=/usr/local/bin/bun /var/www/app/current/node_modules/@stacksjs/ts-cloud/dist/bin/stacks-queue-worker.js --queue=default',
     )
+    // The monorepo-only source path an installed app never has.
+    expect(script).not.toContain('storage/framework/core/buddy')
     expect(script).toContain('--tries=5')
     expect(script).toContain('Environment="BUN_INSTALL=/root/.bun"')
     expect(script).toContain('Environment="APP_ENV=production"')

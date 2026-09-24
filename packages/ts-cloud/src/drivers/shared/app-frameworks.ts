@@ -67,8 +67,11 @@ const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/n
 
 /** The ts-cloud-installed bun (see ubuntu-bootstrap) + dedicated runtime entries. */
 const BUN_BIN = '/usr/local/bin/bun'
-const STACKS_CLI = 'storage/framework/core/buddy/src/cli.ts'
 const STACKS_SCHEDULER = 'node_modules/@stacksjs/ts-cloud/dist/bin/stacks-scheduler.js'
+// Not `storage/framework/core/buddy/src/cli.ts queue:work`: that path exists
+// only in the framework's monorepo, never in an app installed from npm, so
+// every worker unit crash-looped on "Module not found".
+const STACKS_QUEUE_WORKER = 'node_modules/@stacksjs/ts-cloud/dist/bin/stacks-queue-worker.js'
 
 /**
  * Stacks (Bun) — the default. bun lives at an absolute path installed by the box
@@ -98,7 +101,7 @@ export const stacksDriver: AppFrameworkDriver = {
       `--tries=${worker.tries ?? 3}`,
       `--timeout=${worker.timeout ?? 60}`,
     ]
-    return `${BUN_BIN} ${current}/${STACKS_CLI} queue:work ${flags.join(' ')}`
+    return `${BUN_BIN} ${current}/${STACKS_QUEUE_WORKER} ${flags.join(' ')}`
   },
 }
 
