@@ -956,7 +956,24 @@ export class CloudflareProvider implements DnsProvider {
     try {
       const zoneId = await this.getZoneId(domain)
       const existing = await this.getPhaseRules(domain, phase)
-      const foreign = existing.filter(rule => !(rule.description || '').startsWith(CLOUDFLARE_MANAGED_RULE_PREFIX))
+
+      // Replace only the managed rules for the hosts this write covers. A zone
+      // is routinely shared - stacksjs.com carries a dozen tenants' sites, each
+      // deploying on its own - and every tenant's rules carry the same managed
+      // prefix. Filtering on the prefix alone meant each deploy deleted every
+      // OTHER tenant's cache rules: deploying one new site left the zone with
+      // that site's three rules and nobody else's.
+      const ownHosts = new Set(rules.flatMap(rule => hostsInExpression(rule.expression)))
+      const foreign = existing.filter((rule) => {
+        if (!(rule.description || '').startsWith(CLOUDFLARE_MANAGED_RULE_PREFIX))
+          return true
+        const hosts = hostsInExpression(rule.expression)
+        // Unscoped managed rules predate host scoping; only a write that is
+        // itself unscoped may claim them.
+        if (hosts.length === 0)
+          return ownHosts.size > 0
+        return !hosts.some(host => ownHosts.has(host))
+      })
 
       const managed = rules.map(rule => ({
         ...rule,
@@ -976,6 +993,21 @@ export class CloudflareProvider implements DnsProvider {
       return { success: false, message: error instanceof Error ? error.message : String(error) }
     }
   }
+}
+
+/**
+ * The hosts a rule expression is scoped to, in the two shapes `hostCondition`
+ * writes: `http.host eq "a"` and `http.host in {"a" "b"}`.
+ */
+export function hostsInExpression(expression: string): string[] {
+  const hosts: string[] = []
+  for (const match of expression.matchAll(/http\.host eq "([^"]+)"/g))
+    hosts.push(match[1]!)
+  for (const match of expression.matchAll(/http\.host in \{([^}]*)\}/g)) {
+    for (const quoted of match[1]!.matchAll(/"([^"]+)"/g))
+      hosts.push(quoted[1]!)
+  }
+  return hosts
 }
 
 /** Structural comparison for zone-setting values (objects like HSTS, plain scalars). */

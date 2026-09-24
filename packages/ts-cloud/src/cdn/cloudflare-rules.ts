@@ -63,7 +63,7 @@ export interface CloudflareCacheRuleSettings {
   assetEdgeTtl?: number
   /** Browser TTL for those assets, in seconds. @default 31536000 (1 year) */
   assetBrowserTtl?: number
-  /** Edge TTL for HTML documents, in seconds. @default 3600 (1 hour) */
+  /** Edge TTL for HTML documents, in seconds. `0` bypasses the edge for them entirely. @default 3600 (1 hour) */
   documentEdgeTtl?: number
   /**
    * Browser TTL for HTML documents, in seconds. @default 0
@@ -194,10 +194,29 @@ export function buildStaticSiteCacheRules(
     })
   }
 
+  const documentsExpression = assetClause ? `(${cacheable} and not ${assetClause})` : `(${cacheable})`
+
+  // `documentEdgeTtl: 0` means "never hold the HTML at the edge", and that has
+  // to be a bypass. Written as `cache: true` with a zero TTL, Cloudflare still
+  // treats the page as cacheable - it answers EXPIRED/REVALIDATED - and strips
+  // Set-Cookie from anything it considers cacheable. The per-visitor CSRF
+  // cookie never arrived, so every form POST on the site got 403 "CSRF token
+  // mismatch" while the page itself looked perfect.
+  if (settings.documentEdgeTtl === 0) {
+    rules.push({
+      action: 'set_cache_settings',
+      description: 'bypass documents',
+      expression: documentsExpression,
+      enabled: true,
+      action_parameters: { cache: false },
+    })
+    return rules
+  }
+
   rules.push({
     action: 'set_cache_settings',
     description: 'cache documents',
-    expression: assetClause ? `(${cacheable} and not ${assetClause})` : `(${cacheable})`,
+    expression: documentsExpression,
     enabled: true,
     action_parameters: {
       cache: true,

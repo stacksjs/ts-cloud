@@ -172,6 +172,54 @@ describe('managed ruleset writes', () => {
   })
 })
 
+describe('managed ruleset writes on a shared zone', () => {
+  it('replaces only the managed rules for its own hosts', async () => {
+    // stacksjs.com carries many tenants' sites, each deploying separately and
+    // each writing [ts-cloud] rules. One tenant's deploy used to delete them all.
+    const { calls, fetchMock } = mockCloudflare({
+      'GET /zones/zone-1': () => ({ id: 'zone-1', name: 'example.com' }),
+      'GET /zones/zone-1/rulesets/phases/http_request_cache_settings/entrypoint': () => ({
+        id: 'rs-1',
+        name: 'entry',
+        kind: 'zone',
+        phase: 'http_request_cache_settings',
+        rules: [
+          { id: 'a', action: 'set_cache_settings', expression: '(http.host eq "other.example.com")', description: '[ts-cloud] cache documents' },
+          { id: 'b', action: 'set_cache_settings', expression: '(http.host in {"x.example.com" "mine.example.com"})', description: '[ts-cloud] cache documents' },
+          { id: 'c', action: 'set_cache_settings', expression: '(http.host eq "mine.example.com")', description: '[ts-cloud] cache documents' },
+          { id: 'd', action: 'set_cache_settings', expression: '(http.host eq "mine.example.com")', description: 'hand written' },
+        ],
+      }),
+      'PUT /zones/zone-1/rulesets/phases/http_request_cache_settings/entrypoint': () => ({ id: 'rs-1' }),
+    })
+
+    const provider = new CloudflareProvider('token', { zoneId: 'zone-1' })
+    await withFetch(fetchMock as any, () =>
+      provider.putManagedPhaseRules('example.com', 'http_request_cache_settings', [
+        { action: 'set_cache_settings', expression: '(http.host eq "mine.example.com")', description: 'bypass documents' },
+      ]))
+
+    const put = calls.find(c => c.method === 'PUT')
+    const kept = put?.body.rules.map((r: any) => `${r.description} ${r.expression}`)
+    expect(kept).toEqual([
+      '[ts-cloud] cache documents (http.host eq "other.example.com")',
+      'hand written (http.host eq "mine.example.com")',
+      '[ts-cloud] bypass documents (http.host eq "mine.example.com")',
+    ])
+  })
+})
+
+describe('documents with a zero edge TTL', () => {
+  it('bypass the edge rather than caching for zero seconds', () => {
+    // A cacheable response loses its Set-Cookie at Cloudflare, so a zero TTL
+    // written as cache: true silently broke every CSRF-protected form.
+    const rules = buildStaticSiteCacheRules(['example.com'], { documentEdgeTtl: 0 })
+    const documents = rules.find(r => r.description === 'bypass documents')
+    expect(documents?.action_parameters).toEqual({ cache: false })
+    expect(rules.some(r => r.description === 'cache documents')).toBe(false)
+  })
+})
+
 describe('cache rules', () => {
   it('emits bypass, asset and document rules', () => {
     const rules = buildStaticSiteCacheRules(['example.com'], { bypassPaths: ['/api'] })
