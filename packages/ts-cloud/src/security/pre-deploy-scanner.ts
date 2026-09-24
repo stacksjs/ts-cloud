@@ -4,7 +4,7 @@
  * Scans source code for leaked secrets, credentials, and sensitive data before deployment
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { extname, join, relative } from 'node:path'
+import { extname, join, relative, sep } from 'node:path'
 
 export interface SecretPattern {
   name: string
@@ -342,6 +342,11 @@ const DEFAULT_EXCLUDE_DIRS = [
   '.github',
   '.gitlab',
   '.circleci',
+  // Claude Code keeps each parallel session's git worktree here: a full
+  // second checkout of the project, never deployed. Scanning it reported
+  // every finding in the app twice and blocked deploys on the copies.
+  // (An entry with a `/` is a path from the scanned root, not a name.)
+  '.claude/worktrees',
 ]
 
 /**
@@ -657,6 +662,13 @@ export class PreDeployScanner {
     const files: string[] = []
     const extensions = includeExtensions || DEFAULT_SCAN_EXTENSIONS
 
+    // A plain name (`node_modules`) is skipped wherever it appears; one with
+    // a slash (`.claude/worktrees`) only at that path from the scanned root.
+    const excludedNames = excludeDirs.filter(d => !d.includes('/'))
+    const excludedPaths = excludeDirs
+      .filter(d => d.includes('/'))
+      .map(d => d.replace(/^\.\//, '').replace(/\/+$/, ''))
+
     const scan = (currentDir: string) => {
       const entries = readdirSync(currentDir, { withFileTypes: true })
 
@@ -665,7 +677,8 @@ export class PreDeployScanner {
 
         if (entry.isDirectory()) {
           // Skip excluded directories
-          if (!excludeDirs.includes(entry.name)) {
+          const fromRoot = relative(dir, fullPath).split(sep).join('/')
+          if (!excludedNames.includes(entry.name) && !excludedPaths.includes(fromRoot)) {
             scan(fullPath)
           }
         } else if (entry.isFile()) {

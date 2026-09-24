@@ -180,3 +180,49 @@ describe('scan exclusions', () => {
     expect(result.findings.some((f) => f.file.includes('leak.ts'))).toBe(true)
   })
 })
+
+describe('path exclusions', () => {
+  const secret = 'const credential = "aB3dE5fG7hI9jK/lMnOpQrStUvWxYz0123456789"\n'
+
+  function project(): string {
+    const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-secret-scan-'))
+    temporaryDirectories.push(directory)
+    writeFileSync(join(directory, 'app.ts'), 'export const app = true\n')
+    return directory
+  }
+
+  it('skips Claude Code session worktrees, a second checkout never deployed', async () => {
+    const directory = project()
+    const worktree = join(directory, '.claude', 'worktrees', 'modest-blackburn-9e5e39', 'database', 'seeders')
+    mkdirSync(worktree, { recursive: true })
+    writeFileSync(join(worktree, 'AdminSeeder.ts'), secret)
+
+    const result = await new PreDeployScanner().scan({ directory, failOnSeverity: 'high' })
+
+    expect(result.passed).toBe(true)
+    expect(result.scannedFiles).toBe(1)
+  })
+
+  it('still scans the rest of .claude', async () => {
+    const directory = project()
+    mkdirSync(join(directory, '.claude'), { recursive: true })
+    writeFileSync(join(directory, '.claude', 'settings.ts'), secret)
+
+    const result = await new PreDeployScanner().scan({ directory, failOnSeverity: 'high' })
+
+    expect(result.passed).toBe(false)
+  })
+
+  it('matches a path from the scanned root, not the same name deeper down', async () => {
+    const directory = project()
+    mkdirSync(join(directory, 'vendor-tools', 'fixtures'), { recursive: true })
+    mkdirSync(join(directory, 'src', 'vendor-tools', 'fixtures'), { recursive: true })
+    writeFileSync(join(directory, 'vendor-tools', 'fixtures', 'a.ts'), secret)
+    writeFileSync(join(directory, 'src', 'vendor-tools', 'fixtures', 'b.ts'), secret)
+
+    const result = await new PreDeployScanner().scan({ directory, exclude: ['vendor-tools/fixtures'] })
+
+    expect(result.findings.some(f => f.file.includes(join('src', 'vendor-tools')))).toBe(true)
+    expect(result.findings.some(f => f.file.startsWith(join(directory, 'vendor-tools')))).toBe(false)
+  })
+})
