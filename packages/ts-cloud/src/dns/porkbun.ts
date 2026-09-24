@@ -100,7 +100,10 @@ export class PorkbunProvider implements DnsProvider {
       }
 
       if (!response.ok) {
-        lastError = new Error(`Porkbun API error: ${response.status} ${response.statusText}`)
+        // Porkbun explains a refusal in the body ("...already exists", "Invalid
+        // type"). Without it a deploy logged a bare "400 Bad Request".
+        const detail = await response.clone().json().then((d: any) => d?.message).catch(() => undefined)
+        lastError = new Error(`Porkbun API error: ${response.status} ${response.statusText}${detail ? `: ${detail}` : ''}`)
         if (!isRetryablePorkbunResponse(response.status) || attempt === PORKBUN_MAX_ATTEMPTS) throw lastError
         await waitForPorkbunRetry(attempt, response)
         continue
@@ -277,8 +280,12 @@ export class PorkbunProvider implements DnsProvider {
       const rootDomain = this.getRootDomain(domain)
       const subdomain = this.getSubdomain(record.name, rootDomain)
 
-      // First, try to find existing record
-      const existing = await this.listRecords(domain, record.type)
+      // First, try to find existing record. From the FULL zone listing, not
+      // `listRecords(domain, type)`: that is `retrieveByNameType` scoped to the
+      // apex, so a record at `mail.example.com` was never found, the upsert
+      // fell through to a create, and Porkbun refused the duplicate with a 400
+      // on every run.
+      const existing = await this.listRecords(domain)
 
       if (existing.success) {
         // Find matching record by name and type
@@ -286,6 +293,20 @@ export class PorkbunProvider implements DnsProvider {
           const existingSubdomain = this.getSubdomain(r.name, rootDomain)
           return existingSubdomain === subdomain && r.type === record.type
         })
+
+        // Already what was asked for: nothing to write.
+        if (
+          matchingRecord?.id
+          && matchingRecord.content === record.content
+          && (record.ttl === undefined || matchingRecord.ttl === record.ttl)
+          && ((record.type !== 'MX' && record.type !== 'SRV') || record.priority === undefined || matchingRecord.priority === record.priority)
+        ) {
+          return {
+            success: true,
+            id: matchingRecord.id,
+            message: 'Record already up to date',
+          }
+        }
 
         if (matchingRecord?.id) {
           // Update existing record

@@ -187,3 +187,95 @@ describe('PorkbunProvider apex A records vs the parking ALIAS', () => {
     expect(zone.some(r => r.type === 'CNAME')).toBe(true)
   })
 })
+
+describe('PorkbunProvider upsert of a subdomain record', () => {
+  /**
+   * Fake Porkbun with the two behaviours that made every mail deploy warn:
+   * `retrieveByNameType` only sees records at the apex, and `/dns/create` for a
+   * record that already exists answers 400 with the reason in the body.
+   */
+  function fakePorkbun(initial: DnsRecordResult[]) {
+    const zone = [...initial]
+    const writes: string[] = []
+    let nextId = 100
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request, init?: RequestInit) => {
+        const path = String(url)
+        const body = init?.body ? JSON.parse(String(init.body)) : {}
+        if (path.includes('/dns/retrieveByNameType/')) {
+          const type = path.split('/').pop()
+          return Response.json({ status: 'SUCCESS', records: zone.filter(r => r.type === type && r.name === 'example.com') })
+        }
+        if (path.includes('/dns/retrieve/'))
+          return Response.json({ status: 'SUCCESS', records: zone })
+        if (path.includes('/dns/create/')) {
+          writes.push('create')
+          const name = body.name ? `${body.name}.example.com` : 'example.com'
+          if (zone.some(r => r.name === name && r.type === body.type && r.content === body.content))
+            return Response.json({ status: 'ERROR', message: 'Could not add DNS record: record already exists' }, { status: 400, statusText: 'Bad Request' })
+          zone.push({ id: String(nextId++), name, type: body.type, content: body.content, ttl: Number(body.ttl) } as DnsRecordResult)
+          return Response.json({ status: 'SUCCESS', id: nextId })
+        }
+        if (path.includes('/dns/edit/')) {
+          writes.push('edit')
+          const record = zone.find(r => r.id === path.split('/').pop())
+          if (record)
+            record.content = body.content
+          return Response.json({ status: 'SUCCESS' })
+        }
+        return Response.json({ status: 'SUCCESS' })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
+    return { zone, writes }
+  }
+
+  it('leaves an identical subdomain record alone instead of re-creating it', async () => {
+    const { writes } = fakePorkbun([
+      { id: '7', name: 'mail.example.com', type: 'A', content: '178.105.248.188', ttl: 600 } as DnsRecordResult,
+    ])
+
+    const result = await new PorkbunProvider('k', 's', 5)
+      .upsertRecord('example.com', { name: 'mail.example.com', type: 'A', content: '178.105.248.188', ttl: 600 })
+
+    expect(result.success).toBe(true)
+    expect(writes).toEqual([])
+  })
+
+  it('edits a subdomain record that points somewhere else', async () => {
+    const { zone, writes } = fakePorkbun([
+      { id: '7', name: 'mail.example.com', type: 'A', content: '192.0.2.1', ttl: 600 } as DnsRecordResult,
+    ])
+
+    const result = await new PorkbunProvider('k', 's', 5)
+      .upsertRecord('example.com', { name: 'mail.example.com', type: 'A', content: '178.105.248.188', ttl: 600 })
+
+    expect(result.success).toBe(true)
+    expect(writes).toEqual(['edit'])
+    expect(zone.filter(r => r.name === 'mail.example.com')).toHaveLength(1)
+    expect(zone.find(r => r.id === '7')?.content).toBe('178.105.248.188')
+  })
+
+  it('creates the subdomain record when there is none', async () => {
+    const { zone, writes } = fakePorkbun([])
+
+    const result = await new PorkbunProvider('k', 's', 5)
+      .upsertRecord('example.com', { name: 'mail.example.com', type: 'A', content: '178.105.248.188', ttl: 600 })
+
+    expect(result.success).toBe(true)
+    expect(writes).toEqual(['create'])
+    expect(zone.some(r => r.name === 'mail.example.com' && r.content === '178.105.248.188')).toBe(true)
+  })
+
+  it('reports Porkbun\'s reason for a refused request, not only the status', async () => {
+    fakePorkbun([
+      { id: '7', name: 'mail.example.com', type: 'A', content: '178.105.248.188', ttl: 600 } as DnsRecordResult,
+    ])
+
+    const result = await new PorkbunProvider('k', 's', 5)
+      .createRecord('example.com', { name: 'mail.example.com', type: 'A', content: '178.105.248.188', ttl: 600 })
+
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('400 Bad Request: Could not add DNS record: record already exists')
+  })
+})
