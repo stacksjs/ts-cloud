@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.8...v0.16.9)
+
+## 🐛 Bug Fixes
+
+- **queue**: start Stacks workers from the installed package ([791f6e0](https://github.com/stacksjs/ts-cloud/commit/791f6e0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.9 ([4ca9c13](https://github.com/stacksjs/ts-cloud/commit/4ca9c13)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.7...v0.16.8)
 
 ## 🐛 Bug Fixes
