@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.7...v0.16.8)
+
+## 🐛 Bug Fixes
+
+- **security**: skip Claude Code worktrees in the pre-deploy scan ([5009244](https://github.com/stacksjs/ts-cloud/commit/5009244)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **sqlite**: read the path a Stacks app actually sets ([27032d3](https://github.com/stacksjs/ts-cloud/commit/27032d3)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.8 ([fef10ce](https://github.com/stacksjs/ts-cloud/commit/fef10ce)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.6...v0.16.7)
 
 ## 🐛 Bug Fixes
