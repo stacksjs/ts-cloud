@@ -1051,6 +1051,10 @@ export class HetznerDriver implements CloudDriver {
         // publish it, then copy it to this deployment's unique staging path.
       }
 
+      // Retention for this directory — both the published `*.tar.gz` and the
+      // `.tmp` files a died-mid-SCP upload strands here — lives in
+      // buildHostCleanupScript, which runs unconditionally and on a timer.
+      // Pruning here instead meant it only ever ran on a cache MISS.
       const uploadPath = `${artifactDir}/.${digest}-${randomUUID()}.tmp`
       this.scpToHost(target.publicIp, options.localPath, uploadPath)
       this.sshExec(
@@ -1060,7 +1064,6 @@ export class HetznerDriver implements CloudDriver {
           `chmod 600 ${shellQuote(uploadPath)}`,
           `mv -f -- ${shellQuote(uploadPath)} ${shellQuote(cachedPath)}`,
           `cp -- ${shellQuote(cachedPath)} ${shellQuote(remotePath)}`,
-          `find ${shellQuote(artifactDir)} -type f -name '*.tar.gz' -mtime +7 -delete 2>/dev/null || true`,
         ].join('\n'),
       )
     }
