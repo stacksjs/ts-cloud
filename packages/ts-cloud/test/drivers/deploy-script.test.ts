@@ -782,3 +782,41 @@ describe('resolveExecStart with an executable entry point', () => {
       .toBe('/var/www/acme/releases/%i/buddy serve')
   })
 })
+
+describe('stx image cache shared across releases', () => {
+  // stx encodes every image a template renders before a production server
+  // binds. Inside releases/<id> that started from nothing on every deploy and
+  // outlasted the health check on a photo-heavy site.
+  const artifactFetch = buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', '/tmp/my-app-web-abc123-release.tar.gz')
+
+  it('points a ported site at shared/stx-images and creates it', () => {
+    const joined = buildSiteDeployScript({
+      siteName: 'web',
+      slug: 'my-app',
+      artifactFetch,
+      releaseId: 'abc123',
+      execStart: '/usr/local/bin/bun run server.ts',
+      envEntries: {},
+      port: 3000,
+    }).join('\n')
+
+    expect(joined).toContain('Environment=STX_IMAGE_CACHE_DIR=/var/www/web/shared/stx-images')
+    expect(joined).toMatch(/mkdir -p \/var\/www\/web\/releases \/var\/www\/web\/shared \/var\/www\/web\/shared\/stx-images/)
+  })
+
+  it('points a site without zero-downtime overlap at the same directory', () => {
+    const joined = buildSiteDeployScript({
+      siteName: 'web',
+      slug: 'my-app',
+      artifactFetch,
+      releaseId: 'abc123',
+      execStart: '/usr/local/bin/bun run server.ts',
+      envEntries: {},
+      port: 3000,
+      zeroDowntime: false,
+    }).join('\n')
+
+    expect(joined).not.toContain('my-app-web@')
+    expect(joined).toContain('Environment=STX_IMAGE_CACHE_DIR=/var/www/web/shared/stx-images')
+  })
+})

@@ -62,6 +62,20 @@ export interface ReleasePaths {
 }
 
 /** Resolve the standard release layout paths for a site + release id. */
+/**
+ * Where stx keeps its responsive image variants, shared by every release.
+ *
+ * stx encodes every image a template can render to avif and webp before a
+ * production server binds. Inside the release directory that work started
+ * from nothing on every deploy — about two minutes on a photo-heavy site,
+ * longer than the deploy's health check waits. The variants are named by
+ * content hash, so one directory serves every release, and a new release
+ * starts warm. Handed to the server as `STX_IMAGE_CACHE_DIR`.
+ */
+export function stxImageCacheDir(paths: ReleasePaths): string {
+  return `${paths.shared}/stx-images`
+}
+
 export function releasePaths(base: string, releaseId: string): ReleasePaths {
   const root = base.replace(/\/+$/, '')
   return {
@@ -183,7 +197,7 @@ export function buildEnsureReleaseLayout(
   paths: ReleasePaths,
   sharedPaths: readonly SharedPathEntry[] = DEFAULT_SHARED_PATHS,
 ): string[] {
-  const lines = [`mkdir -p ${paths.releases} ${paths.shared}`, ...buildAdoptSharedPathFn(paths)]
+  const lines = [`mkdir -p ${paths.releases} ${paths.shared} ${stxImageCacheDir(paths)}`, ...buildAdoptSharedPathFn(paths)]
   const resolved = sharedPaths.map(entry => resolveSharedPath(paths, entry))
 
   for (const { path: p, target, seed } of resolved) {
