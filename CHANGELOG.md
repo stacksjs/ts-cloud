@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.11...v0.16.12)
+
+## 🐛 Bug Fixes
+
+- **dns**: split long TXT values for Route53 ([6ea3ada](https://github.com/stacksjs/ts-cloud/commit/6ea3ada)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.12 ([aa4ca3f](https://github.com/stacksjs/ts-cloud/commit/aa4ca3f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.10...v0.16.11)
 
 ## 🐛 Bug Fixes
