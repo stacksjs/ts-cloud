@@ -70,10 +70,19 @@ export class Route53Provider implements DnsProvider {
   private formatValue(record: DnsRecord): string {
     let value = record.content
     if (record.type === 'TXT' && !value.startsWith('"'))
-      value = `"${value}"`
+      value = toTxtStrings(value)
     if (record.type === 'MX' && record.priority !== undefined)
       value = `${record.priority} ${value}`
     return value
+  }
+
+  /**
+   * Whether two stored values are the same record. TXT compares the text the
+   * strings carry, not how it was split: a DKIM key written as three strings by
+   * another tool is still the key this provider would write as two.
+   */
+  private sameValue(type: string, a: string, b: string): boolean {
+    return type === 'TXT' ? parseTxtStrings(a) === parseTxtStrings(b) : a === b
   }
 
   /**
@@ -116,7 +125,7 @@ export class Route53Provider implements DnsProvider {
       // Add the value to whatever set is already at this name, rather than
       // CREATE, which Route53 refuses once the name holds any value.
       const current = await this.currentSet(hostedZoneId, recordName, record.type)
-      if (current?.values.includes(recordValue))
+      if (current?.values.some(value => this.sameValue(record.type, value, recordValue)))
         return { success: true, message: 'Record already present' }
 
       const values = [...(current?.values ?? []), recordValue]
@@ -212,10 +221,10 @@ export class Route53Provider implements DnsProvider {
       // two-value set is rejected outright, so cleaning up one ACME challenge
       // used to fail while the other was still in place.
       const current = await this.currentSet(hostedZoneId, recordName, record.type)
-      if (!current || !current.values.includes(recordValue))
+      if (!current || !current.values.some(value => this.sameValue(record.type, value, recordValue)))
         return { success: true, message: 'Record already absent' }
 
-      const remaining = current.values.filter(value => value !== recordValue)
+      const remaining = current.values.filter(value => !this.sameValue(record.type, value, recordValue))
       await this.client.changeResourceRecordSets({
         HostedZoneId: hostedZoneId,
         ChangeBatch: {
@@ -288,9 +297,9 @@ export class Route53Provider implements DnsProvider {
             }
           }
 
-          // Remove TXT record quotes
-          if (rs.Type === 'TXT' && content.startsWith('"') && content.endsWith('"')) {
-            content = content.slice(1, -1)
+          // Route53 returns TXT as quoted strings, several for a long value.
+          if (rs.Type === 'TXT' && content.startsWith('"')) {
+            content = parseTxtStrings(content)
           }
 
           records.push({
@@ -425,4 +434,51 @@ export class Route53Provider implements DnsProvider {
       evaluateTargetHealth: true,
     })
   }
+}
+
+/** The longest single string a TXT record may hold (RFC 1035 character-string). */
+const TXT_STRING_MAX = 255
+
+/**
+ * A TXT value as Route53 wants it: quoted strings of at most 255 characters,
+ * space separated. A 2048-bit DKIM key is ~400 characters, and Route53 refuses
+ * it as one string with `CharacterStringTooLong`, so the mail DNS for every
+ * Route53 zone failed at the DKIM record. Resolvers join the strings back
+ * together, so the split is invisible to anyone reading the record.
+ *
+ * Splits before escaping, so an escape sequence is never cut in half.
+ */
+export function toTxtStrings(value: string): string {
+  const chunks: string[] = []
+  for (let i = 0; i < value.length; i += TXT_STRING_MAX)
+    chunks.push(value.slice(i, i + TXT_STRING_MAX))
+  if (chunks.length === 0)
+    chunks.push('')
+  return chunks.map(chunk => `"${chunk.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(' ')
+}
+
+/** The text a stored TXT value carries: every quoted string, unescaped and joined. */
+export function parseTxtStrings(stored: string): string {
+  if (!stored.startsWith('"'))
+    return stored
+  let out = ''
+  let inString = false
+  for (let i = 0; i < stored.length; i++) {
+    const ch = stored[i]
+    if (!inString) {
+      if (ch === '"')
+        inString = true
+      continue
+    }
+    if (ch === '\\' && i + 1 < stored.length) {
+      out += stored[++i]
+      continue
+    }
+    if (ch === '"') {
+      inString = false
+      continue
+    }
+    out += ch
+  }
+  return out
 }

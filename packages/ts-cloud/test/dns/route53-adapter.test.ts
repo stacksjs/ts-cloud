@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { Route53Provider } from '../../src/dns/route53-adapter'
+import { parseTxtStrings, Route53Provider, toTxtStrings } from '../../src/dns/route53-adapter'
 
 function providerWithRecorder() {
   const changes: any[] = []
@@ -131,5 +131,57 @@ describe('Route53Provider multi-valued records', () => {
     expect(sets).toEqual([])
     expect((await provider.deleteRecord('example.com', { name: '_acme-challenge', type: 'TXT', content: 'wildcard' })).success).toBe(true)
     expect(calls.map(c => c.split(' ')[0])).toEqual(['DELETE'])
+  })
+})
+
+describe('Route53Provider long TXT values', () => {
+  // A 2048-bit DKIM record is ~410 characters; Route53 caps one string at 255.
+  const DKIM = `v=DKIM1; k=rsa; p=${'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA'.repeat(9)}IDAQAB`
+  const DKIM_NAME = 'mail._domainkey.example.com.'
+  const strings = (value: string) => [...value.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(m => m[1])
+
+  it('writes a value over 255 characters as several strings of at most 255', async () => {
+    const { provider, sets } = fakeRoute53()
+
+    expect((await provider.upsertRecord('example.com', { name: 'mail._domainkey', type: 'TXT', content: DKIM })).success).toBe(true)
+
+    const stored = sets.find(s => s.Name === DKIM_NAME)!.ResourceRecords[0].Value
+    expect(DKIM.length).toBeGreaterThan(255)
+    expect(strings(stored).length).toBe(Math.ceil(DKIM.length / 255))
+    expect(strings(stored).every(part => part.length <= 255)).toBe(true)
+    expect(strings(stored).join('')).toBe(DKIM)
+  })
+
+  it('reads a split value back as the one value it is', async () => {
+    const { provider } = fakeRoute53([{ Name: DKIM_NAME, Type: 'TXT', TTL: 600, ResourceRecords: [{ Value: toTxtStrings(DKIM) }] }])
+    ;(provider as any).getHostedZoneId = async () => 'Z123'
+    ;(provider as any).client.listResourceRecordSets = async () => ({
+      ResourceRecordSets: [{ Name: DKIM_NAME, Type: 'TXT', TTL: 600, ResourceRecords: [{ Value: toTxtStrings(DKIM) }] }],
+      IsTruncated: false,
+    })
+
+    const listed = await provider.listRecords('example.com')
+
+    expect(listed.success).toBe(true)
+    expect(listed.records.find(r => r.type === 'TXT')?.content).toBe(DKIM)
+  })
+
+  it('treats the same text split differently as already present, and can delete it', async () => {
+    // Another tool split this key at 200 characters instead of 255.
+    const splitElsewhere = `"${DKIM.slice(0, 200)}" "${DKIM.slice(200)}"`
+    const { provider, sets, calls } = fakeRoute53([{ Name: DKIM_NAME, Type: 'TXT', TTL: 600, ResourceRecords: [{ Value: splitElsewhere }] }])
+
+    expect((await provider.createRecord('example.com', { name: 'mail._domainkey', type: 'TXT', content: DKIM })).success).toBe(true)
+    expect(calls).toEqual([])
+
+    expect((await provider.deleteRecord('example.com', { name: 'mail._domainkey', type: 'TXT', content: DKIM })).success).toBe(true)
+    expect(sets).toEqual([])
+  })
+
+  it('keeps quotes and backslashes intact through a round trip', () => {
+    const text = `say "hi" \\ ${'x'.repeat(300)}`
+
+    expect(parseTxtStrings(toTxtStrings(text))).toBe(text)
+    expect(toTxtStrings('short')).toBe('"short"')
   })
 })
