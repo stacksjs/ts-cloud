@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.12...v0.16.13)
+
+## 🐛 Bug Fixes
+
+- **deploy**: keep stx image variants in shared/ so a release starts warm ([d89dee2](https://github.com/stacksjs/ts-cloud/commit/d89dee2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.13 ([39ed77b](https://github.com/stacksjs/ts-cloud/commit/39ed77b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.11...v0.16.12)
 
 ## 🐛 Bug Fixes
