@@ -4,6 +4,7 @@
  */
 import type { CreateRecordResult, DeleteRecordResult, DnsProvider, DnsRecord, DnsRecordResult, DnsRecordType, ListRecordsResult } from './types'
 import { PROXIABLE_RECORD_TYPES } from './types'
+import { hostCondition } from '../cdn/cloudflare-rules'
 
 const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4'
 
@@ -957,24 +958,9 @@ export class CloudflareProvider implements DnsProvider {
       const zoneId = await this.getZoneId(domain)
       const existing = await this.getPhaseRules(domain, phase)
 
-      // Replace only the managed rules for the hosts this write covers. A zone
-      // is routinely shared - stacksjs.com carries a dozen tenants' sites, each
-      // deploying on its own - and every tenant's rules carry the same managed
-      // prefix. Filtering on the prefix alone meant each deploy deleted every
-      // OTHER tenant's cache rules: deploying one new site left the zone with
-      // that site's three rules and nobody else's.
-      const ownHosts = new Set(rules.flatMap(rule => hostsInExpression(rule.expression)))
-      const foreign = existing.filter((rule) => {
-        if (!(rule.description || '').startsWith(CLOUDFLARE_MANAGED_RULE_PREFIX))
-          return true
-        const hosts = hostsInExpression(rule.expression)
-        // Unscoped managed rules predate host scoping; only a write that is
-        // itself unscoped may claim them.
-        if (hosts.length === 0)
-          return ownHosts.size > 0
-        return !hosts.some(host => ownHosts.has(host))
-      })
-
+      // Replace only this write's hosts, merging rules that behave alike, so a
+      // shared zone neither loses other tenants' rules nor runs out of them.
+      // See mergeManagedRules.
       const managed = rules.map(rule => ({
         ...rule,
         description: rule.description?.startsWith(CLOUDFLARE_MANAGED_RULE_PREFIX)
@@ -982,9 +968,12 @@ export class CloudflareProvider implements DnsProvider {
           : `${CLOUDFLARE_MANAGED_RULE_PREFIX} ${rule.description || phase}`,
       }))
 
+      const merged = mergeManagedRules(existing, managed)
+
       // Strip server-assigned ids from preserved rules: Cloudflare rejects a PUT
       // that reuses ids, treating the list as a fresh definition of the phase.
-      const payload = [...foreign, ...managed].map(({ id: _id, ...rule }) => rule)
+      // eslint-disable-next-line pickier/no-unused-vars
+      const payload = merged.map(({ id, ...rule }) => rule)
 
       await this.request('PUT', `/zones/${zoneId}/rulesets/phases/${phase}/entrypoint`, { rules: payload })
       return { success: true }
@@ -993,6 +982,105 @@ export class CloudflareProvider implements DnsProvider {
       return { success: false, message: error instanceof Error ? error.message : String(error) }
     }
   }
+}
+
+/** The host clause `hostCondition` writes, in either of its two shapes. */
+const HOST_CLAUSE = /http\.host (?:eq "[^"]+"|in \{[^}]*\})/
+
+/**
+ * A rule expression with its host clause taken out. Two rules with the same
+ * shape (and the same action) do the same thing, each to its own hosts.
+ */
+export function expressionShape(expression: string): string | null {
+  return HOST_CLAUSE.test(expression) ? expression.replace(HOST_CLAUSE, '\u0000hosts\u0000') : null
+}
+
+/** The same expression scoped to `hosts` instead. */
+export function scopeExpression(expression: string, hosts: readonly string[]): string {
+  return expression.replace(HOST_CLAUSE, hostCondition(hosts))
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value))
+    return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined)
+    return `{${entries.sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function sameBehaviour(a: CloudflareRule, b: CloudflareRule): boolean {
+  const shape = expressionShape(a.expression)
+  return shape !== null
+    && shape === expressionShape(b.expression)
+    && a.action === b.action
+    && a.description === b.description
+    && (a.enabled ?? true) === (b.enabled ?? true)
+    && stableJson(a.action_parameters) === stableJson(b.action_parameters)
+}
+
+/**
+ * The phase's rule list after one project writes its managed rules.
+ *
+ * A zone is routinely shared (stacksjs.com carries a dozen tenants' sites,
+ * each deploying on its own), and a phase holds only so many rules: 10 cache
+ * rules on Cloudflare's Free plan. Written one set per tenant, the fourth
+ * tenant's deploy failed with "exceeded the maximum number of rules in the
+ * phase http_request_cache_settings: 12 out of 10" and its site went without
+ * cache rules at all.
+ *
+ * So rules that behave identically - same action, parameters and expression,
+ * differing only in their hosts - are stored once with the union of their
+ * hosts. That is exact, not an approximation: the phase applies every
+ * matching rule, and a rule's effect on a host does not depend on which other
+ * hosts share it. Tenants on default settings now cost nothing extra.
+ *
+ * Ownership is therefore per host, not per rule. Writing this project's rules
+ * first takes its hosts out of every managed rule (dropping a rule left with
+ * none) and only then adds them back, merging where it can. The one cost: a
+ * host a project stops declaring lingers in a shared rule, which is harmless
+ * because nothing routes it. Rules without the managed prefix are never
+ * touched, and an unscoped managed rule is left alone by a scoped write.
+ */
+export function mergeManagedRules(existing: CloudflareRule[], incoming: CloudflareRule[]): CloudflareRule[] {
+  const ownHosts = new Set(incoming.flatMap(rule => hostsInExpression(rule.expression)))
+  const isManaged = (rule: CloudflareRule): boolean => (rule.description || '').startsWith(CLOUDFLARE_MANAGED_RULE_PREFIX)
+
+  const result: CloudflareRule[] = []
+  for (const rule of existing) {
+    if (!isManaged(rule)) {
+      result.push(rule)
+      continue
+    }
+    const hosts = hostsInExpression(rule.expression)
+    if (hosts.length === 0) {
+      // Unscoped managed rules predate host scoping; only a write that is
+      // itself unscoped may claim them.
+      if (ownHosts.size > 0)
+        result.push(rule)
+      continue
+    }
+    const remaining = hosts.filter(host => !ownHosts.has(host))
+    if (remaining.length === hosts.length)
+      result.push(rule)
+    else if (remaining.length > 0)
+      result.push({ ...rule, expression: scopeExpression(rule.expression, remaining) })
+  }
+
+  for (const rule of incoming) {
+    const hosts = hostsInExpression(rule.expression)
+    const at = hosts.length > 0 ? result.findIndex(other => isManaged(other) && sameBehaviour(other, rule)) : -1
+    if (at === -1) {
+      result.push(rule)
+      continue
+    }
+    const target = result[at]!
+    const union = [...new Set([...hostsInExpression(target.expression), ...hosts])]
+    result[at] = { ...target, expression: scopeExpression(target.expression, union) }
+  }
+
+  return result
 }
 
 /**

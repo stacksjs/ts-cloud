@@ -1,6 +1,7 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
-import { CloudflareProvider } from '../dns/cloudflare'
+import type { CloudflareRule } from '../dns/cloudflare'
+import { CloudflareProvider, hostsInExpression, mergeManagedRules } from '../dns/cloudflare'
 import { edgeCertificateCovers } from './cloudflare'
 import { resolveCloudflareCdnPlan, resolveZoneApex } from './cloudflare-plan'
 import { buildOriginGuardRule, buildStaticSiteCacheRules, hostCondition } from './cloudflare-rules'
@@ -203,9 +204,73 @@ describe('managed ruleset writes on a shared zone', () => {
     const kept = put?.body.rules.map((r: any) => `${r.description} ${r.expression}`)
     expect(kept).toEqual([
       '[ts-cloud] cache documents (http.host eq "other.example.com")',
+      // A rule shared with another host keeps that host. This used to drop the
+      // whole rule, taking x.example.com's caching with it.
+      '[ts-cloud] cache documents (http.host eq "x.example.com")',
       'hand written (http.host eq "mine.example.com")',
       '[ts-cloud] bypass documents (http.host eq "mine.example.com")',
     ])
+  })
+})
+
+describe('managed rules on a zone near its rule limit', () => {
+  // What putManagedPhaseRules sends: the builder's rules under the managed prefix.
+  const managed = (hosts: string[], settings: Parameters<typeof buildStaticSiteCacheRules>[1] = {}): CloudflareRule[] =>
+    buildStaticSiteCacheRules(hosts, settings).map(rule => ({ ...rule, description: `[ts-cloud] ${rule.description}` }))
+  const deploy = (zone: CloudflareRule[], hosts: string[], settings?: Parameters<typeof buildStaticSiteCacheRules>[1]) =>
+    mergeManagedRules(zone, managed(hosts, settings))
+  const hostsOf = (zone: CloudflareRule[]) => zone.map(rule => hostsInExpression(rule.expression))
+
+  const MARIO = { documentEdgeTtl: 300, bypassPaths: ['/api/', '/_stacks/'] }
+  const SMAKELO = { documentEdgeTtl: 0 }
+
+  it('stores tenants with the same settings once, with both hosts', () => {
+    let zone = deploy([], ['marioadrion.example.com'], MARIO)
+    zone = deploy(zone, ['uplink.example.com'], MARIO)
+
+    expect(zone).toHaveLength(3)
+    expect(hostsOf(zone)).toEqual(Array.from({ length: 3 }, () => ['marioadrion.example.com', 'uplink.example.com']))
+  })
+
+  it('keeps the stacksjs.com zone under 10 rules with a fourth tenant', () => {
+    // The zone as it was: three tenants, three rules each. The fourth deploy
+    // wanted 12 and Cloudflare refused all of them ("12 out of 10").
+    let zone = deploy([], ['trifitla.example.com', 'trifit.example.com'])
+    zone = deploy(zone, ['smakelo.example.com'], SMAKELO)
+    zone = deploy(zone, ['marioadrion.example.com'], MARIO)
+    const before = zone.length
+    // 7, not 9: trifitla and smakelo share default bypass and asset rules too.
+    expect(before).toBeLessThan(9)
+
+    zone = deploy(zone, ['uplink.example.com'], MARIO)
+    expect(zone).toHaveLength(before)
+  })
+
+  it('is idempotent: redeploying changes nothing', () => {
+    const once = deploy(deploy([], ['marioadrion.example.com'], MARIO), ['uplink.example.com'], MARIO)
+    expect(deploy(once, ['uplink.example.com'], MARIO)).toEqual(once)
+    expect(deploy(once, ['marioadrion.example.com'], MARIO)).toHaveLength(3)
+  })
+
+  it('splits a tenant back out when its settings change, leaving the other intact', () => {
+    let zone = deploy(deploy([], ['marioadrion.example.com'], MARIO), ['uplink.example.com'], MARIO)
+    zone = deploy(zone, ['marioadrion.example.com'], { ...MARIO, documentEdgeTtl: 60 })
+
+    // Bypass and asset rules are still identical and still shared; the
+    // document rule now differs, so each tenant has its own.
+    expect(zone).toHaveLength(4)
+    const documents = zone.filter(rule => rule.description === '[ts-cloud] cache documents')
+    expect(documents.map(rule => [hostsInExpression(rule.expression), (rule.action_parameters as any).edge_ttl.default])).toEqual([
+      [['uplink.example.com'], 300],
+      [['marioadrion.example.com'], 60],
+    ])
+  })
+
+  it('never merges into a rule it does not manage', () => {
+    const handWritten = { ...managed(['other.example.com'], MARIO)[0]!, description: 'bypass cache' }
+    const zone = deploy([handWritten], ['uplink.example.com'], MARIO)
+    expect(hostsOf(zone)[0]).toEqual(['other.example.com'])
+    expect(zone).toHaveLength(4)
   })
 })
 
