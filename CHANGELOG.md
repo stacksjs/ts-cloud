@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.14...v0.16.15)
+
+## 🐛 Bug Fixes
+
+- **liveness**: stop restarting a unit during its startup, and back off repeated restarts ([4b0bfa1](https://github.com/stacksjs/ts-cloud/commit/4b0bfa1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.15 ([fa25730](https://github.com/stacksjs/ts-cloud/commit/fa25730)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.13...v0.16.14)
 
 ## 🐛 Bug Fixes
