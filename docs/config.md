@@ -445,6 +445,59 @@ sharedPaths: [{ path: 'database/app.sqlite', target: '/var/www/acme-app/shared/d
 Each site installs under its own base, so a plain string would give each of them
 a database of its own. `seed: false` marks the sites that do not own the file.
 
+### Liveness probe
+
+Every server-app site with a `port` gets a systemd timer,
+`<slug>-<site>-liveness.timer`, that asks the service for an HTTP response on
+`127.0.0.1:<port>` and restarts it when it has stopped answering.
+`Restart=always` only covers a process that exits. This covers one that is
+still running and no longer serving, which systemd reports as healthy.
+
+Any HTTP status counts as an answer: a 404 on `/` means the process is up. A
+refused connection or no response within `timeoutSeconds` counts as a failure,
+and a restart takes `failuresBeforeRestart` failures in a row.
+
+Two rules stop a slow start from turning into a restart loop:
+
+- **Startup grace.** A unit younger than `startupGraceSeconds` is never
+  restarted, and failed checks inside the grace are not counted. The age is
+  measured from the unit's last start, so a restart gets a new grace. This is
+  what Kubernetes calls a startup probe. It matters for a server that binds its
+  port and then spends minutes warming up: without it, the probe restarted such
+  a release three minutes into each boot, and every restart threw the warm-up
+  away.
+- **Back-off.** The second restart in a row waits at least 5 minutes after the
+  first, and each later one waits twice as long as the one before, up to
+  `maxBackoffSeconds`. A release that never comes back is restarted a few
+  times and then about once an hour. The count resets when the service answers
+  and the probe has not restarted it for `maxBackoffSeconds`. Every deploy also
+  resets it.
+
+The probe logs under the `<slug>-<site>-liveness` journal tag, including when it
+is in the grace and when it is holding off. Run
+`journalctl -t <slug>-<site>-liveness` to see those entries.
+
+```typescript
+sites: {
+  app: {
+    start: 'bun run server.ts',
+    port: 3000,
+    liveness: {
+      path: '/health',           // default: healthCheck.path, else '/'
+      intervalSeconds: 60,       // default 60
+      timeoutSeconds: 10,        // default 10; a slower answer is still an answer
+      failuresBeforeRestart: 3,  // default 3
+      startupGraceSeconds: 900,  // default 600; set above your slowest boot
+      maxBackoffSeconds: 3600,   // default 3600; 0 turns the back-off off
+    },
+  },
+}
+```
+
+Set `liveness: false` for a service that answers nothing on its port, or one
+where a restart is more dangerous than an outage. The settings take effect on
+the next deploy, which rewrites the timer and its script.
+
 ### CDN / caching
 
 The `cache` hint applies to either origin:

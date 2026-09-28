@@ -278,6 +278,7 @@ export async function deploySiteRelease(
           // sites (workers/schedulers) always stop/start — see the builder.
           zeroDowntime: site.zeroDowntime !== false,
           healthCheckPath: site.healthCheck?.path,
+          liveness: site.liveness,
           memoryHigh: site.memoryHigh,
           memoryMax: site.memoryMax,
           cpuWeight: site.cpuWeight,

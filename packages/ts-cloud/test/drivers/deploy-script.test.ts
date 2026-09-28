@@ -628,7 +628,7 @@ describe('liveness watchdog', () => {
     expect(joined).toContain('/usr/local/sbin/my-app-web-liveness')
     expect(joined).toContain('/etc/systemd/system/my-app-web-liveness.timer')
     expect(joined).toContain('systemctl enable --now my-app-web-liveness.timer')
-    expect(joined).toContain('curl -s -o /dev/null --max-time 5 "http://127.0.0.1:3000/"')
+    expect(joined).toContain('curl -s -o /dev/null --max-time 10 "http://127.0.0.1:3000/"')
   })
 
   it('probes over HTTP rather than checking the listener', () => {
@@ -651,8 +651,9 @@ describe('liveness watchdog', () => {
   it('needs consecutive failures, and forgets them after a good response', () => {
     const joined = buildSiteDeployScript(base).join('\n')
 
-    expect(joined).toContain('[ "$TS_CLOUD_FAILS" -ge 3 ] || exit 0')
-    expect(joined).toContain('rm -f /run/my-app-web-liveness.fail')
+    expect(joined).toContain('if [ "$TS_CLOUD_FAILS" -lt 3 ]; then')
+    expect(joined).toContain('TS_CLOUD_STATE=/run/my-app-web-liveness')
+    expect(joined).toContain('rm -f "$TS_CLOUD_STATE.fail"')
     expect(joined).toContain('flock -n 9 || exit 0')
   })
 
@@ -673,6 +674,14 @@ describe('liveness watchdog', () => {
     const joined = buildSiteDeployScript({ ...base, healthCheckPath: '/health' }).join('\n')
 
     expect(joined).toContain('"http://127.0.0.1:3000/health"')
+  })
+
+  it('takes its timing from the site config', () => {
+    const joined = buildSiteDeployScript({ ...base, liveness: { startupGraceSeconds: 900, timeoutSeconds: 20, maxBackoffSeconds: 7200 } }).join('\n')
+
+    expect(joined).toContain('--max-time 20 "http://127.0.0.1:3000/"')
+    expect(joined).toContain('-lt 900 ]; then')
+    expect(joined).toContain('startup-grace=900s max-backoff=7200s')
   })
 
   it('can be turned off', () => {

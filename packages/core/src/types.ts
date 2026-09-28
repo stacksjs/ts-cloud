@@ -1058,6 +1058,40 @@ export interface SharedPathSpec {
 /** A shared path: a release-relative path, or {@link SharedPathSpec}. */
 export type SharedPathEntry = string | SharedPathSpec
 
+/**
+ * The recurring liveness probe for a ported server-app site: a systemd timer
+ * that asks the service for an HTTP response on `127.0.0.1:<port>` and
+ * restarts it when it has stopped answering. Every field is optional.
+ */
+export interface SiteLivenessConfig {
+  /** Path to request. @default the health check path, else '/' */
+  path?: string
+  /** Seconds between checks. @default 60 */
+  intervalSeconds?: number
+  /** Consecutive failed checks, after the startup grace, before a restart. @default 3 */
+  failuresBeforeRestart?: number
+  /**
+   * Seconds one check waits for an HTTP response. A slow answer inside this
+   * budget is an answer, and counts as alive. @default 10
+   */
+  timeoutSeconds?: number
+  /**
+   * Seconds after a unit (re)starts during which a failed check is not held
+   * against it - the equivalent of a Kubernetes startupProbe. Must be longer
+   * than the slowest honest boot: a server that binds its port and then warms
+   * up for minutes is starting, not wedged. `0` disables the grace.
+   * @default 600
+   */
+  startupGraceSeconds?: number
+  /**
+   * Ceiling on the back-off between consecutive liveness restarts. The second
+   * restart in a row waits at least 5 minutes after the first, and each one
+   * after that doubles, up to this. `0` disables the back-off.
+   * @default 3600
+   */
+  maxBackoffSeconds?: number
+}
+
 export interface SiteConfig {
   /**
    * Directory to deploy.
@@ -1285,6 +1319,20 @@ export interface SiteConfig {
    * exactly that. Leave unset for anything that stops immediately.
    */
   stopTimeout?: string
+
+  /**
+   * Recurring liveness probe for a ported server-app site. `Restart=always`
+   * only covers a process that exits; this covers one that is alive and no
+   * longer answering. A unit is never restarted inside its startup grace, and
+   * consecutive restarts back off, so a slow boot cannot turn into a restart
+   * loop.
+   *
+   * Set `false` to opt out, for a service that answers nothing on its port or
+   * one where a restart is more dangerous than an outage.
+   * @default enabled: `healthCheck.path` or '/', every 60s, 10s timeout,
+   * restart after 3 consecutive failures once the unit is 10 minutes old
+   */
+  liveness?: false | SiteLivenessConfig
 
   /**
    * SSR only. tar `--exclude` patterns applied when packaging the release

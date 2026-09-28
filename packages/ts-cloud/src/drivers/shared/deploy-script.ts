@@ -10,7 +10,7 @@
  * release (no window where the code is half-replaced). Old releases are kept for
  * instant rollback. See {@link import('./releases')}.
  */
-import type { SharedPathEntry } from '@ts-cloud/core'
+import type { SharedPathEntry, SiteLivenessConfig } from '@ts-cloud/core'
 import { formatEnvFile } from './env-file'
 import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxImageCacheDir } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
@@ -76,21 +76,6 @@ export function resolveExecStart(
   return `${bin} ${command}`
 }
 
-/**
- * Shell that installs a recurring liveness check for one ported service.
- *
- * Three files: a check script, a oneshot service that runs it, and a timer.
- * The script resolves the unit to probe at run time rather than baking in a
- * release id, so it keeps working after the next deploy replaces the instance.
- *
- * `curl` without `-f`: any HTTP response means the process is answering, and a
- * 404 on `/` is a routing opinion, not a wedged event loop. Only a connection
- * failure or a timeout counts against it.
- *
- * A restart needs N consecutive failures, counted in a file under /run, so a
- * single slow moment cannot bounce a healthy service; the counter resets on the
- * first good response. flock keeps two ticks from overlapping.
- */
 /**
  * Stop the implicit per-template slice from silently capping the service.
  *
@@ -216,50 +201,173 @@ export function buildSliceReconcile(instance: string): string[] {
   ]
 }
 
+/**
+ * Liveness probe settings for a ported site - the same shape as
+ * `SiteConfig.liveness`. See {@link LIVENESS_DEFAULTS} for unset fields.
+ */
+export type LivenessOptions = SiteLivenessConfig
+
+export const LIVENESS_DEFAULTS = {
+  path: '/',
+  intervalSeconds: 60,
+  failuresBeforeRestart: 3,
+  timeoutSeconds: 10,
+  startupGraceSeconds: 600,
+  maxBackoffSeconds: 3600,
+  /** The wait before the second consecutive restart; it doubles from there. */
+  backoffBaseSeconds: 300,
+} as const
+
+function wholeSeconds(value: number | undefined, fallback: number, min: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.floor(value)) : fallback
+}
+
+/**
+ * Shell that installs a recurring liveness check for one ported service.
+ *
+ * Three files: a check script, a oneshot service that runs it, and a timer.
+ * The script resolves the unit to probe at run time rather than baking in a
+ * release id, so it keeps working after the next deploy replaces the instance.
+ *
+ * `curl` without `-f`: any HTTP response means the process is answering, and a
+ * 404 on `/` is a routing opinion, not a wedged event loop. Only a refused
+ * connection or no response within `timeoutSeconds` counts against it. A
+ * timeout has to count - a wedged process still has its port bound and the
+ * kernel still accepts into its backlog, so "connects but never answers" is
+ * exactly the failure this exists for - which is why the budget is generous
+ * rather than why timeouts are forgiven.
+ *
+ * A restart needs N consecutive failures, counted in a file under /run, so a
+ * single slow moment cannot bounce a healthy service; the counter resets on the
+ * first good response. flock keeps two ticks from overlapping.
+ *
+ * **Startup grace.** A check against a unit younger than `startupGraceSeconds`
+ * is not counted. Without it the probe turned a slow boot into an outage loop:
+ * a release whose image warm-up kept its main thread busy for minutes after
+ * binding was restarted three minutes into each boot, three times running.
+ * Every restart threw the warm-up away and began it again, so visitors saw
+ * nine minutes of 502s from a release that would have been healthy in five.
+ * The age is the unit's own `ActiveEnterTimestampMonotonic` against
+ * `/proc/uptime`, which a restart resets, with the main PID's elapsed time as
+ * the fallback.
+ *
+ * **Back-off.** Restarts the probe itself issued are remembered with the time
+ * of the last one. The second in a row waits at least five minutes after the
+ * first and each later one doubles, capped at `maxBackoffSeconds`, so a
+ * release that can never come up is restarted a handful of times and then
+ * about hourly, not every few minutes forever. The streak is forgotten once
+ * the service answers with no probe restart in the last `maxBackoffSeconds`,
+ * and a deploy starts it afresh. Every held-off restart says so in the
+ * journal under the `<unit>-liveness` tag.
+ */
 export function buildLivenessUnits(options: {
   unitBase: string
   /** systemd unit to restart. A `<base>@*.service` glob resolves at run time. */
   unitPattern: string
   port: number
-  path?: string
-  intervalSeconds?: number
-  failuresBeforeRestart?: number
-}): string[] {
+} & LivenessOptions): string[] {
   const { unitBase, unitPattern, port } = options
-  const path = options.path && options.path.startsWith('/') ? options.path : '/'
-  const interval = Math.max(10, options.intervalSeconds ?? 60)
-  const failures = Math.max(1, options.failuresBeforeRestart ?? 3)
+  const path = options.path && options.path.startsWith('/') ? options.path : LIVENESS_DEFAULTS.path
+  const interval = wholeSeconds(options.intervalSeconds, LIVENESS_DEFAULTS.intervalSeconds, 10)
+  const failures = wholeSeconds(options.failuresBeforeRestart, LIVENESS_DEFAULTS.failuresBeforeRestart, 1)
+  const timeout = wholeSeconds(options.timeoutSeconds, LIVENESS_DEFAULTS.timeoutSeconds, 1)
+  const grace = wholeSeconds(options.startupGraceSeconds, LIVENESS_DEFAULTS.startupGraceSeconds, 0)
+  const maxBackoff = wholeSeconds(options.maxBackoffSeconds, LIVENESS_DEFAULTS.maxBackoffSeconds, 0)
+  const backoffBase = Math.min(LIVENESS_DEFAULTS.backoffBaseSeconds, maxBackoff)
   const script = `/usr/local/sbin/${unitBase}-liveness`
+  const state = `/run/${unitBase}-liveness`
+  const tag = `${unitBase}-liveness`
+  const target = `127.0.0.1:${port}${path}`
   const templated = unitPattern.includes('@*')
 
   const resolveUnit = templated
     ? `TS_CLOUD_UNIT=$(systemctl list-units --plain --no-legend --type=service '${unitPattern}' 2>/dev/null | awk '{print $1}' | head -1)`
     : `TS_CLOUD_UNIT=${unitPattern}`
 
+  // Every line below is emitted at column 0 or with a literal indent that is
+  // part of the script body; nothing is re-indented after the fact, because a
+  // shifted heredoc terminator silently swallows the rest of the deploy.
   return [
     `cat > ${script} <<'TS_CLOUD_LIVENESS_EOF'`,
     '#!/bin/sh',
+    `# Liveness check for ${unitBase}, written by ts-cloud on every deploy.`,
+    `# Settings: interval=${interval}s timeout=${timeout}s failures=${failures} startup-grace=${grace}s max-backoff=${maxBackoff}s`,
     'set -eu',
-    `exec 9>/run/${unitBase}-liveness.lock`,
+    `TS_CLOUD_STATE=${state}`,
+    'exec 9>"$TS_CLOUD_STATE.lock"',
     'flock -n 9 || exit 0',
     resolveUnit,
     '[ -n "$TS_CLOUD_UNIT" ] || exit 0',
     // A unit systemd itself considers down is its own problem: Restart=always
     // is already handling it, and restarting here would fight that.
     'systemctl is-active --quiet "$TS_CLOUD_UNIT" || exit 0',
-    `if curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${port}${path}"; then`,
-    `  rm -f /run/${unitBase}-liveness.fail`,
+    'TS_CLOUD_RC=0',
+    `curl -s -o /dev/null --max-time ${timeout} "http://${target}" || TS_CLOUD_RC=$?`,
+    'if [ "$TS_CLOUD_RC" -eq 0 ]; then',
+    '  rm -f "$TS_CLOUD_STATE.fail"',
+    '  if [ -f "$TS_CLOUD_STATE.restarts" ]; then',
+    '    TS_CLOUD_LAST=$(awk \'{print $2}\' "$TS_CLOUD_STATE.restarts" 2>/dev/null || true)',
+    '    case "$TS_CLOUD_LAST" in \'\'|*[!0-9]*) TS_CLOUD_LAST=0 ;; esac',
+    `    [ $(($(date +%s) - TS_CLOUD_LAST)) -lt ${maxBackoff} ] || rm -f "$TS_CLOUD_STATE.restarts"`,
+    '  fi',
     '  exit 0',
     'fi',
-    `TS_CLOUD_FAILS=$(cat /run/${unitBase}-liveness.fail 2>/dev/null || echo 0)`,
+    'case "$TS_CLOUD_RC" in',
+    '  7) TS_CLOUD_WHY=\'connection refused\' ;;',
+    `  28) TS_CLOUD_WHY='no response within ${timeout}s' ;;`,
+    '  *) TS_CLOUD_WHY="curl exit $TS_CLOUD_RC" ;;',
+    'esac',
+    // Startup grace: how long has this unit been up?
+    'TS_CLOUD_SINCE=$(systemctl show "$TS_CLOUD_UNIT" -p ActiveEnterTimestampMonotonic --value 2>/dev/null || true)',
+    'TS_CLOUD_UPTIME=$(cut -d\' \' -f1 /proc/uptime 2>/dev/null || true)',
+    'TS_CLOUD_AGE=$(awk -v up="$TS_CLOUD_UPTIME" -v since="$TS_CLOUD_SINCE" \'BEGIN { if (since + 0 > 0 && up + 0 > 0) print int(up - since / 1000000); else print -1 }\')',
+    'case "$TS_CLOUD_AGE" in \'\'|*[!0-9-]*) TS_CLOUD_AGE=-1 ;; esac',
+    'if [ "$TS_CLOUD_AGE" -lt 0 ]; then',
+    '  TS_CLOUD_PID=$(systemctl show "$TS_CLOUD_UNIT" -p MainPID --value 2>/dev/null || true)',
+    '  case "$TS_CLOUD_PID" in \'\'|0|*[!0-9]*) ;; *) TS_CLOUD_AGE=$(ps -o etimes= -p "$TS_CLOUD_PID" 2>/dev/null | tr -d \' \' || true) ;; esac',
+    '  case "$TS_CLOUD_AGE" in \'\'|*[!0-9]*) TS_CLOUD_AGE=-1 ;; esac',
+    'fi',
+    `if [ "$TS_CLOUD_AGE" -ge 0 ] && [ "$TS_CLOUD_AGE" -lt ${grace} ]; then`,
+    '  rm -f "$TS_CLOUD_STATE.fail"',
+    `  logger -t ${tag} "$TS_CLOUD_UNIT is \${TS_CLOUD_AGE}s old, inside its ${grace}s startup grace; not counting this failed check on ${target} ($TS_CLOUD_WHY)"`,
+    '  exit 0',
+    'fi',
+    'TS_CLOUD_FAILS=$(cat "$TS_CLOUD_STATE.fail" 2>/dev/null || echo 0)',
+    'case "$TS_CLOUD_FAILS" in \'\'|*[!0-9]*) TS_CLOUD_FAILS=0 ;; esac',
     'TS_CLOUD_FAILS=$((TS_CLOUD_FAILS + 1))',
-    `echo "$TS_CLOUD_FAILS" > /run/${unitBase}-liveness.fail`,
-    `[ "$TS_CLOUD_FAILS" -ge ${failures} ] || exit 0`,
-    `logger -t ${unitBase}-liveness "no HTTP response on 127.0.0.1:${port}${path} after $TS_CLOUD_FAILS checks; restarting $TS_CLOUD_UNIT"`,
+    'echo "$TS_CLOUD_FAILS" > "$TS_CLOUD_STATE.fail"',
+    `if [ "$TS_CLOUD_FAILS" -lt ${failures} ]; then`,
+    `  logger -t ${tag} "check $TS_CLOUD_FAILS of ${failures} failed on ${target} ($TS_CLOUD_WHY)"`,
+    '  exit 0',
+    'fi',
+    // Back-off: restarts this probe issued in a row, and when the last was.
+    'TS_CLOUD_NOW=$(date +%s)',
+    'TS_CLOUD_STREAK=0',
+    'TS_CLOUD_LAST=0',
+    '[ ! -f "$TS_CLOUD_STATE.restarts" ] || read -r TS_CLOUD_STREAK TS_CLOUD_LAST < "$TS_CLOUD_STATE.restarts" || true',
+    'case "$TS_CLOUD_STREAK" in \'\'|*[!0-9]*) TS_CLOUD_STREAK=0 ;; esac',
+    'case "$TS_CLOUD_LAST" in \'\'|*[!0-9]*) TS_CLOUD_LAST=0 ;; esac',
+    'if [ "$TS_CLOUD_STREAK" -gt 0 ]; then',
+    `  TS_CLOUD_WAIT=${backoffBase}`,
+    '  TS_CLOUD_I=1',
+    `  while [ "$TS_CLOUD_I" -lt "$TS_CLOUD_STREAK" ] && [ "$TS_CLOUD_WAIT" -lt ${maxBackoff} ]; do TS_CLOUD_WAIT=$((TS_CLOUD_WAIT * 2)); TS_CLOUD_I=$((TS_CLOUD_I + 1)); done`,
+    `  [ "$TS_CLOUD_WAIT" -le ${maxBackoff} ] || TS_CLOUD_WAIT=${maxBackoff}`,
+    '  TS_CLOUD_ELAPSED=$((TS_CLOUD_NOW - TS_CLOUD_LAST))',
+    '  if [ "$TS_CLOUD_ELAPSED" -lt "$TS_CLOUD_WAIT" ]; then',
+    `    logger -t ${tag} "holding off: $TS_CLOUD_STREAK liveness restart(s) in a row have not brought $TS_CLOUD_UNIT back; next restart allowed in $((TS_CLOUD_WAIT - TS_CLOUD_ELAPSED))s ($TS_CLOUD_WHY on ${target})"`,
+    '    exit 0',
+    '  fi',
+    'fi',
+    'TS_CLOUD_STREAK=$((TS_CLOUD_STREAK + 1))',
+    `logger -t ${tag} "no HTTP response on ${target} after $TS_CLOUD_FAILS checks ($TS_CLOUD_WHY); restarting $TS_CLOUD_UNIT (liveness restart $TS_CLOUD_STREAK in a row)"`,
+    'echo "$TS_CLOUD_STREAK $TS_CLOUD_NOW" > "$TS_CLOUD_STATE.restarts"',
+    'rm -f "$TS_CLOUD_STATE.fail"',
     'systemctl restart "$TS_CLOUD_UNIT"',
-    `rm -f /run/${unitBase}-liveness.fail`,
     'TS_CLOUD_LIVENESS_EOF',
     `chmod +x ${script}`,
+    // A deploy is a new release: it starts with no failures held against it
+    // and no restart streak inherited from the one it replaced.
+    `rm -f ${state}.fail ${state}.restarts`,
     `cat > /etc/systemd/system/${unitBase}-liveness.service <<'TS_CLOUD_UNIT_EOF'`,
     '[Unit]',
     `Description=Liveness check for ${unitBase} (managed by ts-cloud)`,
@@ -307,9 +415,9 @@ const HEALTH_GATE_ATTEMPT_TIMEOUT = 5
  * its co-tenants are applying. One site's image pass took 13s on a laptop and
  * over 66s there, which is a perfectly good release that could not deploy.
  *
- * 60 attempts, 3s apart: three minutes, matching what the liveness probe
- * tolerates before it restarts a unit, so the two cannot fight each other over
- * the same slow start.
+ * 60 attempts, 3s apart: three minutes. The liveness probe leaves a unit that
+ * young alone (its startup grace is ten minutes by default), so the two cannot
+ * fight each other over the same slow start.
  */
 const HEALTH_GATE_BIND_ATTEMPTS = 60
 
@@ -384,18 +492,16 @@ export interface BuildSiteDeployScriptOptions {
    * The probe is an HTTP request rather than a listener check for that exact
    * reason — `ss` would have called the wedged process healthy.
    *
+   * A unit younger than `startupGraceSeconds` is never restarted, and
+   * consecutive restarts back off, so a slow boot cannot become a restart
+   * loop. See {@link buildLivenessUnits}.
+   *
    * Set `false` to opt out (a service that legitimately answers nothing on its
    * port, or one where a restart is more dangerous than an outage).
-   * @default enabled, `/` every 60s, restart after 3 consecutive failures
+   * @default enabled, `/` every 60s with a 10s timeout, restart after 3
+   * consecutive failures once the unit is 10 minutes old
    */
-  liveness?: false | {
-    /** Path to request. @default '/' */
-    path?: string
-    /** Seconds between checks. @default 60 */
-    intervalSeconds?: number
-    /** Consecutive failures before a restart. @default 3 */
-    failuresBeforeRestart?: number
-  }
+  liveness?: false | LivenessOptions
   /**
    * systemd `MemoryHigh` for the app unit. See {@link SiteConfig.memoryHigh}.
    * @default '2G'
@@ -723,12 +829,11 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       ...(liveness === false
         ? []
         : buildLivenessUnits({
+            ...liveness,
             unitBase,
             unitPattern: `${unitBase}@*.service`,
             port,
             path: liveness?.path ?? healthCheckPath,
-            intervalSeconds: liveness?.intervalSeconds,
-            failuresBeforeRestart: liveness?.failuresBeforeRestart,
           })),
     ]
   }
@@ -780,12 +885,11 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     ...(liveness === false || !port
       ? []
       : buildLivenessUnits({
+          ...liveness,
           unitBase,
           unitPattern: serviceName,
           port,
           path: liveness?.path ?? healthCheckPath,
-          intervalSeconds: liveness?.intervalSeconds,
-          failuresBeforeRestart: liveness?.failuresBeforeRestart,
         })),
   ]
 }
