@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.13...v0.16.14)
+
+## 🐛 Bug Fixes
+
+- **cdn**: share identical Cloudflare rules across a zone's tenants ([0497d9b](https://github.com/stacksjs/ts-cloud/commit/0497d9b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.14 ([4f7a2e9](https://github.com/stacksjs/ts-cloud/commit/4f7a2e9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.12...v0.16.13)
 
 ## 🐛 Bug Fixes
