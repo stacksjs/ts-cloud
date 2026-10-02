@@ -1,3 +1,24 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.15...v0.16.16)
+
+## ✨ Features
+
+- **cdn**: fail over to a second origin with failoverOrigin ([054acc3](https://github.com/stacksjs/ts-cloud/commit/054acc3)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1159](https://github.com/stacksjs/ts-cloud/issues/1159))
+- **core**: build CloudFront origin groups for origin failover ([9ff169c](https://github.com/stacksjs/ts-cloud/commit/9ff169c)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1159](https://github.com/stacksjs/ts-cloud/issues/1159))
+
+## 📝 Documentation
+
+- **cdn**: document CloudFront origin failover as experimental ([ab45187](https://github.com/stacksjs/ts-cloud/commit/ab45187)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1159](https://github.com/stacksjs/ts-cloud/issues/1159))
+
+## 🔧 Chores
+
+- release v0.16.16 ([7861380](https://github.com/stacksjs/ts-cloud/commit/7861380)) _(by Chris <chrisbreuer93@gmail.com>)_
+- run @stacksjs/logsmith, not the unrelated npm 'logsmith' ([96979e5](https://github.com/stacksjs/ts-cloud/commit/96979e5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- release through @stacksjs/bumpx, not the unrelated npm 'bumpx' ([6e77dd2](https://github.com/stacksjs/ts-cloud/commit/6e77dd2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.14...v0.16.15)
 
 ## 🐛 Bug Fixes
