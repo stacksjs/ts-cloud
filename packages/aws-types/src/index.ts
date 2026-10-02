@@ -209,6 +209,15 @@ export interface CloudFrontDistribution extends CloudFormationResource {
       Comment?: string
       DefaultRootObject?: string
       Origins: CloudFrontOrigin[]
+      OriginGroups?: {
+        Quantity: number
+        Items?: Array<{
+          Id: string
+          FailoverCriteria: { StatusCodes: { Quantity: number; Items: number[] } }
+          Members: { Quantity: number; Items: Array<{ OriginId: string }> }
+          SelectionCriteria?: 'default' | 'media-quality-based'
+        }>
+      }
       DefaultCacheBehavior: CloudFrontCacheBehavior
       CacheBehaviors?: CloudFrontCacheBehavior[]
       PriceClass?: string

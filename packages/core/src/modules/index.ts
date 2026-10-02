@@ -6,6 +6,7 @@
 export * from './storage'
 export * from './registry'
 export * from './cdn'
+export * from './cdn-failover'
 export * from './dns'
 export * from './security'
 export * from './compute'

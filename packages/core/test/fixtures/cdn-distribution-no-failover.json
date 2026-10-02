@@ -1,0 +1,37 @@
+{
+  "Type": "AWS::CloudFront::Distribution",
+  "Properties": {
+    "DistributionConfig": {
+      "Enabled": true,
+      "Comment": "CDN for my-app-production-cdn",
+      "DefaultRootObject": "index.html",
+      "Origins": [
+        {
+          "Id": "DefaultOrigin",
+          "DomainName": "my-bucket.s3.amazonaws.com",
+          "OriginPath": "",
+          "OriginAccessControlId": {
+            "Ref": "MyAppProductionCdnOAC"
+          }
+        }
+      ],
+      "DefaultCacheBehavior": {
+        "TargetOriginId": "DefaultOrigin",
+        "ViewerProtocolPolicy": "redirect-to-https",
+        "AllowedMethods": [
+          "GET",
+          "HEAD",
+          "OPTIONS"
+        ],
+        "CachedMethods": [
+          "GET",
+          "HEAD",
+          "OPTIONS"
+        ],
+        "Compress": true
+      },
+      "PriceClass": "PriceClass_100",
+      "HttpVersion": "http2"
+    }
+  }
+}

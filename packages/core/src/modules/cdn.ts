@@ -2,6 +2,7 @@ import type { CloudFrontDistribution, CloudFrontOriginAccessControl, IAMRole, La
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
+import { assertOriginGroupMethods, buildOriginGroup, isS3RestEndpoint } from './cdn-failover'
 
 export interface DistributionOptions {
   slug: string
@@ -14,6 +15,31 @@ export interface DistributionOptions {
   edgeFunctions?: EdgeFunctionConfig[]
   http3?: boolean
   comment?: string
+  /**
+   * Secondary origin CloudFront fails over to when the primary errors.
+   * Adds an origin group and points the default cache behavior at it.
+   * @experimental See {@link CDN.addOriginFailover}.
+   */
+  failoverOrigin?: FailoverOriginConfig
+}
+
+/**
+ * Secondary origin for CloudFront origin failover.
+ * @experimental Built against the AWS documentation; not yet exercised against a live distribution.
+ */
+export interface FailoverOriginConfig {
+  /** Domain of the secondary origin, e.g. a replica bucket in another region. */
+  domainName: string
+  /** Origin kind. @default 's3' for an S3 REST endpoint, otherwise 'custom' */
+  type?: 's3' | 'alb' | 'custom'
+  /** Origin id for the secondary. @default 'FailoverOrigin' */
+  id?: string
+  originPath?: string
+  /**
+   * Primary-origin status codes that trigger failover. Allowed: 400, 403, 404,
+   * 416, 429, 500, 502, 503, 504. @default [500, 502, 503, 504]
+   */
+  statusCodes?: number[]
 }
 
 export interface OriginConfig {
@@ -67,6 +93,7 @@ export class CDN {
       edgeFunctions,
       http3 = false,
       comment,
+      failoverOrigin,
     } = options
 
     const resourceName = generateResourceName({
@@ -163,11 +190,69 @@ export class CDN {
       )
     }
 
+    if (failoverOrigin) {
+      CDN.addOriginFailover(distribution, failoverOrigin)
+    }
+
     return {
       distribution,
       originAccessControl,
       logicalId,
     }
+  }
+
+  /**
+   * Add CloudFront origin failover to a distribution: append the secondary
+   * origin, group it with the default cache behavior's current origin, and
+   * point that behavior at the group.
+   *
+   * CloudFront only fails over GET, HEAD and OPTIONS, and rejects an origin
+   * group behind a cache behavior that allows writes, so this throws if the
+   * default cache behavior allows any other method.
+   *
+   * @experimental Built against the AWS documentation; not yet exercised against a live distribution.
+   */
+  static addOriginFailover(distribution: CloudFrontDistribution, failover: FailoverOriginConfig): CloudFrontDistribution {
+    const config = distribution.Properties.DistributionConfig
+    const behavior = config.DefaultCacheBehavior
+    const primaryOriginId = behavior.TargetOriginId
+    const secondaryOriginId = failover.id ?? 'FailoverOrigin'
+
+    if (config.OriginGroups && config.OriginGroups.Quantity > 0) {
+      throw new Error('CloudFront origin failover: this distribution already has an origin group')
+    }
+    // CloudFront's default for an unset AllowedMethods is GET + HEAD.
+    assertOriginGroupMethods(behavior.AllowedMethods ?? ['GET', 'HEAD'], 'the default cache behavior')
+    if (config.Origins.some((origin) => origin.Id === secondaryOriginId)) {
+      throw new Error(`CloudFront origin failover: an origin with id "${secondaryOriginId}" already exists`)
+    }
+
+    const group = buildOriginGroup({ primaryOriginId, secondaryOriginId, statusCodes: failover.statusCodes })
+
+    const type = failover.type ?? (isS3RestEndpoint(failover.domainName) ? 's3' : 'custom')
+    const secondary: any = {
+      Id: secondaryOriginId,
+      DomainName: failover.domainName,
+      OriginPath: failover.originPath || '',
+    }
+    if (type === 's3') {
+      // Reuse the primary's origin access control: an OAC is not tied to one bucket.
+      const primary = config.Origins.find((origin) => origin.Id === primaryOriginId)
+      secondary.S3OriginConfig = { OriginAccessIdentity: '' }
+      if (primary?.OriginAccessControlId) secondary.OriginAccessControlId = primary.OriginAccessControlId
+    } else {
+      secondary.CustomOriginConfig = {
+        HTTPPort: 80,
+        HTTPSPort: 443,
+        OriginProtocolPolicy: 'https-only',
+      }
+    }
+
+    config.Origins.push(secondary)
+    config.OriginGroups = { Quantity: 1, Items: [group] }
+    behavior.TargetOriginId = group.Id
+
+    return distribution
   }
 
   /**
