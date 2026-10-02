@@ -99,6 +99,10 @@ What it guarantees (each a real bug seen in the wild):
 | `/api/*` → `CachingDisabled` + all methods | Dynamic app traffic isn't cached |
 | `X-Origin-Verify` custom header | Pairs with the gateway's origin lockdown |
 
+To fail over to a second box when the first errors, pass
+`failoverOriginDomain` (experimental); see
+[CloudFront origin failover](./cdn-origin-failover.md#self-hosted-origins-buildcloudfrontoriginconfig).
+
 > After repointing an existing distribution's origin, **invalidate `/*`** —
 > objects cached from the old origin (including cached redirects) otherwise persist.
 
