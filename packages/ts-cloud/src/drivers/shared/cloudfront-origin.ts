@@ -21,9 +21,15 @@
  *    paired with rpx `createOriginGuard`, so the publicly-resolvable origin can't
  *    be used to bypass the CDN.
  *
+ *  - **Origin failover** (optional, experimental): a second box, the
+ *    `failoverOriginDomain`, grouped with the primary in a CloudFront origin
+ *    group. The default (static, GET/HEAD/OPTIONS) behavior targets the group;
+ *    path behaviors keep the primary, since CloudFront never fails over writes.
+ *
  * The result is a complete `DistributionConfig` suitable for CloudFront
  * `CreateDistribution` or `UpdateDistribution`.
  */
+import { assertOriginGroupMethods, buildOriginGroups } from '@ts-cloud/core'
 
 /** AWS-managed cache/origin-request policy IDs (identical across all accounts). */
 export const MANAGED_CACHE_POLICY_OPTIMIZED = '658327ea-f89d-4fab-a63d-7e88639e58f6'
@@ -60,9 +66,25 @@ export interface BuildCloudFrontOriginOptions {
   originShield?: boolean
   /** AWS region used by Origin Shield. Required when {@link originShield} is enabled. */
   originShieldRegion?: string
+  /**
+   * Hostname of a second box CloudFront fails over to when {@link originDomain}
+   * errors. Same rules as {@link originDomain}: it must not be an alias. It
+   * receives the same origin secret header, so lock it down the same way.
+   * The default cache behavior targets the origin group; path behaviors stay
+   * on the primary.
+   * @experimental Built against the AWS documentation; not yet exercised against a live distribution.
+   */
+  failoverOriginDomain?: string
+  /**
+   * Primary-origin status codes that trigger failover. Allowed: 400, 403, 404,
+   * 416, 429, 500, 502, 503, 504. @default [500, 502, 503, 504]
+   * @experimental
+   */
+  failoverStatusCodes?: number[]
 }
 
 const ORIGIN_ID = 'origin'
+const FAILOVER_ORIGIN_ID = 'origin-failover'
 
 function cacheBehavior(pathPattern: string | null, kind: 'dynamic' | 'static') {
   const base: Record<string, any> = {
@@ -104,6 +126,17 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
     )
   if (options.originShield && !options.originShieldRegion)
     throw new Error('buildCloudFrontOriginConfig: originShieldRegion is required when originShield is enabled')
+  const failoverDomain = options.failoverOriginDomain
+  if (failoverDomain !== undefined) {
+    if (aliases.includes(failoverDomain))
+      throw new Error(
+        `buildCloudFrontOriginConfig: failoverOriginDomain ${failoverDomain} must not be one of the aliases (it would loop)`,
+      )
+    if (failoverDomain === options.originDomain)
+      throw new Error('buildCloudFrontOriginConfig: failoverOriginDomain must differ from originDomain')
+  } else if (options.failoverStatusCodes) {
+    throw new Error('buildCloudFrontOriginConfig: failoverStatusCodes needs failoverOriginDomain to fail over to')
+  }
 
   const header = options.originSecretHeader ?? 'X-Origin-Verify'
   const customHeaders = options.originSecret
@@ -113,6 +146,45 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
   // Sort behaviors most-specific-first so CloudFront matches deterministically.
   const behaviors = [...(options.behaviors ?? [])].sort((a, b) => b.pathPattern.length - a.pathPattern.length)
 
+  const customOrigin = (id: string, domainName: string, originShield: Record<string, any>) => ({
+    Id: id,
+    DomainName: domainName,
+    OriginPath: '',
+    CustomHeaders: customHeaders,
+    CustomOriginConfig: {
+      HTTPPort: 80,
+      HTTPSPort: 443,
+      OriginProtocolPolicy: 'https-only',
+      OriginSslProtocols: { Quantity: 1, Items: ['TLSv1.2'] },
+      OriginReadTimeout: 30,
+      OriginKeepaliveTimeout: 5,
+    },
+    ConnectionAttempts: 3,
+    ConnectionTimeout: 10,
+    OriginShield: originShield,
+    OriginAccessControlId: '',
+  })
+
+  const origins = [
+    customOrigin(
+      ORIGIN_ID,
+      options.originDomain,
+      options.originShield ? { Enabled: true, OriginShieldRegion: options.originShieldRegion } : { Enabled: false },
+    ),
+  ]
+  let originGroups: Record<string, any> = { Quantity: 0 }
+  const defaultBehavior = cacheBehavior(null, 'static')
+  if (failoverDomain !== undefined) {
+    origins.push(customOrigin(FAILOVER_ORIGIN_ID, failoverDomain, { Enabled: false }))
+    originGroups = buildOriginGroups({
+      primaryOriginId: ORIGIN_ID,
+      secondaryOriginId: FAILOVER_ORIGIN_ID,
+      statusCodes: options.failoverStatusCodes,
+    })
+    assertOriginGroupMethods(defaultBehavior.AllowedMethods, 'the default cache behavior')
+    defaultBehavior.TargetOriginId = originGroups.Items[0].Id
+  }
+
   return {
     CallerReference: options.callerReference ?? options.originDomain,
     Comment: options.comment ?? `Origin-fronted distribution for ${aliases[0]} → ${options.originDomain}`,
@@ -120,33 +192,9 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
     Aliases: { Quantity: aliases.length, Items: aliases },
     // No DefaultRootObject — see docblock (avoids the /index.html → / redirect loop).
     DefaultRootObject: '',
-    Origins: {
-      Quantity: 1,
-      Items: [
-        {
-          Id: ORIGIN_ID,
-          DomainName: options.originDomain,
-          OriginPath: '',
-          CustomHeaders: customHeaders,
-          CustomOriginConfig: {
-            HTTPPort: 80,
-            HTTPSPort: 443,
-            OriginProtocolPolicy: 'https-only',
-            OriginSslProtocols: { Quantity: 1, Items: ['TLSv1.2'] },
-            OriginReadTimeout: 30,
-            OriginKeepaliveTimeout: 5,
-          },
-          ConnectionAttempts: 3,
-          ConnectionTimeout: 10,
-          OriginShield: options.originShield
-            ? { Enabled: true, OriginShieldRegion: options.originShieldRegion }
-            : { Enabled: false },
-          OriginAccessControlId: '',
-        },
-      ],
-    },
-    OriginGroups: { Quantity: 0 },
-    DefaultCacheBehavior: cacheBehavior(null, 'static'),
+    Origins: { Quantity: origins.length, Items: origins },
+    OriginGroups: originGroups,
+    DefaultCacheBehavior: defaultBehavior,
     CacheBehaviors: { Quantity: behaviors.length, Items: behaviors.map((b) => cacheBehavior(b.pathPattern, b.kind)) },
     ViewerCertificate: {
       CloudFrontDefaultCertificate: false,

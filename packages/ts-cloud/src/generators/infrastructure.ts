@@ -2,9 +2,9 @@
  * Infrastructure Generator
  * Generates CloudFormation templates from cloud.config.ts using all Phase 2 modules
  */
-import type { CloudConfig, ResolvedSftpStorage, SftpConfig } from '@ts-cloud/core'
+import type { CloudConfig, CloudFrontOriginGroups, ResolvedSftpStorage, SftpConfig } from '@ts-cloud/core'
 import { buildAppUpdatesScript } from '../drivers/shared/app-updates'
-import { AI, ApiGateway, Cache, CDN, Compute, Database, DNS, Email, FileSystem, generateLogicalId, generateResourceName, Monitoring, Network, Permissions, Queue, Redirects, Search, Security, Sftp, Storage, TemplateBuilder } from '@ts-cloud/core'
+import { AI, ApiGateway, assertOriginGroupMethods, buildOriginGroups, Cache, CDN, Compute, Database, DNS, Email, FileSystem, generateLogicalId, generateResourceName, isS3RestEndpoint, Monitoring, Network, Permissions, Queue, Redirects, Search, Security, Sftp, Storage, TemplateBuilder } from '@ts-cloud/core'
 
 export interface GenerationOptions {
   config: CloudConfig
@@ -2062,6 +2062,33 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
         const cacheBehaviors: any[] = []
         const extraDependsOn: string[] = []
 
+        // Origin failover (experimental): group the primary with a secondary
+        // origin and serve the default behavior from the group.
+        const defaultAllowedMethods = ['GET', 'HEAD', 'OPTIONS']
+        let defaultTargetOriginId = originId
+        let originGroups: CloudFrontOriginGroups | undefined
+        if (cdnConfig.failoverOrigin) {
+          assertOriginGroupMethods(defaultAllowedMethods, `the default cache behavior of infrastructure.cdn.${name}`)
+          const failoverOriginId = `${originId}-failover`
+          origins.push({
+            Id: failoverOriginId,
+            DomainName: cdnConfig.failoverOrigin,
+            OriginPath: '',
+            ...(isS3RestEndpoint(cdnConfig.failoverOrigin)
+              ? { S3OriginConfig: { OriginAccessIdentity: '' } }
+              : { CustomOriginConfig: { HTTPPort: 80, HTTPSPort: 443, OriginProtocolPolicy: 'https-only' } }),
+            OriginShield: { Enabled: false },
+          })
+          originGroups = buildOriginGroups({
+            primaryOriginId: originId,
+            secondaryOriginId: failoverOriginId,
+            statusCodes: cdnConfig.failoverStatusCodes,
+          })
+          defaultTargetOriginId = originGroups.Items[0].Id
+        } else if (cdnConfig.failoverStatusCodes) {
+          throw new Error(`infrastructure.cdn.${name}: failoverStatusCodes needs failoverOrigin to fail over to`)
+        }
+
         if (cdnConfig.routeCompute) {
           this.appendComputeAppOrigin(
             origins,
@@ -2097,10 +2124,11 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
               Comment: `${slug} ${env} ${name} CDN`,
               DefaultRootObject: 'index.html',
               Origins: origins,
+              ...(originGroups ? { OriginGroups: originGroups } : {}),
               DefaultCacheBehavior: {
-                TargetOriginId: originId,
+                TargetOriginId: defaultTargetOriginId,
                 ViewerProtocolPolicy: 'redirect-to-https',
-                AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+                AllowedMethods: defaultAllowedMethods,
                 CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
                 Compress: cdnConfig.compress !== false,
                 CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',

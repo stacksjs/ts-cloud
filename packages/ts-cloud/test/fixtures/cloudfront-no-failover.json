@@ -1,0 +1,254 @@
+{
+  "originFronted": {
+    "CallerReference": "origin.stacksjs.com",
+    "Comment": "Origin-fronted distribution for stacksjs.com \u2192 origin.stacksjs.com",
+    "Enabled": true,
+    "Aliases": {
+      "Quantity": 2,
+      "Items": [
+        "stacksjs.com",
+        "www.stacksjs.com"
+      ]
+    },
+    "DefaultRootObject": "",
+    "Origins": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "Id": "origin",
+          "DomainName": "origin.stacksjs.com",
+          "OriginPath": "",
+          "CustomHeaders": {
+            "Quantity": 1,
+            "Items": [
+              {
+                "HeaderName": "X-Origin-Verify",
+                "HeaderValue": "shh"
+              }
+            ]
+          },
+          "CustomOriginConfig": {
+            "HTTPPort": 80,
+            "HTTPSPort": 443,
+            "OriginProtocolPolicy": "https-only",
+            "OriginSslProtocols": {
+              "Quantity": 1,
+              "Items": [
+                "TLSv1.2"
+              ]
+            },
+            "OriginReadTimeout": 30,
+            "OriginKeepaliveTimeout": 5
+          },
+          "ConnectionAttempts": 3,
+          "ConnectionTimeout": 10,
+          "OriginShield": {
+            "Enabled": true,
+            "OriginShieldRegion": "us-east-1"
+          },
+          "OriginAccessControlId": ""
+        }
+      ]
+    },
+    "OriginGroups": {
+      "Quantity": 0
+    },
+    "DefaultCacheBehavior": {
+      "TargetOriginId": "origin",
+      "ViewerProtocolPolicy": "redirect-to-https",
+      "Compress": true,
+      "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+      "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
+      "SmoothStreaming": false,
+      "FieldLevelEncryptionId": "",
+      "TrustedSigners": {
+        "Enabled": false,
+        "Quantity": 0
+      },
+      "TrustedKeyGroups": {
+        "Enabled": false,
+        "Quantity": 0
+      },
+      "LambdaFunctionAssociations": {
+        "Quantity": 0
+      },
+      "FunctionAssociations": {
+        "Quantity": 0
+      },
+      "AllowedMethods": {
+        "Quantity": 3,
+        "Items": [
+          "GET",
+          "HEAD",
+          "OPTIONS"
+        ],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": [
+            "GET",
+            "HEAD"
+          ]
+        }
+      }
+    },
+    "CacheBehaviors": {
+      "Quantity": 2,
+      "Items": [
+        {
+          "TargetOriginId": "origin",
+          "ViewerProtocolPolicy": "redirect-to-https",
+          "Compress": true,
+          "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+          "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
+          "SmoothStreaming": false,
+          "FieldLevelEncryptionId": "",
+          "TrustedSigners": {
+            "Enabled": false,
+            "Quantity": 0
+          },
+          "TrustedKeyGroups": {
+            "Enabled": false,
+            "Quantity": 0
+          },
+          "LambdaFunctionAssociations": {
+            "Quantity": 0
+          },
+          "FunctionAssociations": {
+            "Quantity": 0
+          },
+          "AllowedMethods": {
+            "Quantity": 3,
+            "Items": [
+              "GET",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "CachedMethods": {
+              "Quantity": 2,
+              "Items": [
+                "GET",
+                "HEAD"
+              ]
+            }
+          },
+          "PathPattern": "/docs/*"
+        },
+        {
+          "TargetOriginId": "origin",
+          "ViewerProtocolPolicy": "redirect-to-https",
+          "Compress": true,
+          "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+          "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
+          "SmoothStreaming": false,
+          "FieldLevelEncryptionId": "",
+          "TrustedSigners": {
+            "Enabled": false,
+            "Quantity": 0
+          },
+          "TrustedKeyGroups": {
+            "Enabled": false,
+            "Quantity": 0
+          },
+          "LambdaFunctionAssociations": {
+            "Quantity": 0
+          },
+          "FunctionAssociations": {
+            "Quantity": 0
+          },
+          "AllowedMethods": {
+            "Quantity": 7,
+            "Items": [
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PUT",
+              "POST",
+              "PATCH",
+              "DELETE"
+            ],
+            "CachedMethods": {
+              "Quantity": 2,
+              "Items": [
+                "GET",
+                "HEAD"
+              ]
+            }
+          },
+          "PathPattern": "/api/*"
+        }
+      ]
+    },
+    "ViewerCertificate": {
+      "CloudFrontDefaultCertificate": false,
+      "ACMCertificateArn": "arn:aws:acm:us-east-1:123:certificate/abc",
+      "Certificate": "arn:aws:acm:us-east-1:123:certificate/abc",
+      "CertificateSource": "acm",
+      "SSLSupportMethod": "sni-only",
+      "MinimumProtocolVersion": "TLSv1.2_2021"
+    },
+    "PriceClass": "PriceClass_All",
+    "HttpVersion": "http2and3",
+    "IsIPV6Enabled": true,
+    "Restrictions": {
+      "GeoRestriction": {
+        "RestrictionType": "none",
+        "Quantity": 0
+      }
+    },
+    "Logging": {
+      "Enabled": false,
+      "IncludeCookies": false,
+      "Bucket": "",
+      "Prefix": ""
+    },
+    "WebACLId": "",
+    "CustomErrorResponses": {
+      "Quantity": 0
+    }
+  },
+  "infrastructureCdn": {
+    "Type": "AWS::CloudFront::Distribution",
+    "Properties": {
+      "DistributionConfig": {
+        "Enabled": true,
+        "Comment": "my-app production main CDN",
+        "DefaultRootObject": "index.html",
+        "Origins": [
+          {
+            "Id": "S3-my-app-production-main-cdn",
+            "DomainName": "my-app-production-site.s3.us-east-1.amazonaws.com",
+            "OriginPath": "",
+            "S3OriginConfig": {
+              "OriginAccessIdentity": ""
+            },
+            "OriginShield": {
+              "Enabled": true,
+              "OriginShieldRegion": "us-east-1"
+            }
+          }
+        ],
+        "DefaultCacheBehavior": {
+          "TargetOriginId": "S3-my-app-production-main-cdn",
+          "ViewerProtocolPolicy": "redirect-to-https",
+          "AllowedMethods": [
+            "GET",
+            "HEAD",
+            "OPTIONS"
+          ],
+          "CachedMethods": [
+            "GET",
+            "HEAD",
+            "OPTIONS"
+          ],
+          "Compress": true,
+          "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
+        },
+        "ViewerCertificate": {
+          "CloudFrontDefaultCertificate": true
+        },
+        "PriceClass": "PriceClass_100",
+        "HttpVersion": "http2"
+      }
+    }
+  }
+}

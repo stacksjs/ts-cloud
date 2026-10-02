@@ -4410,6 +4410,25 @@ export interface CdnItemConfig {
   /** AWS region used by Origin Shield. Defaults to the deployment region. */
   originShieldRegion?: string
   /**
+   * Secondary origin CloudFront fails over to when {@link origin} errors,
+   * e.g. a replica bucket in another region. Adds a CloudFront origin group
+   * (primary + this origin) and serves the default cache behavior from it.
+   * CloudFront only fails over GET, HEAD and OPTIONS requests. An S3 REST
+   * endpoint becomes an S3 origin; any other host an HTTPS-only custom origin.
+   *
+   * @experimental Generated from the AWS documentation; not yet verified
+   * against a live distribution.
+   */
+  failoverOrigin?: string
+  /**
+   * Status codes from {@link origin} that trigger failover to
+   * {@link failoverOrigin}. CloudFront accepts 400, 403, 404, 416, 429, 500,
+   * 502, 503 and 504; anything else throws at template generation.
+   * @default [500, 502, 503, 504]
+   * @experimental
+   */
+  failoverStatusCodes?: number[]
+  /**
    * Cache policy configuration
    */
   cachePolicy?: {
