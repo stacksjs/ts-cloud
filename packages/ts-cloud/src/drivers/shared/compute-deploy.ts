@@ -10,9 +10,10 @@ import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-t
 import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
-import { buildAwsArtifactFetch, buildHostCleanupScript, buildLocalArtifactFetch, buildSiteDeployScript, buildStaticSiteDeployScript, releaseTarballTmpPath, resolveExecStart } from './deploy-script'
+import { buildAwsArtifactFetch, buildLocalArtifactFetch, buildSiteDeployScript, buildStaticSiteDeployScript, releaseTarballTmpPath, resolveExecStart } from './deploy-script'
 import { readDriverState } from './driver-state'
 import { buildFleetServicesEnv } from './fleet'
+import { buildHostCleanupDeployScript } from './host-cleanup'
 import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-deploy'
 import { buildManagedServicesProbeScript, declaredManagedServices, formatMissingManagedServicesError, parseMissingManagedServices } from './managed-services-probe'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
@@ -88,6 +89,9 @@ export async function deploySiteRelease(
   // either changes — and a wrong `MAIL_PORT` raises nothing, it stops sending.
   const mailEnv = buildMailEnv(resolveMailService(config, { environment }))
   const compute = config.infrastructure?.compute
+  // Resolved up front so an invalid `compute.hostCleanup` fails the deploy
+  // before anything is uploaded, rather than after.
+  const hostCleanup = buildHostCleanupDeployScript(compute?.hostCleanup)
   // rpx reaches every server-app over loopback. Default the process bind to
   // loopback too, so an application cannot accidentally bypass TLS, route
   // authentication, or proxy policy by listening on the public interface.
@@ -190,6 +194,7 @@ export async function deploySiteRelease(
         ...sslScript,
         ...servicesScript,
         ...healthCheckScript,
+        ...hostCleanup,
       ],
       comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
       tags: { Project: slug, Environment: environment, Role: 'app' },
@@ -197,6 +202,7 @@ export async function deploySiteRelease(
 
     const notifications = resolveNotifications(config.notifications, site.notifications)
     if (!phpResult.success) {
+      await cleanUpAfterFailedDeploy(driver, targets, hostCleanup, logger)
       await sendNotifications(
         notifications,
         'deploy-failed',
@@ -332,7 +338,8 @@ export async function deploySiteRelease(
     ...staticVhost,
     ...staticSsl,
     ...servicesScript,
-    ...buildHostCleanupScript(),
+    // Refreshes the cleanup timer, then cleans once now (#195).
+    ...hostCleanup,
   ]
 
   logger.step(`Deploying to ${targets.length} target(s)...`)
@@ -348,6 +355,7 @@ export async function deploySiteRelease(
   })
 
   if (!result.success) {
+    await cleanUpAfterFailedDeploy(driver, targets, hostCleanup, logger)
     return {
       success: false,
       error: result.error || 'Remote deploy failed',
@@ -360,6 +368,27 @@ export async function deploySiteRelease(
     success: true,
     instanceCount: result.instanceCount,
     perInstance: result.perInstance,
+  }
+}
+
+/**
+ * A deploy that died partway never reaches the cleanup at the end of its
+ * script, and it is the run most likely to have left a staged upload or a
+ * temp tarball behind. Run the cleanup on its own. Best effort: its failure
+ * must never replace the deploy's own error.
+ */
+async function cleanUpAfterFailedDeploy(
+  driver: CloudDriver,
+  targets: Parameters<CloudDriver['runRemoteDeploy']>[0]['targets'],
+  commands: string[],
+  logger: ComputeDeployLogger,
+): Promise<void> {
+  if (commands.length === 0) return
+  try {
+    const cleanup = await driver.runRemoteDeploy({ targets, commands, comment: 'ts-cloud host cleanup after failed deploy' })
+    if (!cleanup.success) logger.warn(`Host cleanup after the failed deploy did not complete: ${cleanup.error || 'unknown error'}`)
+  } catch (error) {
+    logger.warn(`Host cleanup after the failed deploy did not run: ${(error as Error).message}`)
   }
 }
 

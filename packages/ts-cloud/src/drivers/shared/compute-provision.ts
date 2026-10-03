@@ -138,6 +138,10 @@ export function buildComputeProvisionScripts(config: CloudConfig, options?: Comp
   // neither is hand-written shell in a project's userData any more.
   extras.push(...buildAppUpdatesScript(compute.appUpdates))
   extras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
+  // Host cleanup and its timer (compute.hostCleanup) are installed by the
+  // first deploy, not here: a fresh box has nothing to clean, and the ~7 KB
+  // install pushes a typical PHP box's cloud-init past Hetzner's 32 KiB
+  // user_data limit.
   extras.push(...buildAuthorizedKeysScript(compute.sshKeys, { path: options?.authorizedKeysPath }))
   if (compute.backups?.enabled) {
     extras.push(

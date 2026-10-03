@@ -325,6 +325,97 @@ describe('deploySiteRelease', () => {
   })
 })
 
+/** stacksjs/ts-cloud#195: cleanup is a property of the host, not only of a successful deploy. */
+describe('deploySiteRelease host cleanup', () => {
+  const deploy = async (driver: CloudDriver, hostCleanup?: unknown) => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+    const withCleanup = hostCleanup === undefined
+      ? config
+      : { ...config, infrastructure: { compute: { hostCleanup } } } as CloudConfig
+    try {
+      return await deploySiteRelease(driver, {
+        config: withCleanup,
+        environment: 'production',
+        siteName: 'web',
+        site: config.sites!.web,
+        slug: 'my-app',
+        sha: 'abc123',
+        runtime: 'bun',
+        localTarballPath: tarball,
+      })
+    }
+    finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  }
+  const calls = (driver: CloudDriver) => (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(call => call[0])
+
+  it('installs the cleanup timer and runs the cleanup at the end of every deploy', async () => {
+    const driver = createMockDriver()
+    await deploy(driver)
+    expect(calls(driver)).toHaveLength(1)
+    const script = calls(driver)[0].commands.join('\n')
+    expect(script).toContain('OnCalendar=daily')
+    expect(script).toContain('systemctl enable --now ts-cloud-host-cleanup.timer')
+    expect(script.trimEnd().split('\n').at(-1)).toContain('/usr/local/bin/ts-cloud-host-cleanup.sh < /dev/null')
+  })
+
+  it('passes compute.hostCleanup through', async () => {
+    const driver = createMockDriver()
+    await deploy(driver, { schedule: 'hourly', retention: { artifactMaxAgeDays: 1 } })
+    const script = calls(driver)[0].commands.join('\n')
+    expect(script).toContain('OnCalendar=hourly')
+    expect(script).toContain('TS_CLOUD_HC_ARTIFACT_DAYS=1 ')
+  })
+
+  it('runs the cleanup again on its own when the deploy fails, without masking the failure', async () => {
+    let call = 0
+    const driver = createMockDriver({
+      runRemoteDeploy: mock(async () => {
+        call++
+        return call === 1
+          ? { success: false, error: 'health gate failed', instanceCount: 1, perInstance: [{ instanceId: 'i-abc123', status: 'Failed' as const }] }
+          : { success: true, instanceCount: 1, perInstance: [{ instanceId: 'i-abc123', status: 'Success' as const }] }
+      }),
+    })
+    const result = await deploy(driver)
+    expect(result).toMatchObject({ success: false, error: 'health gate failed' })
+    expect(calls(driver)).toHaveLength(2)
+    const cleanup = calls(driver)[1]
+    expect(cleanup.targets).toEqual([{ id: 'i-abc123', publicIp: '203.0.113.1', status: 'running' }])
+    expect(cleanup.commands.join('\n')).toContain('/usr/local/bin/ts-cloud-host-cleanup.sh < /dev/null')
+    expect(cleanup.commands.join('\n')).not.toContain('systemctl restart')
+  })
+
+  it('keeps the deploy error when the failure-path cleanup itself throws', async () => {
+    let call = 0
+    const driver = createMockDriver({
+      runRemoteDeploy: mock(async () => {
+        call++
+        if (call === 2) throw new Error('ssh: connection refused')
+        return { success: false, error: 'extract failed', instanceCount: 1, perInstance: [] }
+      }),
+    })
+    expect(await deploy(driver)).toMatchObject({ success: false, error: 'extract failed' })
+  })
+
+  it('rejects an invalid hostCleanup before uploading anything', async () => {
+    const driver = createMockDriver()
+    await expect(deploy(driver, { retention: { stagingMaxAgeMinutes: 1 } })).rejects.toThrow('stagingMaxAgeMinutes')
+    expect(driver.uploadRelease).not.toHaveBeenCalled()
+  })
+
+  it('with hostCleanup: false runs no cleanup and removes an earlier timer', async () => {
+    const driver = createMockDriver()
+    await deploy(driver, false)
+    const script = calls(driver)[0].commands.join('\n')
+    expect(script).not.toContain('ts-cloud-host-cleanup.sh < /dev/null')
+    expect(script).toContain('systemctl disable --now ts-cloud-host-cleanup.timer')
+  })
+})
+
 describe('reloadRpxGateway', () => {
   const rpxConfig: CloudConfig = {
     project: { name: 'App', slug: 'my-app', region: 'fsn1' },

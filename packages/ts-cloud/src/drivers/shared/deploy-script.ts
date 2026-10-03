@@ -977,17 +977,6 @@ export function buildLocalArtifactFetch(localPath: string, destPath: string): st
   ]
 }
 
-/**
- * Content-addressed release cache on a box host (Hetzner and ssh drivers).
- *
- * `uploadRelease` keeps one immutable `<sha256>.tar.gz` per distinct tarball so
- * the second and later sites of one deploy copy it locally instead of
- * re-uploading. Uploads land as `.<sha256>-<nonce>.tmp` and are renamed into
- * place once complete. Retention for both lives in
- * {@link buildHostCleanupScript}, not in the upload path.
- */
-export const HOST_ARTIFACT_CACHE_DIR = '/var/ts-cloud/artifacts'
-
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`
 }
@@ -1011,39 +1000,7 @@ export function buildDiscardUploadScript(uploadPath: string): string {
   return `rm -f -- ${quoteShellArg(uploadPath)} 2>/dev/null || true`
 }
 
-/**
- * Bounded, multi-tenant-safe host maintenance run after a successful deploy.
- * Current and rollback releases are deliberately out of scope: their retention
- * is managed by buildPruneReleases. This only removes abandoned staging/temp
- * archives, the aged release artifact cache, aged package caches, unused
- * container images, and old journals.
- */
-export function buildHostCleanupScript(): string[] {
-  return [
-    'echo "[ts-cloud] host cleanup (disk before): $(df -h / | tail -1)"',
-    // One hour protects concurrent deploys on a shared box while bounding
-    // uploads stranded by failed or cancelled deploys.
-    'find /var/ts-cloud/staging -xdev -maxdepth 1 -type f -mmin +60 -delete 2>/dev/null || true',
-    'find /tmp -xdev -maxdepth 1 -type f -name "*-release.tar.gz" -mmin +60 -delete 2>/dev/null || true',
-    // The artifact cache's payoff is intra-deploy reuse: one upload, then every
-    // other site of the same deploy copies it locally seconds later. A short
-    // window keeps essentially all of that value; a week of tarballs grew one
-    // 140-site box's cache to 23 GB (stacksjs/ts-cloud#194).
-    `find ${HOST_ARTIFACT_CACHE_DIR} -xdev -maxdepth 1 -type f -name "*.tar.gz" -mtime +2 -delete 2>/dev/null || true`,
-    // Uploads that died before their rename (dropped connection, cancelled CI
-    // job, killed deploy). `.tmp` can never match the rule above, so without
-    // this they were stranded forever. Same one-hour bound as staging, so an
-    // upload still in flight is never deleted out from under its scp.
-    `find ${HOST_ARTIFACT_CACHE_DIR} -xdev -maxdepth 1 -type f -name ".*.tmp" -mmin +60 -delete 2>/dev/null || true`,
-    // Retained releases contain installed dependencies; these are only
-    // download caches. Keep a week to avoid unnecessary network churn.
-    'find /root/.bun/install/cache -xdev -type f -mtime +7 -delete 2>/dev/null || true',
-    'find /root/.bun/install/cache -xdev -depth -type d -empty -delete 2>/dev/null || true',
-    'journalctl --vacuum-time=14d --vacuum-size=512M >/dev/null 2>&1 || true',
-    // Only unused, week-old images qualify. Daemon-less hosts skip this.
-    'if command -v docker >/dev/null 2>&1; then docker image prune --all --force --filter "until=168h" >/dev/null 2>&1 || true; fi',
-    'if command -v podman >/dev/null 2>&1; then podman image prune --all --force --filter "until=168h" >/dev/null 2>&1 || true; fi',
-    'if command -v apt-get >/dev/null 2>&1; then apt-get clean >/dev/null 2>&1 || true; fi',
-    'echo "[ts-cloud] host cleanup (disk after): $(df -h / | tail -1)"',
-  ]
-}
+// Host cleanup moved to its own module when it grew a timer, disk-pressure
+// tiers and configuration (stacksjs/ts-cloud#195). Re-exported so existing
+// imports from this module keep working.
+export { buildHostCleanupScript, HOST_ARTIFACT_CACHE_DIR } from './host-cleanup'

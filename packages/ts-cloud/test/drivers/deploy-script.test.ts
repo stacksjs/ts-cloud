@@ -518,9 +518,10 @@ describe('buildHostCleanupScript', () => {
   it('bounds stale deploy data without touching active or rollback releases', () => {
     const joined = buildHostCleanupScript().join('\n')
     expect(joined).toContain('/var/ts-cloud/staging')
-    expect(joined).toContain('-mmin +60')
-    expect(joined).toContain('journalctl --vacuum-time=14d --vacuum-size=512M')
-    expect(joined).toContain('docker image prune --all --force --filter "until=168h"')
+    expect(joined).toContain('TS_CLOUD_HC_STAGING_MIN=60 ')
+    expect(joined).toContain('journalctl --vacuum-time="$TS_CLOUD_HC_JOURNAL_DAYS"d --vacuum-size="$TS_CLOUD_HC_JOURNAL_MB"M')
+    expect(joined).toContain('TS_CLOUD_HC_JOURNAL_DAYS=14 TS_CLOUD_HC_JOURNAL_MB=512 TS_CLOUD_HC_IMAGE_HOURS=168')
+    expect(joined).toContain('docker image prune --all --force --filter "until=${TS_CLOUD_HC_IMAGE_HOURS}h"')
     expect(joined).toContain('/var/ts-cloud/artifacts')
     expect(joined).not.toContain('/var/www')
     expect(joined).not.toContain('releases/')

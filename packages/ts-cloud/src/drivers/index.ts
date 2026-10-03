@@ -143,6 +143,21 @@ export type {
   ProvisionedBox,
 } from './shared/box-provision'
 export {
+  buildHostCleanupDeployScript,
+  buildHostCleanupExecutable,
+  buildHostCleanupInstallScript,
+  DEFAULT_HOST_CLEANUP_ESCALATED,
+  DEFAULT_HOST_CLEANUP_HIGH_WATER_PERCENT,
+  DEFAULT_HOST_CLEANUP_LOW_WATER_PERCENT,
+  DEFAULT_HOST_CLEANUP_RETENTION,
+  DEFAULT_HOST_CLEANUP_SCHEDULE,
+  HOST_ARTIFACT_CACHE_DIR,
+  HOST_CLEANUP_SCRIPT_PATH,
+  HOST_CLEANUP_UNIT,
+  resolveHostCleanupConfig,
+} from './shared/host-cleanup'
+export type { ResolvedHostCleanupConfig, ResolvedHostCleanupRetention } from './shared/host-cleanup'
+export {
   buildAwsArtifactFetch,
   buildHostCleanupScript,
   buildLocalArtifactFetch,
