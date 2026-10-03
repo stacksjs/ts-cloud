@@ -3418,6 +3418,112 @@ export interface ComputeConfig {
    * simple as adding an entry here and redeploying.
    */
   sshKeys?: SshKeyConfig[]
+
+  /**
+   * Bounded disk retention on box hosts (Hetzner and ssh providers, and AWS
+   * EC2 boxes deployed over SSM).
+   *
+   * ts-cloud prunes what it leaves behind on a box: abandoned upload staging,
+   * the release artifact cache, the Bun download cache, journald, unused
+   * container images and the apt cache. Current and rollback releases are never
+   * touched; `keepReleases` governs those. The cleanup runs after every deploy,
+   * after a failed one, and on a systemd timer, so a box that stops deploying
+   * still cleans. It reads root-filesystem usage first: below
+   * `pressure.lowWaterPercent` it skips the expensive rules, and at or above
+   * `pressure.highWaterPercent` it prunes on shorter windows and warns.
+   *
+   * Omit for the defaults. `false` turns the whole mechanism off, including a
+   * timer an earlier deploy installed.
+   */
+  hostCleanup?: boolean | ComputeHostCleanupConfig
+}
+
+/**
+ * Retention windows for {@link ComputeConfig.hostCleanup}. Each field is an age
+ * past which the matching files are deleted; omit one to keep its default.
+ */
+export interface HostCleanupRetention {
+  /**
+   * Abandoned upload staging (`/var/ts-cloud/staging`, `/tmp/*-release.tar.gz`).
+   * Doubles as the in-flight bound for a concurrent deploy, so it cannot go
+   * below 15. @default 60
+   */
+  stagingMaxAgeMinutes?: number
+  /** Completed `*.tar.gz` in the release artifact cache, `-mtime` days. @default 2 */
+  artifactMaxAgeDays?: number
+  /**
+   * `.tmp` uploads to the artifact cache stranded by a dropped transfer. An
+   * upload in flight is younger than this, so it cannot go below 15. @default 60
+   */
+  artifactUploadMaxAgeMinutes?: number
+  /** Bun's install (download) cache, `-mtime` days. @default 7 */
+  bunCacheMaxAgeDays?: number
+  /** journald retention by age. @default 14 */
+  journalMaxAgeDays?: number
+  /** journald retention by size. @default 512 */
+  journalMaxSizeMb?: number
+  /** Unused docker/podman images, by age. @default 168 */
+  containerImageMaxAgeHours?: number
+}
+
+/** How host cleanup reacts to a filling disk. See {@link ComputeHostCleanupConfig.pressure}. */
+export interface HostCleanupPressureConfig {
+  /**
+   * Below this root-filesystem usage the cleanup runs only the cheap rules
+   * (staging, artifacts, journald, registered paths) and skips the Bun cache
+   * walk, image prunes and `apt-get clean`. `0` always runs everything.
+   * @default 50
+   */
+  lowWaterPercent?: number
+  /**
+   * At or above this usage the cleanup prunes with {@link escalated} windows,
+   * prints a warning, and notifies the on-box notifier if it is still above
+   * after cleaning. @default 85
+   */
+  highWaterPercent?: number
+  /**
+   * Windows used at or above the high-water mark. Never looser than the normal
+   * ones: each field is the smaller of the two.
+   * @default { artifactMaxAgeDays: 0, bunCacheMaxAgeDays: 1, journalMaxAgeDays: 3, journalMaxSizeMb: 256, containerImageMaxAgeHours: 24 }
+   */
+  escalated?: HostCleanupRetention
+}
+
+/**
+ * A directory another component writes timestamped files into, pruned by the
+ * same cleanup on the same schedule. Only direct children of `path` whose name
+ * matches `pattern` are candidates, and only on the same filesystem.
+ */
+export interface HostCleanupPathRule {
+  /** Absolute directory, e.g. `/root/rpx-backups`. Not `/`, and not under `/var/www`. */
+  path: string
+  /** `find -name` glob for the entries to prune, e.g. `cert-backup-*`. */
+  pattern: string
+  /** Delete entries older than this many days (`-mtime`). */
+  maxAgeDays: number
+  /** Prune matching files, or matching directories with their contents. @default 'file' */
+  type?: 'file' | 'directory'
+}
+
+/** Host cleanup settings. See {@link ComputeConfig.hostCleanup}. */
+export interface ComputeHostCleanupConfig {
+  /**
+   * Install the `ts-cloud-host-cleanup.timer` systemd timer, so cleanup runs on
+   * a schedule rather than only when something deploys. `false` removes a timer
+   * an earlier deploy installed and keeps the deploy-time run. @default true
+   */
+  timer?: boolean
+  /** systemd `OnCalendar=` expression for the timer. @default 'daily' */
+  schedule?: string
+  /** Retention windows; omit a field to keep its default. */
+  retention?: HostCleanupRetention
+  /**
+   * Disk-pressure thresholds. `false` runs every rule with the normal windows
+   * regardless of usage, as ts-cloud did before the thresholds existed.
+   */
+  pressure?: boolean | HostCleanupPressureConfig
+  /** Extra directories to prune, e.g. a proxy's own backups. */
+  paths?: HostCleanupPathRule[]
 }
 
 /** An operator SSH key authorized on the box. See {@link ComputeConfig.sshKeys}. */
