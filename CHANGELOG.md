@@ -1,3 +1,26 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.16...v0.16.17)
+
+## ✨ Features
+
+- **drivers**: run host cleanup on a timer, after failed deploys, and by disk pressure ([2407a93](https://github.com/stacksjs/ts-cloud/commit/2407a93)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#195](https://github.com/stacksjs/ts-cloud/issues/195))
+- **core**: type compute.hostCleanup ([2ce4dac](https://github.com/stacksjs/ts-cloud/commit/2ce4dac)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#195](https://github.com/stacksjs/ts-cloud/issues/195))
+
+## 🐛 Bug Fixes
+
+- **drivers**: prune the release artifact cache from host cleanup ([fd8a0ec](https://github.com/stacksjs/ts-cloud/commit/fd8a0ec)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#194](https://github.com/stacksjs/ts-cloud/issues/194))
+
+## 📝 Documentation
+
+- **config**: document host disk cleanup ([236376a](https://github.com/stacksjs/ts-cloud/commit/236376a)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#195](https://github.com/stacksjs/ts-cloud/issues/195))
+
+## 🔧 Chores
+
+- release v0.16.17 ([2980970](https://github.com/stacksjs/ts-cloud/commit/2980970)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.15...v0.16.16)
 
 ## ✨ Features
