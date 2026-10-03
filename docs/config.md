@@ -696,6 +696,97 @@ disabling the unit, and survives reprovisioning: the env file is only written
 when absent, so a redeploy will not silently switch updates back on for a box
 someone deliberately pinned.
 
+## Host disk cleanup
+
+Box hosts (the Hetzner and ssh providers, and EC2 boxes deployed over SSM)
+accumulate deploy leftovers: abandoned upload staging, the content-addressed
+release artifact cache in `/var/ts-cloud/artifacts`, Bun's download cache,
+journald, unused container images and the apt cache. ts-cloud prunes all of them
+with one script, `/usr/local/bin/ts-cloud-host-cleanup.sh`, which runs:
+
+- at the end of every deploy,
+- after a **failed** deploy, as a separate best-effort run (a deploy that died
+  partway is the one most likely to have left something behind), and
+- on the `ts-cloud-host-cleanup.timer` systemd timer, so a box that stops
+  deploying still cleans.
+
+Deploys install and update the script and timer idempotently: an unchanged
+config rewrites nothing and skips `daemon-reload`. A box picks the timer up on
+its next deploy. Current and rollback releases are never touched; `keepReleases`
+owns those.
+
+Nothing is required. To tune it:
+
+```typescript
+infrastructure: {
+  compute: {
+    hostCleanup: {
+      schedule: 'daily',
+      retention: { artifactMaxAgeDays: 1, bunCacheMaxAgeDays: 3 },
+      pressure: { lowWaterPercent: 50, highWaterPercent: 80 },
+      paths: [
+        { path: '/root/rpx-backups', pattern: 'rpx-rollback-*', maxAgeDays: 14, type: 'directory' },
+      ],
+    },
+  },
+}
+```
+
+### Retention windows
+
+| Field | Default | What it prunes |
+| --- | --- | --- |
+| `stagingMaxAgeMinutes` | `60` | `/var/ts-cloud/staging` uploads and `/tmp/*-release.tar.gz`. Minimum 15, since it is also the bound that protects a concurrent deploy's upload. |
+| `artifactMaxAgeDays` | `2` | Completed `*.tar.gz` in the artifact cache. The cache pays off within one deploy (one upload, every other site copies it), so a short window keeps nearly all of its value. |
+| `artifactUploadMaxAgeMinutes` | `60` | `.tmp` uploads to the cache stranded by a dropped transfer. Minimum 15, so an upload in flight is never deleted. |
+| `bunCacheMaxAgeDays` | `7` | `/root/.bun/install/cache`. |
+| `journalMaxAgeDays` | `14` | `journalctl --vacuum-time`. |
+| `journalMaxSizeMb` | `512` | `journalctl --vacuum-size`. |
+| `containerImageMaxAgeHours` | `168` | Unused docker/podman images. |
+
+### Disk pressure
+
+The script reads root-filesystem usage before it starts and picks a tier:
+
+| Usage | Tier | Behaviour |
+| --- | --- | --- |
+| below `lowWaterPercent` (`50`) | `light` | Only the cheap rules: staging, the artifact cache, registered paths, journald. The Bun cache walk, image prunes and `apt-get clean` are skipped. |
+| in between, or unreadable | `normal` | Every rule, normal windows. |
+| at or above `highWaterPercent` (`85`) | `pressure` | Every rule with the `escalated` windows, plus a warning. |
+
+`escalated` defaults to `{ artifactMaxAgeDays: 0, bunCacheMaxAgeDays: 1,
+journalMaxAgeDays: 3, journalMaxSizeMb: 256, containerImageMaxAgeHours: 24 }`.
+Each escalated window is the smaller of it and the normal one, so escalation
+never loosens anything, and the two in-flight bounds are not shortened.
+`pressure: false` runs every rule on every pass, as ts-cloud did before the
+tiers existed.
+
+Every run ends with one machine-readable line, which deploys print and the
+timer sends to the journal (`journalctl -u ts-cloud-host-cleanup`):
+
+```text
+[ts-cloud] host-cleanup {"event":"host-cleanup","tier":"pressure","diskBeforePercent":91,"diskAfterPercent":78,"lowWaterPercent":50,"highWaterPercent":85}
+```
+
+If usage is still at or above the high-water mark after cleaning, something
+outside these rules is filling the disk. The script prints a warning and, when
+the on-box notifier is configured (`notifications`), sends one alert per
+transition and one on recovery.
+
+### Other paths
+
+`paths` lets other tooling's timestamped output be pruned by the same run.
+Only direct children of `path` whose name matches `pattern` are candidates, on
+the same filesystem, older than `maxAgeDays`. `type: 'directory'` removes
+matching directories with their contents. A `path` must be absolute, cannot be
+`/` or under `/var/www`, and `pattern` cannot be a bare wildcard.
+
+### Turning it off
+
+`timer: false` removes the timer (if an earlier deploy installed it) and keeps
+the deploy-time run. `hostCleanup: false` turns the whole mechanism off and
+removes the script and timer from the box on the next deploy.
+
 ## Preset Configuration
 
 ### Static Site Preset
