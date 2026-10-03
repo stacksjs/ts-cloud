@@ -521,6 +521,7 @@ describe('buildHostCleanupScript', () => {
     expect(joined).toContain('-mmin +60')
     expect(joined).toContain('journalctl --vacuum-time=14d --vacuum-size=512M')
     expect(joined).toContain('docker image prune --all --force --filter "until=168h"')
+    expect(joined).toContain('/var/ts-cloud/artifacts')
     expect(joined).not.toContain('/var/www')
     expect(joined).not.toContain('releases/')
   })

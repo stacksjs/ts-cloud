@@ -168,7 +168,26 @@ describe('SshDriver.uploadRelease', () => {
     expect(scp.remotePath).toMatch(/^\/var\/ts-cloud\/artifacts\/\.[0-9a-f]{64}-[0-9a-f-]{36}\.tmp$/)
     const publish = transport.execs()[1].script
     expect(publish).toContain(`mv -f -- '${scp.remotePath}' '/var/ts-cloud/artifacts/`)
-    expect(publish).toContain('-mtime +7 -delete')
+    // Retention moved to buildHostCleanupScript (#194): it no longer depends
+    // on a cache miss happening.
+    expect(publish).not.toContain('-delete')
+  })
+
+  it('removes its temp upload when the transfer fails, and still fails the upload', async () => {
+    transport.scp = async (host, localPath, remotePath) => {
+      transport.calls.push({ kind: 'scp', host, localPath, remotePath })
+      throw new Error('connection reset')
+    }
+    await expect(upload()).rejects.toThrow('connection reset')
+    const scp = transport.calls.find((c): c is Call & { kind: 'scp' } => c.kind === 'scp')!
+    expect(transport.execs().at(-1)!.script).toBe(`rm -f -- '${scp.remotePath}' 2>/dev/null || true`)
+  })
+
+  it('removes its temp upload when publishing fails', async () => {
+    transport.failing = /chmod 600/
+    await expect(upload()).rejects.toThrow()
+    const scp = transport.calls.find((c): c is Call & { kind: 'scp' } => c.kind === 'scp')!
+    expect(transport.execs().at(-1)!.script).toBe(`rm -f -- '${scp.remotePath}' 2>/dev/null || true`)
   })
 
   it('stages every upload under a unique name', async () => {

@@ -35,6 +35,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { isIP } from 'node:net'
 import { resolveProjectStackName } from '@ts-cloud/core'
+import { buildDiscardUploadScript, buildPublishUploadScript, HOST_ARTIFACT_CACHE_DIR } from '../shared/deploy-script'
 import { readDriverState, writeDriverState } from '../shared/driver-state'
 import { lanTlsMode, localCaCertPath, usesRpxProxy } from '../shared/rpx-gateway'
 import { summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
@@ -46,7 +47,7 @@ import { evaluatePreflight, formatPreflightFindings, parsePreflightFacts, prefli
 
 /** Where releases are staged and cached on the host; the same paths as every other SSH-style driver. */
 export const SSH_DEPLOY_STORAGE_PATH = '/var/ts-cloud/staging'
-const ARTIFACT_DIR = '/var/ts-cloud/artifacts'
+const ARTIFACT_DIR = HOST_ARTIFACT_CACHE_DIR
 
 /** Set to `1` to skip the bootstrap when local state says the current version already ran. */
 export const SSH_SKIP_BOOTSTRAP_ENV = 'TS_CLOUD_SSH_SKIP_BOOTSTRAP'
@@ -246,18 +247,18 @@ export class SshDriver implements CloudDriver {
         // publish it, then copy it to this deployment's unique staging path.
       }
 
+      // Cache retention, including `.tmp` uploads a dead deploy stranded, is
+      // buildHostCleanupScript's job, so it is not tied to cache misses.
       const uploadPath = `${ARTIFACT_DIR}/.${digest}-${randomUUID()}.tmp`
-      await this.transport.scp(target.publicIp, options.localPath, uploadPath)
-      await this.exec(
-        target.publicIp,
-        [
-          'set -euo pipefail',
-          `chmod 600 ${shellQuote(uploadPath)}`,
-          `mv -f -- ${shellQuote(uploadPath)} ${shellQuote(cachedPath)}`,
-          `cp -- ${shellQuote(cachedPath)} ${shellQuote(remotePath)}`,
-          `find ${shellQuote(ARTIFACT_DIR)} -type f -name '*.tar.gz' -mtime +7 -delete 2>/dev/null || true`,
-        ].join('\n'),
-      )
+      try {
+        await this.transport.scp(target.publicIp, options.localPath, uploadPath)
+        await this.exec(target.publicIp, buildPublishUploadScript(uploadPath, cachedPath, remotePath))
+      } catch (error) {
+        // Best effort; the cleanup's one-hour `.tmp` rule is the backstop when
+        // the host is unreachable.
+        await this.exec(target.publicIp, buildDiscardUploadScript(uploadPath)).catch(() => {})
+        throw error
+      }
     }
 
     return { artifactRef: remotePath }

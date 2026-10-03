@@ -332,6 +332,39 @@ describe('HetznerDriver', () => {
     expect(scpCalls[0].remotePath).toMatch(/^\/var\/ts-cloud\/artifacts\/\.[a-f0-9]{64}-[0-9a-f-]+\.tmp$/)
   })
 
+  it('discards a failed upload\'s temp file and rethrows (#194)', async () => {
+    const driver = new HetznerDriver({
+      client: mockHetznerClient(),
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
+    const artifact = `${tempCwd}/release.tar.gz`
+    await writeFile(artifact, 'release that will not arrive')
+
+    let uploadPath = ''
+    const scripts: string[] = []
+    ;(driver as any).scpToHost = (_host: string, _localPath: string, remotePath: string) => {
+      uploadPath = remotePath
+      throw new Error('scp: connection lost')
+    }
+    ;(driver as any).sshExec = (_host: string, script: string) => {
+      scripts.push(script)
+      if (script.includes('test -s')) throw new Error('cache miss')
+      return ''
+    }
+
+    await expect(driver.uploadRelease!({
+      config: baseConfig,
+      environment: 'production',
+      targets: [{ id: '42', publicIp: '203.0.113.10' } as any],
+      localPath: artifact,
+      remoteKey: 'releases/web/abc.tar.gz',
+    })).rejects.toThrow('scp: connection lost')
+    expect(scripts.at(-1)).toBe(`rm -f -- '${uploadPath}' 2>/dev/null || true`)
+    expect(scripts.join('\n')).not.toContain('-delete')
+  })
+
   it('does not provision a gateway by default (no proxy configured)', async () => {
     const createServer = mock(async () => ({
       server: {

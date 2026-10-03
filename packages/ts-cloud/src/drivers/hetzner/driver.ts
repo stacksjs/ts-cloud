@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
 import { normalizePublicIpv6 } from '../../deploy/server-dns'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
+import { buildDiscardUploadScript, buildPublishUploadScript, HOST_ARTIFACT_CACHE_DIR } from '../shared/deploy-script'
 import { buildFleetServicesBoxProvision, resolveFleetTopology } from '../shared/fleet'
 import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
@@ -1026,7 +1027,7 @@ export class HetznerDriver implements CloudDriver {
     const stagingName = `${stagingStem}-${randomUUID()}.tar.gz`
     const remotePath = `/var/ts-cloud/staging/${stagingName}`
     const digest = await sha256File(options.localPath)
-    const artifactDir = '/var/ts-cloud/artifacts'
+    const artifactDir = HOST_ARTIFACT_CACHE_DIR
     const cachedPath = `${artifactDir}/${digest}.tar.gz`
     for (const target of targets) {
       if (!target.publicIp) {
@@ -1051,18 +1052,22 @@ export class HetznerDriver implements CloudDriver {
         // publish it, then copy it to this deployment's unique staging path.
       }
 
+      // Retention for the cache (and for `.tmp` uploads stranded by a deploy
+      // that died mid-transfer) is buildHostCleanupScript's job, so it runs on
+      // every deploy and on the cleanup timer, not only on a cache miss.
       const uploadPath = `${artifactDir}/.${digest}-${randomUUID()}.tmp`
-      this.scpToHost(target.publicIp, options.localPath, uploadPath)
-      this.sshExec(
-        target.publicIp,
-        [
-          'set -euo pipefail',
-          `chmod 600 ${shellQuote(uploadPath)}`,
-          `mv -f -- ${shellQuote(uploadPath)} ${shellQuote(cachedPath)}`,
-          `cp -- ${shellQuote(cachedPath)} ${shellQuote(remotePath)}`,
-          `find ${shellQuote(artifactDir)} -type f -name '*.tar.gz' -mtime +7 -delete 2>/dev/null || true`,
-        ].join('\n'),
-      )
+      try {
+        this.scpToHost(target.publicIp, options.localPath, uploadPath)
+        this.sshExec(target.publicIp, buildPublishUploadScript(uploadPath, cachedPath, remotePath))
+      } catch (error) {
+        // Best effort: a partial upload is useless. When the connection itself
+        // is what failed this cannot reach the box either, and the cleanup's
+        // one-hour `.tmp` rule collects the orphan instead.
+        try {
+          this.sshExec(target.publicIp, buildDiscardUploadScript(uploadPath))
+        } catch {}
+        throw error
+      }
     }
 
     return { artifactRef: remotePath }
