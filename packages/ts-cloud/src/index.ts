@@ -130,6 +130,8 @@ export {
   CloudFormationClient as AWSCloudFormationClient,
   CloudFrontClient,
   CloudFrontClient as AWSCloudFrontClient,
+  configOrigins,
+  s3OriginBucket,
   EC2Client,
   S3Client,
   Route53Client,

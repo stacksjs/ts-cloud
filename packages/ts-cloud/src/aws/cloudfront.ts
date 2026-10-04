@@ -156,6 +156,26 @@ export interface RawDistributionConfig {
   [field: string]: any
 }
 
+/** A parsed distribution config's origins as a list, whether it holds one or several. */
+export function configOrigins(config: RawDistributionConfig | undefined): RawOrigin[] {
+  return asList(config?.Origins?.Items?.Origin)
+}
+
+/**
+ * The bucket behind a config's first S3 origin, read from its domain name:
+ * `<bucket>.s3.amazonaws.com`, `<bucket>.s3.<region>.amazonaws.com` or
+ * `<bucket>.s3-website-<region>.amazonaws.com`. Bucket names may contain dots,
+ * which the `^([^.]+)` pattern this replaces cut at the first one.
+ */
+export function s3OriginBucket(config: RawDistributionConfig | undefined): string | undefined {
+  for (const origin of configOrigins(config)) {
+    const bucket = String(origin.DomainName ?? '').match(/^(.+?)\.s3[.-]/)?.[1]
+    if (bucket)
+      return bucket
+  }
+  return undefined
+}
+
 /**
  * CloudFront client using direct API calls
  */
@@ -902,9 +922,10 @@ export class CloudFrontClient {
 
     // Update the config with new values
     if (aliases && aliases.length > 0) {
+      // CloudFront names each alias <CNAME>; { Item } serialized as <Item>.
       currentConfig.Aliases = {
         Quantity: aliases.length,
-        Items: { Item: aliases },
+        Items: { CNAME: aliases },
       }
     }
 
@@ -1014,6 +1035,13 @@ export class CloudFrontClient {
       }
 
       if (Array.isArray(value)) {
+        // An array handed in as Items still needs the <Items> wrapper and the
+        // element name its parent uses (<CNAME>, <Origin>, <Method>). It used to
+        // fall through to the generic case below and come out as bare <Item>s.
+        if (name === 'Items') {
+          const childName = itemsChildNames[parentContext] || 'Item'
+          return `${indent}<Items>\n${value.map(item => buildXmlElement(childName, item, `${indent}  `, name)).join('')}${indent}</Items>\n`
+        }
         // For arrays, we need to output each item with the appropriate element name
         const childName = arrayChildNames[name] || name.replace(/s$/, '')
         return value.map((item) => buildXmlElement(childName, item, indent, name)).join('')
@@ -2087,20 +2115,7 @@ export class CloudFrontClient {
     }
 
     // Remove the alias from the Aliases list
-    // Handle various structures: Items can be an array, or Items.CNAME can be a string or array
-    let items: string[] = []
-    if (currentConfig.Aliases?.Items) {
-      if (Array.isArray(currentConfig.Aliases.Items)) {
-        items = currentConfig.Aliases.Items
-      } else if (typeof currentConfig.Aliases.Items === 'object') {
-        const cname = currentConfig.Aliases.Items.CNAME
-        if (typeof cname === 'string') {
-          items = [cname]
-        } else if (Array.isArray(cname)) {
-          items = cname
-        }
-      }
-    }
+    const items = aliasesFrom(currentConfig.Aliases).Items
 
     if (items.length === 0) {
       throw new Error(`Distribution has no aliases to remove`)
@@ -2113,8 +2128,9 @@ export class CloudFrontClient {
     }
 
     currentConfig.Aliases.Quantity = newItems.length
-    // CloudFront expects Items to be an array, not Items.CNAME
-    currentConfig.Aliases.Items = newItems.length > 0 ? newItems : undefined
+    // Written back in the raw shape: a bare array serialized as <Item> elements
+    // with no <Items> wrapper, which CloudFront rejects.
+    currentConfig.Aliases.Items = newItems.length > 0 ? { CNAME: newItems } : undefined
 
     // If removing the last alias, we need to also remove the ViewerCertificate ACM config
     if (newItems.length === 0) {

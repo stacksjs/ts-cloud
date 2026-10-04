@@ -16,7 +16,7 @@
 import type { RawDistributionConfig } from '../src/aws/cloudfront'
 import { describe, expect, it } from 'bun:test'
 import { AWSClient } from '../src/aws/client'
-import { CloudFrontClient } from '../src/aws/cloudfront'
+import { CloudFrontClient, configOrigins, s3OriginBucket } from '../src/aws/cloudfront'
 import { asList } from '../src/aws/xml-result'
 
 const NS = 'xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/"'
@@ -110,5 +110,95 @@ describe('getDistributionConfig returns what RawDistributionConfig declares', ()
       const { config: reparsed } = await configFrom(rebuilt.replace('<DistributionConfig', `<DistributionConfig ${NS}`).replace(/^<\?xml[^>]*>\s*/, ''))
       expect(reparsed).toEqual(config)
     }
+  })
+})
+
+/** A config with the given origin domains and nothing else that matters. */
+function originsConfig(domains: string[]): string {
+  const origins = domains.map((domain, i) => `<Origin><Id>origin-${i}</Id><DomainName>${domain}</DomainName><OriginPath></OriginPath></Origin>`).join('')
+  return configXml('ref', '').replace(/<Origins>[\s\S]*?<\/Origins>/, `<Origins><Quantity>${domains.length}</Quantity><Items>${origins}</Items></Origins>`)
+}
+
+describe('reading origins out of a parsed config', () => {
+  it('configOrigins lists one origin and several alike', async () => {
+    const { config: one } = await configFrom(originsConfig(['example-com.s3.us-east-1.amazonaws.com']))
+    expect(configOrigins(one).map(o => o.Id)).toEqual(['origin-0'])
+    const { config: two } = await configFrom(originsConfig(['api.example.com', 'example-com.s3.amazonaws.com']))
+    expect(configOrigins(two).map(o => o.Id)).toEqual(['origin-0', 'origin-1'])
+    expect(configOrigins(undefined)).toEqual([])
+  })
+
+  it('s3OriginBucket finds the first S3 origin past a custom one', async () => {
+    const { config } = await configFrom(originsConfig(['api.example.com', 'example-com.s3.us-east-1.amazonaws.com']))
+    expect(s3OriginBucket(config)).toBe('example-com')
+  })
+
+  it('s3OriginBucket keeps the dots in a bucket name (the old pattern returned "www")', async () => {
+    const { config } = await configFrom(originsConfig(['www.example.com.s3.amazonaws.com']))
+    expect(s3OriginBucket(config)).toBe('www.example.com')
+  })
+
+  it('s3OriginBucket reads REST, regional and website endpoints, and nothing else', async () => {
+    for (const [domain, bucket] of [
+      ['example-com.s3.amazonaws.com', 'example-com'],
+      ['example-com.s3.eu-west-1.amazonaws.com', 'example-com'],
+      ['example-com.s3-website-us-east-1.amazonaws.com', 'example-com'],
+      ['example-com.s3-website.eu-central-1.amazonaws.com', 'example-com'],
+      ['api.example.com', undefined],
+      ['s3data.example.com', undefined],
+    ] as const) {
+      const { config } = await configFrom(originsConfig([domain]))
+      expect(s3OriginBucket(config)).toBe(bucket)
+    }
+  })
+})
+
+describe('removeAlias reads the raw config aliases', () => {
+  it('drops one alias of two and sends the other back as a CNAME', async () => {
+    const parser: any = new AWSClient()
+    const puts: string[] = []
+    const client = new CloudFrontClient(undefined, {
+      request: async (request: any) => {
+        if (request.method === 'PUT') {
+          puts.push(String(request.body))
+          return { body: null, headers: { etag: 'E-AFTER' } }
+        }
+        return { body: parser.parseXmlResponse(`<?xml version="1.0"?>\n${configXml('ref', '')}`), headers: { etag: 'E-BEFORE' } }
+      },
+    })
+    expect(await client.removeAlias('E1EXAMPLE', 'www.example.com')).toEqual({ ETag: 'E-AFTER' })
+    expect(puts[0]).toContain('<CNAME>example.com</CNAME>')
+    expect(puts[0]).not.toContain('www.example.com')
+    await expect(client.removeAlias('E1EXAMPLE', 'missing.example.com')).rejects.toThrow('not found')
+  })
+})
+
+describe('alias writes produce the XML CloudFront accepts', () => {
+  /** The <Aliases> element of a config body, whitespace removed. */
+  const aliasesOf = (xml: string) => xml.match(/<Aliases>[\s\S]*?<\/Aliases>/)?.[0].replace(/\s+/g, '')
+
+  it('updateDistribution names each alias <CNAME> (it sent <Item>)', async () => {
+    const parser: any = new AWSClient()
+    const puts: string[] = []
+    const client = new CloudFrontClient(undefined, {
+      request: async (request: any) => {
+        if (request.method === 'PUT') {
+          puts.push(String(request.body))
+          return { body: null, headers: { etag: 'E-AFTER' } }
+        }
+        return { body: parser.parseXmlResponse(`<?xml version="1.0"?>\n${configXml('ref', '')}`), headers: { etag: 'E-BEFORE' } }
+      },
+    })
+    await client.updateDistribution({ distributionId: 'E1EXAMPLE', aliases: ['example.com', 'www.example.com'] })
+    expect(aliasesOf(puts[0])).toBe('<Aliases><Quantity>2</Quantity><Items><CNAME>example.com</CNAME><CNAME>www.example.com</CNAME></Items></Aliases>')
+  })
+
+  it('the builder wraps an Items array and names its elements after the parent', async () => {
+    const { client, config } = await configFrom(configXml('ref', ''))
+    const build = (value: any) => (client as any).buildDistributionConfigXml(value) as string
+    expect(aliasesOf(build({ ...config, Aliases: { Quantity: 1, Items: ['example.com'] } })))
+      .toBe('<Aliases><Quantity>1</Quantity><Items><CNAME>example.com</CNAME></Items></Aliases>')
+    expect(build({ ...config, DefaultCacheBehavior: { ...config.DefaultCacheBehavior, AllowedMethods: { Quantity: 2, Items: ['GET', 'HEAD'] } } }).replace(/\s+/g, ''))
+      .toContain('<AllowedMethods><Quantity>2</Quantity><Items><Method>GET</Method><Method>HEAD</Method></Items></AllowedMethods>')
   })
 })

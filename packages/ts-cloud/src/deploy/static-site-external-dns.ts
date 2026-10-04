@@ -5,7 +5,7 @@
 import type { DnsProvider, DnsProviderConfig } from '../dns/types'
 import { ACMClient } from '../aws/acm'
 import { CloudFormationClient } from '../aws/cloudformation'
-import { CloudFrontClient } from '../aws/cloudfront'
+import { CloudFrontClient, s3OriginBucket } from '../aws/cloudfront'
 import { S3Client } from '../aws/s3'
 import { createDnsProvider } from '../dns'
 import { Route53Provider } from '../dns/route53-adapter'
@@ -578,19 +578,8 @@ export async function deployStaticSiteWithExternalDns(
         console.log(`Checking for existing CloudFront distributions with alias ${domain}...`)
         const distributions = await cloudfront.listDistributions()
         for (const dist of distributions) {
-          let aliases: string[] = []
-          if (dist.Aliases?.Items) {
-            if (Array.isArray(dist.Aliases.Items)) {
-              aliases = dist.Aliases.Items
-            } else if (typeof dist.Aliases.Items === 'object') {
-              const cname = (dist.Aliases.Items as any).CNAME
-              if (typeof cname === 'string') {
-                aliases = [cname]
-              } else if (Array.isArray(cname)) {
-                aliases = cname
-              }
-            }
-          }
+          // listDistributions returns aliases as a string list.
+          const aliases: string[] = dist.Aliases?.Items ?? []
           if (aliases.includes(domain)) {
             hasExistingDistribution = true
             console.log(`Found existing CloudFront distribution ${dist.Id} with alias ${domain}`)
@@ -598,30 +587,7 @@ export async function deployStaticSiteWithExternalDns(
 
             // Get the origin bucket from the distribution
             const distConfig = await cloudfront.getDistributionConfig(dist.Id!)
-            const originsData = distConfig.DistributionConfig?.Origins?.Items
-            let originBucket: string | undefined
-
-            if (originsData) {
-              // Handle AWS XML-to-JSON format: single item is { Origin: {...} }, multiple is { Origin: [...] } or [...]
-              let originList: any[] = []
-              if (Array.isArray(originsData)) {
-                originList = originsData
-              } else if (originsData.Origin) {
-                originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
-              } else {
-                originList = [originsData]
-              }
-
-              for (const origin of originList) {
-                const domainName = origin.DomainName || ''
-                // Extract bucket name from S3 domain (e.g., "bucket-name.s3.us-east-1.amazonaws.com")
-                const s3Match = domainName.match(/^([^.]+)\.s3[\.-]/)
-                if (s3Match) {
-                  originBucket = s3Match[1]
-                  break
-                }
-              }
-            }
+            const originBucket = s3OriginBucket(distConfig.DistributionConfig)
 
             if (originBucket) {
               console.log(`Using existing S3 bucket: ${originBucket}`)
@@ -774,19 +740,8 @@ export async function deployStaticSiteWithExternalDns(
         const distributions = await cloudfront.listDistributions()
 
         for (const dist of distributions) {
-          let aliases: string[] = []
-          if (dist.Aliases?.Items) {
-            if (Array.isArray(dist.Aliases.Items)) {
-              aliases = dist.Aliases.Items
-            } else if (typeof dist.Aliases.Items === 'object') {
-              const cname = (dist.Aliases.Items as any).CNAME
-              if (typeof cname === 'string') {
-                aliases = [cname]
-              } else if (Array.isArray(cname)) {
-                aliases = cname
-              }
-            }
-          }
+          // listDistributions returns aliases as a string list.
+          const aliases: string[] = dist.Aliases?.Items ?? []
 
           if (aliases.includes(domain)) {
             console.log(`Found existing CloudFront distribution ${dist.Id} with alias ${domain}`)
@@ -794,28 +749,7 @@ export async function deployStaticSiteWithExternalDns(
 
             // Get the origin bucket from the distribution
             const distConfig = await cloudfront.getDistributionConfig(dist.Id!)
-            const originsData = distConfig.DistributionConfig?.Origins?.Items
-            let originBucket: string | undefined
-
-            if (originsData) {
-              let originList: any[] = []
-              if (Array.isArray(originsData)) {
-                originList = originsData
-              } else if (originsData.Origin) {
-                originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
-              } else {
-                originList = [originsData]
-              }
-
-              for (const origin of originList) {
-                const domainName = origin.DomainName || ''
-                const s3Match = domainName.match(/^([^.]+)\.s3[\.-]/)
-                if (s3Match) {
-                  originBucket = s3Match[1]
-                  break
-                }
-              }
-            }
+            const originBucket = s3OriginBucket(distConfig.DistributionConfig)
 
             if (originBucket) {
               console.log(`Using existing S3 bucket: ${originBucket}`)
