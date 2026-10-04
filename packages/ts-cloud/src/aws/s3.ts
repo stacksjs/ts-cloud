@@ -25,6 +25,25 @@ function toFetchBody(data: Uint8Array | Buffer): ArrayBuffer {
   return copy
 }
 
+/**
+ * Read a single-root XML response through its root element.
+ *
+ * AWSClient.parseXmlResponse strips the single root, so a `GET ?cors` yields
+ * the *contents* of `<CORSConfiguration>`, and reading `result.CORSConfiguration`
+ * returned undefined for every configured bucket. The wrapped form is kept as
+ * a fallback in case the parser stops unwrapping, and the root's own `xmlns`
+ * attribute is dropped because it is parser residue, not configuration.
+ */
+function unwrapRoot(result: any, root: string): any {
+  const body = result?.[root] ?? result
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return body
+  }
+  const rest = { ...body }
+  delete rest['@_xmlns']
+  return rest
+}
+
 export interface S3SyncOptions {
   source: string
   bucket: string
@@ -1142,7 +1161,7 @@ export class S3Client {
         path: `/${bucket}`,
         queryParams: { lifecycle: '' },
       })
-      return result?.LifecycleConfiguration
+      return unwrapRoot(result, 'LifecycleConfiguration')
     } catch (e: any) {
       if (e.statusCode === 404) {
         return null
@@ -1239,7 +1258,7 @@ export class S3Client {
         path: `/${bucket}`,
         queryParams: { cors: '' },
       })
-      return result?.CORSConfiguration
+      return unwrapRoot(result, 'CORSConfiguration')
     } catch (e: any) {
       if (e.statusCode === 404) {
         return null
@@ -1329,7 +1348,7 @@ export class S3Client {
         path: `/${bucket}`,
         queryParams: { encryption: '' },
       })
-      return result?.ServerSideEncryptionConfiguration
+      return unwrapRoot(result, 'ServerSideEncryptionConfiguration')
     } catch (e: any) {
       if (e.statusCode === 404) {
         return null
@@ -1504,7 +1523,7 @@ export class S3Client {
       path: `/${bucket}`,
       queryParams: { acl: '' },
     })
-    return result?.AccessControlPolicy
+    return unwrapRoot(result, 'AccessControlPolicy')
   }
 
   /**
@@ -1535,7 +1554,7 @@ export class S3Client {
       path: `/${bucket}/${key}`,
       queryParams: { acl: '' },
     })
-    return result?.AccessControlPolicy
+    return unwrapRoot(result, 'AccessControlPolicy')
   }
 
   /**
@@ -1567,8 +1586,11 @@ export class S3Client {
       path: `/${bucket}`,
       queryParams: { location: '' },
     })
-    // Empty string means us-east-1
-    return result?.LocationConstraint || 'us-east-1'
+    // The region is the root element's text: a bare string, or `#text` beside
+    // the xmlns attribute. An empty <LocationConstraint/> means us-east-1.
+    const root = unwrapRoot(result, 'LocationConstraint')
+    const location = typeof root === 'string' ? root : root?.['#text']
+    return location || 'us-east-1'
   }
 
   /**
@@ -1582,7 +1604,7 @@ export class S3Client {
       path: `/${bucket}`,
       queryParams: { logging: '' },
     })
-    return result?.BucketLoggingStatus
+    return unwrapRoot(result, 'BucketLoggingStatus')
   }
 
   /**
@@ -1619,7 +1641,7 @@ export class S3Client {
       path: `/${bucket}`,
       queryParams: { notification: '' },
     })
-    return result?.NotificationConfiguration
+    return unwrapRoot(result, 'NotificationConfiguration')
   }
 
   /**
@@ -1721,7 +1743,7 @@ export class S3Client {
         path: `/${bucket}`,
         queryParams: { website: '' },
       })
-      return result?.WebsiteConfiguration
+      return unwrapRoot(result, 'WebsiteConfiguration')
     } catch (e: any) {
       if (e.statusCode === 404) {
         return null
@@ -1796,7 +1818,7 @@ export class S3Client {
         path: `/${bucket}`,
         queryParams: { replication: '' },
       })
-      return result?.ReplicationConfiguration
+      return unwrapRoot(result, 'ReplicationConfiguration')
     } catch (e: any) {
       if (e.statusCode === 404) {
         return null
@@ -1830,7 +1852,7 @@ export class S3Client {
         path: `/${bucket}`,
         queryParams: { publicAccessBlock: '' },
       })
-      return result?.PublicAccessBlockConfiguration
+      return unwrapRoot(result, 'PublicAccessBlockConfiguration')
     } catch (e: any) {
       if (e.statusCode === 404) {
         return null
