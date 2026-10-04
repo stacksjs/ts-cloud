@@ -4,6 +4,7 @@
  */
 import type { AWSCredentials } from './client'
 import { AWSClient } from './client'
+import { queryResult } from './xml-result'
 
 export interface EmailIdentity {
   IdentityType?: 'EMAIL_ADDRESS' | 'DOMAIN' | 'MANAGED_DOMAIN'
@@ -25,18 +26,6 @@ export interface EmailIdentity {
 
 export interface SendEmailResult {
   MessageId?: string
-}
-
-/**
- * Read an SES v1 (query API) response's `<{Action}Result>`.
- *
- * AWSClient.parseXmlResponse strips the single root, so
- * `<GetSendQuotaResponse><GetSendQuotaResult>..` arrives as
- * `{ GetSendQuotaResult: .. }`, and reading through `GetSendQuotaResponse`
- * found nothing. The wrapped form is kept as a fallback.
- */
-function queryResult(result: any, action: string): any {
-  return (result?.[`${action}Response`] ?? result)?.[`${action}Result`]
 }
 
 /**

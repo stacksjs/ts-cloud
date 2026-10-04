@@ -3,6 +3,7 @@
  * Direct API calls without AWS CLI dependency
  */
 import { AWSClient } from './client'
+import { queryResult } from './xml-result'
 
 export interface StackParameter {
   ParameterKey: string
@@ -543,7 +544,8 @@ export class CloudFormationClient {
       body: new URLSearchParams(params).toString(),
     })
 
-    return { Id: result.Id, StackId: result.StackId }
+    const created = queryResult(result, 'CreateChangeSet')
+    return { Id: created?.Id, StackId: created?.StackId }
   }
 
   /**

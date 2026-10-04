@@ -736,6 +736,10 @@ export class IAMClient {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body,
+      // The parse helpers below read the XML text with regexes. Without this,
+      // AWSClient hands back a parsed object and every call threw
+      // "xml.match is not a function".
+      rawResponse: true,
     })
 
     return response

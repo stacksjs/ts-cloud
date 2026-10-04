@@ -16,6 +16,7 @@ import { AWSClient } from './client'
 import { S3Client } from './s3'
 import { SNSClient } from './sns'
 import { SupportClient, SupportTemplates } from './support'
+import { queryResult } from './xml-result'
 
 export interface SmsSetupConfig {
   region?: string
@@ -405,7 +406,7 @@ async function setupTwoWayTopic(
     body: params.toString(),
   })
 
-  const topicArn = result?.CreateTopicResponse?.CreateTopicResult?.TopicArn
+  const topicArn = queryResult(result, 'CreateTopic')?.TopicArn
   if (!topicArn) {
     throw new Error('Failed to create SNS topic')
   }

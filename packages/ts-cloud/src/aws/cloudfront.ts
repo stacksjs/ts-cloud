@@ -537,11 +537,18 @@ export class CloudFrontClient {
       region: 'us-east-1',
       method: 'GET',
       path: `/2020-05-31/distribution/${distributionId}/config`,
+      // The ETag an update must send back as If-Match is a response header,
+      // so without this it was always ''.
+      returnHeaders: true,
     })
 
+    // parseXmlResponse strips the <DistributionConfig> root and keeps its
+    // xmlns attribute, which is parser residue rather than configuration.
+    const config = { ...(result.body?.DistributionConfig ?? result.body ?? {}) }
+    delete config['@_xmlns']
     return {
-      ETag: result.ETag || '',
-      DistributionConfig: result.DistributionConfig || result,
+      ETag: result.headers?.etag || result.headers?.ETag || '',
+      DistributionConfig: config as any,
     }
   }
 
@@ -1190,7 +1197,8 @@ export class CloudFrontClient {
       LastModifiedTime: string
     }> = []
 
-    const items = result.FunctionList?.Items?.FunctionSummary
+    // parseXmlResponse strips the <FunctionList> root.
+    const items = (result.FunctionList ?? result)?.Items?.FunctionSummary
     if (items) {
       const list = Array.isArray(items) ? items : [items]
       for (const item of list) {
@@ -1475,10 +1483,10 @@ export class CloudFrontClient {
 
     const items: any[] = []
 
-    if (result.OriginAccessControlList?.Items?.OriginAccessControlSummary) {
-      const summaries = Array.isArray(result.OriginAccessControlList.Items.OriginAccessControlSummary)
-        ? result.OriginAccessControlList.Items.OriginAccessControlSummary
-        : [result.OriginAccessControlList.Items.OriginAccessControlSummary]
+    // parseXmlResponse strips the <OriginAccessControlList> root.
+    const summary = (result.OriginAccessControlList ?? result)?.Items?.OriginAccessControlSummary
+    if (summary) {
+      const summaries = Array.isArray(summary) ? summary : [summary]
 
       items.push(
         ...summaries.map((item: any) => ({

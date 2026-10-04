@@ -3,6 +3,7 @@
  * Direct API calls without AWS CLI dependency
  */
 import { AWSClient } from './client'
+import { asList, queryResult } from './xml-result'
 
 export interface QueueAttributes {
   QueueUrl: string
@@ -196,7 +197,13 @@ export class SQSClient {
       body: new URLSearchParams(params).toString(),
     })
 
-    return { Attributes: result.Attributes || result.GetQueueAttributesResult?.Attributes || {} }
+    // Each attribute arrives as an <Attribute><Name/><Value/></Attribute>
+    // element (one of them as a bare object), not as an Attributes map.
+    const attributes: Record<string, string> = {}
+    for (const entry of asList<{ Name: string; Value: unknown }>(queryResult(result, 'GetQueueAttributes')?.Attribute)) {
+      attributes[entry.Name] = String(entry.Value)
+    }
+    return { Attributes: attributes }
   }
 
   /**

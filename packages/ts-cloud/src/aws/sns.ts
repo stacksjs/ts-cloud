@@ -3,6 +3,7 @@
  * Direct API calls without AWS SDK dependency
  */
 import { AWSClient } from './client'
+import { asList, isTrue, queryResult } from './xml-result'
 
 export interface SNSTopicAttributes {
   TopicArn?: string
@@ -100,7 +101,7 @@ export class SNSClient {
     })
 
     return {
-      TopicArn: result?.CreateTopicResponse?.CreateTopicResult?.TopicArn || result?.TopicArn,
+      TopicArn: queryResult(result, 'CreateTopic')?.TopicArn,
     }
   }
 
@@ -179,13 +180,12 @@ export class SNSClient {
       }),
     })
 
-    const attributes = result?.GetTopicAttributesResponse?.GetTopicAttributesResult?.Attributes?.entry
+    const attributes = asList<{ key: string; value: unknown }>(queryResult(result, 'GetTopicAttributes')?.Attributes?.entry)
     const attrs: SNSTopicAttributes = { TopicArn: topicArn }
 
-    if (Array.isArray(attributes)) {
-      attributes.forEach((entry: { key: string; value: string }) => {
-        ;(attrs as any)[entry.key] = entry.value
-      })
+    // The parser turns numeric text into numbers; the attributes are strings.
+    for (const entry of attributes) {
+      ;(attrs as any)[entry.key] = String(entry.value)
     }
 
     return attrs
@@ -256,7 +256,7 @@ export class SNSClient {
     })
 
     return {
-      SubscriptionArn: result?.SubscribeResponse?.SubscribeResult?.SubscriptionArn || result?.SubscriptionArn,
+      SubscriptionArn: queryResult(result, 'Subscribe')?.SubscriptionArn,
     }
   }
 
@@ -311,10 +311,10 @@ export class SNSClient {
       body: this.buildFormBody(formParams),
     })
 
-    const subs = result?.ListSubscriptionsByTopicResponse?.ListSubscriptionsByTopicResult?.Subscriptions?.member
+    const listed = queryResult(result, 'ListSubscriptionsByTopic')
     return {
-      Subscriptions: Array.isArray(subs) ? subs : subs ? [subs] : [],
-      NextToken: result?.ListSubscriptionsByTopicResponse?.ListSubscriptionsByTopicResult?.NextToken,
+      Subscriptions: asList(listed?.Subscriptions?.member),
+      NextToken: listed?.NextToken || undefined,
     }
   }
 
@@ -376,7 +376,7 @@ export class SNSClient {
     })
 
     return {
-      MessageId: result?.PublishResponse?.PublishResult?.MessageId || result?.MessageId,
+      MessageId: queryResult(result, 'Publish')?.MessageId,
     }
   }
 
@@ -516,15 +516,11 @@ export class SNSClient {
       }),
     })
 
-    const attrs = result?.GetSMSAttributesResponse?.GetSMSAttributesResult?.attributes?.entry
+    const attrs = asList<{ key: string; value: unknown }>(queryResult(result, 'GetSMSAttributes')?.attributes?.entry)
     const attributes: Record<string, string> = {}
 
-    if (Array.isArray(attrs)) {
-      attrs.forEach((entry: { key: string; value: string }) => {
-        attributes[entry.key] = entry.value
-      })
-    } else if (attrs) {
-      attributes[attrs.key] = attrs.value
+    for (const entry of attrs) {
+      attributes[entry.key] = String(entry.value)
     }
 
     return attributes
@@ -586,7 +582,7 @@ export class SNSClient {
       }),
     })
 
-    return result?.CheckIfPhoneNumberIsOptedOutResponse?.CheckIfPhoneNumberIsOptedOutResult?.isOptedOut === 'true'
+    return isTrue(queryResult(result, 'CheckIfPhoneNumberIsOptedOut')?.isOptedOut)
   }
 
   /**
@@ -613,10 +609,10 @@ export class SNSClient {
       body: this.buildFormBody(formParams),
     })
 
-    const phones = result?.ListPhoneNumbersOptedOutResponse?.ListPhoneNumbersOptedOutResult?.phoneNumbers?.member
+    const listed = queryResult(result, 'ListPhoneNumbersOptedOut')
     return {
-      phoneNumbers: Array.isArray(phones) ? phones : phones ? [phones] : [],
-      nextToken: result?.ListPhoneNumbersOptedOutResponse?.ListPhoneNumbersOptedOutResult?.nextToken,
+      phoneNumbers: asList(listed?.phoneNumbers?.member).map(String),
+      nextToken: listed?.nextToken || undefined,
     }
   }
 
@@ -667,10 +663,10 @@ export class SNSClient {
       body: this.buildFormBody(formParams),
     })
 
-    const phones = result?.ListSMSSandboxPhoneNumbersResponse?.ListSMSSandboxPhoneNumbersResult?.PhoneNumbers?.member
+    const listed = queryResult(result, 'ListSMSSandboxPhoneNumbers')
     return {
-      PhoneNumbers: Array.isArray(phones) ? phones : phones ? [phones] : [],
-      NextToken: result?.ListSMSSandboxPhoneNumbersResponse?.ListSMSSandboxPhoneNumbersResult?.NextToken,
+      PhoneNumbers: asList(listed?.PhoneNumbers?.member),
+      NextToken: listed?.NextToken || undefined,
     }
   }
 
@@ -757,7 +753,7 @@ export class SNSClient {
     })
 
     return {
-      IsInSandbox: result?.GetSMSSandboxAccountStatusResponse?.GetSMSSandboxAccountStatusResult?.IsInSandbox === 'true',
+      IsInSandbox: isTrue(queryResult(result, 'GetSMSSandboxAccountStatus')?.IsInSandbox),
     }
   }
 }
