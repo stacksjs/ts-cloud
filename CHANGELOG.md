@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.26...v0.16.27)
+
+## 🐛 Bug Fixes
+
+- **cli**: honor the global --profile/--region and name rejected credentials ([6b47380](https://github.com/stacksjs/ts-cloud/commit/6b47380)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.27 ([c957161](https://github.com/stacksjs/ts-cloud/commit/c957161)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.25...v0.16.26)
 
 ## 🐛 Bug Fixes
