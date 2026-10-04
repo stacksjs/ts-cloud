@@ -2,7 +2,8 @@ import type { CloudFrontDistribution, CloudFrontOriginAccessControl, IAMRole, La
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import { assertOriginGroupMethods, buildOriginGroup, isS3RestEndpoint } from './cdn-failover'
+import type { OriginConnectionOptions, OriginGroupSelectionCriteria } from './cdn-failover'
+import { assertOriginGroupMethods, buildOriginGroup, isS3RestEndpoint, resolveOriginConnection, validateOriginGroups } from './cdn-failover'
 
 export interface DistributionOptions {
   slug: string
@@ -18,16 +19,15 @@ export interface DistributionOptions {
   /**
    * Secondary origin CloudFront fails over to when the primary errors.
    * Adds an origin group and points the default cache behavior at it.
-   * @experimental See {@link CDN.addOriginFailover}.
+   * See {@link CDN.addOriginFailover}.
    */
   failoverOrigin?: FailoverOriginConfig
 }
 
 /**
  * Secondary origin for CloudFront origin failover.
- * @experimental Built against the AWS documentation; not yet exercised against a live distribution.
  */
-export interface FailoverOriginConfig {
+export interface FailoverOriginConfig extends OriginConnectionOptions {
   /** Domain of the secondary origin, e.g. a replica bucket in another region. */
   domainName: string
   /** Origin kind. @default 's3' for an S3 REST endpoint, otherwise 'custom' */
@@ -40,9 +40,18 @@ export interface FailoverOriginConfig {
    * 416, 429, 500, 502, 503, 504. @default [500, 502, 503, 504]
    */
   statusCodes?: number[]
+  /** How CloudFront picks the origin it asks first. @default CloudFront's 'default' (primary first) */
+  selectionCriteria?: OriginGroupSelectionCriteria
+  /**
+   * Connection tuning for the *primary* origin. Lower values make failover
+   * faster: CloudFront otherwise spends up to 30 seconds (3 attempts of 10
+   * seconds) on an unreachable primary. `connectionAttempts` and
+   * `connectionTimeout` on this object tune the secondary.
+   */
+  primary?: OriginConnectionOptions
 }
 
-export interface OriginConfig {
+export interface OriginConfig extends OriginConnectionOptions {
   type?: 's3' | 'alb' | 'custom'
   id?: string
   originId?: string // Alias for id
@@ -109,6 +118,7 @@ export class CDN {
       Id: 'DefaultOrigin',
       DomainName: origin.domainName,
       OriginPath: origin.originPath || '',
+      ...resolveOriginConnection(origin, 'the CDN origin'),
     }
 
     // Configure S3 origin with OAC
@@ -208,9 +218,8 @@ export class CDN {
    *
    * CloudFront only fails over GET, HEAD and OPTIONS, and rejects an origin
    * group behind a cache behavior that allows writes, so this throws if the
-   * default cache behavior allows any other method.
-   *
-   * @experimental Built against the AWS documentation; not yet exercised against a live distribution.
+   * default cache behavior allows any other method. The finished config is
+   * checked with {@link validateOriginGroups}.
    */
   static addOriginFailover(distribution: CloudFrontDistribution, failover: FailoverOriginConfig): CloudFrontDistribution {
     const config = distribution.Properties.DistributionConfig
@@ -227,13 +236,24 @@ export class CDN {
       throw new Error(`CloudFront origin failover: an origin with id "${secondaryOriginId}" already exists`)
     }
 
-    const group = buildOriginGroup({ primaryOriginId, secondaryOriginId, statusCodes: failover.statusCodes })
+    const group = buildOriginGroup({
+      primaryOriginId,
+      secondaryOriginId,
+      statusCodes: failover.statusCodes,
+      selectionCriteria: failover.selectionCriteria,
+    })
 
     const type = failover.type ?? (isS3RestEndpoint(failover.domainName) ? 's3' : 'custom')
     const secondary: any = {
       Id: secondaryOriginId,
       DomainName: failover.domainName,
       OriginPath: failover.originPath || '',
+      ...resolveOriginConnection(failover, 'the failover origin'),
+    }
+    const primaryConnection = resolveOriginConnection(failover.primary, 'the primary origin')
+    if (Object.keys(primaryConnection).length > 0) {
+      const primary = config.Origins.find((origin) => origin.Id === primaryOriginId)
+      if (primary) Object.assign(primary, primaryConnection)
     }
     if (type === 's3') {
       // Reuse the primary's origin access control: an OAC is not tied to one bucket.
@@ -251,6 +271,7 @@ export class CDN {
     config.Origins.push(secondary)
     config.OriginGroups = { Quantity: 1, Items: [group] }
     behavior.TargetOriginId = group.Id
+    validateOriginGroups(config)
 
     return distribution
   }

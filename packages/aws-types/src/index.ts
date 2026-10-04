@@ -7,6 +7,8 @@
 export interface CloudFormationTemplate {
   AWSTemplateFormatVersion?: '2010-09-09'
   Description?: string
+  /** Template-level metadata. CloudFormation stores it with the template and ignores unknown keys. */
+  Metadata?: Record<string, unknown>
   Parameters?: Record<string, CloudFormationParameter>
   Mappings?: Record<string, unknown>
   Conditions?: Record<string, unknown>
@@ -194,6 +196,10 @@ export interface CloudFrontOrigin {
     OriginKeepaliveTimeout?: number
   }
   OriginAccessControlId?: string
+  /** Times CloudFront tries to connect to this origin, 1-3. CloudFront's default is 3. */
+  ConnectionAttempts?: number
+  /** Seconds CloudFront waits to connect to this origin, 1-10. CloudFront's default is 10. */
+  ConnectionTimeout?: number
   OriginCustomHeaders?: Array<{
     HeaderName: string
     HeaderValue: string

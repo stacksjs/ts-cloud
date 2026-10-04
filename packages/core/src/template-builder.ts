@@ -50,6 +50,17 @@ export class TemplateBuilder {
   }
 
   /**
+   * Set a template-level `Metadata` entry
+   */
+  addMetadata(key: string, value: unknown): this {
+    if (!this.template.Metadata) {
+      this.template.Metadata = {}
+    }
+    this.template.Metadata[key] = value
+    return this
+  }
+
+  /**
    * Check if a resource already exists in the template
    */
   hasResource(logicalId: string): boolean {

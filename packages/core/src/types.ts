@@ -2365,6 +2365,18 @@ export interface StorageItemConfig {
    */
   pathRewriteStyle?: 'directory' | 'flat'
   /**
+   * CloudFront origin failover to a replica of this bucket in another region.
+   * Only applies to a website bucket served through CloudFront. Off unless set.
+   *
+   * @example
+   * ```ts
+   * storage: {
+   *   public: { website: true, failover: { region: 'us-west-2' } },
+   * }
+   * ```
+   */
+  failover?: StorageFailoverConfig
+  /**
    * Whether this bucket serves a single-page application (SPA).
    * When true: 403/404 errors return index.html with status 200 (for client-side routing).
    * When false (default): A CloudFront Function rewrites extensionless URLs to .html files,
@@ -4494,6 +4506,55 @@ export interface DatabaseItemConfig {
   >
 }
 
+/** Object form of {@link CdnItemConfig.failoverOrigin}. */
+export interface CdnFailoverOriginConfig {
+  /** Domain of the secondary origin. */
+  domain: string
+  /** Path CloudFront prepends to requests sent to the secondary. */
+  originPath?: string
+  /** Times CloudFront tries to connect to the secondary, 1-3. */
+  connectionAttempts?: number
+  /** Seconds CloudFront waits to connect to the secondary, 1-10. */
+  connectionTimeout?: number
+}
+
+/**
+ * CloudFront origin failover for a website bucket: a replica bucket in a
+ * second region that CloudFront serves from when the primary bucket fails.
+ *
+ * ts-cloud creates the replica (versioned, private, encrypted) in
+ * {@link region} before the stack deploys, replicates every write to it with
+ * S3 replication, copies objects that predate replication across, and lets
+ * the distribution read it through the same origin access control as the
+ * primary. The replica lives outside the CloudFormation stack, because a stack
+ * can only create buckets in its own region, so removing the stack leaves it
+ * behind.
+ */
+export interface StorageFailoverConfig {
+  /** Region of the replica bucket. Must differ from the stack's region. */
+  region: string
+  /** Replica bucket name. @default `<primary bucket>-<region>` */
+  bucket?: string
+  /**
+   * Primary status codes that send a request to the replica. CloudFront
+   * accepts 400, 403, 404, 416, 429, 500, 502, 503 and 504.
+   * @default [403, 404, 500, 502, 503, 504] - an S3 origin behind origin access
+   * control answers a missing object with 403, so 403 and 404 cover an object
+   * the primary lost, and the 5xx codes cover the bucket or region failing.
+   */
+  statusCodes?: number[]
+  /** Times CloudFront tries to connect to the primary bucket, 1-3. @default CloudFront's 3 */
+  connectionAttempts?: number
+  /** Seconds CloudFront waits to connect to the primary bucket, 1-10. @default CloudFront's 10 */
+  connectionTimeout?: number
+  /**
+   * Replicate the primary bucket to the replica with S3 replication (and turn
+   * on the versioning that requires). Set false to keep the replica in sync
+   * yourself. @default true
+   */
+  replicate?: boolean
+}
+
 export interface CdnItemConfig {
   origin?: string
   customDomain?:
@@ -4516,22 +4577,32 @@ export interface CdnItemConfig {
   /** AWS region used by Origin Shield. Defaults to the deployment region. */
   originShieldRegion?: string
   /**
+   * Times CloudFront tries to connect to {@link origin}, 1-3. CloudFront's
+   * default is 3. Lower it, with {@link connectionTimeout}, to fail over
+   * faster: an unreachable primary otherwise costs up to 30 seconds before
+   * CloudFront asks {@link failoverOrigin}.
+   */
+  connectionAttempts?: number
+  /** Seconds CloudFront waits to connect to {@link origin}, 1-10. CloudFront's default is 10. */
+  connectionTimeout?: number
+  /**
    * Secondary origin CloudFront fails over to when {@link origin} errors,
    * e.g. a replica bucket in another region. Adds a CloudFront origin group
    * (primary + this origin) and serves the default cache behavior from it.
    * CloudFront only fails over GET, HEAD and OPTIONS requests. An S3 REST
    * endpoint becomes an S3 origin; any other host an HTTPS-only custom origin.
    *
-   * @experimental Generated from the AWS documentation; not yet verified
-   * against a live distribution.
+   * A string is the secondary's domain. The object form also tunes the
+   * secondary's connection settings and sets its origin path.
    */
-  failoverOrigin?: string
+  failoverOrigin?: string | CdnFailoverOriginConfig
   /**
    * Status codes from {@link origin} that trigger failover to
    * {@link failoverOrigin}. CloudFront accepts 400, 403, 404, 416, 429, 500,
-   * 502, 503 and 504; anything else throws at template generation.
+   * 502, 503 and 504; anything else throws at template generation. Add 403
+   * and 404 to fail over on an object the primary does not have (an S3 origin
+   * behind origin access control answers a missing object with 403).
    * @default [500, 502, 503, 504]
-   * @experimental
    */
   failoverStatusCodes?: number[]
   /**
