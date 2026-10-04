@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.29...v0.16.30)
+
+## 🐛 Bug Fixes
+
+- **cloudfront**: make the config builder's array branches emit valid lists or refuse ([0dfd800](https://github.com/stacksjs/ts-cloud/commit/0dfd800)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.30 ([bba0f8e](https://github.com/stacksjs/ts-cloud/commit/bba0f8e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.28...v0.16.29)
 
 ## 🐛 Bug Fixes
