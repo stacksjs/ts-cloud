@@ -5,3 +5,10 @@ linker = "hoisted"
 [run]
 # Enable TypeScript configuration paths
 bun = true
+
+[test]
+# `bun test` discovers *.test.*, *_test.* and *.spec.* files anywhere under the
+# root except node_modules. Two gitignored trees match that and are not ours:
+# pantry/ (the local package store, e.g. lazystream's *_test.js, which require
+# devDependencies pantry never installs) and dist/ (the build's *.test.d.ts).
+pathIgnorePatterns = ["pantry/**", "**/dist/**"]
