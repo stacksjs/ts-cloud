@@ -202,3 +202,46 @@ describe('alias writes produce the XML CloudFront accepts', () => {
       .toContain('<AllowedMethods><Quantity>2</Quantity><Items><Method>GET</Method><Method>HEAD</Method></Items></AllowedMethods>')
   })
 })
+
+describe('the builder gives bare arrays the CloudFront list form, or refuses them', () => {
+  /** Build `config` with `patch` applied, and return the XML without whitespace. */
+  async function build(patch: (config: RawDistributionConfig) => RawDistributionConfig): Promise<string> {
+    const { client, config } = await configFrom(configXml('ref', ''))
+    return ((client as any).buildDistributionConfigXml(patch(config)) as string).replace(/\s+/g, '')
+  }
+  const behavior = { PathPattern: '/api/*', TargetOriginId: 'api', ViewerProtocolPolicy: 'redirect-to-https' }
+
+  it('wraps a list given as an array in Quantity and Items (it emitted the entries bare)', async () => {
+    const xml = await build(c => ({ ...c, CacheBehaviors: [behavior] as any }))
+    expect(xml).toContain('<CacheBehaviors><Quantity>1</Quantity><Items><CacheBehavior><PathPattern>/api/*</PathPattern>')
+  })
+
+  it('gives an empty array list a Quantity of 0 and no Items', async () => {
+    expect(await build(c => ({ ...c, CacheBehaviors: [] as any }))).toContain('<CacheBehaviors><Quantity>0</Quantity></CacheBehaviors>')
+  })
+
+  it('names entries for nested lists: cookie names and forwarded headers', async () => {
+    const xml = await build(c => ({
+      ...c,
+      DefaultCacheBehavior: {
+        ...c.DefaultCacheBehavior,
+        ForwardedValues: { QueryString: false, Cookies: { Forward: 'whitelist', WhitelistedNames: ['session'] }, Headers: ['Host', 'Origin'] },
+      },
+    }))
+    // Cookies used to map to <Name> itself; the list is WhitelistedNames.
+    expect(xml).toContain('<Cookies><Forward>whitelist</Forward><WhitelistedNames><Quantity>1</Quantity><Items><Name>session</Name></Items></WhitelistedNames></Cookies>')
+    expect(xml).toContain('<Headers><Quantity>2</Quantity><Items><Name>Host</Name><Name>Origin</Name></Items></Headers>')
+  })
+
+  it('refuses an array for a list that needs other fields, instead of sending invalid XML', async () => {
+    await expect(build(c => ({ ...c, DefaultCacheBehavior: { ...c.DefaultCacheBehavior, TrustedSigners: ['123456789012'] } })))
+      .rejects.toThrow('Cannot build CloudFront XML for DefaultCacheBehavior.TrustedSigners')
+    await expect(build(c => ({ ...c, Restrictions: { GeoRestriction: ['US'] } })))
+      .rejects.toThrow('Restrictions.GeoRestriction')
+  })
+
+  it('refuses an array where CloudFront has no list, and Items under an unknown list', async () => {
+    await expect(build(c => ({ ...c, Comment: ['a', 'b'] as any }))).rejects.toThrow('an array is not a CloudFront list here')
+    await expect(build(c => ({ ...c, Logging: { Items: ['x'] } }))).rejects.toThrow('Logging.Items')
+  })
+})

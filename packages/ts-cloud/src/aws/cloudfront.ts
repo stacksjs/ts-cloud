@@ -990,31 +990,37 @@ export class CloudFrontClient {
         .replace(/'/g, '&apos;')
     }
 
-    // Map of parent element names to their child element names for array items
-    const arrayChildNames: Record<string, string> = {
-      Items: '', // Will be determined by context
-      Methods: 'Method',
-      Headers: 'Name',
-      Cookies: 'Name',
-      QueryStringCacheKeys: 'Name',
-      TrustedKeyGroups: 'KeyGroup',
-      TrustedSigners: 'AwsAccountNumber',
-      LambdaFunctionAssociations: 'LambdaFunctionAssociation',
-      FunctionAssociations: 'FunctionAssociation',
+    /**
+     * CloudFront list elements and the name of each entry. In the parsed config
+     * a list is `{ Quantity, Items: { <Entry>: one | many } }`.
+     */
+    const listEntryNames: Record<string, string> = {
+      Aliases: 'CNAME',
+      Origins: 'Origin',
+      OriginGroups: 'OriginGroup',
+      Members: 'OriginGroupMember',
+      StatusCodes: 'StatusCode',
+      CustomHeaders: 'OriginCustomHeader',
+      OriginSslProtocols: 'SslProtocol',
       CacheBehaviors: 'CacheBehavior',
       CustomErrorResponses: 'CustomErrorResponse',
-      GeoRestriction: 'Location',
-    }
-
-    // Elements inside Items that have specific child names
-    const itemsChildNames: Record<string, string> = {
-      Origins: 'Origin',
-      Aliases: 'CNAME',
       AllowedMethods: 'Method',
       CachedMethods: 'Method',
-      CustomErrorResponses: 'CustomErrorResponse',
-      CacheBehaviors: 'CacheBehavior',
+      FunctionAssociations: 'FunctionAssociation',
+      LambdaFunctionAssociations: 'LambdaFunctionAssociation',
+      Headers: 'Name',
+      WhitelistedNames: 'Name',
+      QueryStringCacheKeys: 'Name',
+      TrustedSigners: 'AwsAccountNumber',
+      TrustedKeyGroups: 'KeyGroup',
+      GeoRestriction: 'Location',
     }
+    // Lists with a required field besides Quantity and Items (Enabled,
+    // RestrictionType), which a bare array cannot carry.
+    const listsWithOtherFields = new Set(['TrustedSigners', 'TrustedKeyGroups', 'GeoRestriction'])
+
+    const unbuildable = (path: string, reason: string): Error =>
+      new Error(`Cannot build CloudFront XML for ${path}: ${reason}`)
 
     const buildXmlElement = (name: string, value: any, indent: string = '', parentContext: string = ''): string => {
       if (value === null || value === undefined) {
@@ -1026,93 +1032,44 @@ export class CloudFrontClient {
         return ''
       }
 
-      if (typeof value === 'boolean') {
-        return `${indent}<${name}>${value}</${name}>\n`
-      }
-
-      if (typeof value === 'number' || typeof value === 'string') {
+      if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
         return `${indent}<${name}>${escapeXml(String(value))}</${name}>\n`
       }
 
       if (Array.isArray(value)) {
-        // An array handed in as Items still needs the <Items> wrapper and the
-        // element name its parent uses (<CNAME>, <Origin>, <Method>). It used to
-        // fall through to the generic case below and come out as bare <Item>s.
+        // Items handed in as an array: name its entries after the list it is in.
         if (name === 'Items') {
-          const childName = itemsChildNames[parentContext] || 'Item'
-          return `${indent}<Items>\n${value.map(item => buildXmlElement(childName, item, `${indent}  `, name)).join('')}${indent}</Items>\n`
+          const entry = listEntryNames[parentContext]
+          if (!entry)
+            throw unbuildable(`${parentContext}.Items`, 'no known entry name for this list')
+          return buildXmlElement('Items', { [entry]: value }, indent, parentContext)
         }
-        // For arrays, we need to output each item with the appropriate element name
-        const childName = arrayChildNames[name] || name.replace(/s$/, '')
-        return value.map((item) => buildXmlElement(childName, item, indent, name)).join('')
+        // A bare array for a whole list: give it CloudFront's Quantity/Items form.
+        // Before, this emitted the entries with no wrapper, which CloudFront rejects.
+        if (listEntryNames[name] && !listsWithOtherFields.has(name)) {
+          return buildXmlElement(name, { Quantity: value.length, ...(value.length ? { Items: value } : {}) }, indent, parentContext)
+        }
+        throw unbuildable(
+          `${parentContext}.${name}`,
+          listEntryNames[name] ? 'pass the list as an object, it needs fields an array cannot carry' : 'an array is not a CloudFront list here',
+        )
       }
 
       if (typeof value === 'object') {
-        // Handle Items specially - they contain the actual array items
-        if (name === 'Items') {
-          // Figure out what type of items these are based on parent context
-          const childElementName = itemsChildNames[parentContext] || ''
+        const keys = Object.keys(value).filter(k => !k.startsWith('@_'))
 
-          // Check if Items has named children (like CNAME, Origin, etc.)
-          const keys = Object.keys(value).filter((k) => !k.startsWith('@_'))
-
-          if (keys.length === 1 && !Array.isArray(value[keys[0]])) {
-            // Single named child that's not an array - could be a single item
-            const childKey = keys[0]
-            const childValue = value[childKey]
-            if (typeof childValue === 'string') {
-              // Single item like {CNAME: "domain.com"}
-              return `${indent}<Items>\n${indent}  <${childKey}>${escapeXml(childValue)}</${childKey}>\n${indent}</Items>\n`
-            } else if (typeof childValue === 'object' && !Array.isArray(childValue)) {
-              // Single complex item like {Origin: {...}}
-              return `${indent}<Items>\n${buildXmlElement(childKey, childValue, indent + '  ', name)}${indent}</Items>\n`
-            }
-          }
-
-          if (keys.length === 1 && Array.isArray(value[keys[0]])) {
-            // Named array child like {CNAME: ["a.com", "b.com"]} or {Origin: [{...}, {...}]}
-            const childKey = keys[0]
-            const childArray = value[childKey]
-            let children = ''
-            for (const item of childArray) {
-              if (typeof item === 'string') {
-                children += `${indent}  <${childKey}>${escapeXml(item)}</${childKey}>\n`
-              } else {
-                children += buildXmlElement(childKey, item, indent + '  ', name)
-              }
-            }
-            return `${indent}<Items>\n${children}${indent}</Items>\n`
-          }
-
-          // Check if Items is an array directly passed in
-          if (Array.isArray(value)) {
-            let children = ''
-            const childName = childElementName || 'Item'
-            for (const item of value) {
-              if (typeof item === 'string') {
-                children += `${indent}  <${childName}>${escapeXml(item)}</${childName}>\n`
-              } else {
-                children += buildXmlElement(childName, item, indent + '  ', name)
-              }
-            }
-            return `${indent}<Items>\n${children}${indent}</Items>\n`
-          }
-
-          // Fall through to regular object handling if none of the special cases match
+        // Items holds one named entry, once or repeated:
+        // <Items><CNAME>a</CNAME><CNAME>b</CNAME></Items>.
+        if (name === 'Items' && keys.length === 1) {
+          const [entry] = keys
+          const entries = (Array.isArray(value[entry]) ? value[entry] : [value[entry]])
+            .map((item: any) => buildXmlElement(entry, item, `${indent}  `, name))
+            .join('')
+          return `${indent}<Items>\n${entries}${indent}</Items>\n`
         }
 
-        let children = ''
-        for (const [key, val] of Object.entries(value)) {
-          if (!key.startsWith('@_')) {
-            children += buildXmlElement(key, val, indent + '  ', name)
-          }
-        }
-
-        if (children === '') {
-          return `${indent}<${name}/>\n`
-        }
-
-        return `${indent}<${name}>\n${children}${indent}</${name}>\n`
+        const children = keys.map(key => buildXmlElement(key, value[key], `${indent}  `, name)).join('')
+        return children ? `${indent}<${name}>\n${children}${indent}</${name}>\n` : `${indent}<${name}/>\n`
       }
 
       return ''
