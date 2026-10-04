@@ -4,6 +4,20 @@
  */
 import type { AWSRequestOptions } from './client'
 import { AWSClient } from './client'
+import { asList } from './xml-result'
+
+/**
+ * Distribution aliases in the shape `Distribution` declares.
+ *
+ * The parser yields `<Aliases><Items><CNAME>a</CNAME></Items></Aliases>` as
+ * `{ Items: { CNAME: 'a' } }`, or an array under `CNAME` for several, never a
+ * `string[]`. Passing that through made `Aliases.Items.includes` throw in
+ * findDistributionByDomain and left every alias check seeing none.
+ */
+function aliasesFrom(aliases: any): { Quantity: number, Items: string[] } {
+  const items = Array.isArray(aliases?.Items) ? aliases.Items : asList(aliases?.Items?.CNAME)
+  return { Quantity: items.length, Items: items.map(String) }
+}
 
 interface CloudFrontTransport {
   request: (options: AWSRequestOptions) => Promise<any>
@@ -218,6 +232,8 @@ export class CloudFrontClient {
       path: `/2020-05-31/distribution/${distributionId}/config`,
       body: this.buildDistributionConfigXml(config),
       headers: { 'Content-Type': 'application/xml', 'If-Match': etag },
+      // The new ETag is a response header, not part of the body.
+      returnHeaders: true,
     })
     return {
       distributionId,
@@ -226,7 +242,7 @@ export class CloudFrontClient {
       pathPattern: input.pathPattern,
       changed: true,
       applied: true,
-      etag: result.ETag || result.headers?.etag || '',
+      etag: result.headers?.etag || result.headers?.ETag || '',
     }
   }
 
@@ -294,6 +310,8 @@ export class CloudFrontClient {
       path: `/2020-05-31/distribution/${distributionId}/config`,
       body: this.buildDistributionConfigXml(config),
       headers: { 'Content-Type': 'application/xml', 'If-Match': etag },
+      // The new ETag is a response header, not part of the body.
+      returnHeaders: true,
     })
     return {
       distributionId,
@@ -303,7 +321,7 @@ export class CloudFrontClient {
       changed: true,
       applied: true,
       originRemoved: !stillReferenced && !!origin,
-      etag: result.ETag || result.headers?.etag || '',
+      etag: result.headers?.etag || result.headers?.ETag || '',
     }
   }
 
@@ -461,7 +479,7 @@ export class CloudFrontClient {
         ARN: item.ARN,
         Status: item.Status,
         DomainName: item.DomainName,
-        Aliases: item.Aliases || undefined,
+        Aliases: item.Aliases ? aliasesFrom(item.Aliases) : undefined,
         Enabled: item.Enabled === 'true' || item.Enabled === true,
       })),
     )
@@ -487,7 +505,7 @@ export class CloudFrontClient {
       ARN: dist.ARN,
       Status: dist.Status,
       DomainName: dist.DomainName,
-      Aliases: dist.DistributionConfig?.Aliases?.Items || dist.Aliases?.Items || [],
+      Aliases: aliasesFrom(dist.DistributionConfig?.Aliases ?? dist.Aliases),
       Enabled: dist.DistributionConfig?.Enabled === 'true' || dist.DistributionConfig?.Enabled === true,
     }
   }
@@ -763,9 +781,12 @@ export class CloudFrontClient {
         'Content-Type': 'application/xml',
         'If-Match': etag,
       },
+      // The new ETag is a response header, not part of the body.
+      returnHeaders: true,
     })
 
-    const dist = result.Distribution || result
+    // The parser strips the <Distribution> root; accept the wrapped form too.
+    const dist = result.body?.Distribution ?? result.body ?? {}
 
     return {
       Distribution: {
@@ -773,10 +794,10 @@ export class CloudFrontClient {
         ARN: dist.ARN,
         Status: dist.Status,
         DomainName: dist.DomainName,
-        Aliases: dist.DistributionConfig?.Aliases?.Items || [],
+        Aliases: aliasesFrom(dist.DistributionConfig?.Aliases),
         Enabled: dist.DistributionConfig?.Enabled === 'true' || dist.DistributionConfig?.Enabled === true,
       },
-      ETag: result.ETag || '',
+      ETag: result.headers?.etag || result.headers?.ETag || '',
     }
   }
 
@@ -866,9 +887,12 @@ export class CloudFrontClient {
         'Content-Type': 'application/xml',
         'If-Match': etag,
       },
+      // The new ETag is a response header, not part of the body.
+      returnHeaders: true,
     })
 
-    const dist = result.Distribution || result
+    // The parser strips the <Distribution> root; accept the wrapped form too.
+    const dist = result.body?.Distribution ?? result.body ?? {}
 
     return {
       Distribution: {
@@ -879,7 +903,7 @@ export class CloudFrontClient {
         Aliases: aliases ? { Quantity: aliases.length, Items: aliases } : { Quantity: 0, Items: [] },
         Enabled: dist.DistributionConfig?.Enabled === 'true' || dist.DistributionConfig?.Enabled === true,
       },
-      ETag: result.ETag || '',
+      ETag: result.headers?.etag || result.headers?.ETag || '',
     }
   }
 
@@ -1158,15 +1182,18 @@ export class CloudFrontClient {
       headers: {
         'Content-Type': 'application/xml',
       },
+      // publishFunction needs the ETag, which is a response header.
+      returnHeaders: true,
     })
 
-    const func = result.FunctionSummary || result
+    // The parser strips the <FunctionSummary> root; accept the wrapped form too.
+    const func = result.body?.FunctionSummary ?? result.body ?? {}
 
     return {
       FunctionARN: func.FunctionMetadata?.FunctionARN || func.FunctionARN,
       Name: func.Name || name,
       Stage: func.FunctionMetadata?.Stage || 'DEVELOPMENT',
-      ETag: result.ETag || '',
+      ETag: result.headers?.etag || result.headers?.ETag || '',
     }
   }
 

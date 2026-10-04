@@ -73,9 +73,11 @@ function outputMap(outputs: Array<{ OutputKey: string; OutputValue: string }> | 
 }
 
 function aliasesOf(distribution: any): string[] {
+  // A raw config holds <Items><CNAME>..</CNAME></Items> as { CNAME: string | string[] }.
   const items = distribution?.Aliases?.Items ?? distribution?.Aliases
-  if (Array.isArray(items)) return items.map(String)
-  if (typeof items === 'string') return [items]
+  const names = items?.CNAME ?? items
+  if (Array.isArray(names)) return names.map(String)
+  if (typeof names === 'string') return [names]
   return []
 }
 

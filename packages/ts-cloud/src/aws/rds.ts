@@ -3,6 +3,7 @@
  * Direct API calls without AWS CLI dependency
  */
 import { AWSClient, buildQueryParams } from './client'
+import { asList } from './xml-result'
 
 export interface DBInstance {
   DBInstanceIdentifier?: string
@@ -748,8 +749,9 @@ export class RDSClient {
       body: new URLSearchParams(buildQueryParams(params)).toString(),
     })
     const response = result.DescribeDBClusterSnapshotsResult || result
-    const snapshots = response.DBClusterSnapshots?.DBClusterSnapshot ?? response.DBClusterSnapshots ?? []
-    return { DBClusterSnapshots: Array.isArray(snapshots) ? snapshots : [snapshots] }
+    // An empty <DBClusterSnapshots/> parses as '', which the old `?? []` kept and
+    // wrapped into a phantom one-element list.
+    return { DBClusterSnapshots: asList(response.DBClusterSnapshots?.DBClusterSnapshot) }
   }
 
   /** Delete one Aurora cluster snapshot managed by ts-cloud. */

@@ -109,9 +109,11 @@ function collection(value: any, singular: string): any[] {
 }
 
 function aliasesOf(value: any): string[] {
+  // A raw config holds <Items><CNAME>..</CNAME></Items> as { CNAME: string | string[] }.
   const items = value?.Aliases?.Items
-  if (Array.isArray(items)) return items.map(String)
-  if (typeof items === 'string') return [items]
+  const names = items?.CNAME ?? items
+  if (Array.isArray(names)) return names.map(String)
+  if (typeof names === 'string') return [names]
   return []
 }
 

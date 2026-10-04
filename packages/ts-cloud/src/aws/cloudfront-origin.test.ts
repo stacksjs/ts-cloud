@@ -38,7 +38,11 @@ function fixture(input: { pathTarget?: string } = {}) {
     request: async (request: AWSRequestOptions) => {
       requests.push(request)
       if (request.method === 'GET') return { headers: { etag: 'etag-before' }, body: structuredClone(config) }
-      return { ETag: 'etag-after', Distribution: { Id: 'E123456789ABC' } }
+      // CloudFront sends the new ETag as a header; the body carries no ETag.
+      // This stub used to put it in the body, which hid that the PUT never
+      // asked for headers and so always reported an empty ETag.
+      expect(request.returnHeaders).toBe(true)
+      return { headers: { etag: 'etag-after' }, body: { Id: 'E123456789ABC' } }
     },
   }
   return { client: new CloudFrontClient(undefined, transport), requests }
