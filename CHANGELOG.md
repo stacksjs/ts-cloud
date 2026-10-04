@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.19...v0.16.20)
+
+## 🐛 Bug Fixes
+
+- **ses**: read send quota and statistics through the stripped XML root ([3401f95](https://github.com/stacksjs/ts-cloud/commit/3401f95)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.20 ([868c9b3](https://github.com/stacksjs/ts-cloud/commit/868c9b3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.18...v0.16.19)
 
 ## 🐛 Bug Fixes
