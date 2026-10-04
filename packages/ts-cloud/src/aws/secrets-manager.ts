@@ -87,7 +87,10 @@ export class SecretsManagerClient {
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.client = new AWSClient()
+    // The profile used to be accepted and dropped, so credentials always came
+    // from AWS_PROFILE or `default`. Passed through as every other client does:
+    // environment keys still win, and the profile replaces that file fallback.
+    this.client = new AWSClient(undefined, { profile })
   }
 
   /**

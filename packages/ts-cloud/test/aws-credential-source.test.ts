@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { applyGlobalAwsOptions } from '../bin/global-options'
 import { AWSClient } from '../src/aws/client'
+import { SecretsManagerClient } from '../src/aws/secrets-manager'
 
 const originalFetch = globalThis.fetch
 let savedEnv: Record<string, string | undefined> = {}
@@ -157,5 +158,32 @@ describe('the global --profile and --region flags', () => {
     const env: Record<string, string | undefined> = { AWS_ACCESS_KEY_ID: 'AKIAFROMDOTENV', AWS_SECRET_ACCESS_KEY: 's' }
     applyGlobalAwsOptions({}, { options: [] }, env)
     expect(env).toEqual({ AWS_ACCESS_KEY_ID: 'AKIAFROMDOTENV', AWS_SECRET_ACCESS_KEY: 's' })
+  })
+})
+
+describe('SecretsManagerClient uses the profile it is given', () => {
+  /** Rejected by the stub, so the error says which credentials were sent. */
+  async function rejectionFor(client: SecretsManagerClient): Promise<string> {
+    rejectCredentials('UnrecognizedClientException')
+    try {
+      await client.getSecretValue({ SecretId: 'mail-storage-key' })
+    }
+    catch (error) {
+      return (error as Error).message
+    }
+    throw new Error('expected the request to be rejected')
+  }
+
+  it('reads the named profile instead of dropping it for default', async () => {
+    process.env.AWS_SHARED_CREDENTIALS_FILE = credentialsFile({ default: 'AKIADEFAULT', mail: 'AKIAMAIL' })
+    expect(await rejectionFor(new SecretsManagerClient('us-east-1', 'mail'))).toContain('(credentials from profile "mail"')
+    expect(await rejectionFor(new SecretsManagerClient('us-east-1'))).toContain('(credentials from profile "default"')
+  })
+
+  it('still lets environment keys win, like every other client', async () => {
+    process.env.AWS_SHARED_CREDENTIALS_FILE = credentialsFile({ mail: 'AKIAMAIL' })
+    process.env.AWS_ACCESS_KEY_ID = 'AKIAEXAMPLEENV'
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret'
+    expect(await rejectionFor(new SecretsManagerClient('us-east-1', 'mail'))).toContain('(credentials from AWS_ACCESS_KEY_ID in the environment)')
   })
 })
