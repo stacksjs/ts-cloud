@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.28...v0.16.29)
+
+## 🐛 Bug Fixes
+
+- **cloudfront**: read config origins through one helper and write aliases as CNAMEs ([3fe35ae](https://github.com/stacksjs/ts-cloud/commit/3fe35ae)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.29 ([7ac9ab7](https://github.com/stacksjs/ts-cloud/commit/7ac9ab7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.27...v0.16.28)
 
 ## 🐛 Bug Fixes
