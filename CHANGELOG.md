@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.27...v0.16.28)
+
+## 🐛 Bug Fixes
+
+- **secrets-manager**: use the profile the client is given ([94a5a5b](https://github.com/stacksjs/ts-cloud/commit/94a5a5b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.28 ([c82f6f6](https://github.com/stacksjs/ts-cloud/commit/c82f6f6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.26...v0.16.27)
 
 ## 🐛 Bug Fixes
