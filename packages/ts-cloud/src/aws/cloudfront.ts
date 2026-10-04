@@ -75,6 +75,87 @@ export interface Distribution {
   Enabled: boolean
 }
 
+/** A repeated XML element as AWSClient parses it: one occurrence is a bare value, several an array. */
+export type XmlList<T> = T | T[]
+
+/**
+ * CloudFront's `<Quantity>`/`<Items>` wrapper as AWSClient parses it. `Items`
+ * holds the repeated element under its own name (`{ Method: [..] }`, never a
+ * bare array), and is absent when Quantity is 0.
+ */
+export interface CloudFrontItems<Element extends string, T> {
+  Quantity: number
+  Items?: { [K in Element]: XmlList<T> }
+}
+
+/** A cache behavior as it appears in a parsed distribution config. */
+export interface RawCacheBehavior {
+  TargetOriginId: string
+  ViewerProtocolPolicy: string
+  /** CachedMethods is nested inside AllowedMethods, as in the XML, not beside it. */
+  AllowedMethods?: CloudFrontItems<'Method', string> & { CachedMethods?: CloudFrontItems<'Method', string> }
+  CachePolicyId?: string
+  OriginRequestPolicyId?: string
+  ResponseHeadersPolicyId?: string
+  Compress?: boolean
+  SmoothStreaming?: boolean
+  FieldLevelEncryptionId?: string
+  FunctionAssociations?: CloudFrontItems<'FunctionAssociation', { EventType: string, FunctionARN: string }>
+  LambdaFunctionAssociations?: CloudFrontItems<'LambdaFunctionAssociation', Record<string, any>>
+  ForwardedValues?: Record<string, any>
+  TrustedSigners?: Record<string, any>
+  TrustedKeyGroups?: Record<string, any>
+  MinTTL?: number
+  DefaultTTL?: number
+  MaxTTL?: number
+  [field: string]: any
+}
+
+/** An origin as it appears in a parsed distribution config. */
+export interface RawOrigin {
+  Id: string
+  DomainName: string
+  OriginPath?: string
+  OriginAccessControlId?: string
+  S3OriginConfig?: { OriginAccessIdentity?: string }
+  CustomOriginConfig?: Record<string, any>
+  ConnectionAttempts?: number
+  ConnectionTimeout?: number
+  [field: string]: any
+}
+
+/**
+ * A distribution config exactly as getDistributionConfig returns it: the parsed
+ * XML, kept raw so it can be PUT back. Every list is a CloudFrontItems node,
+ * and numeric text is a number (so a numeric CallerReference is a number).
+ * Fields not listed here pass through untouched.
+ */
+export interface RawDistributionConfig {
+  CallerReference: string | number
+  Comment?: string
+  Enabled: boolean
+  Origins: CloudFrontItems<'Origin', RawOrigin>
+  DefaultCacheBehavior: RawCacheBehavior
+  CacheBehaviors?: CloudFrontItems<'CacheBehavior', RawCacheBehavior & { PathPattern: string }>
+  Aliases?: CloudFrontItems<'CNAME', string>
+  CustomErrorResponses?: CloudFrontItems<'CustomErrorResponse', {
+    ErrorCode: number
+    ResponsePagePath?: string
+    ResponseCode?: number | string
+    ErrorCachingMinTTL?: number
+  }>
+  DefaultRootObject?: string
+  PriceClass?: string
+  HttpVersion?: string
+  IsIPV6Enabled?: boolean
+  WebACLId?: string
+  ViewerCertificate?: Record<string, any>
+  Restrictions?: Record<string, any>
+  Logging?: Record<string, any>
+  OriginGroups?: Record<string, any>
+  [field: string]: any
+}
+
 /**
  * CloudFront client using direct API calls
  */
@@ -515,42 +596,7 @@ export class CloudFrontClient {
    */
   async getDistributionConfig(distributionId: string): Promise<{
     ETag: string
-    DistributionConfig: {
-      Origins: {
-        Quantity: number
-        Items: any
-      }
-      DefaultCacheBehavior: {
-        TargetOriginId: string
-        ViewerProtocolPolicy: string
-        AllowedMethods?: { Quantity: number; Items: string[] }
-        CachedMethods?: { Quantity: number; Items: string[] }
-        ForwardedValues?: any
-        TrustedSigners?: any
-        MinTTL?: number
-        DefaultTTL?: number
-        MaxTTL?: number
-      }
-      CacheBehaviors?: {
-        Quantity: number
-        Items: Array<{
-          PathPattern: string
-          TargetOriginId: string
-          ViewerProtocolPolicy: string
-          AllowedMethods?: { Quantity: number; Items: string[] }
-          CachedMethods?: { Quantity: number; Items: string[] }
-          ForwardedValues?: any
-          MinTTL?: number
-          DefaultTTL?: number
-          MaxTTL?: number
-        }>
-      }
-      // The raw parsed config, kept raw so it can be PUT back: <Items><CNAME>..
-      // arrives as a node, a bare string for one alias. aliasesFrom() lists it.
-      Aliases?: { Quantity: number; Items?: { CNAME: string | string[] } }
-      Comment?: string
-      Enabled: boolean
-    }
+    DistributionConfig: RawDistributionConfig
   }> {
     const result = await this.client.request({
       service: 'cloudfront',
@@ -568,7 +614,7 @@ export class CloudFrontClient {
     delete config['@_xmlns']
     return {
       ETag: result.headers?.etag || result.headers?.ETag || '',
-      DistributionConfig: config as any,
+      DistributionConfig: config as RawDistributionConfig,
     }
   }
 

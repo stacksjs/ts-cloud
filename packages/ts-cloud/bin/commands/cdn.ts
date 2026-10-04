@@ -4,6 +4,7 @@ import * as cli from '../../src/utils/cli'
 import { CloudFrontClient } from '../../src/aws/cloudfront'
 import { CloudWatchLogsClient } from '../../src/aws/cloudwatch-logs'
 import { deployStaticApiOrigin, estimateStaticApiOriginMonthlyCost, verifyStaticApiOrigin } from '../../src/deploy/static-api-origin'
+import { asList } from '../../src/aws/xml-result'
 import { loadValidatedConfig } from './shared'
 
 export function registerCdnCommands(app: CLI): void {
@@ -268,11 +269,10 @@ export function registerCdnCommands(app: CLI): void {
         const config = await cloudfront.getDistributionConfig(distributionId)
 
         cli.info('\nOrigins:')
-        const origins = config.DistributionConfig?.Origins?.Items || []
-        if (Array.isArray(origins)) {
-          for (const origin of origins) {
-            cli.info(`  - ${origin.Id}: ${origin.DomainName}`)
-          }
+        // Items is { Origin: one | many }, never an array, so the old
+        // Array.isArray guard printed no origins at all.
+        for (const origin of asList(config.DistributionConfig?.Origins?.Items?.Origin)) {
+          cli.info(`  - ${origin.Id}: ${origin.DomainName}`)
         }
 
         if (config.DistributionConfig?.DefaultCacheBehavior) {

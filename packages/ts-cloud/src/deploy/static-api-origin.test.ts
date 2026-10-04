@@ -59,10 +59,12 @@ function dependencies(overrides: Partial<StaticApiOriginDependencies> = {}): {
       getDistributionConfig: async () => ({
         ETag: 'one',
         DistributionConfig: {
+          CallerReference: 'static-site-2026',
           Enabled: true,
           Origins: { Quantity: 1, Items: { Origin: [{ Id: 'static', DomainName: 'bucket.s3.amazonaws.com' }] } },
           DefaultCacheBehavior: { TargetOriginId: 'static', ViewerProtocolPolicy: 'redirect-to-https' },
-          CacheBehaviors: { Quantity: 0, Items: [] },
+          // An empty list carries no <Items> element at all.
+          CacheBehaviors: { Quantity: 0 },
           // The raw parsed config: <Items><CNAME>..</CNAME></Items>, not a string[].
           Aliases: { Quantity: 1, Items: { CNAME: 'example.com' } },
         },
