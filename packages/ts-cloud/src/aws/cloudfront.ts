@@ -545,7 +545,9 @@ export class CloudFrontClient {
           MaxTTL?: number
         }>
       }
-      Aliases?: { Quantity: number; Items: string[] }
+      // The raw parsed config, kept raw so it can be PUT back: <Items><CNAME>..
+      // arrives as a node, a bare string for one alias. aliasesFrom() lists it.
+      Aliases?: { Quantity: number; Items?: { CNAME: string | string[] } }
       Comment?: string
       Enabled: boolean
     }

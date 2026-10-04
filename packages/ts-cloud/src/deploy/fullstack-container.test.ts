@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test'
+import type { AWSRequestOptions } from '../aws/client'
 import type { ExistingStaticFullStackDependencies } from './fullstack-container'
+import { AWSClient } from '../aws/client'
+import { CloudFrontClient } from '../aws/cloudfront'
 import {
   deployExistingStaticFullStack,
   estimateExistingStaticFullStackMonthlyCost,
@@ -20,6 +23,25 @@ function options() {
   }
 }
 
+/**
+ * A real CloudFrontClient answering GetDistribution from CloudFront XML through
+ * AWSClient's own parser. The stub in fake() used to declare `Aliases.Items` as
+ * a string[], which the client never returned (it passed through the raw
+ * `{ CNAME }` node), so every real deploy rejected its expected alias.
+ */
+function cloudFrontServing(aliases: string[]): ExistingStaticFullStackDependencies['cloudfront'] {
+  const items = aliases.length ? `<Items>${aliases.map(a => `<CNAME>${a}</CNAME>`).join('')}</Items>` : ''
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Distribution xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/"><Id>E123456789AB</Id><ARN>arn:aws:cloudfront::923076644019:distribution/E123456789AB</ARN><Status>Deployed</Status><DomainName>d.example.cloudfront.net</DomainName><DistributionConfig><Enabled>true</Enabled><Aliases><Quantity>${aliases.length}</Quantity>${items}</Aliases></DistributionConfig></Distribution>`
+  const parser: any = new AWSClient()
+  return new CloudFrontClient(undefined, {
+    request: async (request: AWSRequestOptions) => {
+      if (request.method !== 'GET' || request.path !== '/2020-05-31/distribution/E123456789AB')
+        throw new Error(`unexpected CloudFront ${request.method} ${request.path}`)
+      return parser.parseXmlResponse(xml)
+    },
+  })
+}
+
 function fake(): { dependencies: ExistingStaticFullStackDependencies; calls: string[] } {
   const calls: string[] = []
   let created = false
@@ -34,7 +56,7 @@ function fake(): { dependencies: ExistingStaticFullStackDependencies; calls: str
           Status: 'Deployed',
           DomainName: 'd.example.cloudfront.net',
           Enabled: true,
-          Aliases: { Items: ['example.com'] },
+          Aliases: { Quantity: 1, Items: ['example.com'] },
         }),
         upsertExistingDistributionOrigin: async (_id, input) => {
           calls.push(`cloudfront:${input.domainName}`)
@@ -150,5 +172,24 @@ describe('existing static full-stack deployment', () => {
       'redis',
     ])
     expect(estimate.monthlyUsd).toBeGreaterThan(80)
+  })
+})
+
+describe('existing static full-stack alias checks against the real CloudFront client', () => {
+  for (const aliases of [['example.com'], ['www.example.com', 'example.com']]) {
+    it(`plans when the distribution's aliases are ${aliases.join(', ')}`, async () => {
+      const value = fake()
+      value.dependencies.cloudfront = cloudFrontServing(aliases)
+      const plan = await deployExistingStaticFullStack(options(), value.dependencies)
+      expect(plan.mode).toBe('plan')
+      expect(value.calls).toEqual([])
+    })
+  }
+
+  it('refuses a distribution that does not carry the expected alias', async () => {
+    const value = fake()
+    value.dependencies.cloudfront = cloudFrontServing(['www.example.com'])
+    await expect(deployExistingStaticFullStack(options(), value.dependencies)).rejects.toThrow('does not contain expected alias example.com')
+    expect(value.calls).toEqual([])
   })
 })

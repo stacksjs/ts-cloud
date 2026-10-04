@@ -1,11 +1,44 @@
 import { afterEach, describe, expect, it } from 'bun:test'
+import type { AWSRequestOptions } from '../aws/client'
 import type { StaticApiOriginDependencies } from './static-api-origin'
+import { AWSClient } from '../aws/client'
+import { CloudFrontClient } from '../aws/cloudfront'
 import { deployStaticApiOrigin, estimateStaticApiOriginMonthlyCost, verifyStaticApiOrigin } from './static-api-origin'
 
 const originalFetch = globalThis.fetch
 afterEach(() => {
   globalThis.fetch = originalFetch
 })
+
+const CF_NS = 'xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/"'
+
+/**
+ * A real CloudFrontClient answering from CloudFront XML through AWSClient's own
+ * parser, so these tests see the shapes production does. The stubs above used
+ * to declare `Aliases.Items` as a string[] in both responses; the client
+ * returned a raw `{ CNAME }` node, and every real deploy rejected its alias.
+ */
+function cloudFrontServing(aliases: string[]): StaticApiOriginDependencies['cloudfront'] {
+  const aliasesXml = aliases.length
+    ? `<Aliases><Quantity>${aliases.length}</Quantity><Items>${aliases.map(a => `<CNAME>${a}</CNAME>`).join('')}</Items></Aliases>`
+    : '<Aliases><Quantity>0</Quantity></Aliases>'
+  const config = `<CallerReference>ref</CallerReference><Comment></Comment><Enabled>true</Enabled>${aliasesXml}<Origins><Quantity>1</Quantity><Items><Origin><Id>static</Id><DomainName>bucket.s3.amazonaws.com</DomainName><S3OriginConfig><OriginAccessIdentity></OriginAccessIdentity></S3OriginConfig></Origin></Items></Origins><DefaultCacheBehavior><TargetOriginId>static</TargetOriginId><ViewerProtocolPolicy>redirect-to-https</ViewerProtocolPolicy></DefaultCacheBehavior><CacheBehaviors><Quantity>0</Quantity></CacheBehaviors>`
+  const bodies: Record<string, string> = {
+    '/2020-05-31/distribution/E123456789AB': `<Distribution ${CF_NS}><Id>E123456789AB</Id><ARN>arn:aws:cloudfront::923076644019:distribution/E123456789AB</ARN><Status>Deployed</Status><DomainName>d.example.cloudfront.net</DomainName><DistributionConfig>${config}</DistributionConfig></Distribution>`,
+    '/2020-05-31/distribution/E123456789AB/config': `<DistributionConfig ${CF_NS}>${config}</DistributionConfig>`,
+    '/2020-05-31/origin-access-control': `<OriginAccessControlList ${CF_NS}><Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated><Quantity>0</Quantity></OriginAccessControlList>`,
+  }
+  const parser: any = new AWSClient()
+  return new CloudFrontClient(undefined, {
+    request: async (request: AWSRequestOptions) => {
+      const xml = bodies[request.path]
+      if (request.method !== 'GET' || !xml)
+        throw new Error(`unexpected CloudFront ${request.method} ${request.path}`)
+      const body = parser.parseXmlResponse(`<?xml version="1.0" encoding="UTF-8"?>\n${xml}`)
+      return request.returnHeaders ? { body, headers: { etag: 'E2QWRUHAPOMQZL' } } : body
+    },
+  })
+}
 
 function dependencies(overrides: Partial<StaticApiOriginDependencies> = {}): {
   dependencies: StaticApiOriginDependencies
@@ -21,7 +54,7 @@ function dependencies(overrides: Partial<StaticApiOriginDependencies> = {}): {
         Status: 'Deployed',
         DomainName: 'd.example.cloudfront.net',
         Enabled: true,
-        Aliases: { Items: ['example.com'] },
+        Aliases: { Quantity: 1, Items: ['example.com'] },
       }),
       getDistributionConfig: async () => ({
         ETag: 'one',
@@ -30,7 +63,8 @@ function dependencies(overrides: Partial<StaticApiOriginDependencies> = {}): {
           Origins: { Quantity: 1, Items: { Origin: [{ Id: 'static', DomainName: 'bucket.s3.amazonaws.com' }] } },
           DefaultCacheBehavior: { TargetOriginId: 'static', ViewerProtocolPolicy: 'redirect-to-https' },
           CacheBehaviors: { Quantity: 0, Items: [] },
-          Aliases: { Quantity: 1, Items: ['example.com'] },
+          // The raw parsed config: <Items><CNAME>..</CNAME></Items>, not a string[].
+          Aliases: { Quantity: 1, Items: { CNAME: 'example.com' } },
         },
       }),
       listOriginAccessControls: async () => [],
@@ -165,6 +199,56 @@ describe('static API origin deployment', () => {
       'permission:lambda:InvokeFunction',
       'origin:abc.lambda-url.us-east-1.on.aws:OAC123',
     ])
+  })
+})
+
+describe('static API origin alias checks against the real CloudFront client', () => {
+  it('plans for an alias among several on a real distribution', async () => {
+    const fake = dependencies({ cloudfront: cloudFrontServing(['www.example.com', 'example.com']) })
+    const plan = await deployStaticApiOrigin(
+      { distributionId: 'E123456789AB', expectedAlias: 'example.com', functionName: 'hello' },
+      fake.dependencies,
+    )
+    expect(plan.mode).toBe('plan')
+    expect(fake.calls).toEqual([])
+  })
+
+  it('plans for a single alias, which the parser yields as a bare string', async () => {
+    const fake = dependencies({ cloudfront: cloudFrontServing(['example.com']) })
+    const plan = await deployStaticApiOrigin(
+      { distributionId: 'E123456789AB', expectedAlias: 'example.com', functionName: 'hello' },
+      fake.dependencies,
+    )
+    expect(plan.mode).toBe('plan')
+  })
+
+  it('still refuses an alias the real distribution does not have', async () => {
+    const fake = dependencies({ cloudfront: cloudFrontServing(['www.example.com', 'example.com']) })
+    await expect(
+      deployStaticApiOrigin(
+        { distributionId: 'E123456789AB', expectedAlias: 'wrong.example.com', functionName: 'hello' },
+        fake.dependencies,
+      ),
+    ).rejects.toThrow('does not contain expected alias')
+  })
+
+  it('falls back to the raw config aliases when the distribution reports none', async () => {
+    const base = dependencies().dependencies.cloudfront
+    const fake = dependencies({
+      cloudfront: {
+        ...base,
+        getDistribution: async () => ({ ...(await base.getDistribution('E123456789AB')), Aliases: { Quantity: 0, Items: [] } }),
+        getDistributionConfig: async () => {
+          const config = await base.getDistributionConfig('E123456789AB')
+          return { ...config, DistributionConfig: { ...config.DistributionConfig, Aliases: { Quantity: 2, Items: { CNAME: ['www.example.com', 'example.com'] } } } }
+        },
+      },
+    })
+    const plan = await deployStaticApiOrigin(
+      { distributionId: 'E123456789AB', expectedAlias: 'example.com', functionName: 'hello' },
+      fake.dependencies,
+    )
+    expect(plan.mode).toBe('plan')
   })
 })
 
