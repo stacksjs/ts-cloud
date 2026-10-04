@@ -1,3 +1,26 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.17...v0.16.18)
+
+## ✨ Features
+
+- **cdn**: fail a website bucket over to a replica in another region ([b3b7130](https://github.com/stacksjs/ts-cloud/commit/b3b7130)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1159](https://github.com/stacksjs/ts-cloud/issues/1159))
+- **core**: validate origin groups, tune origin connections, plan bucket failover ([f149d76](https://github.com/stacksjs/ts-cloud/commit/f149d76)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1159](https://github.com/stacksjs/ts-cloud/issues/1159))
+
+## 🐛 Bug Fixes
+
+- **s3**: read bucket versioning from the unwrapped XML and encode copy keys ([b6934c5](https://github.com/stacksjs/ts-cloud/commit/b6934c5)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1159](https://github.com/stacksjs/ts-cloud/issues/1159))
+
+## 📝 Documentation
+
+- **cdn**: document bucket failover, connection tuning and validation ([91dcd78](https://github.com/stacksjs/ts-cloud/commit/91dcd78)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1159](https://github.com/stacksjs/ts-cloud/issues/1159))
+
+## 🔧 Chores
+
+- release v0.16.18 ([98f4a53](https://github.com/stacksjs/ts-cloud/commit/98f4a53)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.16...v0.16.17)
 
 ## ✨ Features
