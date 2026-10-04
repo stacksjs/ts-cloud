@@ -165,6 +165,46 @@ export function buildAutoMemoryHigh(unitFile: string): string[] {
 }
 
 /**
+ * Take back what the box decided, once config has decided instead.
+ *
+ * The `auto` drop-in is written to `<unit>.d/50-ts-cloud-memory.conf`, and a
+ * drop-in overrides the unit file. So a site that ran on `auto` and LATER
+ * declared `memoryHigh` got its new value written into the unit file and kept
+ * running on the old automatic one: wildloop's ingest worker declared 1G/1536M
+ * and ran at the 1951M a deploy months earlier had resolved, above its own
+ * MemoryMax. An explicit value has to remove the drop-in, not just stop
+ * writing it.
+ *
+ * `high` / `max` also clear `systemctl set-property` overrides for the
+ * limits config now declares. Those land in `system.control/<unit>.d/` (and
+ * `/run/...` for `--runtime`), outrank the unit file the same way, and are
+ * how a hand-tuned box keeps a ceiling nobody can see in the repo. Only for a
+ * plain unit: set-property on a templated release instance names that one
+ * instance, which the next deploy replaces anyway.
+ *
+ * Reloads systemd only when something was actually removed.
+ */
+export function buildClearAutoMemoryHigh(
+  unitFile: string,
+  clear: { auto?: boolean, high?: boolean, max?: boolean } = { auto: true },
+): string[] {
+  const stale = clear.auto === false ? [] : [`/etc/systemd/system/${unitFile}.d/50-ts-cloud-memory.conf`]
+  for (const root of ['/etc/systemd/system.control', '/run/systemd/system.control']) {
+    if (clear.high)
+      stale.push(`${root}/${unitFile}.d/50-MemoryHigh.conf`)
+    if (clear.max)
+      stale.push(`${root}/${unitFile}.d/50-MemoryMax.conf`)
+  }
+  if (stale.length === 0)
+    return []
+  return [
+    'TS_CLOUD_MEM_CLEARED=0',
+    ...stale.map(file => `if [ -f ${file} ]; then rm -f ${file}; TS_CLOUD_MEM_CLEARED=1; echo "[ts-cloud] removed ${file}: memory limits now come from config"; fi`),
+    'if [ "$TS_CLOUD_MEM_CLEARED" = 1 ]; then systemctl daemon-reload; fi',
+  ]
+}
+
+/**
  * Say what the box has now been promised, so oversubscription is visible.
  *
  * Sums `memory.high` across every service cgroup and compares it to RAM. It
@@ -718,7 +758,9 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       'WantedBy=multi-user.target',
       'TS_CLOUD_UNIT_EOF',
       'systemctl daemon-reload',
-      ...(memoryHigh === 'auto' ? buildAutoMemoryHigh(`${unitBase}@.service`) : buildCommitmentReport()),
+      ...(memoryHigh === 'auto'
+        ? buildAutoMemoryHigh(`${unitBase}@.service`)
+        : [...buildClearAutoMemoryHigh(`${unitBase}@.service`), ...buildCommitmentReport()]),
       ...buildSliceReconcile(instance),
       // Remember what is serving right now — retired only after the gate.
       `TS_CLOUD_OLD_UNITS=$(systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" || true)`,
@@ -872,6 +914,9 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     'WantedBy=multi-user.target',
     'TS_CLOUD_UNIT_EOF',
     'systemctl daemon-reload',
+    // Whatever config declares outranks a hand-set override of the same limit;
+    // the box-resolved drop-in only goes when memoryHigh stops being `auto`.
+    ...buildClearAutoMemoryHigh(serviceName, { auto: memoryHigh !== 'auto', high: memoryHigh !== 'auto', max: Boolean(memoryMax) }),
     ...(memoryHigh === 'auto' ? buildAutoMemoryHigh(serviceName) : buildCommitmentReport()),
     `systemctl enable ${serviceName}`,
     // Atomically promote the new release, THEN restart so the service comes up on it.

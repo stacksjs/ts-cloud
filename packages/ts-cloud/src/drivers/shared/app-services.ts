@@ -18,6 +18,7 @@
  * deploy's $RESTART_QUEUES macro) cycles them onto the new release.
  */
 import type { SiteConfig } from '@ts-cloud/core'
+import { buildClearAutoMemoryHigh } from './deploy-script'
 import { getAppFrameworkDriver, resolveSiteFramework } from './app-frameworks'
 
 export interface SiteServicesOptions {
@@ -190,6 +191,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   const schedulerUnit = `${slug}-${siteName}-scheduler`
   if (schedulerEnabled && driver.schedulerMode === 'daemon') {
     desiredUnits.push(schedulerUnit)
+    const limits = typeof scheduler === 'object' && scheduler !== null ? scheduler : {}
     out.push(
       ...writeUnitScript(
         schedulerUnit,
@@ -198,8 +200,17 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
           workingDir: current,
           execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
           environment: driver.execEnv,
+          memoryHigh: limits.memoryHigh,
+          memoryMax: limits.memoryMax,
         }),
       ),
+      // A declared limit outranks a hand-set `systemctl set-property` one.
+      // This unit has no auto drop-in to clear: its default is in the unit.
+      ...buildClearAutoMemoryHigh(`${schedulerUnit}.service`, {
+        auto: false,
+        high: Boolean(limits.memoryHigh),
+        max: Boolean(limits.memoryMax),
+      }),
     )
   }
 

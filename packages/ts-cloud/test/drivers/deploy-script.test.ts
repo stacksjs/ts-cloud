@@ -96,8 +96,31 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     const joined = script.join('\n')
 
     expect(script.filter(l => /^Memory(?:High|Max)=/.test(l))).toEqual(['MemoryHigh=1G', 'MemoryMax=1400M'])
-    // No drop-in when the value came from config.
-    expect(joined).not.toContain('50-ts-cloud-memory.conf')
+    // Nothing resolved on the box when the value came from config...
+    expect(joined).not.toContain('TS_CLOUD_HIGH_MB')
+    expect(joined).not.toContain('> /etc/systemd/system/my-app-web@.service.d/50-ts-cloud-memory.conf')
+  })
+
+  it('removes the box-resolved drop-in a site left behind before it declared its own limit', () => {
+    /*
+     * The drop-in outranks the unit file. wildloop's ingest worker declared
+     * 1G/1536M, got them written into its unit, and kept running at the 1951M
+     * an earlier `auto` deploy had dropped in - above its own MemoryMax.
+     */
+    const script = buildSiteDeployScript({ ...opts, memoryHigh: '1G', memoryMax: '1400M' })
+    const removal = script.find(l => l.includes('rm -f /etc/systemd/system/my-app-web@.service.d/50-ts-cloud-memory.conf'))
+    expect(removal).toBeDefined()
+    // Reloaded only when something went, so a steady deploy does not churn.
+    expect(script).toContain('if [ "$TS_CLOUD_MEM_CLEARED" = 1 ]; then systemctl daemon-reload; fi')
+    // Removed after the unit file is written and reloaded, so the very next
+    // reload applies the unit's own values.
+    const unitWritten = script.findIndex(l => l === 'TS_CLOUD_UNIT_EOF')
+    expect(script.indexOf(removal!)).toBeGreaterThan(unitWritten)
+
+    // On `auto` the drop-in is the point, and is written, never removed.
+    const auto = buildSiteDeployScript(opts).join('\n')
+    expect(auto).toContain('> /etc/systemd/system/my-app-web@.service.d/50-ts-cloud-memory.conf')
+    expect(auto).not.toContain('rm -f /etc/systemd/system/my-app-web@.service.d/50-ts-cloud-memory.conf')
   })
 
   it('reports what the box has been promised, so 500% committed is visible', () => {
@@ -421,6 +444,32 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
     // Still no hard cap unless asked: a soft limit throttles, and only an
     // explicit `memoryMax` should be able to kill a worker outright.
     expect(defaulted).not.toContain('MemoryMax=')
+  })
+
+  it('lets declared limits outrank a stale auto drop-in and hand-set overrides', () => {
+    // A plain unit is where `systemctl set-property` gets typed by hand, and
+    // its overrides in system.control outrank the unit file just as the auto
+    // drop-in does. What config now declares has to win over both.
+    const bounded = buildSiteDeployScript({ ...portless, memoryHigh: '1G', memoryMax: '1536M' }).join('\n')
+    for (const file of [
+      '/etc/systemd/system/my-app-worker.service.d/50-ts-cloud-memory.conf',
+      '/etc/systemd/system.control/my-app-worker.service.d/50-MemoryHigh.conf',
+      '/etc/systemd/system.control/my-app-worker.service.d/50-MemoryMax.conf',
+      '/run/systemd/system.control/my-app-worker.service.d/50-MemoryHigh.conf',
+      '/run/systemd/system.control/my-app-worker.service.d/50-MemoryMax.conf',
+    ])
+      expect(bounded).toContain(`rm -f ${file}`)
+
+    // On `auto` with only a hard cap declared: the cap's override goes, the
+    // auto drop-in and a hand-set MemoryHigh are left alone.
+    const capped = buildSiteDeployScript({ ...portless, memoryMax: '1536M' }).join('\n')
+    expect(capped).toContain('rm -f /etc/systemd/system.control/my-app-worker.service.d/50-MemoryMax.conf')
+    expect(capped).not.toContain('rm -f /etc/systemd/system.control/my-app-worker.service.d/50-MemoryHigh.conf')
+    expect(capped).not.toContain('rm -f /etc/systemd/system/my-app-worker.service.d/50-ts-cloud-memory.conf')
+    expect(capped).toContain('> /etc/systemd/system/my-app-worker.service.d/50-ts-cloud-memory.conf')
+
+    // Nothing declared, nothing touched.
+    expect(buildSiteDeployScript(portless).join('\n')).not.toContain('TS_CLOUD_MEM_CLEARED')
   })
 
   it('emits declared CPU/IO/task priority, in both unit shapes', () => {

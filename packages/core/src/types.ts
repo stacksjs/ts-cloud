@@ -1663,6 +1663,21 @@ export interface SchedulerConfig {
    * HTTP method for the heartbeat ping. @default 'GET'
    */
   heartbeatMethod?: 'GET' | 'POST' | 'HEAD'
+  /**
+   * systemd `MemoryHigh` for the scheduler unit (Stacks, where the scheduler
+   * is an always-on daemon). @default '2G'
+   *
+   * Declaring it also clears a hand-set `systemctl set-property MemoryHigh`
+   * on the unit, which would otherwise outrank the unit file forever: that is
+   * how a scheduler ended up pinned at 3G/4G for a nightly job that had long
+   * since stopped needing it, with nothing in the repo saying so.
+   */
+  memoryHigh?: string
+  /**
+   * systemd `MemoryMax` for the scheduler unit. Unset by default. Should be
+   * higher than {@link memoryHigh}; declaring it clears a hand-set override.
+   */
+  memoryMax?: string
 }
 
 /**

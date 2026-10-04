@@ -23,6 +23,21 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     expect(script).toContain(`rm -f ${schedulerCronPath('acme', 'app')}`)
   })
 
+  it('bounds the scheduler as config says, and lets that outrank a hand-set override', () => {
+    const declared: SiteConfig = { root: '.', scheduler: { memoryHigh: '1G', memoryMax: '1536M' } }
+    const script = buildSiteServicesScript({ ...base, site: declared }).join('\n')
+    expect(script).toContain('MemoryHigh=1G')
+    expect(script).toContain('MemoryMax=1536M')
+    expect(script).toContain('rm -f /etc/systemd/system.control/acme-app-scheduler.service.d/50-MemoryHigh.conf')
+    expect(script).toContain('rm -f /etc/systemd/system.control/acme-app-scheduler.service.d/50-MemoryMax.conf')
+
+    // Undeclared: the 2G default in the unit, and nothing on the box removed.
+    const plain = buildSiteServicesScript({ ...base, site: { root: '.', scheduler: true } }).join('\n')
+    expect(plain).toContain('MemoryHigh=2G')
+    expect(plain).not.toContain('MemoryMax=')
+    expect(plain).not.toContain('system.control')
+  })
+
   it('runs the queue worker from the installed package, with a bare ExecStart + Environment= (no shell wrapper)', () => {
     const site: SiteConfig = { root: '.', queues: [{ queue: 'default', tries: 5 }] }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
