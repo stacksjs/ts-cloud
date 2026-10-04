@@ -155,8 +155,30 @@ export function coerceXmlValues(node: any): any {
   return node
 }
 
+/**
+ * Error codes AWS returns when it refuses the credentials themselves, across
+ * the query, JSON, REST-XML and EC2 protocols.
+ */
+const REJECTED_CREDENTIAL_CODES = new Set([
+  'InvalidClientTokenId',
+  'UnrecognizedClientException',
+  'InvalidAccessKeyId',
+  'SignatureDoesNotMatch',
+  'IncompleteSignature',
+  'ExpiredToken',
+  'ExpiredTokenException',
+  'InvalidToken',
+  'AuthFailure',
+])
+
 export class AWSClient {
   private credentials?: AWSCredentials
+  /**
+   * Where the credentials came from, named in the error when AWS rejects them.
+   * Several sources are tried in order and the first wins silently, so a stale
+   * profile and a stale .env key both surfaced as a bare InvalidClientTokenId.
+   */
+  private credentialSource = 'no credentials'
   private config: AWSClientConfig
   private cache: Map<string, CacheEntry>
   private xmlParser: XMLParser
@@ -171,6 +193,8 @@ export class AWSClient {
       defaultCacheTTL: 60000, // 1 minute
       ...config,
     }
+    if (credentials)
+      this.credentialSource = 'credentials passed to AWSClient'
     this.credentials = credentials || this.loadCredentials()
     this.cache = new Map()
     // Values are parsed as text and converted by coerceXmlValues, which only
@@ -197,6 +221,7 @@ export class AWSClient {
     const sessionToken = process.env.AWS_SESSION_TOKEN
 
     if (accessKeyId && secretAccessKey) {
+      this.credentialSource = 'AWS_ACCESS_KEY_ID in the environment'
       return {
         accessKeyId,
         secretAccessKey,
@@ -233,6 +258,7 @@ export class AWSClient {
       const content = readFileSync(credentialsPath, 'utf-8')
       const credentials = this.parseCredentialsFile(content, profile)
       if (credentials.accessKeyId && credentials.secretAccessKey) {
+        this.credentialSource = `profile "${profile}" in ${credentialsPath}`
         return credentials
       }
     } catch {
@@ -301,6 +327,7 @@ export class AWSClient {
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
     if (accessKeyId && secretAccessKey) {
+      this.credentialSource = 'AWS_ACCESS_KEY_ID in the environment'
       return {
         accessKeyId,
         secretAccessKey,
@@ -319,6 +346,7 @@ export class AWSClient {
       const now = Date.now()
       // Refresh 5 minutes before expiration
       if (this.ec2CredentialsCache.expiration > now + 5 * 60 * 1000) {
+        this.credentialSource = 'EC2 instance metadata'
         return this.ec2CredentialsCache.credentials
       }
     }
@@ -360,6 +388,7 @@ export class AWSClient {
         sessionToken: credsData.Token,
       }
 
+      this.credentialSource = 'EC2 instance metadata'
       // Cache the credentials
       this.ec2CredentialsCache = {
         credentials,
@@ -446,7 +475,13 @@ export class AWSClient {
     const responseText = await response.text()
 
     if (!response.ok) {
-      throw this.parseError(responseText, response.status, response.headers)
+      const error = this.parseError(responseText, response.status, response.headers)
+      // JSON protocols may prefix the code with a namespace: `com.amazon.coral.service#..`.
+      if (error.code && REJECTED_CREDENTIAL_CODES.has(String(error.code).split('#').pop()!)) {
+        const source = options.credentials ? 'credentials passed with the request' : this.credentialSource
+        error.message += ` (credentials from ${source})`
+      }
+      throw error
     }
 
     // Handle empty responses

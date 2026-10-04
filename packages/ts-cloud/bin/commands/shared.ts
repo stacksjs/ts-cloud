@@ -89,7 +89,8 @@ export function resolveDnsProviderConfig(providerName?: string): DnsProviderConf
       environment: (process.env.GODADDY_ENVIRONMENT as 'production' | 'ote') || 'production',
     }
   }
-  if (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_REGION) {
+  // A profile counts too: --profile clears the environment keys in its favor.
+  if (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_PROFILE || process.env.AWS_REGION) {
     return {
       provider: 'route53',
       region: process.env.AWS_REGION || 'us-east-1',

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { CLI } from '@stacksjs/clapp'
 import { version } from '../package.json'
+import { applyGlobalAwsOptions } from './global-options'
 import {
   registerInitCommands,
   registerConfigCommands,
@@ -174,4 +175,11 @@ registerUtilsCommands(app, version)
 // ============================================
 app.version(version)
 app.help()
-app.parse()
+
+// Parse first, then apply the global --profile/--region before the command
+// runs: nothing read them before, so every command ignored them. A promise
+// chain rather than top-level await, which breaks bundling this entry.
+app.parse(undefined, { run: false }).then(({ options }) => {
+  applyGlobalAwsOptions(options, app.matchedCommand)
+  return app.runMatchedCommand()
+})

@@ -179,7 +179,8 @@ export class DnsProviderFactory {
    */
   loadFromEnv(): this {
     // Route53 (uses AWS credentials from environment)
-    if (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_REGION) {
+    // A profile counts too: --profile clears the environment keys in its favor.
+    if (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_PROFILE || process.env.AWS_REGION) {
       this.addRoute53(process.env.AWS_REGION)
     }
 
