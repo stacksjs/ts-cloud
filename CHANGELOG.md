@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.22...v0.16.23)
+
+## 🐛 Bug Fixes
+
+- **aws**: parse ElastiCache and IAM responses structurally ([b58fae4](https://github.com/stacksjs/ts-cloud/commit/b58fae4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.23 ([cd08f75](https://github.com/stacksjs/ts-cloud/commit/cd08f75)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.21...v0.16.22)
 
 ## 🐛 Bug Fixes
