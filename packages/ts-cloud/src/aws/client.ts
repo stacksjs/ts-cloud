@@ -125,6 +125,36 @@ interface CacheEntry {
 /**
  * AWS API Client - Makes authenticated requests to AWS services
  */
+/**
+ * Convert parsed XML text the way the parser's own option did, minus the
+ * lossy cases: `true`/`false` become booleans, and text becomes a number only
+ * when the number prints back as exactly the same text. So `16` and
+ * `923076644019` are numbers, while `+18082188241` (a phone number), `7.0`
+ * (an engine version), `1.50`, `0x1F`, `1e3` and a 20-digit ID stay strings.
+ * Exported for tests.
+ */
+export function coerceXmlValues(node: any): any {
+  if (typeof node === 'string') {
+    if (node === 'true')
+      return true
+    if (node === 'false')
+      return false
+    const number = Number(node)
+    if (node !== '' && Number.isFinite(number) && String(number) === node)
+      return number
+    return node
+  }
+  if (Array.isArray(node))
+    return node.map(coerceXmlValues)
+  if (node && typeof node === 'object') {
+    const out: Record<string, any> = {}
+    for (const [key, value] of Object.entries(node))
+      out[key] = coerceXmlValues(value)
+    return out
+  }
+  return node
+}
+
 export class AWSClient {
   private credentials?: AWSCredentials
   private config: AWSClientConfig
@@ -143,11 +173,16 @@ export class AWSClient {
     }
     this.credentials = credentials || this.loadCredentials()
     this.cache = new Map()
+    // Values are parsed as text and converted by coerceXmlValues, which only
+    // makes a number of text that reads back the same. The parser's own
+    // conversion turned `+18082188241` into 18082188241, `7.0` into 7 and a
+    // 20-digit ID into a rounded float.
     this.xmlParser = new XMLParser({
       ignoreAttributes: false,
       attributeNamePrefix: '@_',
       textNodeName: '#text',
-      parseAttributeValue: true,
+      parseTagValue: false,
+      parseAttributeValue: false,
       trimValues: true,
     })
   }
@@ -683,7 +718,7 @@ export class AWSClient {
    */
   private parseXmlResponse(xml: string): any {
     try {
-      const parsed = this.xmlParser.parse(xml)
+      const parsed = coerceXmlValues(this.xmlParser.parse(xml))
 
       // Extract the main result from common AWS response wrappers
       if (parsed.ErrorResponse) {
@@ -717,7 +752,7 @@ export class AWSClient {
     // Try to parse XML error
     if (responseText.startsWith('<')) {
       try {
-        const parsed = this.xmlParser.parse(responseText)
+        const parsed = coerceXmlValues(this.xmlParser.parse(responseText))
 
         if (parsed.ErrorResponse?.Error) {
           const awsError = parsed.ErrorResponse.Error
