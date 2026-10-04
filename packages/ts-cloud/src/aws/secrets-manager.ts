@@ -55,6 +55,7 @@ export interface UpdateSecretOptions {
   KmsKeyId?: string
   SecretBinary?: string
   SecretString?: string
+  ClientRequestToken?: string
 }
 
 export interface PutSecretValueOptions {
@@ -161,8 +162,11 @@ export class SecretsManagerClient {
     Name?: string
     VersionId?: string
   }> {
+    // The SDKs generate this token when the caller omits it, and the API
+    // reference requires a raw HTTP caller to do the same.
     const params: Record<string, any> = {
       SecretId: options.SecretId,
+      ClientRequestToken: options.ClientRequestToken || crypto.randomUUID(),
     }
 
     if (options.Description) {
@@ -225,9 +229,8 @@ export class SecretsManagerClient {
       params.VersionStages = options.VersionStages
     }
 
-    if (options.ClientRequestToken) {
-      params.ClientRequestToken = options.ClientRequestToken
-    }
+    // Generated when omitted, as the SDKs do; see updateSecret.
+    params.ClientRequestToken = options.ClientRequestToken || crypto.randomUUID()
 
     const result = await this.client.request({
       service: 'secretsmanager',
