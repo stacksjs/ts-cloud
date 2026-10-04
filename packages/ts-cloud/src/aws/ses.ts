@@ -28,6 +28,18 @@ export interface SendEmailResult {
 }
 
 /**
+ * Read an SES v1 (query API) response's `<{Action}Result>`.
+ *
+ * AWSClient.parseXmlResponse strips the single root, so
+ * `<GetSendQuotaResponse><GetSendQuotaResult>..` arrives as
+ * `{ GetSendQuotaResult: .. }`, and reading through `GetSendQuotaResponse`
+ * found nothing. The wrapped form is kept as a fallback.
+ */
+function queryResult(result: any, action: string): any {
+  return (result?.[`${action}Response`] ?? result)?.[`${action}Result`]
+}
+
+/**
  * SES email service management using direct API calls
  */
 export class SESClient {
@@ -415,8 +427,11 @@ export class SESClient {
       body: 'Action=GetSendStatistics&Version=2010-12-01',
     })
 
+    // parseXmlResponse strips the <GetSendStatisticsResponse> root, and returns
+    // one <member> as an object rather than a one-element array.
+    const points = queryResult(result, 'GetSendStatistics')?.SendDataPoints?.member
     return {
-      SendDataPoints: result.GetSendStatisticsResponse?.GetSendStatisticsResult?.SendDataPoints?.member,
+      SendDataPoints: points == null ? [] : Array.isArray(points) ? points : [points],
     }
   }
 
@@ -440,11 +455,13 @@ export class SESClient {
       body: 'Action=GetSendQuota&Version=2010-12-01',
     })
 
-    const quota = result.GetSendQuotaResponse?.GetSendQuotaResult
+    // A count of zero is a real answer, so test for presence, not truthiness.
+    const quota = queryResult(result, 'GetSendQuota')
+    const count = (value: unknown): number | undefined => (value == null || value === '' ? undefined : Number(value))
     return {
-      Max24HourSend: quota?.Max24HourSend ? Number(quota.Max24HourSend) : undefined,
-      MaxSendRate: quota?.MaxSendRate ? Number(quota.MaxSendRate) : undefined,
-      SentLast24Hours: quota?.SentLast24Hours ? Number(quota.SentLast24Hours) : undefined,
+      Max24HourSend: count(quota?.Max24HourSend),
+      MaxSendRate: count(quota?.MaxSendRate),
+      SentLast24Hours: count(quota?.SentLast24Hours),
     }
   }
 
