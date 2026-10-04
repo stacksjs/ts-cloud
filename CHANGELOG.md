@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.21...v0.16.22)
+
+## 🐛 Bug Fixes
+
+- **aws**: read SNS, SQS, CloudFormation, CloudFront and IAM responses in the shape the parser returns ([b2cbbde](https://github.com/stacksjs/ts-cloud/commit/b2cbbde)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.22 ([6c09f03](https://github.com/stacksjs/ts-cloud/commit/6c09f03)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.20...v0.16.21)
 
 ## 🐛 Bug Fixes
