@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.18...v0.16.19)
+
+## 🐛 Bug Fixes
+
+- **s3**: read bucket configuration getters through the stripped XML root ([528a276](https://github.com/stacksjs/ts-cloud/commit/528a276)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.19 ([67d4328](https://github.com/stacksjs/ts-cloud/commit/67d4328)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.17...v0.16.18)
 
 ## ✨ Features
