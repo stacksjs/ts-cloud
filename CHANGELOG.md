@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.23...v0.16.24)
+
+## 🐛 Bug Fixes
+
+- **aws**: convert parsed XML values only when the number reads back the same ([bd3a256](https://github.com/stacksjs/ts-cloud/commit/bd3a256)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.24 ([209a6d7](https://github.com/stacksjs/ts-cloud/commit/209a6d7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.22...v0.16.23)
 
 ## 🐛 Bug Fixes
