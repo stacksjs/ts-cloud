@@ -521,8 +521,10 @@ in front of the box:
 ts-cloud does not provision a Hetzner-native CDN.
 
 A CloudFront distribution can fail over to a second origin when the first
-errors: set `failoverOrigin` (and optionally `failoverStatusCodes`) on an
-`infrastructure.cdn` entry. This is experimental; see
+errors: set `failover: { region }` on a website bucket in
+`infrastructure.storage` for a replicated bucket in another region, or
+`failoverOrigin` (and optionally `failoverStatusCodes`) on an
+`infrastructure.cdn` entry for any second origin. See
 [CloudFront origin failover](./features/cdn-origin-failover.md).
 
 ### Declaring DNS records
