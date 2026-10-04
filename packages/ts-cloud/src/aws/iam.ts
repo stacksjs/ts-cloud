@@ -2,6 +2,7 @@
  * AWS IAM (Identity and Access Management) Operations
  * Direct API calls without AWS SDK dependency
  */
+import { XMLParser } from '@stacksjs/ts-xml'
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -683,29 +684,76 @@ function buildQueryParams(action: string, params: Record<string, unknown>): stri
 }
 
 /**
- * Parse XML response from IAM API
+ * IAM responses, parsed once into a tree with every value kept as text.
+ *
+ * These helpers used to run regexes over the XML. That took the first
+ * `<Arn>` anywhere, so an instance profile reported its nested role's ARN, and
+ * a non-greedy `<member>` match cut any item holding its own `<member>` list
+ * (an instance profile's roles) in half, dropping every field after it.
+ * Entities such as `&amp;` were never decoded. Values stay strings
+ * (`parseTagValue: false`) because the callers convert them, and coercion
+ * would turn IDs and versions into lossy numbers.
  */
-function parseXmlValue(xml: string, tag: string): string | undefined {
-  const regex = new RegExp(`<${tag}>([^<]*)</${tag}>`)
-  const match = xml.match(regex)
-  return match ? match[1] : undefined
+type XmlNode = Record<string, any>
+
+const iamXmlParser = new XMLParser({ ignoreAttributes: true, parseTagValue: false, trimValues: true })
+
+function parseIamXml(text: unknown): XmlNode {
+  if (typeof text !== 'string' || !text.trim())
+    return {}
+  return iamXmlParser.parse(text) as XmlNode
 }
 
 /**
- * Parse XML array from IAM API
+ * The text of the shallowest `<tag>` under `node`, searched breadth first so
+ * an element's own field wins over a same-named field nested inside it.
  */
-function parseXmlArray(xml: string, containerTag: string, itemTag: string): string[] {
-  const containerRegex = new RegExp(`<${containerTag}>([\\s\\S]*?)</${containerTag}>`)
-  const containerMatch = xml.match(containerRegex)
-  if (!containerMatch) return []
-
-  const items: string[] = []
-  const itemRegex = new RegExp(`<${itemTag}>([\\s\\S]*?)</${itemTag}>`, 'g')
-  let match
-  while ((match = itemRegex.exec(containerMatch[1])) !== null) {
-    items.push(match[1])
+function parseXmlValue(node: XmlNode | undefined, tag: string): string | undefined {
+  let level: unknown[] = [node]
+  while (level.length > 0) {
+    const next: unknown[] = []
+    for (const current of level) {
+      if (!current || typeof current !== 'object')
+        continue
+      if (Array.isArray(current)) {
+        next.push(...current)
+        continue
+      }
+      if (tag in current) {
+        const value = (current as XmlNode)[tag]
+        return typeof value === 'string' ? value : undefined
+      }
+      next.push(...Object.values(current))
+    }
+    level = next
   }
-  return items
+  return undefined
+}
+
+/**
+ * The `<itemTag>` children of the shallowest `<containerTag>` under `node`:
+ * objects for structured items, strings for text items such as policy names.
+ */
+function parseXmlArray(node: XmlNode | undefined, containerTag: string, itemTag: string): any[] {
+  let level: unknown[] = [node]
+  while (level.length > 0) {
+    const next: unknown[] = []
+    for (const current of level) {
+      if (!current || typeof current !== 'object')
+        continue
+      if (Array.isArray(current)) {
+        next.push(...current)
+        continue
+      }
+      if (containerTag in current) {
+        const items = (current as XmlNode)[containerTag]?.[itemTag]
+        return items === undefined || items === null ? [] : Array.isArray(items) ? items : [items]
+      }
+      next.push(...Object.values(current))
+    }
+    level = next
+  }
+  return []
 }
 
 // ============================================================================
@@ -736,13 +784,13 @@ export class IAMClient {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body,
-      // The parse helpers below read the XML text with regexes. Without this,
-      // AWSClient hands back a parsed object and every call threw
-      // "xml.match is not a function".
+      // AWSClient's own parse coerces values and strips the root, and every
+      // call used to throw "xml.match is not a function" on its object. Take
+      // the text and parse it with the text-preserving parser above.
       rawResponse: true,
     })
 
-    return response
+    return parseIamXml(response)
   }
 
   // ==========================================================================
@@ -793,7 +841,7 @@ export class IAMClient {
   /**
    * Parse user from XML response
    */
-  private parseUser(xml: string): IAMUser {
+  private parseUser(xml: XmlNode): IAMUser {
     return {
       UserName: parseXmlValue(xml, 'UserName') || '',
       UserId: parseXmlValue(xml, 'UserId') || '',
@@ -807,7 +855,7 @@ export class IAMClient {
   /**
    * Parse users array from XML response
    */
-  private parseUsers(xml: string): IAMUser[] {
+  private parseUsers(xml: XmlNode): IAMUser[] {
     const memberXmls = parseXmlArray(xml, 'Users', 'member')
     return memberXmls.map((memberXml) => ({
       UserName: parseXmlValue(memberXml, 'UserName') || '',
@@ -902,7 +950,7 @@ export class IAMClient {
   /**
    * Parse group from XML response
    */
-  private parseGroup(xml: string): IAMGroup {
+  private parseGroup(xml: XmlNode): IAMGroup {
     return {
       GroupName: parseXmlValue(xml, 'GroupName') || '',
       GroupId: parseXmlValue(xml, 'GroupId') || '',
@@ -915,7 +963,7 @@ export class IAMClient {
   /**
    * Parse groups array from XML response
    */
-  private parseGroups(xml: string): IAMGroup[] {
+  private parseGroups(xml: XmlNode): IAMGroup[] {
     const memberXmls = parseXmlArray(xml, 'Groups', 'member')
     return memberXmls.map((memberXml) => ({
       GroupName: parseXmlValue(memberXml, 'GroupName') || '',
@@ -1016,7 +1064,7 @@ export class IAMClient {
   /**
    * Parse role from XML response
    */
-  private parseRole(xml: string): IAMRole {
+  private parseRole(xml: XmlNode): IAMRole {
     return {
       RoleName: parseXmlValue(xml, 'RoleName') || '',
       RoleId: parseXmlValue(xml, 'RoleId') || '',
@@ -1034,7 +1082,7 @@ export class IAMClient {
   /**
    * Parse roles array from XML response
    */
-  private parseRoles(xml: string): IAMRole[] {
+  private parseRoles(xml: XmlNode): IAMRole[] {
     const memberXmls = parseXmlArray(xml, 'Roles', 'member')
     return memberXmls.map((memberXml) => ({
       RoleName: parseXmlValue(memberXml, 'RoleName') || '',
@@ -1053,7 +1101,7 @@ export class IAMClient {
   /**
    * Parse tags from XML response
    */
-  private parseTags(xml: string): Array<{ Key: string; Value: string }> {
+  private parseTags(xml: XmlNode): Array<{ Key: string; Value: string }> {
     const memberXmls = parseXmlArray(xml, 'Tags', 'member')
     return memberXmls.map((memberXml) => ({
       Key: parseXmlValue(memberXml, 'Key') || '',
@@ -1243,7 +1291,7 @@ export class IAMClient {
   /**
    * Parse policy from XML response
    */
-  private parsePolicy(xml: string): IAMPolicy {
+  private parsePolicy(xml: XmlNode): IAMPolicy {
     return {
       PolicyName: parseXmlValue(xml, 'PolicyName') || '',
       PolicyId: parseXmlValue(xml, 'PolicyId') || '',
@@ -1266,7 +1314,7 @@ export class IAMClient {
   /**
    * Parse policies array from XML response
    */
-  private parsePolicies(xml: string): IAMPolicy[] {
+  private parsePolicies(xml: XmlNode): IAMPolicy[] {
     const memberXmls = parseXmlArray(xml, 'Policies', 'member')
     return memberXmls.map((memberXml) => ({
       PolicyName: parseXmlValue(memberXml, 'PolicyName') || '',
@@ -1290,7 +1338,7 @@ export class IAMClient {
   /**
    * Parse policy versions from XML response
    */
-  private parsePolicyVersions(xml: string): PolicyVersion[] {
+  private parsePolicyVersions(xml: XmlNode): PolicyVersion[] {
     const memberXmls = parseXmlArray(xml, 'Versions', 'member')
     return memberXmls.map((memberXml) => ({
       VersionId: parseXmlValue(memberXml, 'VersionId') || '',
@@ -1302,7 +1350,7 @@ export class IAMClient {
   /**
    * Parse attached policies from XML response
    */
-  private parseAttachedPolicies(xml: string): Array<{ PolicyName: string; PolicyArn: string }> {
+  private parseAttachedPolicies(xml: XmlNode): Array<{ PolicyName: string; PolicyArn: string }> {
     const memberXmls = parseXmlArray(xml, 'AttachedPolicies', 'member')
     return memberXmls.map((memberXml) => ({
       PolicyName: parseXmlValue(memberXml, 'PolicyName') || '',
@@ -1466,11 +1514,11 @@ export class IAMClient {
     // Fallback to XML parsing for string responses
     return {
       AccessKey: {
-        UserName: parseXmlValue(response as string, 'UserName') || '',
-        AccessKeyId: parseXmlValue(response as string, 'AccessKeyId') || '',
-        Status: (parseXmlValue(response as string, 'Status') as 'Active' | 'Inactive') || 'Active',
-        SecretAccessKey: parseXmlValue(response as string, 'SecretAccessKey') || '',
-        CreateDate: parseXmlValue(response as string, 'CreateDate'),
+        UserName: parseXmlValue(response, 'UserName') || '',
+        AccessKeyId: parseXmlValue(response, 'AccessKeyId') || '',
+        Status: (parseXmlValue(response, 'Status') as 'Active' | 'Inactive') || 'Active',
+        SecretAccessKey: parseXmlValue(response, 'SecretAccessKey') || '',
+        CreateDate: parseXmlValue(response, 'CreateDate'),
       },
     }
   }
@@ -1523,7 +1571,7 @@ export class IAMClient {
   /**
    * Parse access keys from XML response
    */
-  private parseAccessKeys(xml: string): AccessKeyMetadata[] {
+  private parseAccessKeys(xml: XmlNode): AccessKeyMetadata[] {
     const memberXmls = parseXmlArray(xml, 'AccessKeyMetadata', 'member')
     return memberXmls.map((memberXml) => ({
       UserName: parseXmlValue(memberXml, 'UserName'),
@@ -1603,7 +1651,7 @@ export class IAMClient {
   /**
    * Parse instance profile from XML response
    */
-  private parseInstanceProfile(xml: string): InstanceProfile {
+  private parseInstanceProfile(xml: XmlNode): InstanceProfile {
     return {
       InstanceProfileName: parseXmlValue(xml, 'InstanceProfileName') || '',
       InstanceProfileId: parseXmlValue(xml, 'InstanceProfileId') || '',
@@ -1616,7 +1664,7 @@ export class IAMClient {
   /**
    * Parse instance profiles from XML response
    */
-  private parseInstanceProfiles(xml: string): InstanceProfile[] {
+  private parseInstanceProfiles(xml: XmlNode): InstanceProfile[] {
     const memberXmls = parseXmlArray(xml, 'InstanceProfiles', 'member')
     return memberXmls.map((memberXml) => ({
       InstanceProfileName: parseXmlValue(memberXml, 'InstanceProfileName') || '',
@@ -1730,7 +1778,7 @@ export class IAMClient {
   /**
    * Parse simulation results from XML response
    */
-  private parseSimulationResults(xml: string): SimulatePolicyResponse {
+  private parseSimulationResults(xml: XmlNode): SimulatePolicyResponse {
     const resultXmls = parseXmlArray(xml, 'EvaluationResults', 'member')
     const evaluationResults: EvaluationResult[] = resultXmls.map((resultXml) => {
       const matchedStatementXmls = parseXmlArray(resultXml, 'MatchedStatements', 'member')
