@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.24...v0.16.25)
+
+## 🐛 Bug Fixes
+
+- **aws**: read CloudFront ETags from headers, aliases as lists, and empty RDS snapshot lists ([6ba740a](https://github.com/stacksjs/ts-cloud/commit/6ba740a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.25 ([2ac9cd9](https://github.com/stacksjs/ts-cloud/commit/2ac9cd9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.23...v0.16.24)
 
 ## 🐛 Bug Fixes
