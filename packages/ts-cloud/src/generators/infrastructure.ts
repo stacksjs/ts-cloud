@@ -2,9 +2,9 @@
  * Infrastructure Generator
  * Generates CloudFormation templates from cloud.config.ts using all Phase 2 modules
  */
-import type { CloudConfig, CloudFrontOriginGroups, ResolvedSftpStorage, SftpConfig } from '@ts-cloud/core'
+import type { CloudConfig, CloudFrontOriginGroups, ResolvedSftpStorage, ResolvedStorageFailover, SftpConfig, StorageFailoverReplica } from '@ts-cloud/core'
 import { buildAppUpdatesScript } from '../drivers/shared/app-updates'
-import { AI, ApiGateway, assertOriginGroupMethods, buildOriginGroups, Cache, CDN, Compute, Database, DNS, Email, FileSystem, generateLogicalId, generateResourceName, isS3RestEndpoint, Monitoring, Network, Permissions, Queue, Redirects, Search, Security, Sftp, Storage, TemplateBuilder } from '@ts-cloud/core'
+import { AI, ApiGateway, assertOriginGroupMethods, buildOriginGroups, buildReplicationConfiguration, buildReplicationRole, Cache, CDN, Compute, Database, DNS, Email, FileSystem, generateLogicalId, generateResourceName, isS3RestEndpoint, Monitoring, Network, Permissions, Queue, Redirects, resolveOriginConnection, resolveStorageFailover, s3RegionalDomain, Search, Security, Sftp, Storage, STORAGE_FAILOVER_METADATA_KEY, TemplateBuilder, validateOriginGroups } from '@ts-cloud/core'
 
 export interface GenerationOptions {
   config: CloudConfig
@@ -18,6 +18,8 @@ export class InfrastructureGenerator {
   private environment: 'production' | 'staging' | 'development'
   private mergedConfig: CloudConfig
   private serverEipLogicalIds: Map<string, string> = new Map()
+  /** Failover replicas the generated stack depends on, recorded in the template metadata. */
+  private storageFailoverReplicas: StorageFailoverReplica[] = []
 
   constructor(options: GenerationOptions) {
     this.config = options.config
@@ -372,7 +374,14 @@ export class InfrastructureGenerator {
     }
 
     // Always generate shared infrastructure (storage, CDN, databases, etc.)
+    this.storageFailoverReplicas = []
     this.generateSharedInfrastructure(slug, env)
+
+    // The deployer reads this to create each replica before the stack and to
+    // grant the distribution access to it after (see deploy/storage-failover).
+    if (this.storageFailoverReplicas.length > 0) {
+      this.builder.addMetadata(STORAGE_FAILOVER_METADATA_KEY, this.storageFailoverReplicas)
+    }
 
     // Apply global tags if specified
     if (this.config.tags) {
@@ -380,6 +389,15 @@ export class InfrastructureGenerator {
     }
 
     return this
+  }
+
+  /**
+   * Failover replicas of the last {@link generate}, empty when no bucket sets
+   * failover. The template metadata holds the same list under the
+   * TsCloud::StorageFailover key.
+   */
+  getStorageFailoverReplicas(): StorageFailoverReplica[] {
+    return [...this.storageFailoverReplicas]
   }
 
   /**
@@ -1544,6 +1562,41 @@ export class InfrastructureGenerator {
           public: serveViaCloudFront ? false : storageConfig.public,
         })
 
+        // Cross-region failover (stacksjs/stacks#1159): a replica bucket in a
+        // second region behind the same distribution. The replica itself is
+        // created by the deployer (a stack can only make buckets in its own
+        // region); this stack replicates into it and serves from it.
+        const mountPathForFailover = this.normalizeMountPath(storageConfig)
+        let failover: ResolvedStorageFailover | undefined
+        if (storageConfig.failover) {
+          const where = `infrastructure.storage.${name}`
+          if (!serveViaCloudFront || !domain || (mountPathForFailover && name !== 'public')) {
+            throw new Error(
+              `${where}.failover needs this bucket to be served by its own CloudFront distribution: a website bucket (website: true), not mounted under the path of another site, with infrastructure.dns.domain set and SSL configured (infrastructure.ssl.certificateArn, or ssl.enabled with dns.hostedZoneId).`,
+            )
+          }
+          failover = resolveStorageFailover({
+            failover: storageConfig.failover,
+            primaryBucket: physicalBucketName,
+            primaryRegion: this.mergedConfig.project.region || 'us-east-1',
+            where,
+          })
+          if (failover.replicate && bucket.Properties) {
+            const roleLogicalId = `${logicalId}FailoverReplicationRole`
+            this.builder.addResource(
+              roleLogicalId,
+              buildReplicationRole({ primaryBucket: physicalBucketName, replicaBucket: failover.replicaBucket }),
+            )
+            // S3 replication requires versioning on both buckets.
+            const bucketProperties: Record<string, any> = bucket.Properties
+            bucketProperties.VersioningConfiguration = { Status: 'Enabled' }
+            bucketProperties.ReplicationConfiguration = buildReplicationConfiguration({
+              replicaBucket: failover.replicaBucket,
+              roleArn: { 'Fn::GetAtt': [roleLogicalId, 'Arn'] },
+            })
+          }
+        }
+
         // For CloudFront-served buckets, allow bucket policies (needed for OAC)
         // but block direct public access via ACLs
         if (serveViaCloudFront && bucket.Properties) {
@@ -1738,6 +1791,30 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
             }
           }
 
+          // Origin failover: the replica joins the primary in an origin group
+          // and the default behavior (GET/HEAD/OPTIONS only) serves from it.
+          // Compute and path-mount behaviors keep their own origins.
+          let storageOriginGroups: CloudFrontOriginGroups | undefined
+          let defaultTargetOriginId = originId
+          if (failover) {
+            const failoverOriginId = `${originId}-failover`
+            Object.assign(origins[0], failover.primaryConnection)
+            origins.push({
+              Id: failoverOriginId,
+              DomainName: s3RegionalDomain(failover.replicaBucket, failover.replicaRegion),
+              OriginPath: '',
+              S3OriginConfig: { OriginAccessIdentity: '' },
+              // One OAC signs for any bucket; the replica policy names this distribution.
+              OriginAccessControlId: { Ref: sharedOacLogicalId },
+            })
+            storageOriginGroups = buildOriginGroups({
+              primaryOriginId: originId,
+              secondaryOriginId: failoverOriginId,
+              statusCodes: failover.statusCodes,
+            })
+            defaultTargetOriginId = storageOriginGroups.Items[0].Id
+          }
+
           const distribution: any = {
             Type: 'AWS::CloudFront::Distribution',
             DependsOn: [
@@ -1752,8 +1829,9 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                 Comment: `${slug} ${env} ${name} site`,
                 DefaultRootObject: 'index.html',
                 Origins: origins,
+                ...(storageOriginGroups ? { OriginGroups: storageOriginGroups } : {}),
                 DefaultCacheBehavior: {
-                  TargetOriginId: originId,
+                  TargetOriginId: defaultTargetOriginId,
                   ViewerProtocolPolicy: 'redirect-to-https',
                   AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
                   CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
@@ -1786,6 +1864,27 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           // If using stack-created certificate, add dependency
           if (cfCertificateLogicalId) {
             distribution.DependsOn.push(cfCertificateLogicalId)
+          }
+
+          if (failover) {
+            validateOriginGroups(distribution.Properties.DistributionConfig, `infrastructure.storage.${name}`)
+            this.storageFailoverReplicas.push({
+              name,
+              primaryBucket: physicalBucketName,
+              primaryRegion: region,
+              replicaBucket: failover.replicaBucket,
+              replicaRegion: failover.replicaRegion,
+              replicate: failover.replicate,
+              distributionArnOutput: `${name}CloudFrontDistributionArn`,
+            })
+            this.builder.addOutput(`${name}CloudFrontDistributionArn`, {
+              Value: { 'Fn::Sub': `arn:\${AWS::Partition}:cloudfront::\${AWS::AccountId}:distribution/\${${distLogicalId}}` },
+              Description: `CloudFront distribution ARN for ${name} (scopes the bucket policy of the failover replica)`,
+            })
+            this.builder.addOutput(`${name}FailoverBucketName`, {
+              Value: failover.replicaBucket,
+              Description: `Failover replica bucket for ${name} (${failover.replicaRegion}), outside this stack`,
+            })
           }
 
           this.builder.addResource(distLogicalId, distribution)
@@ -2057,27 +2156,37 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                     'us-east-1',
                 }
               : { Enabled: false },
+            ...resolveOriginConnection(cdnConfig, `infrastructure.cdn.${name}`),
           },
         ]
         const cacheBehaviors: any[] = []
         const extraDependsOn: string[] = []
 
-        // Origin failover (experimental): group the primary with a secondary
-        // origin and serve the default behavior from the group.
+        // Origin failover: group the primary with a secondary origin and serve
+        // the default behavior from the group.
         const defaultAllowedMethods = ['GET', 'HEAD', 'OPTIONS']
         let defaultTargetOriginId = originId
         let originGroups: CloudFrontOriginGroups | undefined
         if (cdnConfig.failoverOrigin) {
           assertOriginGroupMethods(defaultAllowedMethods, `the default cache behavior of infrastructure.cdn.${name}`)
           const failoverOriginId = `${originId}-failover`
+          const secondary =
+            typeof cdnConfig.failoverOrigin === 'string' ? { domain: cdnConfig.failoverOrigin } : cdnConfig.failoverOrigin
+          if (!secondary.domain) {
+            throw new Error(`infrastructure.cdn.${name}.failoverOrigin.domain is required`)
+          }
+          if (secondary.domain === cdnConfig.origin) {
+            throw new Error(`infrastructure.cdn.${name}: failoverOrigin must differ from origin (both are ${cdnConfig.origin})`)
+          }
           origins.push({
             Id: failoverOriginId,
-            DomainName: cdnConfig.failoverOrigin,
-            OriginPath: '',
-            ...(isS3RestEndpoint(cdnConfig.failoverOrigin)
+            DomainName: secondary.domain,
+            OriginPath: secondary.originPath || '',
+            ...(isS3RestEndpoint(secondary.domain)
               ? { S3OriginConfig: { OriginAccessIdentity: '' } }
               : { CustomOriginConfig: { HTTPPort: 80, HTTPSPort: 443, OriginProtocolPolicy: 'https-only' } }),
             OriginShield: { Enabled: false },
+            ...resolveOriginConnection(secondary, `infrastructure.cdn.${name}.failoverOrigin`),
           })
           originGroups = buildOriginGroups({
             primaryOriginId: originId,
@@ -2142,6 +2251,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           },
         }
 
+        validateOriginGroups(distribution.Properties.DistributionConfig, `infrastructure.cdn.${name}`)
         this.builder.addResource(distLogicalId, distribution)
 
         if (hostedZoneId && customDomain && resolvedCertArn) {

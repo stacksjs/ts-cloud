@@ -14,6 +14,8 @@ export * from './server-dns'
 export * from './dashboard-control-plane'
 export * from './dashboard-route-manifest'
 export * from './static-site'
+// Cross-region bucket failover: replica create/grant/seed around a stack deploy.
+export * from './storage-failover'
 export * from './static-site-external-dns'
 export * from './static-site-helper'
 export * from './static-api-origin'

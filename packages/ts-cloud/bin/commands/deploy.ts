@@ -6,7 +6,7 @@ import { execFileSync, execSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join as pathJoin, resolve as pathResolve } from 'node:path'
-import { deploymentCoexistenceError, resolveAppDatabase, resolveCloudProvider, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName } from '@ts-cloud/core'
+import { deploymentCoexistenceError, resolveAppDatabase, resolveCloudProvider, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, storageFailoverReplicasFromTemplate } from '@ts-cloud/core'
 import * as cli from '../../src/utils/cli'
 import { detectCredentialSource } from '../../src/aws/client'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
@@ -830,6 +830,16 @@ export function registerDeployCommands(app: CLI): void {
           // Initialize CloudFormation client
           const cfn = new CloudFormationClient(region)
 
+          // Cross-region failover replicas live outside the stack (a stack only
+          // makes buckets in its own region), and the stack's replication rule
+          // is rejected unless its destination already exists and is versioned.
+          const failoverReplicas = storageFailoverReplicasFromTemplate(template)
+          if (failoverReplicas.length > 0) {
+            const { ensureFailoverReplicaBuckets } = await import('../../src/deploy/storage-failover')
+            cli.step('Ensuring failover replica buckets...')
+            await ensureFailoverReplicaBuckets(failoverReplicas, (message) => cli.info(`  ${message}`))
+          }
+
           // Check if stack exists
           cli.step('Checking stack status...')
           let stackExists = false
@@ -924,6 +934,12 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
             }
           }
 
+          if (failoverReplicas.length > 0) {
+            const { grantFailoverReplicaAccess } = await import('../../src/deploy/storage-failover')
+            cli.step('Granting the distribution read access to its failover replicas...')
+            await grantFailoverReplicaAccess(failoverReplicas, outputs, (message) => cli.info(`  ${message}`))
+          }
+
           // Auto-upload files for website storage buckets that have a `root` configured
           if (config.infrastructure?.storage) {
             for (const [name, storageConfig] of Object.entries(config.infrastructure.storage)) {
@@ -972,6 +988,13 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
                 cli.success(`Cache invalidation created: ${invalidationId}`)
               }
             }
+          }
+
+          // Replication copies new writes only; copy anything older across.
+          if (failoverReplicas.length > 0) {
+            const { seedFailoverReplicas } = await import('../../src/deploy/storage-failover')
+            cli.step('Syncing failover replicas...')
+            await seedFailoverReplicas(failoverReplicas, (message) => cli.info(`  ${message}`))
           }
 
           // EC2 app deploy via SSM (Forge-style) — when `infrastructure.compute` is set,

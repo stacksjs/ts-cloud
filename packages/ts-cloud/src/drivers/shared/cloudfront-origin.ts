@@ -29,7 +29,7 @@
  * The result is a complete `DistributionConfig` suitable for CloudFront
  * `CreateDistribution` or `UpdateDistribution`.
  */
-import { assertOriginGroupMethods, buildOriginGroups } from '@ts-cloud/core'
+import { assertOriginGroupMethods, buildOriginGroups, resolveOriginConnection, validateOriginGroups } from '@ts-cloud/core'
 
 /** AWS-managed cache/origin-request policy IDs (identical across all accounts). */
 export const MANAGED_CACHE_POLICY_OPTIMIZED = '658327ea-f89d-4fab-a63d-7e88639e58f6'
@@ -72,15 +72,22 @@ export interface BuildCloudFrontOriginOptions {
    * receives the same origin secret header, so lock it down the same way.
    * The default cache behavior targets the origin group; path behaviors stay
    * on the primary.
-   * @experimental Built against the AWS documentation; not yet exercised against a live distribution.
    */
   failoverOriginDomain?: string
   /**
    * Primary-origin status codes that trigger failover. Allowed: 400, 403, 404,
    * 416, 429, 500, 502, 503, 504. @default [500, 502, 503, 504]
-   * @experimental
    */
   failoverStatusCodes?: number[]
+  /**
+   * Times CloudFront tries to connect to {@link originDomain}, 1-3. @default 3
+   *
+   * With {@link connectionTimeout} this bounds how long an unreachable primary
+   * holds a request before CloudFront fails over (3 x 10 seconds by default).
+   */
+  connectionAttempts?: number
+  /** Seconds CloudFront waits to connect to {@link originDomain}, 1-10. @default 10 */
+  connectionTimeout?: number
 }
 
 const ORIGIN_ID = 'origin'
@@ -146,7 +153,14 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
   // Sort behaviors most-specific-first so CloudFront matches deterministically.
   const behaviors = [...(options.behaviors ?? [])].sort((a, b) => b.pathPattern.length - a.pathPattern.length)
 
-  const customOrigin = (id: string, domainName: string, originShield: Record<string, any>) => ({
+  const primaryConnection = resolveOriginConnection(options, 'buildCloudFrontOriginConfig')
+
+  const customOrigin = (
+    id: string,
+    domainName: string,
+    originShield: Record<string, any>,
+    connection: { ConnectionAttempts?: number; ConnectionTimeout?: number } = {},
+  ) => ({
     Id: id,
     DomainName: domainName,
     OriginPath: '',
@@ -159,8 +173,8 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
       OriginReadTimeout: 30,
       OriginKeepaliveTimeout: 5,
     },
-    ConnectionAttempts: 3,
-    ConnectionTimeout: 10,
+    ConnectionAttempts: connection.ConnectionAttempts ?? 3,
+    ConnectionTimeout: connection.ConnectionTimeout ?? 10,
     OriginShield: originShield,
     OriginAccessControlId: '',
   })
@@ -170,6 +184,7 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
       ORIGIN_ID,
       options.originDomain,
       options.originShield ? { Enabled: true, OriginShieldRegion: options.originShieldRegion } : { Enabled: false },
+      primaryConnection,
     ),
   ]
   let originGroups: Record<string, any> = { Quantity: 0 }
@@ -185,7 +200,7 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
     defaultBehavior.TargetOriginId = originGroups.Items[0].Id
   }
 
-  return {
+  const config = {
     CallerReference: options.callerReference ?? options.originDomain,
     Comment: options.comment ?? `Origin-fronted distribution for ${aliases[0]} → ${options.originDomain}`,
     Enabled: true,
@@ -212,4 +227,6 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
     WebACLId: '',
     CustomErrorResponses: { Quantity: 0 },
   }
+  validateOriginGroups(config, 'buildCloudFrontOriginConfig')
+  return config
 }

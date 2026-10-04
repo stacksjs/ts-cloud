@@ -271,6 +271,11 @@ export {
   invalidateCache,
   deleteStaticSite,
   generateStaticSiteTemplate,
+  // Cross-region bucket failover (stacksjs/stacks#1159)
+  deleteFailoverReplicaBuckets,
+  ensureFailoverReplicaBuckets,
+  grantFailoverReplicaAccess,
+  seedFailoverReplicas,
   // External DNS support
   deployStaticSiteWithExternalDns,
   deployStaticSiteWithExternalDnsFull,
