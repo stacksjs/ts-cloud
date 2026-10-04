@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.30...v0.16.31)
+
+## 🐛 Bug Fixes
+
+- **deploy**: let a declared memory limit replace the one the box resolved ([10a388d](https://github.com/stacksjs/ts-cloud/commit/10a388d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.31 ([924c4ad](https://github.com/stacksjs/ts-cloud/commit/924c4ad)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.29...v0.16.30)
 
 ## 🐛 Bug Fixes
