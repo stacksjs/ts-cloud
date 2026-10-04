@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.25...v0.16.26)
+
+## 🐛 Bug Fixes
+
+- **cloudfront**: type getDistributionConfig as the raw config it returns ([5d2e921](https://github.com/stacksjs/ts-cloud/commit/5d2e921)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## ✅ Tests
+
+- **deploy**: stub CloudFront aliases in the shapes the client returns ([b54e387](https://github.com/stacksjs/ts-cloud/commit/b54e387)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.26 ([ab08c40](https://github.com/stacksjs/ts-cloud/commit/ab08c40)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.24...v0.16.25)
 
 ## 🐛 Bug Fixes
