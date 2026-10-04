@@ -93,4 +93,16 @@ describe('S3Client XML response parsing (issue #105)', () => {
     expect(objects[0].Size).toBe(100)
     expect(objects[1].Key).toBe('file-b.txt')
   })
+
+  it('getBucketVersioning reads Status from the unwrapped shape (live: it read undefined)', async () => {
+    const client = new S3Client('us-west-2')
+    withMockedRequest(client, { '@_xmlns': 'http://s3.amazonaws.com/doc/2006-03-01/', Status: 'Enabled' })
+    expect(await client.getBucketVersioning('b')).toEqual({ Status: 'Enabled' })
+
+    withMockedRequest(client, { VersioningConfiguration: { Status: 'Suspended' } })
+    expect(await client.getBucketVersioning('b')).toEqual({ Status: 'Suspended' })
+
+    withMockedRequest(client, { '@_xmlns': 'http://s3.amazonaws.com/doc/2006-03-01/' })
+    expect(await client.getBucketVersioning('b')).toEqual({ Status: undefined })
+  })
 })

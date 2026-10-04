@@ -611,8 +611,16 @@ export class S3Client {
     metadata?: Record<string, string>
     metadataDirective?: 'COPY' | 'REPLACE'
   }): Promise<void> {
+    // Both keys are URI-encoded per segment, as putObject does: the copy source
+    // header must be URL-encoded, and the request path doubles as the SigV4
+    // canonical URI.
+    const encode = (key: string) =>
+      key
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')
     const headers: Record<string, string> = {
-      'x-amz-copy-source': `/${options.sourceBucket}/${options.sourceKey}`,
+      'x-amz-copy-source': `/${options.sourceBucket}/${encode(options.sourceKey)}`,
     }
 
     if (options.metadataDirective) {
@@ -633,7 +641,7 @@ export class S3Client {
       service: 's3',
       region: this.region,
       method: 'PUT',
-      path: `/${options.destinationBucket}/${options.destinationKey}`,
+      path: `/${options.destinationBucket}/${encode(options.destinationKey)}`,
       headers,
     })
   }
@@ -1095,8 +1103,10 @@ export class S3Client {
       path: `/${bucket}`,
       queryParams: { versioning: '' },
     })
+    // parseXmlResponse strips the single <VersioningConfiguration> root, so the
+    // status is usually at the top level; keep the wrapped form as a fallback.
     return {
-      Status: result?.VersioningConfiguration?.Status,
+      Status: (result?.VersioningConfiguration ?? result)?.Status,
     }
   }
 
