@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.20...v0.16.21)
+
+## 🐛 Bug Fixes
+
+- **secrets-manager**: send a ClientRequestToken on updateSecret and putSecretValue ([c45b91a](https://github.com/stacksjs/ts-cloud/commit/c45b91a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.21 ([767cc04](https://github.com/stacksjs/ts-cloud/commit/767cc04)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.19...v0.16.20)
 
 ## 🐛 Bug Fixes
