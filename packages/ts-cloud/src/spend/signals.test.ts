@@ -288,6 +288,13 @@ describe('gaps do not poison the baseline', () => {
 })
 
 describe('the cycle covers every signal', () => {
+  /**
+   * seedTraffic writes ten days of 200 requests an hour, ~48,000 rows, which
+   * takes about 1.5s on its own: a third of bun's 5s default, which a loaded
+   * full-suite run can exceed. The work is fixed; only the clock varies.
+   */
+  const SEEDED_TIMEOUT_MS = 30_000
+
   function seedTraffic(context: ReturnType<typeof fixture>, spikeErrors: number) {
     const start = new Date('2026-07-05T12:00:00Z').getTime()
     const hours = Math.floor((NOW.getTime() - start) / HOUR)
@@ -307,7 +314,7 @@ describe('the cycle covers every signal', () => {
     expect(found).toHaveLength(1)
     expect(found[0].signal).toBe('http.error_rate')
     expect(found[0].observed).toBeGreaterThan(found[0].expected)
-  })
+  }, SEEDED_TIMEOUT_MS)
 
   it('stays quiet when the error rate is merely ordinary', () => {
     const context = fixture()
@@ -315,7 +322,7 @@ describe('the cycle covers every signal', () => {
     expect(
       context.service.detectAnomalies({ ...context.scope, signals: ['http.error_rate'] }, NOW, { seasonLength: 24 }),
     ).toEqual([])
-  })
+  }, SEEDED_TIMEOUT_MS)
 
   it('records the unit and the suppressed-bucket count as evidence', () => {
     const context = fixture()
@@ -325,14 +332,14 @@ describe('the cycle covers every signal', () => {
     })
     expect(anomaly.evidence).toMatchObject({ unit: 'ratio' })
     expect(anomaly.evidence).toHaveProperty('suppressedBuckets')
-  })
+  }, SEEDED_TIMEOUT_MS)
 
   it('runs every signal by default', () => {
     const context = fixture()
     seedTraffic(context, 120)
     const found = context.service.detectAnomalies(context.scope, NOW, { seasonLength: 24 })
     expect(found.some((anomaly) => anomaly.signal === 'http.error_rate')).toBe(true)
-  })
+  }, SEEDED_TIMEOUT_MS)
 
   /** Seed one route across the 14-day floor at 25 req/hour: enough to clear the
    * denominator floor and to rank as busy, without six figures of inserts. */

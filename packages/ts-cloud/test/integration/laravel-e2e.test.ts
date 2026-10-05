@@ -1,7 +1,7 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { createDashboardSite } from '../../../core/src/presets/dashboard'
 import { createLaravelPreset } from '../../../core/src/presets/laravel'
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -113,6 +113,17 @@ describe('Laravel end-to-end: server bootstrap (cloud-init)', () => {
 })
 
 describe('Laravel end-to-end: app deploy', () => {
+  // The config notifies Slack, and a deploy awaits its notifications. Unstubbed,
+  // that was a real POST to hooks.slack.com with no timeout, which is what made
+  // this test slow and, on a bad network, blow the 5s test timeout.
+  let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>
+  beforeEach(() => {
+    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((async () => new Response('ok')) as unknown as typeof fetch)
+  })
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
   it('runs a zero-downtime git deploy with nginx + SSL + queues + scheduler', async () => {
     const config = laravelConfig()
     const driver = mockDriver()
@@ -155,6 +166,8 @@ describe('Laravel end-to-end: app deploy', () => {
     expect(cmd).toContain('acme-main-queue-0.service')
     expect(cmd).toContain('artisan schedule:run')
     expect(cmd).toContain('acme-main-daemon-reverb-0.service')
+    // ...and tells Slack, without leaving the machine.
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toContain('https://hooks.slack.com/services/x')
   })
 
   it('deploys the UI as a static site behind htpasswd + SSL', async () => {

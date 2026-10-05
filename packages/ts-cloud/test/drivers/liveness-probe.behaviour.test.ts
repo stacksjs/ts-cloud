@@ -1,5 +1,5 @@
 import type { LivenessOptions } from '../../src/drivers/shared/deploy-script'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
@@ -18,8 +18,15 @@ import { buildLivenessUnits, buildSiteDeployScript, buildLocalArtifactFetch } fr
  *
  * The script runs under `sh` against a sandbox: `/run` and `/proc/uptime` are
  * rewritten to files in a temp dir, and `systemctl`, `logger`, `flock`, `date`
- * and (unless a test wants the real one) `curl` are shims on PATH that read
- * and record state there. Nothing touches systemd.
+ * and (unless a test wants the real one) `curl` are shims that read and record
+ * state there. Nothing touches systemd.
+ *
+ * The shims are shell functions defined at the top of the script rather than
+ * executables on PATH. A run calls them a dozen times, and as separate
+ * `#!/bin/sh` processes they made each run cost ~100ms on macOS, so the tests
+ * that drive a dozen runs brushed against bun's 5s timeout under a loaded
+ * full-suite run. Functions shadow the commands the same way, without a fork
+ * and exec per call.
  */
 const dirs: string[] = []
 
@@ -57,8 +64,6 @@ function extractScript(lines: string[]): string {
 function sandbox(options: LivenessOptions & { port?: number } = {}): { box: Box, run: () => Promise<void>, log: () => string[], restarts: () => number, state: (name: string) => string | null } {
   const dir = mkdtempSync(join(tmpdir(), 'ts-cloud-liveness-'))
   dirs.push(dir)
-  const bin = join(dir, 'bin')
-  mkdirSync(bin)
 
   const script = extractScript(buildLivenessUnits({
     unitBase: 'acme-web',
@@ -68,23 +73,21 @@ function sandbox(options: LivenessOptions & { port?: number } = {}): { box: Box,
   }))
     .replaceAll('/run/', `${dir}/run-`)
     .replaceAll('/proc/uptime', `${dir}/uptime`)
-  writeFileSync(join(dir, 'liveness.sh'), script)
-
-  const shim = (name: string, body: string): void => {
-    writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`)
-    chmodSync(join(bin, name), 0o755)
-  }
-  shim('flock', 'exit 0')
-  shim('logger', `shift 2; printf '%s\\n' "$*" >> ${dir}/log`)
-  shim('date', `cat ${dir}/now`)
-  shim('systemctl', [
-    'case "$1" in',
-    `  list-units) echo "${UNIT} loaded active running Acme" ;;`,
-    '  is-active) exit 0 ;;',
-    `  show) case "$*" in *ActiveEnterTimestampMonotonic*) cat ${dir}/since ;; *MainPID*) echo 0 ;; esac ;;`,
-    `  restart) echo "$2" >> ${dir}/restarts ;;`,
-    'esac',
-  ].join('\n'))
+  const [shebang, ...body] = script.split('\n')
+  // Builtins only (read, printf, case), so a shim call never execs anything.
+  const shims = [
+    'flock() { return 0; }',
+    `logger() { shift 2; printf '%s\\n' "$*" >> '${dir}/log'; }`,
+    `date() { read -r ts_cloud_test_now < '${dir}/now'; printf '%s\\n' "$ts_cloud_test_now"; }`,
+    'systemctl() {',
+    '  case "$1" in',
+    `    list-units) echo "${UNIT} loaded active running Acme" ;;`,
+    '    is-active) return 0 ;;',
+    `    show) case "$*" in *ActiveEnterTimestampMonotonic*) read -r ts_cloud_test_since < '${dir}/since'; printf '%s\\n' "$ts_cloud_test_since" ;; *MainPID*) echo 0 ;; esac ;;`,
+    `    restart) echo "$2" >> '${dir}/restarts' ;;`,
+    '  esac',
+    '}',
+  ]
 
   const box: Box = { dir, uptime: 1000, activeSince: 1, now: 1_700_000_000, curl: 28 }
 
@@ -92,13 +95,11 @@ function sandbox(options: LivenessOptions & { port?: number } = {}): { box: Box,
     writeFileSync(join(dir, 'uptime'), `${box.uptime}.42 9999.00\n`)
     writeFileSync(join(dir, 'since'), `${box.activeSince * 1_000_000}\n`)
     writeFileSync(join(dir, 'now'), `${box.now}\n`)
-    if (box.curl === null)
-      rmSync(join(bin, 'curl'), { force: true })
-    else
-      shim('curl', `exit ${box.curl}`)
+    const curl = box.curl === null ? [] : [`curl() { return ${box.curl}; }`]
+    writeFileSync(join(dir, 'liveness.sh'), [shebang, ...shims, ...curl, ...body].join('\n'))
 
     const proc = Bun.spawn([SH, join(dir, 'liveness.sh')], {
-      env: { PATH: `${bin}:/usr/bin:/bin` },
+      env: { PATH: '/usr/bin:/bin' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -333,6 +334,8 @@ describe('what counts as alive', () => {
     expect(sb.log().at(-1)).toBe('check 1 of 3 failed on 127.0.0.1:3000/ (connection refused)')
   })
 
+  // Real curl waits out a real 1s --max-time on the silent listener, so this
+  // one gets room beyond the 5s default for three real-curl runs under load.
   it('against a real port: an answer is alive, a listener that never answers is not', async () => {
     // Real curl. A server that accepts and then says nothing is what a wedged
     // (or warming) event loop looks like from outside.
@@ -360,7 +363,7 @@ describe('what counts as alive', () => {
     closed.box.curl = null
     await tick(closed)
     expect(closed.log().at(-1)).toBe(`check 1 of 3 failed on 127.0.0.1:${server.port}/ (connection refused)`)
-  })
+  }, 30_000)
 })
 
 describe('the deploy', () => {

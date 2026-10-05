@@ -45,7 +45,10 @@ printf '${'a'.repeat(40)} refs/heads/main\\n${'b'.repeat(40)} refs/heads/feature
       const refs = await discoverGitRefs('https://git.example/acme/web.git', {
         credential: { username: 'deploy', token: 'fixture-value' },
         executable: fake.path,
-        timeoutMs: 1_000,
+        // Generous on purpose: this checks where the credential goes, not the
+        // timeout, and a 1s bound failed when a loaded machine was slow to
+        // spawn the fake git.
+        timeoutMs: 30_000,
       })
       expect(refs.branches.map((ref) => ref.name)).toEqual(['feature/source', 'main'])
       expect(refs.tags).toEqual([{ name: 'v1.0.0', commitSha: 'c'.repeat(40) }])
@@ -78,7 +81,7 @@ printf '${'a'.repeat(40)} refs/heads/main\\n'
       expect(
         (await discoverGitRefs('git@git.example:acme/web.git', { deployKey, executable: fake.path })).branches,
       ).toHaveLength(1)
-      expect(discoverGitRefs('git@other.example:acme/web.git', { deployKey, executable: fake.path })).rejects.toThrow(
+      await expect(discoverGitRefs('git@other.example:acme/web.git', { deployKey, executable: fake.path })).rejects.toThrow(
         'same host',
       )
     } finally {
@@ -124,7 +127,7 @@ case "$*" in *rev-parse*) printf '${'f'.repeat(40)}\n';; *clone*--filter=blob:no
           { executable: fake.path },
         ),
       ).toMatchObject({ commitSha: 'f'.repeat(40) })
-      expect(
+      await expect(
         cloneSourceBinding(
           {
             remote: 'https://git.example/acme/web.git',
@@ -158,7 +161,7 @@ case "$*" in *fetch*origin*${sha}*) exit 0;; *checkout*--detach*${sha}*) exit 0;
           { executable: fake.path },
         ),
       ).toMatchObject({ commitSha: sha })
-      expect(
+      await expect(
         cloneSourceBinding(
           {
             remote: 'https://git.example/acme/web.git',
@@ -176,15 +179,17 @@ case "$*" in *fetch*origin*${sha}*) exit 0;; *checkout*--detach*${sha}*) exit 0;
   })
 
   it('bounds hung Git processes and rejects secret-bearing remotes and unsafe refs', async () => {
-    const fake = executable('sleep 2')
+    // exec, so the timeout's kill lands on the sleep itself and leaves no orphan
+    // holding the pipes open after the test.
+    const fake = executable('exec sleep 5')
     try {
-      expect(
+      await expect(
         discoverGitRefs('https://git.example/acme/web.git', { executable: fake.path, timeoutMs: 100 }),
       ).rejects.toThrow('exceeded 100ms')
-      expect(
+      await expect(
         discoverGitRefs('https://user:password@git.example/acme/web.git', { executable: fake.path }),
       ).rejects.toThrow('cannot contain credentials')
-      expect(
+      await expect(
         cloneSourceBinding(
           {
             remote: 'https://git.example/acme/web.git',
