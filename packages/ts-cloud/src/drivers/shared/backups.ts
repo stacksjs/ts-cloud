@@ -123,7 +123,8 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     'export PATH="/root/.bun/bin:/usr/local/bin:$PATH"',
     'notify() { [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "$1" || true; }',
     'cd /etc/ts-cloud',
-    'if ! ts-backups backup --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed"; exit 1; fi',
+    // `start` is ts-backups' backup command; it has no `backup` subcommand.
+    'if ! ts-backups start --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed"; exit 1; fi',
     'TS_CLOUD_BACKUP_RUN_EOF',
     `chmod +x ${BACKUP_RUNNER_PATH}`,
     // Cron entry.

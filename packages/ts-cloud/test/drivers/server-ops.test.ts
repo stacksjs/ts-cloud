@@ -84,7 +84,7 @@ describe('backups (ts-backups integration)', () => {
     }).join('\n')
     expect(script).toContain('bun.sh/install')
     expect(script).toContain('bun add -g ts-backups')
-    expect(script).toContain('ts-backups backup --config')
+    expect(script).toContain('ts-backups start --config /etc/ts-cloud/backups.config.ts')
     expect(script).not.toContain('aws s3 sync')
     expect(script).toContain('0 3 * * * root /usr/local/bin/ts-cloud-backup.sh')
   })
