@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.31...v0.16.32)
+
+## 🐛 Bug Fixes
+
+- **deploy**: a failed cutover always puts the previous release back ([45a31fe](https://github.com/stacksjs/ts-cloud/commit/45a31fe)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **test**: keep bun's test discovery out of pantry/ and dist/ ([cb4d82a](https://github.com/stacksjs/ts-cloud/commit/cb4d82a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.32 ([e89aac7](https://github.com/stacksjs/ts-cloud/commit/e89aac7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.30...v0.16.31)
 
 ## 🐛 Bug Fixes
