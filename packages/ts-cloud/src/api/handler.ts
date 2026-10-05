@@ -1,4 +1,4 @@
-import type { ApiTokenPrincipal, AutomationIdentityStore } from '../automation'
+import type { AutomationIdentityStore } from '../automation'
 import type { ControlPlaneStore } from '../control-plane'
 import type { ApplicationArtifactStore, ApplicationDraftStore, RegistryConnectionStore } from '../onboarding'
 import type { SourceConnectionStore } from '../source'

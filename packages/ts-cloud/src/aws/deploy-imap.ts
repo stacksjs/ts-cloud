@@ -184,7 +184,6 @@ export async function deployImapServer(config: MailServerDeployConfig = defaultC
 
   // Create the server startup script - fetches credentials from Secrets Manager using AWSClient directly
   const serverScript = `#!/usr/bin/env bun
-import * as fs from 'node:fs'
 import { startImapServer } from './imap-server'
 import { AWSClient } from './client'
 

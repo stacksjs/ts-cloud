@@ -1,5 +1,5 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
-import type { ControlPlaneStore, JsonValue } from '../control-plane'
+import type { ControlPlaneStore } from '../control-plane'
 import type { DataCredential, DataDependency, DataService } from './model'
 import { dataServiceCapabilities } from './capabilities'
 

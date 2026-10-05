@@ -2,7 +2,7 @@ import type { ControlPlaneStore } from '../control-plane'
 import type { ApplicationArtifactRecord } from './types'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { basename, join } from 'node:path'
 import { resolveStatePath } from '@ts-cloud/core'
 import { inspectApplicationArchive } from './archive'
 

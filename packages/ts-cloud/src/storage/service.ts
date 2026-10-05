@@ -1,5 +1,5 @@
 import type { ControlPlaneOperation, JsonValue } from '../control-plane'
-import type { QueueExecutionContext, QueueOperationHandler } from '../queue'
+import type { QueueOperationHandler } from '../queue'
 import type { PersistentVolume, VolumeAttachment, VolumeCapabilities, VolumeDriver, VolumeDriverObservation, VolumeSnapshot, VolumeType } from './model'
 import { DurableOperationQueue } from '../queue'
 import { VolumeStore } from './store'

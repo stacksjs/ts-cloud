@@ -2,7 +2,7 @@ import type { JsonValue } from '../control-plane'
 import type { DataProviderTransport } from './adapters'
 import type { DataAction, DataEngine } from './model'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { resolveStatePath } from '@ts-cloud/core'
 
 type Input = Record<string, JsonValue>

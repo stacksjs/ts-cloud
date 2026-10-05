@@ -1,6 +1,6 @@
 import type { ControlPlaneOperation, ControlPlaneStore, JsonValue } from '../control-plane'
 import type { SourceConnectionStore } from './store'
-import type { SourceBinding, SourceConnection, SourceProvider, SourceWebhook } from './types'
+import type { SourceBinding, SourceProvider, SourceWebhook } from './types'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { PreviewEnvironmentStore } from '../preview'
 import { DurableOperationQueue } from '../queue'

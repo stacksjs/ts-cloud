@@ -2,7 +2,7 @@
  * Stack Diff Analyzer
  * Analyzes differences between CloudFormation templates for stack updates
  */
-import type { CloudFormationResource, CloudFormationTemplate } from '@ts-cloud/aws-types'
+import type { CloudFormationTemplate } from '@ts-cloud/aws-types'
 
 export interface ResourceDiff {
   logicalId: string

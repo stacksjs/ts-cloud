@@ -1,4 +1,4 @@
-import type { ControlPlaneStore, JsonValue } from '../control-plane'
+import type { ControlPlaneStore } from '../control-plane'
 import type { RegionalExecution, RegionalOperationKind, RegionalTarget, RegionalTopology, RegionalTrafficRoute, ReplicationChannel } from './types'
 
 type Row = Record<string, unknown>

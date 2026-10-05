@@ -549,7 +549,7 @@ export function generateHttpsServerCode(options: {
 
   return `
 // HTTPS Server with Let's Encrypt certificates
-import { readFileSync, existsSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 
 const CERT_PATH = '${certPath}'
 const HTTP_PORT = ${httpPort}
