@@ -13,7 +13,7 @@
 import type { SharedPathEntry, SiteLivenessConfig } from '@ts-cloud/core'
 import type { ReleasePaths } from './releases'
 import { formatEnvFile } from './env-file'
-import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxImageCacheDir } from './releases'
+import { buildActivateRelease, buildDeployLock, buildRecordPreviousRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxImageCacheDir } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
 
 /** Extensions that mark the first token as something a runtime should be given. */
@@ -603,6 +603,8 @@ export function buildZeroDowntimeCutover(options: ZeroDowntimeCutoverOptions): s
           `[ "$TS_CLOUD_HEALTHY" -eq 1 ] || ${fail(`stopped answering ${gatePath} once it served alone`)}`,
         ]
       : []),
+    // The release this one replaced, by name, for `deploy:rollback`.
+    ...buildRecordPreviousRelease(paths),
     // Drop enabled-but-stopped instances from older deploys and the legacy
     // non-templated unit so only the live release starts at boot. Never the
     // TEMPLATE file (`<base>@.service`): disabling it removes every instance's
@@ -975,6 +977,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // later, and the restart loop that followed was the live release. A
     // failure puts `current` back and restarts the previous release.
     `for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${serviceName} || { echo "[ts-cloud] release ${releaseId} of ${serviceName} did not stay up — restoring the previous release" >&2; journalctl -u ${serviceName} -n 50 --no-pager >&2 || true; if [ -n "$TS_CLOUD_PREV_CURRENT" ] && [ -d "$TS_CLOUD_PREV_CURRENT" ] && [ "$(readlink -f "$TS_CLOUD_PREV_CURRENT")" != "$(readlink -f ${paths.release})" ]; then ln -sfn "$TS_CLOUD_PREV_CURRENT" ${paths.current}.tmp && mv -Tf ${paths.current}.tmp ${paths.current}; systemctl restart ${serviceName} || true; fi; exit 1; }; done`,
+    ...buildRecordPreviousRelease(paths),
     ...buildPruneReleases(paths, keepReleases),
     // Only a ported service can be probed over HTTP. A worker or scheduler has
     // no port to ask, so it gets no timer rather than a check that would call

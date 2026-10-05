@@ -25,14 +25,15 @@ describe('buildRollbackScript', () => {
   it('rolls back to the previous release atomically when no target given', () => {
     const s = buildRollbackScript(paths).join('\n')
     expect(s).toContain('readlink -f /var/www/app/current')
-    expect(s).toContain('no previous release to roll back to')
+    expect(s).toContain('no release to roll back to')
     expect(s).toContain('mv -Tf /var/www/app/current.tmp /var/www/app/current')
   })
 
   it('rolls back to a specific release id, guarding for existence', () => {
     const s = buildRollbackScript(paths, { to: 'r-old' }).join('\n')
-    expect(s).toContain('[ -d /var/www/app/releases/r-old ]')
-    expect(s).toContain('ln -sfn /var/www/app/releases/r-old /var/www/app/current.tmp')
+    expect(s).toContain('TS_CLOUD_RB_TARGET=/var/www/app/releases/r-old')
+    expect(s).toContain('[ -d "$TS_CLOUD_RB_TARGET" ]')
+    expect(s).toContain('ln -sfn "$TS_CLOUD_RB_TARGET" /var/www/app/current.tmp')
     expect(s).toContain('mv -Tf /var/www/app/current.tmp /var/www/app/current')
   })
 

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { buildZeroDowntimeCutover } from '../../src/drivers/shared/deploy-script'
-import { releasePaths } from '../../src/drivers/shared/releases'
+import { buildRollbackPlanScript, buildRollbackScript, previousReleasePath, releasePaths } from '../../src/drivers/shared/releases'
 
 /**
  * These run the zero-downtime cutover instead of asserting on its text.
@@ -53,6 +53,7 @@ interface Box {
   stopped: () => string[]
   current: () => string
   run: (releaseId: string, healthCheckPath?: string) => { code: number, stderr: string }
+  exec: (lines: string[]) => { code: number, stdout: string, stderr: string }
 }
 
 function box(serving: Array<{ releaseId: string, behaviour: Behaviour }>, incoming: { releaseId: string, behaviour: Behaviour }): Box {
@@ -134,6 +135,14 @@ exec /bin/mv "$@"
     state: unit => (existsSync(join(units, unit)) ? readFileSync(join(units, unit), 'utf8').trim() : 'none'),
     stopped: () => (existsSync(join(dir, 'stopped')) ? readFileSync(join(dir, 'stopped'), 'utf8').trim().split('\n') : []),
     current: () => (existsSync(join(base, 'current')) ? readlinkSync(join(base, 'current')).split('/').pop() as string : 'none'),
+    exec(lines) {
+      const proc = Bun.spawnSync(['bash', '-c', ['set -uo pipefail', ...lines].join('\n')], {
+        env: { ...process.env, DIR: dir, PATH: `${bin}:${process.env.PATH}` },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      return { code: proc.exitCode ?? -1, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() }
+    },
     run(releaseId, healthCheckPath) {
       const script = ['set -euo pipefail', ...buildZeroDowntimeCutover({ paths: paths(releaseId), unitBase: UNIT_BASE, releaseId, port: PORT, healthCheckPath })].join('\n')
       const proc = Bun.spawnSync(['bash', '-c', script], {
@@ -231,5 +240,57 @@ describe('zero-downtime cutover, executed', () => {
     expect(result.code).toBe(1)
     expect(result.stderr).toContain('there was no previous release to restore')
     expect(b.current()).toBe('none')
+  })
+})
+
+describe('rollback, executed', () => {
+  setDefaultTimeout(60_000)
+
+  function deployed(next: Behaviour = 'ok') {
+    const b = box([{ releaseId: 'old111', behaviour: 'ok' }], { releaseId: 'new222', behaviour: 'ok' })
+    expect(b.run('new222', '/health').code).toBe(0)
+    writeFileSync(join(b.dir, 'behaviour', OLD), next)
+    // The unit template, where the rollback looks for it.
+    mkdirSync(join(b.dir, 'systemd'), { recursive: true })
+    writeFileSync(join(b.dir, 'systemd', `${UNIT_BASE}@.service`), '')
+    return b
+  }
+  const rollback = (b: Box) => buildRollbackScript(releasePaths(b.base, 'unused'), { unitBase: UNIT_BASE, systemdDir: join(b.dir, 'systemd') })
+
+  it('the deploy records exactly which release it replaced', () => {
+    const b = deployed()
+    expect(readFileSync(previousReleasePath(b.base), 'utf8').trim()).toBe('old111')
+  })
+
+  it('goes back to the recorded release, not to the most recently touched one', () => {
+    const b = deployed()
+    // An older release dir touched after the deploy: newest by mtime, wrong.
+    mkdirSync(join(b.base, 'releases', 'zzz999'), { recursive: true })
+    writeFileSync(join(b.dir, 'behaviour', `${UNIT_BASE}@zzz999.service`), 'ok')
+    const result = b.exec(rollback(b))
+    expect(result.code).toBe(0)
+    expect(b.current()).toBe('old111')
+    expect(b.state(OLD)).toBe('active')
+    expect(b.state(NEW)).toBe('inactive')
+    expect(existsSync(previousReleasePath(b.base))).toBe(false)
+  })
+
+  it('keeps the current release serving when the release rolled back to will not start', () => {
+    const b = deployed('crash')
+    const result = b.exec(rollback(b))
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('did not stay up; the current release keeps serving')
+    expect(b.current()).toBe('new222')
+    expect(b.state(NEW)).toBe('active')
+  })
+
+  it('a dry run says where it would go and changes nothing', () => {
+    const b = deployed()
+    const result = b.exec(buildRollbackPlanScript(releasePaths(b.base, 'unused')))
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('would roll back from new222 to old111')
+    expect(b.current()).toBe('new222')
+    expect(b.state(NEW)).toBe('active')
+    expect(b.state(OLD)).toBe('inactive')
   })
 })

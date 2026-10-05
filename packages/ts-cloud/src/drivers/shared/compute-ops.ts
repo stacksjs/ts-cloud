@@ -11,7 +11,7 @@ import type { CloudDriver, DatabaseConfig, EnvironmentType, RemoteDeployInstance
 import { siteInstallBase } from '../../deploy/site-target'
 import { buildBackupRestoreScript } from './backups'
 import { PANTRY_PROJECT_DIR } from './package-manager'
-import { buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
+import { buildRollbackPlanScript, buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
 import { buildServerRecipeScript } from './server-recipes'
 
 export interface ComputeOpsLogger {
@@ -63,7 +63,7 @@ async function findTargets(ctx: ComputeOpsContext) {
  */
 export async function rollbackComputeSite(
   ctx: ComputeOpsContext,
-  options: { siteName: string; to?: string },
+  options: { siteName: string; to?: string; dryRun?: boolean },
 ): Promise<ComputeOpsResult> {
   const logger = ctx.logger || noopLogger
   const targets = await findTargets(ctx)
@@ -72,6 +72,19 @@ export async function rollbackComputeSite(
 
   const appBase = siteInstallBase(ctx.slug, options.siteName)
   const paths = releasePaths(appBase, options.to || 'unused')
+
+  // Reports the target and changes nothing. `--dry-run` used to be passed
+  // through by buddy and not understood here, so a "dry run" was a rollback.
+  if (options.dryRun) {
+    const plan = await ctx.driver.runRemoteDeploy({
+      targets,
+      commands: ['set -uo pipefail', ...buildRollbackPlanScript(paths, options.to ? { to: options.to } : {})],
+      comment: `ts-cloud rollback plan ${ctx.slug}/${options.siteName}`,
+      tags: { Project: ctx.slug, Environment: ctx.environment, Role: ctx.role || 'app' },
+    })
+    return { success: plan.success, error: plan.error, perInstance: plan.perInstance }
+  }
+
   const commands = [
     'set -uo pipefail',
     // unitBase lets the rollback swap the running templated release instance

@@ -449,65 +449,121 @@ export function buildActivateRelease(paths: ReleasePaths): string[] {
 }
 
 /**
- * Roll the active release back to a previous one (Forge-style rollback). With
- * `to` set, points `current` at `releases/<to>`; otherwise picks the most recent
- * release that isn't the one `current` resolves to. Atomic (temp symlink + `mv
- * -T`), and a no-op-safe guard fails loudly if the target is missing rather than
- * leaving `current` dangling.
+ * Where a deploy writes the id of the release it replaced.
  *
- * Before the flip, every shared path recorded on the box is relinked into the
- * target release ({@link buildRelinkSharedPaths}) so a rollback moves the CODE
- * back without moving the DATA back — a release cut before a path became shared
- * still carries its own copy, and going live with it would silently swap the
- * database for a stale snapshot.
- *
- * With `unitBase` set (e.g. `myapp-api`), the script also swaps the running
- * systemd release instance for sites deployed zero-downtime style (templated
- * `<unitBase>@<releaseId>` units pinned to their release dirs): it starts the
- * instance for the rolled-back release — overlapping on the SO_REUSEPORT port —
- * then stops the newer one, so even the rollback itself is zero-downtime. Sites
- * on the legacy single unit just get a restart. The caller appends any engine
- * reload (php-fpm/queues) — see {@link import('./laravel-deploy')}.
+ * "The previous release" used to be inferred from directory mtimes: the
+ * newest release dir that is not current. That is usually right and not
+ * always, because anything that creates or removes an entry in an old release
+ * dir moves its mtime, and a rollback triggered by a failed deploy needs the
+ * release that was actually serving a minute ago, not the most recently
+ * touched one. The deploy knows exactly which that was, so it says so.
  */
-export function buildRollbackScript(paths: ReleasePaths, options: { to?: string; unitBase?: string } = {}): string[] {
-  const flip = options.to
-    ? [
-        `[ -d ${paths.releases}/${options.to} ] || { echo "rollback target ${paths.releases}/${options.to} not found" >&2; exit 1; }`,
-        // Point the target release at the CURRENT shared state before it goes
-        // live: a release cut before a path was shared still holds its own real
-        // copy, and activating that would swap live data for a stale snapshot.
-        ...buildRelinkSharedPaths(paths, `${paths.releases}/${options.to}`),
-        `ln -sfn ${paths.releases}/${options.to} ${paths.current}.tmp`,
-        `mv -Tf ${paths.current}.tmp ${paths.current}`,
-      ]
-    : [
-        `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
-        // Newest release dir whose real path differs from current = the prior deploy.
-        `TS_CLOUD_PREV=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do ` +
-          '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
-        '[ -n "$TS_CLOUD_PREV" ] || { echo "no previous release to roll back to" >&2; exit 1; }',
-        ...buildRelinkSharedPaths(paths, '"$TS_CLOUD_PREV"'),
-        `ln -sfn "$TS_CLOUD_PREV" ${paths.current}.tmp`,
-        `mv -Tf ${paths.current}.tmp ${paths.current}`,
-        'echo "rolled back to $TS_CLOUD_PREV"',
-      ]
+export function previousReleasePath(base: string): string {
+  return `${deployMetaDir(base)}/previous-release`
+}
 
-  if (!options.unitBase) return flip
+/**
+ * Record the release `prevVar` (a shell variable holding the old `current`
+ * link target) as the one this deploy replaced. Nothing is written when there
+ * was none, or when it is the release being activated (a redeploy).
+ */
+export function buildRecordPreviousRelease(paths: ReleasePaths, prevVar = 'TS_CLOUD_PREV_CURRENT'): string[] {
+  const file = previousReleasePath(paths.base)
+  return [
+    `if [ -n "\${${prevVar}:-}" ] && [ -d "\$${prevVar}" ] && [ "$(readlink -f "\$${prevVar}")" != "$(readlink -f ${paths.release})" ]; then mkdir -p ${deployMetaDir(paths.base)}; basename "\$${prevVar}" > ${file}; fi`,
+  ]
+}
+
+/**
+ * Pick the release a rollback goes to, into `TS_CLOUD_RB_TARGET`, without
+ * changing anything. `to` when given; else the release the last deploy
+ * recorded replacing; else the newest release dir that is not current.
+ */
+function buildRollbackTarget(paths: ReleasePaths, to?: string): string[] {
+  const recorded = previousReleasePath(paths.base)
+  return [
+    `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
+    ...(to
+      ? [`TS_CLOUD_RB_TARGET=${paths.releases}/${to}`]
+      : [
+          'TS_CLOUD_RB_TARGET=',
+          `if [ -f ${recorded} ]; then TS_CLOUD_REC="${paths.releases}/$(cat ${recorded})"; if [ -d "$TS_CLOUD_REC" ] && [ "$(readlink -f "$TS_CLOUD_REC")" != "$TS_CLOUD_CURRENT" ]; then TS_CLOUD_RB_TARGET="$TS_CLOUD_REC"; fi; fi`,
+          `[ -n "$TS_CLOUD_RB_TARGET" ] || TS_CLOUD_RB_TARGET=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do ` +
+            '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
+        ]),
+    '[ -n "$TS_CLOUD_RB_TARGET" ] && [ -d "$TS_CLOUD_RB_TARGET" ] || { echo "no release to roll back to (looked for ${TS_CLOUD_RB_TARGET:-a previous release})" >&2; exit 1; }',
+    '[ "$(readlink -f "$TS_CLOUD_RB_TARGET")" != "$TS_CLOUD_CURRENT" ] || { echo "$(basename "$TS_CLOUD_RB_TARGET") is already the live release" >&2; exit 1; }',
+    'TS_CLOUD_RB_ID=$(basename "$TS_CLOUD_RB_TARGET")',
+  ]
+}
+
+/**
+ * Say what a rollback would do, and do nothing. `buddy deploy:rollback
+ * --dry-run` is answered by this.
+ */
+export function buildRollbackPlanScript(paths: ReleasePaths, options: { to?: string } = {}): string[] {
+  return [
+    ...buildRollbackTarget(paths, options.to),
+    'echo "would roll back from $(basename "${TS_CLOUD_CURRENT:-none}") to $TS_CLOUD_RB_ID (dry run: nothing changed)"',
+  ]
+}
+
+/**
+ * Roll the active release back to a previous one (Forge-style rollback). With
+ * `to` set, goes to `releases/<to>`; otherwise to the release the last deploy
+ * recorded replacing ({@link previousReleasePath}), falling back to the newest
+ * release that is not current.
+ *
+ * Before anything goes live, every shared path recorded on the box is
+ * relinked into the target release ({@link buildRelinkSharedPaths}) so a
+ * rollback moves the CODE back without moving the DATA back — a release cut
+ * before a path became shared still carries its own copy, and going live with
+ * it would silently swap the database for a stale snapshot.
+ *
+ * With `unitBase` set (e.g. `myapp-api`), sites deployed zero-downtime style
+ * (templated `<unitBase>@<releaseId>` units) get the cutover in the same order
+ * a deploy uses: the rolled-back release's instance starts beside the running
+ * one on the SO_REUSEPORT port and must stay up for the gate window before
+ * `current` flips and the newer instance is retired. It used to flip first and
+ * check for two seconds, so a rollback target that would not start left
+ * `current` naming it while the newer release kept serving. Sites on the
+ * legacy single unit flip and restart. The caller appends any engine reload
+ * (php-fpm/queues) — see {@link import('./laravel-deploy')}.
+ */
+export function buildRollbackScript(paths: ReleasePaths, options: { to?: string; unitBase?: string; gateSeconds?: number; systemdDir?: string } = {}): string[] {
+  const gate = Math.max(1, options.gateSeconds ?? 5)
+  // Overridable so the rollback can be run against a sandbox in tests.
+  const systemd = options.systemdDir ?? '/etc/systemd/system'
+  const flip = [
+    'ln -sfn "$TS_CLOUD_RB_TARGET" ' + `${paths.current}.tmp`,
+    `mv -Tf ${paths.current}.tmp ${paths.current}`,
+    // A second rollback should not ping-pong back to the release just left.
+    `rm -f ${previousReleasePath(paths.base)}`,
+    'echo "rolled back to $TS_CLOUD_RB_ID"',
+  ]
+  const prepare = [
+    ...buildRollbackTarget(paths, options.to),
+    ...buildRelinkSharedPaths(paths, '"$TS_CLOUD_RB_TARGET"'),
+  ]
+
+  if (!options.unitBase) return [...prepare, ...flip]
 
   const unitBase = options.unitBase
+  const target = `${unitBase}@\${TS_CLOUD_RB_ID}.service`
   return [
-    ...flip,
-    // Which release does `current` resolve to now? Its dir name is the
-    // templated instance id.
-    `TS_CLOUD_RB_ID=$(basename "$(readlink -f ${paths.current})")`,
-    // Zero-downtime layout: start the rolled-back release's instance alongside
-    // the current one (SO_REUSEPORT), then retire everything else.
-    `if [ -f /etc/systemd/system/${unitBase}@.service ]; then ` +
-      `systemctl start "${unitBase}@\${TS_CLOUD_RB_ID}.service"; sleep 2; ` +
-      `systemctl is-active --quiet "${unitBase}@\${TS_CLOUD_RB_ID}.service" || { echo "rolled-back release failed to start" >&2; exit 1; }; ` +
-      `systemctl enable "${unitBase}@\${TS_CLOUD_RB_ID}.service" 2>/dev/null || true; ` +
-      `systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done; ` +
-      `elif [ -f /etc/systemd/system/${unitBase}.service ]; then systemctl restart ${unitBase}.service; fi`,
+    ...prepare,
+    `if [ -f ${systemd}/${unitBase}@.service ]; then`,
+    `  systemctl start "${target}"`,
+    `  for TS_CLOUD_I in $(seq 1 ${gate}); do sleep 1; systemctl is-active --quiet "${target}" || { echo "the release rolled back to, $TS_CLOUD_RB_ID, did not stay up; the current release keeps serving" >&2; journalctl -u "${target}" -n 30 --no-pager >&2 || true; systemctl stop "${target}" 2>/dev/null || true; exit 1; }; done`,
+    ...flip.map(line => `  ${line}`),
+    `  systemctl enable "${target}" 2>/dev/null || true`,
+    `  systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl stop "$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "$TS_CLOUD_U" 2>/dev/null || true; done`,
+    `elif [ -f ${systemd}/${unitBase}.service ]; then`,
+    ...flip.map(line => `  ${line}`),
+    `  systemctl restart ${unitBase}.service`,
+    'else',
+    ...flip.map(line => `  ${line}`),
+    'fi',
   ]
 }
 

@@ -1129,7 +1129,8 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .command('deploy:rollback [site]', 'Roll a compute site back to a previous release')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--to <release>', 'Release id to roll back to (default: the previous release)')
-    .action(async (site?: string, options?: { env?: string; to?: string }) => {
+    .option('--dry-run', 'Say which release it would roll back to, and change nothing')
+    .action(async (site?: string, options?: { env?: string; to?: string; dryRun?: boolean }) => {
       cli.header('Rolling Back Release')
       try {
         const config = await loadValidatedConfig()
@@ -1143,7 +1144,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const { rollbackComputeSite } = await import('../../src/drivers/shared/compute-ops')
         const result = await rollbackComputeSite(
           { driver: createCloudDriver({ config }), slug: config.project.slug, environment, logger: cli },
-          { siteName, to: options?.to },
+          { siteName, to: options?.to, dryRun: options?.dryRun },
         )
         if (!result.success) {
           cli.error(`Rollback failed: ${result.error || 'unknown error'}`)

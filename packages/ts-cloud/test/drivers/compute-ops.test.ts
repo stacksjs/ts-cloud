@@ -25,7 +25,7 @@ describe('rollbackComputeSite', () => {
     const res = await rollbackComputeSite(ctx(driver), { siteName: 'main' })
     expect(res.success).toBe(true)
     const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
-    expect(cmd).toContain('no previous release to roll back to')
+    expect(cmd).toContain('no release to roll back to')
     expect(cmd).toContain('pantry restart php-fpm')
     expect(cmd).toContain('php artisan queue:restart')
   })
@@ -34,7 +34,7 @@ describe('rollbackComputeSite', () => {
     const driver = mockDriver()
     await rollbackComputeSite(ctx(driver), { siteName: 'main', to: 'r-42' })
     const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
-    expect(cmd).toContain('[ -d /var/www/acme-main/releases/r-42 ]')
+    expect(cmd).toContain('TS_CLOUD_RB_TARGET=/var/www/acme-main/releases/r-42')
     expect(cmd).toContain('mv -Tf /var/www/acme-main/current.tmp /var/www/acme-main/current')
   })
 
