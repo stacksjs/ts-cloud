@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+import { buildOnlyIfLiveGuard } from '../../src/drivers/shared/compute-ops'
 import { buildZeroDowntimeCutover } from '../../src/drivers/shared/deploy-script'
 import { buildRollbackPlanScript, buildRollbackScript, previousReleasePath, releasePaths } from '../../src/drivers/shared/releases'
 
@@ -289,6 +290,26 @@ describe('rollback, executed', () => {
     const result = b.exec(buildRollbackPlanScript(releasePaths(b.base, 'unused')))
     expect(result.code).toBe(0)
     expect(result.stdout).toContain('would roll back from new222 to old111')
+    expect(b.current()).toBe('new222')
+    expect(b.state(NEW)).toBe('active')
+    expect(b.state(OLD)).toBe('inactive')
+  })
+
+  it('--only-if-live rolls back the release this commit made live', () => {
+    const b = deployed()
+    const guard = buildOnlyIfLiveGuard(join(b.base, 'current'), 'web', 'new222f00dfeed')
+    const result = b.exec([...guard, ...rollback(b)])
+    expect(result.code).toBe(0)
+    expect(b.current()).toBe('old111')
+    expect(b.state(OLD)).toBe('active')
+  })
+
+  it('--only-if-live leaves alone a site this commit never switched', () => {
+    const b = deployed()
+    const guard = buildOnlyIfLiveGuard(join(b.base, 'current'), 'web', 'abc999f00dfeed')
+    const result = b.exec([...guard, ...rollback(b)])
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('web serves new222, not abc999f00dfeed; left alone')
     expect(b.current()).toBe('new222')
     expect(b.state(NEW)).toBe('active')
     expect(b.state(OLD)).toBe('inactive')

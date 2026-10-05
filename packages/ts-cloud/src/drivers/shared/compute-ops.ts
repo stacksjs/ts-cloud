@@ -63,7 +63,7 @@ async function findTargets(ctx: ComputeOpsContext) {
  */
 export async function rollbackComputeSite(
   ctx: ComputeOpsContext,
-  options: { siteName: string; to?: string; dryRun?: boolean },
+  options: { siteName: string; to?: string; dryRun?: boolean; onlyIfLive?: string },
 ): Promise<ComputeOpsResult> {
   const logger = ctx.logger || noopLogger
   const targets = await findTargets(ctx)
@@ -72,13 +72,17 @@ export async function rollbackComputeSite(
 
   const appBase = siteInstallBase(ctx.slug, options.siteName)
   const paths = releasePaths(appBase, options.to || 'unused')
+  // `onlyIfLive`: roll back only when the live release is this commit. A
+  // failed deploy rolls back what IT switched; a site it never reached is
+  // already on the release it should be on, and its "previous" is older.
+  const guard = options.onlyIfLive ? buildOnlyIfLiveGuard(paths.current, options.siteName, options.onlyIfLive) : []
 
   // Reports the target and changes nothing. `--dry-run` used to be passed
   // through by buddy and not understood here, so a "dry run" was a rollback.
   if (options.dryRun) {
     const plan = await ctx.driver.runRemoteDeploy({
       targets,
-      commands: ['set -uo pipefail', ...buildRollbackPlanScript(paths, options.to ? { to: options.to } : {})],
+      commands: ['set -uo pipefail', ...guard, ...buildRollbackPlanScript(paths, options.to ? { to: options.to } : {})],
       comment: `ts-cloud rollback plan ${ctx.slug}/${options.siteName}`,
       tags: { Project: ctx.slug, Environment: ctx.environment, Role: ctx.role || 'app' },
     })
@@ -87,6 +91,7 @@ export async function rollbackComputeSite(
 
   const commands = [
     'set -uo pipefail',
+    ...guard,
     // unitBase lets the rollback swap the running templated release instance
     // (zero-downtime layout); legacy single-unit sites just get a restart.
     ...buildRollbackScript(paths, {
@@ -110,6 +115,19 @@ export async function rollbackComputeSite(
   if (!result.success) logger.error(`Rollback failed: ${result.error || 'unknown error'}`)
   else logger.success(`Rolled back ${options.siteName}.`)
   return { success: result.success, error: result.error, perInstance: result.perInstance }
+}
+
+/**
+ * Stop the script (successfully) unless the site's live release is `release`.
+ * Release dirs are named by a short sha, so `release` may be the full one.
+ */
+export function buildOnlyIfLiveGuard(current: string, siteName: string, release: string): string[] {
+  const want = release.replace(/[^0-9A-Za-z._-]/g, '')
+  return [
+    `TS_CLOUD_LIVE_ID=$(basename "$(readlink -f ${current} 2>/dev/null)" 2>/dev/null || true)`,
+    `if [ -z "$TS_CLOUD_LIVE_ID" ] || [ "$TS_CLOUD_LIVE_ID" = "." ]; then echo "${siteName}: no live release here; left alone"; exit 0; fi`,
+    `case "${want}" in "$TS_CLOUD_LIVE_ID"*) ;; *) echo "${siteName} serves $TS_CLOUD_LIVE_ID, not ${want}; left alone"; exit 0 ;; esac`,
+  ]
 }
 
 /**
