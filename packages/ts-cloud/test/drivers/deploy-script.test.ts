@@ -210,142 +210,77 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(joined).toContain('MemoryHigh=infinity')
   })
 
-  it('health-gates the new instance BEFORE stopping the old one, and aborts without flipping current on failure', () => {
+  // What each failure actually leaves on the box is asserted by running the
+  // cutover in cutover.behaviour.test.ts. These pin the order of the steps.
+  it('health-gates the new instance BEFORE stopping the old one', () => {
     const script = buildSiteDeployScript(opts)
-    const startIdx = script.findIndex((l) => l === 'systemctl restart my-app-web@abc123.service')
-    const gateIdx = script.findIndex((l) => l.includes('failed its health gate'))
-    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
-    const stopOldIdx = script.findIndex((l) => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
-    expect(startIdx).toBeGreaterThan(-1)
-    expect(gateIdx).toBeGreaterThan(startIdx)
-    // Old instances captured before the new one starts, stopped only after the gate + flip.
-    const captureIdx = script.findIndex((l) => l.startsWith('TS_CLOUD_OLD_UNITS='))
+    const captureIdx = script.findIndex(l => l.startsWith('TS_CLOUD_OLD_UNITS='))
+    const startIdx = script.findIndex(l => l === 'systemctl restart my-app-web@abc123.service')
+    const gateIdx = script.findIndex(l => l.startsWith('TS_CLOUD_GATE_OK=1'))
+    const activateIdx = script.findIndex(l => l === 'mv -Tf /var/www/web/current.tmp /var/www/web/current')
+    const stopOldIdx = script.findIndex(l => l.startsWith('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
+    expect(captureIdx).toBeGreaterThan(-1)
     expect(captureIdx).toBeLessThan(startIdx)
+    expect(startIdx).toBeLessThan(gateIdx)
     expect(gateIdx).toBeLessThan(activateIdx)
     expect(activateIdx).toBeLessThan(stopOldIdx)
-    // The failure path stops the NEW instance and exits nonzero (old keeps serving).
-    expect(script.join('\n')).toContain('systemctl stop my-app-web@abc123.service 2>/dev/null || true; exit 1')
   })
 
-  it('self-heals when the new release cannot overlap the old (app without SO_REUSEPORT)', () => {
+  it('remembers where current pointed before anything can change it', () => {
     const script = buildSiteDeployScript(opts)
-    const joined = script.join('\n')
-    // First gate records whether the overlap held instead of aborting outright.
-    expect(joined).toContain('TS_CLOUD_GATE_OK=1')
-    // On overlap failure: retire the old instances, restart the new one, re-gate.
-    const healIdx = script.findIndex((l) => l.includes('could not overlap the previous release'))
-    expect(healIdx).toBeGreaterThan(-1)
-    expect(script[healIdx]).toContain('systemctl restart my-app-web@abc123.service')
-    // The retry still aborts (exit 1) if the release is genuinely broken.
-    expect(script[healIdx]).toContain('exit 1')
-    // The self-heal loop uses its own var so it does not shadow the post-flip
-    // stop-old loop (which must still run only after `current` is promoted).
-    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
-    const stopOldIdx = script.findIndex((l) => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
-    expect(healIdx).toBeLessThan(activateIdx)
-    expect(activateIdx).toBeLessThan(stopOldIdx)
+    const prevIdx = script.findIndex(l => l.startsWith('TS_CLOUD_PREV_CURRENT='))
+    const activateIdx = script.findIndex(l => l === 'mv -Tf /var/www/web/current.tmp /var/www/web/current')
+    expect(prevIdx).toBeGreaterThan(-1)
+    expect(prevIdx).toBeLessThan(activateIdx)
   })
 
-  it('verifies the port is actually listening once the old instances are retired', () => {
-    const script = buildSiteDeployScript(opts)
-    const stopOldIdx = script.findIndex(l => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
-    const listenIdx = script.findIndex(l => l.includes('TS_CLOUD_LISTENING=0'))
-
-    // `is-active` reports a live process, not a bound socket. A server that
-    // swallows its bind error stays active with nothing listening, and while
-    // the old instance still holds the port every earlier check passes — so
-    // the socket can only be trusted after the old instances are gone.
-    expect(listenIdx).toBeGreaterThan(stopOldIdx)
-    expect(script[listenIdx]).toContain('ss -ltnH "sport = :3000"')
-
-    // Self-heal: the port is free now, so a restart binds it.
-    const healIdx = script.findIndex(l => l.includes('nothing is listening on 3000'))
-    expect(healIdx).toBeGreaterThan(listenIdx)
-    expect(script[healIdx]).toContain('systemctl restart my-app-web@abc123.service')
-
-    // A release that cannot bind an uncontended port still fails the deploy.
-    const failIdx = script.findIndex(l => l.includes('never bound 3000'))
-    expect(failIdx).toBeGreaterThan(healIdx)
-    expect(script[failIdx]).toContain('exit 1')
+  it('makes room on the port only when the new release says the port was taken', () => {
+    const joined = buildSiteDeployScript(opts).join('\n')
+    expect(joined).toContain('EADDRINUSE|address already in use')
+    expect(joined).toContain('crashed on start — the previous release was never stopped')
   })
 
-  it('polls the configured health path against the site port as part of the gate', () => {
+  it('polls the configured health path, before and after the old release is retired', () => {
     const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
-    const joined = script.join('\n')
-    expect(joined).toContain('http://127.0.0.1:3000/health')
-    const curlIdx = script.findIndex((l) => l.includes('curl -sf'))
-    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
-    expect(curlIdx).toBeGreaterThan(-1)
-    expect(curlIdx).toBeLessThan(activateIdx)
+    const probes = script.map((l, i) => [l, i] as const).filter(([l]) => l.includes('http://127.0.0.1:3000/health')).map(([, i]) => i)
+    const activateIdx = script.findIndex(l => l === 'mv -Tf /var/www/web/current.tmp /var/www/web/current')
+    const stopOldIdx = script.findIndex(l => l.startsWith('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
+    expect(probes).toHaveLength(2)
+    expect(probes[0]).toBeLessThan(activateIdx)
+    expect(probes[1]).toBeGreaterThan(stopOldIdx)
   })
 
   // A single attempt made the gate a race against whatever the app does before
-  // its first response, on a box whose speed depends on its co-tenants. One
-  // site's startup image pass took under two seconds on a laptop and over
-  // fourteen on the box, and a good release failed to deploy.
+  // its first response, on a box whose speed depends on its co-tenants.
   it('keeps asking the health path rather than giving the release one chance', () => {
-    const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
-    const joined = script.join('\n')
-
-    expect(joined).toContain('TS_CLOUD_HEALTHY=0')
-    expect(joined).toContain('TS_CLOUD_HEALTHY=1; break')
-    expect(joined).toContain('[ "$TS_CLOUD_HEALTHY" -eq 1 ] ||')
-    // Several attempts, spaced, each individually bounded.
-    expect(joined).toMatch(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do if curl -sf/)
+    const joined = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' }).join('\n')
     const attempts = Number(joined.match(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do if curl -sf/)?.[1])
     expect(attempts).toBeGreaterThan(1)
-    expect(joined).not.toContain('curl -sf -o /dev/null --max-time 10 "http://127.0.0.1:3000/health" ||')
+    expect(joined).toContain('[ "$TS_CLOUD_HEALTHY" -eq 1 ] ||')
   })
 
-  // Still a gate: a release that never answers must not be promoted.
-  it('still fails the deploy when the health path never answers', () => {
-    const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
-    const gateIdx = script.findIndex(l => l.includes('TS_CLOUD_HEALTHY') && l.includes('-eq 1'))
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
-
-    expect(gateIdx).toBeGreaterThan(-1)
-    expect(script[gateIdx]).toContain('failed its health gate')
-    expect(gateIdx).toBeLessThan(activateIdx)
-  })
-
-  // A server may bind late on purpose, to keep visitors off itself while it
-  // warms. The response probe cannot tell the two instances apart, so without
-  // this the old release answers the gate for the new one, gets retired on the
-  // strength of its own reply, and leaves the port empty.
+  // The probe cannot tell the instances apart during the overlap, so the bind
+  // check has to come first or the old release answers for the new one.
   it('waits for the new instance to hold the port before trusting a response', () => {
-    const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
-    const joined = script.join('\n')
-
+    const joined = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' }).join('\n')
     expect(joined).toContain('systemctl show -p MainPID --value my-app-web@abc123.service')
-    expect(joined).toContain('grep -q "pid=$TS_CLOUD_NEW_PID,"')
-    expect(joined).toContain('never joined 3000 alongside the previous release')
-
-    // The bind check has to come before the response probe, or it proves nothing.
-    const bindIdx = joined.indexOf('TS_CLOUD_BOUND')
-    const healthIdx = joined.indexOf('TS_CLOUD_HEALTHY')
-    expect(bindIdx).toBeGreaterThan(-1)
-    expect(bindIdx).toBeLessThan(healthIdx)
+    expect(joined).toContain('grep "pid=$TS_CLOUD_NEW_PID," >/dev/null')
+    expect(joined.indexOf('TS_CLOUD_BOUND')).toBeLessThan(joined.indexOf('TS_CLOUD_HEALTHY'))
   })
 
-  // Getting to "listening" and getting to "answering" are different waits: one
-  // is a whole startup on a contended box, the other is a round trip.
   it('waits longer for the port than for a reply', () => {
     const joined = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' }).join('\n')
-    const bind = Number(joined.match(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do\s*\n?\s*TS_CLOUD_NEW_PID/)?.[1]
-      ?? joined.match(/seq 1 (\d+)\); do`?\s*TS_CLOUD_NEW_PID/)?.[1])
+    const bind = Number(joined.match(/seq 1 (\d+)\); do\n\s*TS_CLOUD_NEW_PID/)?.[1])
     const reply = Number(joined.match(/for TS_CLOUD_I in \$\(seq 1 (\d+)\); do if curl -sf/)?.[1])
-
     expect(bind).toBeGreaterThan(reply)
-    // Three minutes, so a slow cold start is not mistaken for a dead release.
     expect(bind * 3).toBeGreaterThanOrEqual(180)
   })
 
   // A missing `ss -p` capability is not a broken release.
-  it('falls back to the response gate where listener PIDs cannot be read', () => {
+  it('falls back to the response probes where listener PIDs cannot be read', () => {
     const joined = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' }).join('\n')
-
     expect(joined).toContain('if ss -ltnpH "sport = :3000" >/dev/null 2>&1; then')
-    expect(joined).toContain('the response gate runs without the bind check')
+    expect(joined).toContain('the response probes run without the bind check')
   })
 
   it('migrates off the legacy single unit with a one-time cutover and removes it', () => {
@@ -426,6 +361,23 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
     const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
     const restartIdx = script.findIndex((l) => l === 'systemctl restart my-app-worker.service')
     expect(activateIdx).toBeLessThan(restartIdx)
+  })
+
+  // One `is-active` straight after `restart` passed a worker that crashed a
+  // second later, and its restart loop became the live release.
+  it('watches a restarted worker for the gate window and goes back to the previous release if it dies', () => {
+    const script = buildSiteDeployScript(portless)
+    const prevIdx = script.findIndex(l => l.startsWith('TS_CLOUD_PREV_CURRENT='))
+    const activateIdx = script.findIndex(l => l === 'mv -Tf /var/www/worker/current.tmp /var/www/worker/current')
+    const restartIdx = script.findIndex(l => l === 'systemctl restart my-app-worker.service')
+    const watch = script.find(l => l.includes('did not stay up — restoring the previous release'))
+    expect(prevIdx).toBeGreaterThan(-1)
+    expect(prevIdx).toBeLessThan(activateIdx)
+    expect(watch).toBeDefined()
+    expect(script.indexOf(watch!)).toBeGreaterThan(restartIdx)
+    expect(watch).toContain('$(seq 1 5)')
+    expect(watch).toContain('ln -sfn "$TS_CLOUD_PREV_CURRENT" /var/www/worker/current.tmp')
+    expect(watch).toContain('exit 1')
   })
 
   it('carries memory ceilings from config, so a portless site need not be bounded by hand', () => {

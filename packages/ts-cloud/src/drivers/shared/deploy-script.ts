@@ -11,6 +11,7 @@
  * instant rollback. See {@link import('./releases')}.
  */
 import type { SharedPathEntry, SiteLivenessConfig } from '@ts-cloud/core'
+import type { ReleasePaths } from './releases'
 import { formatEnvFile } from './env-file'
 import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxImageCacheDir } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
@@ -461,6 +462,157 @@ const HEALTH_GATE_ATTEMPT_TIMEOUT = 5
  */
 const HEALTH_GATE_BIND_ATTEMPTS = 60
 
+export interface ZeroDowntimeCutoverOptions {
+  paths: ReleasePaths
+  /** `<slug>-<site>`; instances are `<unitBase>@<releaseId>.service`. */
+  unitBase: string
+  releaseId: string
+  port: number
+  /** Path the release must answer 2xx/3xx on, with its leading slash. */
+  healthCheckPath?: string | null
+  /** Seconds the new instance must stay active before it is trusted. @default 5 */
+  healthGateSeconds?: number
+}
+
+/**
+ * Bring a release up beside the one serving, prove it, then retire the old one,
+ * and put the old one back if anything at any point says the new one is wrong.
+ *
+ * The rule this exists to keep: **a deploy never leaves a site with nothing
+ * serving it.** Every failure leaves through `ts_cloud_restore_previous`, which
+ * stops the new instance, points `current` back at the release it pointed at
+ * before, and starts the instances that were serving. Some of those exits
+ * happen before the old instances were touched and the restore is a no-op for
+ * them; the ones after cutover are why it exists.
+ *
+ * Three failures used to end with the site dark:
+ *
+ * - **A release that crashes on boot was treated as one that could not share
+ *   the port.** The first gate saw the new instance die, assumed the old one
+ *   was holding the port without SO_REUSEPORT, stopped the old one to make
+ *   room, and retried. The retry crashed the same way and the deploy exited
+ *   with neither release running. A wildloop API release whose import failed
+ *   at start-up took every `/api` route down that way until the previous
+ *   instance was started by hand. Making room is now only tried when the new
+ *   instance's own log says the port was taken, and if the retry still fails
+ *   the previous instances are started again before the deploy exits.
+ * - **A release that bound, then failed after the old instance was retired**
+ *   exited 1 with `current` already flipped and the old instance stopped.
+ * - **The response probe during the overlap can be answered by the old
+ *   instance**, so a release that serves errors could pass it. The probe runs
+ *   again once the new instance is alone on the port, and a failure there
+ *   restores the previous release instead of leaving the errors live.
+ */
+export function buildZeroDowntimeCutover(options: ZeroDowntimeCutoverOptions): string[] {
+  const { paths, unitBase, releaseId, port } = options
+  const instance = `${unitBase}@${releaseId}.service`
+  const serviceName = `${unitBase}.service`
+  const gateSeconds = Math.max(1, options.healthGateSeconds ?? 5)
+  const gatePath = options.healthCheckPath
+    ? options.healthCheckPath.startsWith('/') ? options.healthCheckPath : `/${options.healthCheckPath}`
+    : null
+  const probe = gatePath
+    ? `curl -sf -o /dev/null --max-time ${HEALTH_GATE_ATTEMPT_TIMEOUT} "http://127.0.0.1:${port}${gatePath}"`
+    : null
+  const fail = (why: string) => `{ echo "[ts-cloud] release ${releaseId} ${why}" >&2; ts_cloud_restore_previous; exit 1; }`
+
+  return [
+    // What is serving right now, and where `current` points: both are what a
+    // failure anywhere below puts back.
+    `TS_CLOUD_OLD_UNITS=$(systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" || true)`,
+    `TS_CLOUD_PREV_CURRENT="$(readlink ${paths.current} 2>/dev/null || true)"`,
+    'TS_CLOUD_LEGACY_STOPPED=0',
+    'ts_cloud_restore_previous() {',
+    `  journalctl -u ${instance} -n 50 --no-pager >&2 || true`,
+    `  systemctl stop ${instance} 2>/dev/null || true`,
+    `  systemctl disable ${instance} 2>/dev/null || true`,
+    `  if [ -n "$TS_CLOUD_PREV_CURRENT" ] && [ -d "$TS_CLOUD_PREV_CURRENT" ]; then ln -sfn "$TS_CLOUD_PREV_CURRENT" ${paths.current}.tmp && mv -Tf ${paths.current}.tmp ${paths.current}; fi`,
+    '  for TS_CLOUD_RU in ${TS_CLOUD_OLD_UNITS}; do systemctl enable "$TS_CLOUD_RU" 2>/dev/null || true; systemctl start "$TS_CLOUD_RU" 2>/dev/null || true; done',
+    `  if [ "$TS_CLOUD_LEGACY_STOPPED" -eq 1 ]; then systemctl start ${serviceName} 2>/dev/null || true; fi`,
+    `  if [ -n "$TS_CLOUD_OLD_UNITS" ] || [ "$TS_CLOUD_LEGACY_STOPPED" -eq 1 ]; then echo "[ts-cloud] previous release restored and serving" >&2; else echo "[ts-cloud] there was no previous release to restore" >&2; fi`,
+    '}',
+    // Migration from the pre-templated layout: a release started before
+    // SO_REUSEPORT support can't share its port, so the very first
+    // zero-downtime deploy does one last stop-then-start cutover.
+    `if [ -f /etc/systemd/system/${serviceName} ] && systemctl is-active --quiet ${serviceName}; then echo "[ts-cloud] retiring pre-zero-downtime unit ${serviceName} (one-time restart cutover)"; systemctl stop ${serviceName}; TS_CLOUD_LEGACY_STOPPED=1; fi`,
+    // `restart` starts an inactive new-SHA instance just like `start`, but it
+    // also refreshes an already-active same-SHA instance after its release
+    // directory and EnvironmentFile were atomically replaced. A plain start
+    // is a no-op in that retry case and strands the process in a deleted cwd.
+    'TS_CLOUD_STARTED_AT="@$(date +%s)"',
+    `systemctl restart ${instance}`,
+    // Gate 1: the instance must stay active for the whole window. A crash on
+    // boot lands in activating/auto-restart and fails is-active.
+    `TS_CLOUD_GATE_OK=1; for TS_CLOUD_I in $(seq 1 ${gateSeconds}); do sleep 1; systemctl is-active --quiet ${instance} || { TS_CLOUD_GATE_OK=0; break; }; done`,
+    // Only a release that could not take the port is worth making room for,
+    // and only its own log can say so. Anything else is a broken release,
+    // and the old instances were never touched.
+    `if [ "$TS_CLOUD_GATE_OK" -ne 1 ]; then`,
+    `  if journalctl -u ${instance} --since "$TS_CLOUD_STARTED_AT" -o cat --no-pager 2>/dev/null | grep -iE 'EADDRINUSE|address already in use|port [0-9]+ (is )?in use|Failed to start server' >/dev/null; then`,
+    `    echo "[ts-cloud] release ${releaseId} could not share :${port} with the previous release (no SO_REUSEPORT?) — retiring it and retrying" >&2`,
+    '    for TS_CLOUD_RU in ${TS_CLOUD_OLD_UNITS}; do systemctl stop "$TS_CLOUD_RU" 2>/dev/null || true; done',
+    `    systemctl restart ${instance}`,
+    `    for TS_CLOUD_I in $(seq 1 ${gateSeconds}); do sleep 1; systemctl is-active --quiet ${instance} || ${fail('failed its health gate on the free port')}; done`,
+    '  else',
+    `    ${fail('crashed on start — the previous release was never stopped')}`,
+    '  fi',
+    'fi',
+    // `grep >/dev/null`, never `grep -q`, after a pipe throughout: under
+    // `pipefail` a `grep -q` that matches early exits, the writer dies of
+    // SIGPIPE, and the pipeline fails although it matched. Running the cutover
+    // against a box whose `ss` writes a line at a time failed every gate.
+    // Gate 2: the NEW instance is on the port itself. During the overlap the
+    // previous release still listens, so the probe below cannot tell them
+    // apart; asking whose PID holds the socket can. Where listener PIDs cannot
+    // be read, this says so and leaves the probes to do the work.
+    `if ss -ltnpH "sport = :${port}" >/dev/null 2>&1; then`,
+    '  TS_CLOUD_BOUND=0',
+    `  for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_BIND_ATTEMPTS}); do`,
+    `    TS_CLOUD_NEW_PID="$(systemctl show -p MainPID --value ${instance} 2>/dev/null || true)"`,
+    `    if [ -n "$TS_CLOUD_NEW_PID" ] && [ "$TS_CLOUD_NEW_PID" != "0" ] && ss -ltnpH "sport = :${port}" 2>/dev/null | grep "pid=$TS_CLOUD_NEW_PID," >/dev/null; then TS_CLOUD_BOUND=1; break; fi`,
+    `    systemctl is-active --quiet ${instance} || break`,
+    `    sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}`,
+    '  done',
+    `  [ "$TS_CLOUD_BOUND" -eq 1 ] || ${fail(`never took :${port}`)}`,
+    'else',
+    `  echo "[ts-cloud] cannot read listener PIDs on this host — the response probes run without the bind check" >&2`,
+    'fi',
+    // Gate 3: answer on the health path. Polled, because a release that is
+    // slow to warm on a loaded shared box is not a broken one.
+    ...(probe
+      ? [
+          `TS_CLOUD_HEALTHY=0; for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_ATTEMPTS}); do if ${probe}; then TS_CLOUD_HEALTHY=1; break; fi; sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}; done`,
+          `[ "$TS_CLOUD_HEALTHY" -eq 1 ] || ${fail(`never answered ${gatePath}`)}`,
+        ]
+      : []),
+    // Promote: flip `current`, persist across boots, retire the previous release.
+    ...buildActivateRelease(paths),
+    `systemctl enable ${instance} 2>/dev/null || true`,
+    'for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}; do systemctl stop "$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "$TS_CLOUD_U" 2>/dev/null || true; done',
+    // The port is only knowable once the old instances are gone: `is-active`
+    // says a process runs, not that it listens, and a server that swallows its
+    // bind error stays active with no socket. A restart lands on the now-free
+    // port; one that still cannot bind restores the previous release.
+    `TS_CLOUD_LISTENING=0; for TS_CLOUD_I in $(seq 1 ${gateSeconds}); do if ss -ltnH "sport = :${port}" 2>/dev/null | grep . >/dev/null; then TS_CLOUD_LISTENING=1; break; fi; sleep 1; done`,
+    `if [ "$TS_CLOUD_LISTENING" -ne 1 ]; then echo "[ts-cloud] nothing is listening on ${port} after retiring the previous release — restarting ${instance} on the now-free port" >&2; systemctl restart ${instance}; for TS_CLOUD_I in $(seq 1 ${gateSeconds}); do if ss -ltnH "sport = :${port}" 2>/dev/null | grep . >/dev/null; then TS_CLOUD_LISTENING=1; break; fi; sleep 1; done; fi`,
+    `[ "$TS_CLOUD_LISTENING" -eq 1 ] || ${fail(`is active but never bound :${port}`)}`,
+    // Gate 4: the same probe, now that only the new release can answer it.
+    ...(probe
+      ? [
+          `TS_CLOUD_HEALTHY=0; for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_ATTEMPTS}); do if ${probe}; then TS_CLOUD_HEALTHY=1; break; fi; sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}; done`,
+          `[ "$TS_CLOUD_HEALTHY" -eq 1 ] || ${fail(`stopped answering ${gatePath} once it served alone`)}`,
+        ]
+      : []),
+    // Drop enabled-but-stopped instances from older deploys and the legacy
+    // non-templated unit so only the live release starts at boot. Never the
+    // TEMPLATE file (`<base>@.service`): disabling it removes every instance's
+    // enablement, including the one just enabled. Brace-group the grep so
+    // `|| true` guards only it (an empty match exits 1 under pipefail).
+    `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v -e "^${instance}\$" -e "^${unitBase}@\\.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl disable "$TS_CLOUD_U" 2>/dev/null || true; done`,
+    `if [ -f /etc/systemd/system/${serviceName} ]; then systemctl disable ${serviceName} 2>/dev/null || true; rm -f /etc/systemd/system/${serviceName}; systemctl daemon-reload; fi`,
+  ]
+}
+
 export interface BuildSiteDeployScriptOptions {
   siteName: string
   slug: string
@@ -723,11 +875,6 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
         : `/${healthCheckPath}`
       : null
 
-    // On gate failure the new instance is stopped and the deploy exits 1 —
-    // `current` has NOT been flipped and the old instance never stopped, so
-    // the box keeps serving the previous release untouched.
-    const failGate = `{ echo "[ts-cloud] release ${releaseId} failed its health gate — previous release keeps serving" >&2; journalctl -u ${instance} -n 50 --no-pager >&2 || true; systemctl stop ${instance} 2>/dev/null || true; exit 1; }`
-
     return [
       ...stageRelease,
       // Templated unit: each release runs as its own instance pinned to its
@@ -762,109 +909,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
         ? buildAutoMemoryHigh(`${unitBase}@.service`)
         : [...buildClearAutoMemoryHigh(`${unitBase}@.service`), ...buildCommitmentReport()]),
       ...buildSliceReconcile(instance),
-      // Remember what is serving right now — retired only after the gate.
-      `TS_CLOUD_OLD_UNITS=$(systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" || true)`,
-      // Migration from the pre-templated layout: a release started before
-      // SO_REUSEPORT support can't share its port, so the very first
-      // zero-downtime deploy does one last stop-then-start cutover.
-      `if [ -f /etc/systemd/system/${serviceName} ] && systemctl is-active --quiet ${serviceName}; then echo "[ts-cloud] retiring pre-zero-downtime unit ${serviceName} (one-time restart cutover)"; systemctl stop ${serviceName}; fi`,
-      // `restart` starts an inactive new-SHA instance just like `start`, but it
-      // also refreshes an already-active same-SHA instance after its release
-      // directory and EnvironmentFile were atomically replaced. A plain start
-      // is a no-op in that retry case and strands the process in a deleted cwd.
-      `systemctl restart ${instance}`,
-      // Health gate (attempt 1): the instance must stay active for the whole
-      // window (a crash-on-boot lands in activating/auto-restart and fails
-      // is-active). When the app binds SO_REUSEPORT the new release overlaps
-      // the old on the shared port and this passes straight through — true
-      // zero downtime.
-      `TS_CLOUD_GATE_OK=1; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${instance} || { TS_CLOUD_GATE_OK=0; break; }; done`,
-      // Self-heal: if the new release could NOT stay up alongside the old one
-      // (typically because the app does not bind SO_REUSEPORT, so the old
-      // instance still held the port), retire the previous instances now and
-      // restart the new one. That trades a brief (~RestartSec) blip for a
-      // working deploy instead of a hard failure; a genuinely broken release
-      // still fails the retry gate and leaves the old release in place.
-      `if [ "\$TS_CLOUD_GATE_OK" -ne 1 ]; then echo "[ts-cloud] release ${releaseId} could not overlap the previous release (no SO_REUSEPORT?) — retiring old instances and retrying" >&2; for TS_CLOUD_RU in \${TS_CLOUD_OLD_UNITS}; do systemctl stop "\$TS_CLOUD_RU" 2>/dev/null || true; done; systemctl restart ${instance}; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${instance} || ${failGate}; done; fi`,
-      // … and, when configured, answer 2xx/3xx on the health path. (With both
-      // instances on the port the probe may hit either — combined with the
-      // is-active window that still catches dead-new and dead-port alike.)
-      //
-      // Polled rather than asked once. A single attempt makes the gate a race
-      // against whatever the app does before its first response — warming
-      // caches, deriving assets, rebuilding an import barrel — and that is not
-      // a fixed cost: it is work measured on a shared box, under whatever load
-      // the co-tenants happen to be putting on it. One site's startup image
-      // pass came in under two seconds on a laptop and over fourteen on the
-      // box, which turned a perfectly good release into a failed deploy.
-      //
-      // A release that is merely slow to warm is not a broken release. One
-      // that is broken never answers, and still fails — just after
-      // ${HEALTH_GATE_ATTEMPTS} attempts instead of one.
-      // First: wait for the NEW instance to be on the port itself.
-      //
-      // The probe below cannot tell the instances apart. During the overlap
-      // the previous release is still listening and still healthy, so a server
-      // that binds late — deliberately, to keep visitors off itself while it
-      // warms — would have its gate answered by the release it is replacing.
-      // The gate would pass on the strength of the old instance, the old
-      // instance would then be retired, and the port would be empty until the
-      // new one finally bound. Asking whose PID holds the socket is what
-      // separates "the new release is serving" from "something is serving".
-      //
-      // Tolerant by design: where listener PIDs cannot be read, this says so
-      // and leaves the response gate to do the work alone, rather than failing
-      // a deploy over a missing `ss` capability.
-      `if ss -ltnpH "sport = :${port}" >/dev/null 2>&1; then`,
-      `  TS_CLOUD_BOUND=0`,
-      `  for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_BIND_ATTEMPTS}); do`,
-      `    TS_CLOUD_NEW_PID="$(systemctl show -p MainPID --value ${instance} 2>/dev/null || true)"`,
-      `    if [ -n "\$TS_CLOUD_NEW_PID" ] && [ "\$TS_CLOUD_NEW_PID" != "0" ] && ss -ltnpH "sport = :${port}" 2>/dev/null | grep -q "pid=\$TS_CLOUD_NEW_PID,"; then TS_CLOUD_BOUND=1; break; fi`,
-      `    sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}`,
-      `  done`,
-      `  if [ "\$TS_CLOUD_BOUND" -ne 1 ]; then echo "[ts-cloud] release ${releaseId} never joined ${port} alongside the previous release" >&2; ${failGate}; fi`,
-      'else',
-      `  echo "[ts-cloud] cannot read listener PIDs on this host — the response gate runs without the bind check" >&2`,
-      'fi',
-      ...(gatePath
-        ? [
-            `TS_CLOUD_HEALTHY=0; for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_ATTEMPTS}); do if curl -sf -o /dev/null --max-time ${HEALTH_GATE_ATTEMPT_TIMEOUT} "http://127.0.0.1:${port}${gatePath}"; then TS_CLOUD_HEALTHY=1; break; fi; sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}; done`,
-            `[ "\$TS_CLOUD_HEALTHY" -eq 1 ] || ${failGate}`,
-          ]
-        : []),
-      // Promote: flip `current` (tooling + gateway reference), persist across
-      // boots, then retire whatever served the previous release.
-      ...buildActivateRelease(paths),
-      `systemctl enable ${instance} 2>/dev/null || true`,
-      `for TS_CLOUD_U in \${TS_CLOUD_OLD_UNITS}; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
-      // The port is only knowable once the old instances are gone.
-      //
-      // `is-active` says a process is running, not that it is listening, and
-      // the two come apart exactly here: a server that swallows its own bind
-      // error keeps its process alive with no socket. During the overlap
-      // window the old instance still holds the port, so the gate above sees a
-      // healthy unit and a served port and promotes — and retiring the old
-      // instance then leaves the port dark. That is how a deploy of
-      // theopentimes' broadcast service passed every check and still answered
-      // 502 (`Failed to start server. Is port ${port} in use?`, unit `active`).
-      //
-      // A restart now lands on a free port, so the self-heal is the same one
-      // the overlap failure already uses. Only a release that cannot bind an
-      // uncontended port fails here, and that is worth failing on.
-      `TS_CLOUD_LISTENING=0; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do if ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .; then TS_CLOUD_LISTENING=1; break; fi; sleep 1; done`,
-      `if [ "\$TS_CLOUD_LISTENING" -ne 1 ]; then echo "[ts-cloud] nothing is listening on ${port} after retiring the previous release — restarting ${instance} on the now-free port" >&2; systemctl restart ${instance}; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do if ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .; then TS_CLOUD_LISTENING=1; break; fi; sleep 1; done; fi`,
-      `if [ "\$TS_CLOUD_LISTENING" -ne 1 ]; then echo "[ts-cloud] ${instance} is active but never bound ${port}" >&2; journalctl -u ${instance} -n 50 --no-pager >&2 || true; exit 1; fi`,
-      // Drop enabled-but-stopped instances from older deploys and the legacy
-      // non-templated unit so only the live release starts at boot. The glob
-      // also matches the TEMPLATE file (`<base>@.service`) — never disable it:
-      // disabling a template removes every instance's enablement symlink,
-      // including the one for the release enabled above (nothing would start
-      // at boot).
-      // Brace-group the grep so `|| true` guards only the grep (an empty match
-      // list makes grep exit 1, which would otherwise fail the deploy under
-      // `set -euo pipefail` at the very last step, after the release is live).
-      `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v -e "^${instance}\$" -e "^${unitBase}@\\.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
-      `if [ -f /etc/systemd/system/${serviceName} ]; then systemctl disable ${serviceName} 2>/dev/null || true; rm -f /etc/systemd/system/${serviceName}; systemctl daemon-reload; fi`,
+      ...buildZeroDowntimeCutover({ paths, unitBase, releaseId, port, healthCheckPath: gatePath, healthGateSeconds }),
       ...buildPruneReleases(paths, keepReleases),
       // The deploy gate proves this release came up. Nothing after today
       // proves it is still answering, which is what the timer below is for.
@@ -919,10 +964,17 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     ...buildClearAutoMemoryHigh(serviceName, { auto: memoryHigh !== 'auto', high: memoryHigh !== 'auto', max: Boolean(memoryMax) }),
     ...(memoryHigh === 'auto' ? buildAutoMemoryHigh(serviceName) : buildCommitmentReport()),
     `systemctl enable ${serviceName}`,
+    // Where `current` pointed, so a release that cannot stay up goes back to it.
+    `TS_CLOUD_PREV_CURRENT="$(readlink ${paths.current} 2>/dev/null || true)"`,
     // Atomically promote the new release, THEN restart so the service comes up on it.
     ...buildActivateRelease(paths),
     `systemctl restart ${serviceName}`,
-    `systemctl is-active ${serviceName}`,
+    // A worker or scheduler cannot overlap its previous release, so it is
+    // judged after the restart: it must stay active for the gate window. One
+    // check straight after `restart` passed a release that crashed a second
+    // later, and the restart loop that followed was the live release. A
+    // failure puts `current` back and restarts the previous release.
+    `for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${serviceName} || { echo "[ts-cloud] release ${releaseId} of ${serviceName} did not stay up — restoring the previous release" >&2; journalctl -u ${serviceName} -n 50 --no-pager >&2 || true; if [ -n "$TS_CLOUD_PREV_CURRENT" ] && [ -d "$TS_CLOUD_PREV_CURRENT" ] && [ "$(readlink -f "$TS_CLOUD_PREV_CURRENT")" != "$(readlink -f ${paths.release})" ]; then ln -sfn "$TS_CLOUD_PREV_CURRENT" ${paths.current}.tmp && mv -Tf ${paths.current}.tmp ${paths.current}; systemctl restart ${serviceName} || true; fi; exit 1; }; done`,
     ...buildPruneReleases(paths, keepReleases),
     // Only a ported service can be probed over HTTP. A worker or scheduler has
     // no port to ask, so it gets no timer rather than a check that would call
