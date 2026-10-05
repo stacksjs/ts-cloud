@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.33...v0.16.34)
+
+## ✨ Features
+
+- **rollback**: --all and --only-if-live, so a failed deploy can undo itself ([b3a87c2](https://github.com/stacksjs/ts-cloud/commit/b3a87c2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.34 ([535beda](https://github.com/stacksjs/ts-cloud/commit/535beda)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.32...v0.16.33)
 
 ## 🐛 Bug Fixes
