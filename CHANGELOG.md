@@ -1,3 +1,23 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.34...v0.16.35)
+
+## 🐛 Bug Fixes
+
+- **backups**: run ts-backups start, its actual backup command ([24f5228](https://github.com/stacksjs/ts-cloud/commit/24f5228)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **types**: typecheck workspace packages against their sources ([cfb2913](https://github.com/stacksjs/ts-cloud/commit/cfb2913)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## ✅ Tests
+
+- make the timing-sensitive tests deterministic under load ([78fe320](https://github.com/stacksjs/ts-cloud/commit/78fe320)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.35 ([6638c06](https://github.com/stacksjs/ts-cloud/commit/6638c06)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **lint**: drop unused imports ([852edca](https://github.com/stacksjs/ts-cloud/commit/852edca)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.33...v0.16.34)
 
 ## ✨ Features
