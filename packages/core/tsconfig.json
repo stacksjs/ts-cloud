@@ -2,18 +2,15 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "rootDir": "./src",
     "paths": {
       "@ts-cloud/aws-types": [
-        "../aws-types/dist/index.d.ts"
+        "../aws-types/src"
       ],
       "@ts-cloud/aws-types/*": [
-        "../aws-types/dist/*"
+        "../aws-types/src/*"
       ]
     },
-    "declaration": true,
-    "declarationMap": true,
-    "outDir": "./dist"
+    "noEmit": true
   },
   "include": [
     "src/**/*",

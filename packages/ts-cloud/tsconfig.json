@@ -1,27 +1,24 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src",
     "paths": {
       "@ts-cloud/aws-types": [
-        "../aws-types/dist"
+        "../aws-types/src"
       ],
       "@ts-cloud/aws-types/*": [
-        "../aws-types/dist/*"
+        "../aws-types/src/*"
       ],
       "@ts-cloud/core": [
-        "../core/dist"
+        "../core/src"
       ],
       "@ts-cloud/core/*": [
-        "../core/dist/*"
+        "../core/src/*"
       ]
     },
     "types": [
       "bun"
     ],
-    "declaration": true,
-    "noEmit": false,
-    "outDir": "./dist",
+    "noEmit": true,
     "isolatedDeclarations": true
   },
   "include": [

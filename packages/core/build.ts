@@ -12,8 +12,10 @@ async function build() {
     process.exit(1)
   }
 
+  // tsconfig.build.json resolves @ts-cloud/aws-types to its built dist so
+  // rootDir can stay ./src; tsconfig.json (typecheck) resolves it to source.
   const declarations = Bun.spawn(
-    ['bunx', 'tsc', '-p', 'tsconfig.json', '--emitDeclarationOnly', '--noEmit', 'false', '--declarationMap', 'false'],
+    ['bunx', 'tsc', '-p', 'tsconfig.build.json', '--emitDeclarationOnly', '--noEmit', 'false', '--declarationMap', 'false'],
     {
       stdout: 'inherit',
       stderr: 'inherit',

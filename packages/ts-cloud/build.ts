@@ -40,12 +40,16 @@ async function build() {
     process.exit(1)
   }
 
+  // Declarations are emitted from tsconfig.build.json, which resolves the
+  // @ts-cloud/* workspace packages to their built dist (built first, in
+  // dependency order) so rootDir can stay ./src. tsconfig.json resolves them to
+  // their sources instead, so a typecheck never reads a stale dist.
   const declarations = Bun.spawn(
     [
       'bunx',
       'tsc',
       '-p',
-      join(__dirname, 'tsconfig.json'),
+      join(__dirname, 'tsconfig.build.json'),
       '--emitDeclarationOnly',
       '--noEmit',
       'false',
