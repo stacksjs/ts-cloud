@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.35...v0.16.36)
+
+## ✨ Features
+
+- **s3**: list one level of a bucket with a delimiter ([3093104](https://github.com/stacksjs/ts-cloud/commit/3093104)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.36 ([3dfa2a1](https://github.com/stacksjs/ts-cloud/commit/3dfa2a1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.34...v0.16.35)
 
 ## 🐛 Bug Fixes
