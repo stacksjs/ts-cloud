@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.32...v0.16.33)
+
+## 🐛 Bug Fixes
+
+- **rollback**: go back to the release the deploy replaced, and check it first ([3b4eb25](https://github.com/stacksjs/ts-cloud/commit/3b4eb25)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.33 ([aaeace2](https://github.com/stacksjs/ts-cloud/commit/aaeace2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.31...v0.16.32)
 
 ## 🐛 Bug Fixes
