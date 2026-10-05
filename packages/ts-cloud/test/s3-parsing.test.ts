@@ -251,3 +251,55 @@ describe('S3Client bucket configuration getters read through the stripped root',
     expect(await client.getBucketCors('b')).toBeNull()
   })
 })
+
+describe('S3Client.listObjects with a delimiter', () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>assets</Name><Prefix>photos/</Prefix><KeyCount>3</KeyCount><MaxKeys>1000</MaxKeys><Delimiter>/</Delimiter><IsTruncated>false</IsTruncated>
+  <Contents><Key>photos/cover.jpg</Key><LastModified>2026-01-01T00:00:00.000Z</LastModified><ETag>"a"</ETag><Size>10</Size></Contents>
+  <CommonPrefixes><Prefix>photos/2024/</Prefix></CommonPrefixes>
+  <CommonPrefixes><Prefix>photos/2025/</Prefix></CommonPrefixes>
+</ListBucketResult>`
+
+  it('sends the delimiter and returns the folders as common prefixes, through the real XML parser', async () => {
+    const client = new S3Client('us-east-1')
+    let sent: Record<string, string> | undefined
+    // The private AWSClient: its request is stubbed, its own XML parser kept.
+    const inner = (client as unknown as { client: { request: unknown, parseXmlResponse: (xml: string) => unknown } }).client
+    inner.request = async (request: { queryParams: Record<string, string> }) => {
+      sent = request.queryParams
+      return inner.parseXmlResponse(xml)
+    }
+
+    const result = await client.listObjects({ bucket: 'assets', prefix: 'photos/', delimiter: '/' })
+
+    expect(sent?.delimiter).toBe('/')
+    expect(result.objects.map(object => object.Key)).toEqual(['photos/cover.jpg'])
+    // A year-like folder name stays a string.
+    expect(result.commonPrefixes).toEqual(['photos/2024/', 'photos/2025/'])
+  })
+
+  it('handles a single common prefix, which the parser gives as an object', async () => {
+    const client = new S3Client('us-east-1')
+    withMockedRequest(client, { CommonPrefixes: { Prefix: 'docs/' } })
+
+    const result = await client.listObjects({ bucket: 'assets', delimiter: '/' })
+    expect(result.commonPrefixes).toEqual(['docs/'])
+    expect(result.objects).toEqual([])
+  })
+
+  it('without a delimiter, sends none and returns no common prefixes', async () => {
+    const client = new S3Client('us-east-1')
+    let sent: Record<string, string> | undefined
+    // @ts-expect-error — reach into the private AWSClient to stub one call
+    client.client.request = async (request: { queryParams: Record<string, string> }) => {
+      sent = request.queryParams
+      return { Contents: { Key: 'a.txt', Size: '1' } }
+    }
+
+    const result = await client.listObjects({ bucket: 'assets' })
+    expect(sent && 'delimiter' in sent).toBe(false)
+    expect(result.commonPrefixes).toEqual([])
+    expect(result.objects.map(object => object.Key)).toEqual(['a.txt'])
+  })
+})

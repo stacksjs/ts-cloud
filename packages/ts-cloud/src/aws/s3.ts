@@ -2377,18 +2377,26 @@ export class S3Client {
   }
 
   /**
-   * List objects in a bucket with pagination support
+   * List objects in a bucket with pagination support.
+   *
+   * With a `delimiter` (almost always `'/'`), S3 lists one level: the objects
+   * directly under `prefix`, plus each deeper "folder" once, as a common
+   * prefix. Without one there was no way to ask for that, so a caller wanting
+   * one directory got every object beneath it.
    */
   async listObjects(options: {
     bucket: string
     prefix?: string
+    delimiter?: string
     maxKeys?: number
     continuationToken?: string
   }): Promise<{
     objects: S3Object[]
+    /** The "folders" below `prefix`, each ending in the delimiter. Empty without one. */
+    commonPrefixes: string[]
     nextContinuationToken?: string
   }> {
-    const { bucket, prefix, maxKeys = 1000, continuationToken } = options
+    const { bucket, prefix, delimiter, maxKeys = 1000, continuationToken } = options
 
     // Build query parameters for ListObjectsV2
     const queryParams: Record<string, string> = {
@@ -2397,6 +2405,7 @@ export class S3Client {
     }
 
     if (prefix) queryParams.prefix = prefix
+    if (delimiter) queryParams.delimiter = delimiter
     if (continuationToken) queryParams['continuation-token'] = continuationToken
 
     const result = await this.client.request({
@@ -2416,7 +2425,7 @@ export class S3Client {
       const items = Array.isArray(listResult.Contents) ? listResult.Contents : [listResult.Contents]
       for (const item of items) {
         objects.push({
-          Key: item.Key || '',
+          Key: String(item.Key ?? ''),
           LastModified: item.LastModified || '',
           Size: Number.parseInt(item.Size || '0'),
           ETag: item.ETag,
@@ -2424,8 +2433,20 @@ export class S3Client {
       }
     }
 
+    // One <CommonPrefixes><Prefix>…</Prefix></CommonPrefixes> per folder: an
+    // object for one, an array for several.
+    const commonPrefixes: string[] = []
+    if (listResult?.CommonPrefixes) {
+      const entries = Array.isArray(listResult.CommonPrefixes) ? listResult.CommonPrefixes : [listResult.CommonPrefixes]
+      for (const entry of entries) {
+        if (entry?.Prefix !== undefined && entry.Prefix !== '')
+          commonPrefixes.push(String(entry.Prefix))
+      }
+    }
+
     return {
       objects,
+      commonPrefixes,
       nextContinuationToken: listResult?.NextContinuationToken,
     }
   }
