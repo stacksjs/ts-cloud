@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.38...v0.16.39)
+
+## 🐛 Bug Fixes
+
+- **bedrock**: type Converse as Converse, and request model access through APIs that exist ([02a3f75](https://github.com/stacksjs/ts-cloud/commit/02a3f75)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.39 ([1c36aa2](https://github.com/stacksjs/ts-cloud/commit/1c36aa2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.37...v0.16.38)
 
 ## 🐛 Bug Fixes
