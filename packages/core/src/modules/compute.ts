@@ -149,6 +149,36 @@ export interface ScalingPolicyOptions {
 }
 
 /**
+ * Whether an EC2 instance type runs on Graviton (arm64): `a1`, and every
+ * family whose generation number is followed by `g` - t4g, m7g, c7gn, r8g,
+ * x2gd, im4gn, is4gen, g5g.
+ */
+export function isArmInstanceType(instanceType: string): boolean {
+  const family = instanceType.split('.')[0] ?? ''
+  return family === 'a1' || /^[a-z]+\d+g[a-z]*$/.test(family)
+}
+
+/**
+ * AWS's public SSM parameter for the current Amazon Linux 2023 AMI of the
+ * instance type's architecture. AWS keeps one in every region.
+ */
+export function amazonLinuxImageParameter(instanceType: string = 't3.micro'): string {
+  const arch = isArmInstanceType(instanceType) ? 'arm64' : 'x86_64'
+  return `/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-${arch}`
+}
+
+/**
+ * An `ImageId` that CloudFormation resolves to that AMI in the stack's own
+ * region, as a `{{resolve:ssm:...}}` dynamic reference. A template parameter
+ * of type `AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>` would do the same,
+ * but the module helpers return resources, not whole templates, so they have
+ * nowhere to declare one.
+ */
+export function amazonLinuxImageId(instanceType: string = 't3.micro'): string {
+  return `{{resolve:ssm:${amazonLinuxImageParameter(instanceType)}}}`
+}
+
+/**
  * Compute Module - EC2, ECS, Lambda Management
  * Provides clean API for both server (Forge-style) and serverless (Vapor-style) deployments
  */
@@ -164,7 +194,7 @@ export class Compute {
       slug,
       environment,
       instanceType = 't3.micro',
-      imageId = 'ami-0f3caa1cf4417e51b', // Amazon Linux 2023 (us-east-1)
+      imageId = amazonLinuxImageId(instanceType),
       keyName,
       securityGroupIds,
       subnetId,
@@ -1450,21 +1480,34 @@ echo "Bun server setup complete!"
   }
 
   /**
-   * Create a JumpBox (Bastion Host) for SSH access to private resources
+   * Create a JumpBox (Bastion Host) for access to private resources.
+   *
+   * Shell access is SSM Session Manager (`aws ssm start-session`): the role
+   * carries AmazonSSMManagedInstanceCore and Amazon Linux 2023 ships the
+   * agent, so no key pair and no open port are needed. `keyName` adds SSH on
+   * top, and only then - or when `allowedCidrs` is given - is port 22 opened.
+   *
+   * The image is the region's current Amazon Linux 2023, resolved from AWS's
+   * public SSM parameter for the instance type's architecture. It used to be
+   * a us-east-1 AMI literal, which no other region has, and `keyName` was
+   * required, naming a key pair that had to exist before the deploy.
    */
   static createJumpBox(options: {
     slug: string
     environment: EnvironmentType
     vpcId: string
     subnetId: string
-    keyName: string
+    keyName?: string
     instanceType?: string
     imageId?: string
     allowedCidrs?: string[]
     mountEfs?: {
-      fileSystemId: string
+      /** An EFS id, or a `{ Ref }` to a file system in the same template. */
+      fileSystemId: string | { Ref: string }
       mountPath?: string
     }
+    /** Install the PostgreSQL, MariaDB and Redis clients. */
+    databaseTools?: boolean
   }): {
     instance: EC2Instance
     securityGroup: EC2SecurityGroup
@@ -1483,10 +1526,14 @@ echo "Bun server setup complete!"
       subnetId,
       keyName,
       instanceType = 't3.micro',
-      imageId = 'ami-0f3caa1cf4417e51b', // Amazon Linux 2023 (us-east-1)
-      allowedCidrs = ['0.0.0.0/0'],
+      imageId = amazonLinuxImageId(instanceType),
       mountEfs,
+      databaseTools = false,
     } = options
+
+    // Port 22 is only for SSH, which needs a key pair (or EC2 Instance
+    // Connect, which needs the caller to choose who may reach it).
+    const allowedCidrs = options.allowedCidrs ?? (keyName ? ['0.0.0.0/0'] : [])
 
     const resourceName = generateResourceName({
       slug,
@@ -1494,15 +1541,16 @@ echo "Bun server setup complete!"
       resourceType: 'jumpbox',
     })
 
-    // Create security group for SSH access
+    // Security group: SSH from the allowed ranges, if any; all outbound, which
+    // is what SSM Session Manager needs.
     const securityGroupLogicalId = generateLogicalId(`${resourceName}-sg`)
     const securityGroup: EC2SecurityGroup = {
       Type: 'AWS::EC2::SecurityGroup',
       Properties: {
         GroupName: `${resourceName}-sg`,
-        GroupDescription: `Security group for ${resourceName} JumpBox SSH access`,
+        GroupDescription: `Security group for ${resourceName} JumpBox access`,
         VpcId: vpcId,
-        SecurityGroupIngress: allowedCidrs.map((cidr) => ({
+        SecurityGroupIngress: allowedCidrs.map(cidr => ({
           IpProtocol: 'tcp',
           FromPort: 22,
           ToPort: 22,
@@ -1578,20 +1626,34 @@ echo "Bun server setup complete!"
       },
     }
 
-    // Build user data script
+    // User data, for Amazon Linux 2023 (dnf). The database clients used to be
+    // installed with Amazon Linux 2's `amazon-linux-extras` and package names
+    // AL2023 does not have, so none of them installed.
     let userDataScript = `#!/bin/bash
-yum update -y
-yum install -y amazon-efs-utils nfs-utils jq curl wget htop
+dnf install -y amazon-efs-utils nfs-utils jq wget htop
 `
 
-    // Add EFS mount if specified
+    if (databaseTools) {
+      userDataScript += `
+# Database clients: psql, mysql (MariaDB), redis-cli
+dnf install -y postgresql16 mariadb105 redis6
+`
+    }
+
+    // The file system id goes in through Fn::Sub, so a `{ Ref }` to a file
+    // system in the same stack resolves. It used to be interpolated as a
+    // string, which wrote "[object Object]" into the mount command. Mount
+    // targets can still be creating when the instance boots, hence the retry.
     if (mountEfs) {
       const mountPath = mountEfs.mountPath || '/mnt/efs'
       userDataScript += `
 # Mount EFS
 mkdir -p ${mountPath}
-mount -t efs ${mountEfs.fileSystemId}:/ ${mountPath}
-echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/fstab
+for attempt in $(seq 1 30); do
+  mount -t efs -o tls \${FileSystemId}:/ ${mountPath} && break
+  sleep 10
+done
+echo "\${FileSystemId}:/ ${mountPath} efs _netdev,tls,nofail 0 0" >> /etc/fstab
 `
     }
 
@@ -1603,11 +1665,12 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
       Properties: {
         ImageId: imageId,
         InstanceType: instanceType,
-        KeyName: keyName,
         SubnetId: subnetId,
         SecurityGroupIds: [Fn.Ref(securityGroupLogicalId)] as any,
         IamInstanceProfile: Fn.Ref(instanceProfileLogicalId) as any,
-        UserData: Fn.Base64(userDataScript) as any,
+        UserData: (mountEfs
+          ? { 'Fn::Base64': Fn.Sub(userDataScript, { FileSystemId: mountEfs.fileSystemId }) }
+          : Fn.Base64(userDataScript)) as any,
         BlockDeviceMappings: [
           {
             DeviceName: '/dev/xvda',
@@ -1626,6 +1689,9 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
         ],
       },
     }
+
+    if (keyName)
+      instance.Properties.KeyName = keyName
 
     const resources: Record<string, any> = {
       [securityGroupLogicalId]: securityGroup,
@@ -1659,27 +1725,19 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
       environment: EnvironmentType
       vpcId: string
       subnetId: string
-      keyName: string
-      fileSystemId: string
+      keyName?: string
+      instanceType?: string
+      fileSystemId: string | { Ref: string }
       mountPath?: string
       allowedCidrs?: string[]
-    }): {
-      instance: EC2Instance
-      securityGroup: EC2SecurityGroup
-      instanceProfile: any
-      instanceRole: IAMRole
-      instanceLogicalId: string
-      securityGroupLogicalId: string
-      instanceProfileLogicalId: string
-      instanceRoleLogicalId: string
-      resources: Record<string, any>
-    } => {
+    }): ReturnType<typeof Compute.createJumpBox> => {
       return Compute.createJumpBox({
         slug: params.slug,
         environment: params.environment,
         vpcId: params.vpcId,
         subnetId: params.subnetId,
         keyName: params.keyName,
+        instanceType: params.instanceType,
         allowedCidrs: params.allowedCidrs,
         mountEfs: {
           fileSystemId: params.fileSystemId,
@@ -1689,26 +1747,16 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
     },
 
     /**
-     * Create minimal JumpBox (SSH only)
+     * Create minimal JumpBox
      */
     minimal: (params: {
       slug: string
       environment: EnvironmentType
       vpcId: string
       subnetId: string
-      keyName: string
+      keyName?: string
       allowedCidrs?: string[]
-    }): {
-      instance: EC2Instance
-      securityGroup: EC2SecurityGroup
-      instanceProfile: any
-      instanceRole: IAMRole
-      instanceLogicalId: string
-      securityGroupLogicalId: string
-      instanceProfileLogicalId: string
-      instanceRoleLogicalId: string
-      resources: Record<string, any>
-    } => {
+    }): ReturnType<typeof Compute.createJumpBox> => {
       return Compute.createJumpBox({
         slug: params.slug,
         environment: params.environment,
@@ -1728,48 +1776,20 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
       environment: EnvironmentType
       vpcId: string
       subnetId: string
-      keyName: string
+      keyName?: string
+      instanceType?: string
       allowedCidrs?: string[]
-    }): {
-      instance: EC2Instance
-      securityGroup: EC2SecurityGroup
-      instanceProfile: any
-      instanceRole: IAMRole
-      instanceLogicalId: string
-      securityGroupLogicalId: string
-      instanceProfileLogicalId: string
-      instanceRoleLogicalId: string
-      resources: Record<string, any>
-    } => {
-      const result = Compute.createJumpBox({
+    }): ReturnType<typeof Compute.createJumpBox> => {
+      return Compute.createJumpBox({
         slug: params.slug,
         environment: params.environment,
         vpcId: params.vpcId,
         subnetId: params.subnetId,
         keyName: params.keyName,
+        instanceType: params.instanceType,
         allowedCidrs: params.allowedCidrs,
+        databaseTools: true,
       })
-
-      // Modify user data to include database tools
-      const userDataScript = `#!/bin/bash
-yum update -y
-yum install -y amazon-efs-utils nfs-utils jq curl wget htop
-
-# Install PostgreSQL client
-amazon-linux-extras install postgresql14 -y
-
-# Install MySQL client
-yum install -y mysql
-
-# Install Redis CLI
-yum install -y redis
-
-echo "Database tools installed!"
-`
-
-      result.instance.Properties.UserData = Fn.Base64(userDataScript) as any
-
-      return result
     },
 
     /**
@@ -3227,6 +3247,11 @@ ufw --force enable
       vpcId,
       subnetId,
       instanceType = 't3.small',
+      // Still a us-east-1 literal, unlike createServer() and createJumpBox():
+      // this is the app server, and changing its ImageId makes CloudFormation
+      // replace every deployed one on its next deploy, with whatever lives on
+      // its disk. Moving it to amazonLinuxImageId() needs a migration path
+      // for existing stacks first. Pass `imageId` (compute.image) elsewhere.
       imageId = 'ami-0f3caa1cf4417e51b', // Amazon Linux 2023 (us-east-1)
       keyName,
       domain,

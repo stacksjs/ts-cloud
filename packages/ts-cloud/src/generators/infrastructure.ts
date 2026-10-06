@@ -1379,6 +1379,26 @@ export class InfrastructureGenerator {
   }
 
   /**
+   * The EFS file system `infrastructure.jumpBox.mountEfs` names: an
+   * `infrastructure.fileSystem` entry by name, `true` for the only one, or an
+   * EFS id. `true` used to emit `{ Ref: 'FileSystem' }`, a logical id the
+   * generator never creates, so the template failed validation.
+   */
+  private jumpBoxFileSystemId(slug: string, env: typeof this.environment, mountEfs: true | string): string | { Ref: string } {
+    const declared = Object.keys(this.mergedConfig.infrastructure?.fileSystem ?? {})
+
+    if (typeof mountEfs === 'string')
+      return declared.includes(mountEfs) ? { Ref: this.fileSystemLogicalId(slug, env, mountEfs) } : mountEfs
+
+    if (declared.length === 1)
+      return { Ref: this.fileSystemLogicalId(slug, env, declared[0]!) }
+
+    throw new Error(declared.length === 0
+      ? 'infrastructure.jumpBox.mountEfs is true, but infrastructure.fileSystem declares no file system. Declare one, or set mountEfs to an EFS id.'
+      : `infrastructure.jumpBox.mountEfs is true, but infrastructure.fileSystem declares ${declared.length} (${declared.join(', ')}). Set mountEfs to the name of the one to mount.`)
+  }
+
+  /**
    * Generate jump box / bastion host infrastructure
    */
   private generateJumpBox(slug: string, env: typeof this.environment): void {
@@ -1398,53 +1418,24 @@ export class InfrastructureGenerator {
     const sizeSpec = (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string]
     const instanceType = sizeSpec?.instanceType || (sizeKey as string) || 't3.micro'
 
-    // Resolve EFS mount
-    let mountEfs: { fileSystemId: string; mountPath?: string } | undefined
-    if (jumpBoxConfig.mountEfs) {
-      const efsId =
-        typeof jumpBoxConfig.mountEfs === 'string'
-          ? jumpBoxConfig.mountEfs
-          : ({ Ref: 'FileSystem' } as unknown as string) // auto-detect from template
-      mountEfs = {
-        fileSystemId: efsId,
-        mountPath: jumpBoxConfig.mountPath || '/mnt/efs',
-      }
-    }
-
-    // Use the appropriate JumpBox preset
-    let result
-    if (jumpBoxConfig.databaseTools) {
-      result = Compute.JumpBox.withDatabaseTools({
-        slug,
-        environment: env,
-        vpcId: { Ref: 'VPC' } as unknown as string,
-        subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
-        keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
-        allowedCidrs: jumpBoxConfig.allowedCidrs,
-      })
-    } else if (mountEfs) {
-      result = Compute.JumpBox.withEfsMount({
-        slug,
-        environment: env,
-        vpcId: { Ref: 'VPC' } as unknown as string,
-        subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
-        keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
-        fileSystemId: mountEfs.fileSystemId,
-        mountPath: mountEfs.mountPath,
-        allowedCidrs: jumpBoxConfig.allowedCidrs,
-      })
-    } else {
-      result = Compute.createJumpBox({
-        slug,
-        environment: env,
-        vpcId: { Ref: 'VPC' } as unknown as string,
-        subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
-        keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
-        instanceType,
-        allowedCidrs: jumpBoxConfig.allowedCidrs,
-        mountEfs,
-      })
-    }
+    // One instance, whatever the options: size, key, EFS and database tools
+    // combine. Each used to pick a preset, so `databaseTools` dropped the size
+    // and the EFS mount, and `mountEfs` dropped the size.
+    const result = Compute.createJumpBox({
+      slug,
+      environment: env,
+      vpcId: { Ref: 'VPC' } as unknown as string,
+      subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
+      // No default key pair: one named `<slug>-<env>` had to exist before the
+      // deploy or the instance failed to launch. Access is SSM Session Manager.
+      keyName: jumpBoxConfig.keyName,
+      instanceType,
+      allowedCidrs: jumpBoxConfig.allowedCidrs,
+      mountEfs: jumpBoxConfig.mountEfs
+        ? { fileSystemId: this.jumpBoxFileSystemId(slug, env, jumpBoxConfig.mountEfs), mountPath: jumpBoxConfig.mountPath || '/mnt/efs' }
+        : undefined,
+      databaseTools: jumpBoxConfig.databaseTools,
+    })
 
     // Add all resources
     for (const [logicalId, resource] of Object.entries(result.resources)) {
