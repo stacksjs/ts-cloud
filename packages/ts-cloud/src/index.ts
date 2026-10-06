@@ -563,3 +563,6 @@ export * from './pages'
 
 // Cloudflare R2: buckets, custom domains and S3 credentials, reconciled on deploy
 export * from './r2'
+
+// Cloudflare Workers: bundled, uploaded and given custom domains on deploy
+export * from './workers'

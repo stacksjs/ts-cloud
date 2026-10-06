@@ -630,6 +630,29 @@ export interface InfrastructureConfig {
    * }
    */
   r2?: R2Config
+
+  /**
+   * Cloudflare Workers, bundled with `Bun.build` and uploaded through
+   * Cloudflare's account API on `cloud deploy` (see `reconcileCloudflareWorkers`).
+   *
+   * Keyed by a logical name; `name` is the script name in Cloudflare. Like
+   * `r2`, nothing here touches AWS, and the deploy needs `CLOUDFLARE_API_TOKEN`
+   * and `CLOUDFLARE_ACCOUNT_ID` in the env.
+   *
+   * @example
+   * workers: {
+   *   tiles: {
+   *     name: 'my-app-tiles',
+   *     entry: 'workers/tiles.ts',
+   *     bindings: {
+   *       r2Buckets: { TILES: 'my-app-tiles' },
+   *       vars: { CACHE_SECONDS: '86400' },
+   *     },
+   *     customDomains: ['tiles.example.com'],
+   *   },
+   * }
+   */
+  workers?: Record<string, WorkerConfig>
   security?: SecurityConfig
   monitoring?: MonitoringConfig
   api?: ApiConfig
@@ -2464,6 +2487,42 @@ export interface R2BucketConfig {
 export interface R2Config {
   /** Buckets keyed by a logical name (the key is not the bucket name; `name` is). */
   buckets: Record<string, R2BucketConfig>
+}
+
+/** Bindings a Worker is uploaded with. Secrets are not declared here; see {@link WorkerConfig}. */
+export interface WorkerBindingsConfig {
+  /** R2 buckets, keyed by the binding name the Worker reads (`env.TILES`) with the bucket name as the value. */
+  r2Buckets?: Record<string, string>
+  /** Plain-text environment variables, keyed by binding name. Visible in the dashboard; not for secrets. */
+  vars?: Record<string, string>
+}
+
+/**
+ * One Cloudflare Worker (an ES module Worker), deployed from a TypeScript or
+ * JavaScript entry that is bundled into a single module.
+ *
+ * Secrets set out of band (`wrangler secret put`, the dashboard) survive a
+ * deploy: the upload keeps existing `secret_text` bindings rather than
+ * replacing them.
+ */
+export interface WorkerConfig {
+  /** Script name in Cloudflare (lowercase letters, digits, `-` and `_`, up to 63 chars). */
+  name: string
+  /** Entry module, relative to the project root, e.g. `workers/tiles.ts`. */
+  entry: string
+  /** Workers runtime compatibility date. @default '2025-09-01' */
+  compatibilityDate?: string
+  /** Workers runtime compatibility flags, e.g. `['nodejs_compat']`. */
+  compatibilityFlags?: string[]
+  bindings?: WorkerBindingsConfig
+  /**
+   * Hostnames the Worker serves as Workers Custom Domains. Cloudflare creates
+   * the DNS record and certificate itself, so a hostname must not already have
+   * a DNS record or be attached to an R2 bucket or another Worker: the deploy
+   * warns and leaves it alone rather than detaching anything. Attached, never
+   * detached: removing a hostname from config leaves it attached.
+   */
+  customDomains?: string[]
 }
 
 export interface StorageItemConfig {

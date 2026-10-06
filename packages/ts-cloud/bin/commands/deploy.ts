@@ -28,6 +28,7 @@ import { reconcileDeclaredRecords, resolveDeclaredRecords } from '../../src/dns/
 import { CloudflareProvider } from '../../src/dns/cloudflare'
 import { reconcileCloudflareCdn, resolveCloudflareCdnPlan } from '../../src/cdn'
 import { reconcileR2Buckets } from '../../src/r2'
+import { reconcileCloudflareWorkers } from '../../src/workers'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
@@ -589,6 +590,9 @@ export function registerDeployCommands(app: CLI): void {
             // Read-only: reports which R2 buckets, domains and settings a real
             // deploy would create or change.
             await reconcileR2BucketsForDeploy(config, { dryRun: true })
+            // Bundles each Worker locally (to know whether its code changed)
+            // and reports uploads and domain attaches without making them.
+            await reconcileCloudflareWorkersForDeploy(config, { dryRun: true })
             cli.success('Dry run complete. No infrastructure, DNS, certificates, or application files were changed.')
             return
           }
@@ -649,6 +653,16 @@ export function registerDeployCommands(app: CLI): void {
           // for a bucket that cannot be created (or R2 not being enabled on
           // the account); a setting that will not apply is a warning.
           if (!(await reconcileR2BucketsForDeploy(config))) {
+            process.exitCode = 1
+            return
+          }
+
+          // Cloudflare Workers right after R2, for the same reason (the
+          // release may call them) and because a Worker's R2 bindings point
+          // at buckets the step above just made sure exist. A Worker that will
+          // not bundle or upload stops the deploy; a custom domain that cannot
+          // be attached is a warning.
+          if (!(await reconcileCloudflareWorkersForDeploy(config))) {
             process.exitCode = 1
             return
           }
@@ -2624,6 +2638,46 @@ async function reconcileR2BucketsForDeploy(config: any, options: { dryRun?: bool
   }
   catch (error) {
     cli.error(`Cloudflare R2: ${error instanceof Error ? error.message : String(error)}`)
+    return false
+  }
+}
+
+/**
+ * Reconcile `infrastructure.workers` against Cloudflare: bundle each Worker,
+ * upload it when its content hash changed, and attach its custom domains.
+ * Credentials come from the same env as {@link reconcileR2BucketsForDeploy},
+ * and Worker entries resolve against the current directory (the project root
+ * `cloud deploy` runs from).
+ *
+ * A project without a `workers` block costs nothing here.
+ *
+ * @returns `false` only when the reconcile threw (an entry that will not
+ * bundle, an upload Cloudflare refused, a token missing `Workers Scripts:
+ * Edit`); the deploy should stop then.
+ */
+async function reconcileCloudflareWorkersForDeploy(config: any, options: { dryRun?: boolean } = {}): Promise<boolean> {
+  const declared = Object.keys(config.infrastructure?.workers ?? {}).length
+  if (declared === 0) return true
+
+  cli.step(`Cloudflare Workers: ${options.dryRun ? 'planning' : 'reconciling'} ${declared} Worker(s)...`)
+  try {
+    const summary = await reconcileCloudflareWorkers(config, {
+      apiToken: process.env.CLOUDFLARE_API_TOKEN,
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+      zoneId: process.env.CLOUDFLARE_ZONE_ID,
+      projectRoot: process.cwd(),
+      dryRun: options.dryRun,
+    })
+
+    for (const worker of summary.workers) {
+      for (const change of worker.changes) cli.success(`  ✓ ${worker.name}: ${change}`)
+      for (const domain of worker.domains) cli.info(`    ${domain.domain}: ${domain.status ?? 'unknown'}`)
+    }
+    for (const warning of summary.warnings) cli.warn(`  ⚠ ${warning}`)
+    return true
+  }
+  catch (error) {
+    cli.error(`Cloudflare Workers: ${error instanceof Error ? error.message : String(error)}`)
     return false
   }
 }
