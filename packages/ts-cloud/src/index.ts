@@ -560,3 +560,6 @@ export type {
 
 // Cloudflare Pages: direct-upload static site hosting
 export * from './pages'
+
+// Cloudflare R2: buckets, custom domains and S3 credentials, reconciled on deploy
+export * from './r2'

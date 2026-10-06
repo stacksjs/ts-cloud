@@ -607,6 +607,29 @@ export interface InfrastructureConfig {
   realtime?: RealtimeConfig
 
   dns?: DnsConfig
+
+  /**
+   * Cloudflare R2 buckets, reconciled through Cloudflare's account API on
+   * `cloud deploy` (see `reconcileR2Buckets`).
+   *
+   * R2 sits outside AWS entirely, so nothing here touches CloudFormation; the
+   * deploy needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the env.
+   *
+   * @example
+   * r2: {
+   *   buckets: {
+   *     tiles: {
+   *       name: 'my-app-tiles',
+   *       locationHint: 'wnam',
+   *       customDomains: ['tiles.example.com'],
+   *       cors: [{ allowed: { origins: ['https://example.com'], methods: ['GET', 'HEAD'] }, maxAgeSeconds: 3600 }],
+   *       lifecycle: [{ id: 'expire-tmp', prefix: 'tmp/', expireAfterDays: 7 }],
+   *       cache: { edgeTtl: 86400, browserTtl: 3600 },
+   *     },
+   *   },
+   * }
+   */
+  r2?: R2Config
   security?: SecurityConfig
   monitoring?: MonitoringConfig
   api?: ApiConfig
@@ -2337,6 +2360,110 @@ export interface AlarmItemConfig {
    * Service name for service-specific alarms
    */
   service?: string
+}
+
+/** Cloudflare R2 location hints. A hint, not a guarantee: R2 may place the bucket elsewhere. */
+export type R2LocationHint = 'wnam' | 'enam' | 'weur' | 'eeur' | 'apac' | 'oc'
+
+/**
+ * Cloudflare R2 jurisdictions. A bucket created in one is only reachable with
+ * the matching `cf-r2-jurisdiction` header, so this must stay set for the
+ * bucket's whole life.
+ */
+export type R2Jurisdiction = 'default' | 'eu' | 'us' | 'fedramp' | 'fedramp-high'
+
+/** Minimum TLS version Cloudflare accepts on an R2 custom domain. */
+export type R2MinTls = '1.0' | '1.1' | '1.2' | '1.3'
+
+/**
+ * One CORS rule, in exactly the shape Cloudflare's R2 API takes, so a rule can
+ * be copied straight from Cloudflare's docs or the dashboard's JSON view.
+ */
+export interface R2CorsRule {
+  /** Optional identifier, echoed back by the API. */
+  id?: string
+  allowed: {
+    /** Origins allowed to make cross-origin requests, e.g. `https://example.com` or `*`. */
+    origins: string[]
+    methods: Array<'GET' | 'PUT' | 'POST' | 'DELETE' | 'HEAD'>
+    /** Request headers a preflight may ask for. */
+    headers?: string[]
+  }
+  /** Response headers a browser script may read. */
+  exposeHeaders?: string[]
+  /** How long a browser may cache the preflight answer, in seconds. */
+  maxAgeSeconds?: number
+}
+
+/**
+ * One object lifecycle rule. Flattened from Cloudflare's nested transition
+ * shape: each field below becomes the matching `*Transition` with an `Age`
+ * (or `Date`) condition.
+ */
+export interface R2LifecycleRule {
+  /** Unique id within the bucket. */
+  id: string
+  /** Only objects under this key prefix. @default '' (the whole bucket) */
+  prefix?: string
+  /** @default true */
+  enabled?: boolean
+  /** Delete objects this many days after upload. */
+  expireAfterDays?: number
+  /** Delete objects on this date instead (ISO 8601). */
+  expireOn?: string
+  /** Abort incomplete multipart uploads this many days after they start. */
+  abortMultipartUploadsAfterDays?: number
+  /** Move objects to Infrequent Access this many days after upload. */
+  infrequentAccessAfterDays?: number
+}
+
+export interface R2CustomDomainConfig {
+  /** Hostname served from the bucket, e.g. `tiles.example.com`. Its zone must be on the same Cloudflare account. */
+  domain: string
+  /** @default '1.2' */
+  minTLS?: R2MinTls
+}
+
+export interface R2BucketConfig {
+  /** Bucket name (3-63 chars, lowercase letters, digits and hyphens). */
+  name: string
+  /** Where R2 should try to place the bucket. Only honoured at creation. */
+  locationHint?: R2LocationHint
+  /** Data-residency jurisdiction. Only honoured at creation. @default 'default' */
+  jurisdiction?: R2Jurisdiction
+  /**
+   * Hostnames that serve the bucket publicly. Cloudflare creates the proxied
+   * DNS record itself; a hostname that already has a record must have it
+   * removed first. Declared domains are attached, never detached: removing one
+   * from config leaves it attached until removed in the dashboard.
+   */
+  customDomains?: Array<string | R2CustomDomainConfig>
+  /** Bucket CORS policy. Omit to leave whatever is set alone; `[]` removes it. */
+  cors?: R2CorsRule[]
+  /**
+   * Object lifecycle rules. Omit to leave whatever is set alone. When set, the
+   * list REPLACES the bucket's rules, including the multipart-abort rule R2
+   * adds to new buckets; re-declare it if you want to keep it.
+   */
+  lifecycle?: R2LifecycleRule[]
+  /** Serve the bucket on its public `*.r2.dev` URL. Rate-limited; meant for development. @default false */
+  publicDevUrl?: boolean
+  /**
+   * Cache the custom domains at Cloudflare's edge. Written as one managed cache
+   * rule (tagged `[ts-cloud]`) scoped to the bucket's custom domains, merged
+   * into the zone's existing rules rather than replacing them.
+   */
+  cache?: {
+    /** Edge TTL in seconds (overrides the origin's Cache-Control). */
+    edgeTtl?: number
+    /** Browser TTL in seconds (overrides the origin's Cache-Control). */
+    browserTtl?: number
+  }
+}
+
+export interface R2Config {
+  /** Buckets keyed by a logical name (the key is not the bucket name; `name` is). */
+  buckets: Record<string, R2BucketConfig>
 }
 
 export interface StorageItemConfig {

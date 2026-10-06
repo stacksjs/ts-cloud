@@ -17,6 +17,7 @@ import { describe, expect, it } from 'bun:test'
 import * as cdn from '../src/cdn'
 import * as dns from '../src/dns'
 import * as operations from '../src/operations'
+import * as r2 from '../src/r2'
 import * as root from '../src/index'
 
 /** Names a subpath exports that the root does not. */
@@ -48,6 +49,12 @@ describe('package root re-exports its subpaths', () => {
   it('exports the Cloudflare CDN entry points a deploy needs', () => {
     expect(typeof root.reconcileCloudflareCdn).toBe('function')
     expect(typeof root.resolveCloudflareCdnPlan).toBe('function')
+  })
+
+  it('surfaces every runtime value from ./r2', () => {
+    expect(missingFromRoot(r2)).toEqual([])
+    // Stacks' buddy deploy imports this from the package root.
+    expect(typeof root.reconcileR2Buckets).toBe('function')
   })
 
   it('surfaces every runtime value from ./operations', () => {

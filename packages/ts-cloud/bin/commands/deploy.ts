@@ -27,6 +27,7 @@ import { createDnsProvider } from '../../src/dns'
 import { reconcileDeclaredRecords, resolveDeclaredRecords } from '../../src/dns/declared-records'
 import { CloudflareProvider } from '../../src/dns/cloudflare'
 import { reconcileCloudflareCdn, resolveCloudflareCdnPlan } from '../../src/cdn'
+import { reconcileR2Buckets } from '../../src/r2'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
@@ -585,6 +586,9 @@ export function registerDeployCommands(app: CLI): void {
             cli.info(`Region: ${region}`)
             cli.info(`Environment: ${environment}`)
             cli.info(`Sites: ${sites.length > 0 ? sites.join(', ') : 'none'}`)
+            // Read-only: reports which R2 buckets, domains and settings a real
+            // deploy would create or change.
+            await reconcileR2BucketsForDeploy(config, { dryRun: true })
             cli.success('Dry run complete. No infrastructure, DNS, certificates, or application files were changed.')
             return
           }
@@ -636,6 +640,18 @@ export function registerDeployCommands(app: CLI): void {
             return
           }
           cli.success('✓ Security policy allows this deployment\n')
+
+          // Cloudflare R2 buckets run before ANY deploy path (serverless,
+          // compute, CloudFormation) rather than next to the CDN reconcile's
+          // call site, which only the compute path reaches: the release about
+          // to ship may read and write these buckets, so they have to exist
+          // first. Unlike the CDN pass this one can fail the deploy, but only
+          // for a bucket that cannot be created (or R2 not being enabled on
+          // the account); a setting that will not apply is a warning.
+          if (!(await reconcileR2BucketsForDeploy(config))) {
+            process.exitCode = 1
+            return
+          }
 
           // Server and serverless are mutually exclusive. When the project is a
           // serverless app (`environments.<env>.app`), `cloud deploy` routes to the
@@ -2570,6 +2586,45 @@ async function reconcileCloudflareCdnForDeploy(
     for (const warning of report.warnings) cli.warn(`  ⚠ ${warning}`)
   } catch (error) {
     cli.warn(`Cloudflare CDN: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * Reconcile `infrastructure.r2` against Cloudflare, with credentials read from
+ * the env the same way the Cloudflare DNS provider reads them
+ * (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, optional `CLOUDFLARE_ZONE_ID`).
+ *
+ * A project without an `r2` block costs nothing here: it returns before any
+ * request. Missing credentials with buckets declared are a warning, not a
+ * failure, matching the DNS and CDN passes.
+ *
+ * @returns `false` only when the reconcile threw (a bucket could not be
+ * created, or R2 is not enabled on the account); the deploy should stop then.
+ */
+async function reconcileR2BucketsForDeploy(config: any, options: { dryRun?: boolean } = {}): Promise<boolean> {
+  const declared = Object.keys(config.infrastructure?.r2?.buckets ?? {}).length
+  if (declared === 0) return true
+
+  cli.step(`Cloudflare R2: ${options.dryRun ? 'planning' : 'reconciling'} ${declared} bucket(s)...`)
+  try {
+    const summary = await reconcileR2Buckets(config, {
+      apiToken: process.env.CLOUDFLARE_API_TOKEN,
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+      zoneId: process.env.CLOUDFLARE_ZONE_ID,
+      dryRun: options.dryRun,
+    })
+
+    for (const bucket of summary.buckets) {
+      if (bucket.changes.length === 0) cli.info(`  = ${bucket.name} (in sync)`)
+      for (const change of bucket.changes) cli.success(`  ✓ ${bucket.name}: ${change}`)
+      for (const domain of bucket.domains) cli.info(`    ${domain.domain}: ${domain.status ?? 'unknown'}`)
+    }
+    for (const warning of summary.warnings) cli.warn(`  ⚠ ${warning}`)
+    return true
+  }
+  catch (error) {
+    cli.error(`Cloudflare R2: ${error instanceof Error ? error.message : String(error)}`)
+    return false
   }
 }
 
