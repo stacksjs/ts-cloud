@@ -28,6 +28,12 @@ export interface AWSRequestOptions {
   cacheTTL?: number
   returnHeaders?: boolean
   rawResponse?: boolean
+  /**
+   * Resolve with the `Response` itself, body unread, once its status is known
+   * to be a success. For bodies consumed incrementally, such as an event
+   * stream; an error status still throws the same parsed error as any request.
+   */
+  streamResponse?: boolean
   /** S3 bucket name for virtual-hosted style URLs */
   bucket?: string
 }
@@ -133,6 +139,47 @@ interface CacheEntry {
  * (an engine version), `1.50`, `0x1F`, `1e3` and a 20-digit ID stay strings.
  * Exported for tests.
  */
+/**
+ * Services whose SigV4 credential scope differs from the endpoint prefix the
+ * request goes to. The pairs are AWS's own `endpointPrefix` / `signingName`
+ * service metadata; a request signed with the endpoint prefix is refused with
+ * 403 "Credential should be scoped to correct service".
+ *
+ * Every Bedrock runtime call - `invokeModel`, `converse` and the streaming
+ * variants - and every Bedrock Agents and Personalize runtime call was signed
+ * as its host prefix, so none of them had ever succeeded.
+ */
+const SIGNING_NAMES: Readonly<Record<string, string>> = {
+  'email': 'ses',
+  'bedrock-runtime': 'bedrock',
+  'bedrock-agent': 'bedrock',
+  'bedrock-agent-runtime': 'bedrock',
+  'personalize-runtime': 'personalize',
+  'personalize-events': 'personalize',
+}
+
+/**
+ * The SigV4 signing name for a request sent to `<endpointPrefix>.<region>.amazonaws.com`.
+ */
+export function signingNameFor(endpointPrefix: string): string {
+  return SIGNING_NAMES[endpointPrefix] ?? endpointPrefix
+}
+
+/**
+ * The SigV4 canonical URI for `path`, the path exactly as it is sent.
+ *
+ * Every service but S3 canonicalises the path by URI-encoding each segment of
+ * it again, so an already-encoded `%3A` is signed as `%253A`. Signing the path
+ * verbatim failed every request whose path carried an encoded character - a
+ * Bedrock model id such as `amazon.nova-lite-v1:0`, a Lambda function ARN -
+ * with a signature mismatch. S3 signs the path as sent.
+ */
+export function canonicalUriFor(endpointPrefix: string, path: string): string {
+  if (endpointPrefix === 's3')
+    return path
+  return path.split('/').map(segment => encodeURIComponent(segment).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join('/')
+}
+
 export function coerceXmlValues(node: any): any {
   if (typeof node === 'string') {
     if (node === 'true')
@@ -472,6 +519,9 @@ export class AWSClient {
       body: options.body,
     })
 
+    if (options.streamResponse && response.ok)
+      return response
+
     const responseText = await response.text()
 
     if (!response.ok) {
@@ -656,7 +706,7 @@ export class AWSClient {
     const payloadHash = this.sha256(body || '')
     headers['x-amz-content-sha256'] = payloadHash
 
-    const canonicalUri = path
+    const canonicalUri = canonicalUriFor(service, path)
     const canonicalQueryString = queryParams
       ? Object.keys(queryParams)
           .sort()
@@ -682,10 +732,7 @@ export class AWSClient {
 
     // Create string to sign
     const algorithm = 'AWS4-HMAC-SHA256'
-    // Some AWS services use different service names for endpoint vs credential scope
-    // SES v2 API uses 'email' as endpoint but 'ses' for credential scope
-    let signingService = service
-    if (service === 'email') signingService = 'ses'
+    const signingService = signingNameFor(service)
     const credentialScope = `${dateStamp}/${region}/${signingService}/aws4_request`
     const stringToSign = [algorithm, amzDate, credentialScope, this.sha256(canonicalRequest)].join('\n')
 

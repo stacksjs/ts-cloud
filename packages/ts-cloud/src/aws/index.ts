@@ -34,6 +34,7 @@ export * from './dynamodb'
 export * from './opensearch'
 export * from './transcribe'
 export * from './bedrock'
+export * from './event-stream'
 export * from './comprehend'
 
 // Rekognition - export class and functions

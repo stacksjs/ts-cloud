@@ -4,6 +4,7 @@
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
 import { AWSClient } from './client'
+import { decodeEventStream, eventStreamError } from './event-stream'
 
 // ============================================================================
 // Bedrock Runtime Types
@@ -875,6 +876,30 @@ export interface InvokeAgentCommandOutput {
 /**
  * Bedrock Runtime client for AI model invocations
  */
+/**
+ * The model output in an `invoke-with-response-stream` body, chunk by chunk.
+ *
+ * Each `chunk` event's payload is `{"bytes":"<base64>"}`; `bytes` here is the
+ * decoded model output, as the AWS SDK gives it. An exception event - a
+ * throttle, a model timeout - throws, rather than ending the stream as if
+ * the model had finished.
+ */
+async function* modelStreamChunks(response: Response): AsyncGenerator<BedrockStreamChunk> {
+  if (!response.body)
+    throw new Error('Bedrock returned no body for a streaming request')
+
+  for await (const message of decodeEventStream(response.body)) {
+    const error = eventStreamError(message)
+    if (error)
+      throw error
+    if (message.headers[':event-type'] !== 'chunk')
+      continue
+
+    const { bytes } = JSON.parse(new TextDecoder().decode(message.payload)) as { bytes?: string }
+    yield { chunk: { bytes: new Uint8Array(Buffer.from(bytes ?? '', 'base64')) } }
+  }
+}
+
 export class BedrockRuntimeClient {
   private client: AWSClient
   private region: string
@@ -955,193 +980,21 @@ export class BedrockRuntimeClient {
       headers['X-Amzn-Bedrock-GuardrailVersion'] = params.guardrailVersion
     }
 
-    // For streaming, we need to make a raw fetch request and handle the event stream
-    const stream = await this.makeStreamRequest(params.modelId, headers, body)
-
-    return {
-      body: stream,
-      contentType: 'application/vnd.amazon.eventstream',
-    }
-  }
-
-  /**
-   * Internal method to make streaming request
-   */
-  private async makeStreamRequest(
-    modelId: string,
-    headers: Record<string, string>,
-    body: string,
-  ): Promise<AsyncIterable<BedrockStreamChunk>> {
-    // Get credentials and sign request manually for streaming
-    const credentials = this.getCredentialsFromEnv()
-    const url = `https://bedrock-runtime.${this.region}.amazonaws.com/model/${encodeURIComponent(modelId)}/invoke-with-response-stream`
-
-    const signedHeaders = this.signStreamRequest(
-      'POST',
-      `/model/${encodeURIComponent(modelId)}/invoke-with-response-stream`,
+    const response: Response = await this.client.request({
+      service: 'bedrock-runtime',
+      region: this.region,
+      method: 'POST',
+      path: `/model/${encodeURIComponent(params.modelId)}/invoke-with-response-stream`,
       headers,
       body,
-      credentials,
-    )
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: signedHeaders,
-      body,
+      // Resolves only once the status is a success, so a retry (throttling,
+      // say) never replays a chunk the caller has already seen.
+      streamResponse: true,
     })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Bedrock streaming error (${response.status}): ${errorText}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error('No response body for streaming')
-    }
-
-    return this.parseEventStream(reader as any)
-  }
-
-  /**
-   * Parse AWS event stream format
-   */
-  private async *parseEventStream(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncIterable<BedrockStreamChunk> {
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-
-        // Parse event stream messages
-        // AWS event stream format has binary headers followed by payload
-        // For simplicity, we'll look for JSON chunks in the stream
-        const chunks = this.extractJsonChunks(buffer)
-        for (const chunk of chunks.parsed) {
-          yield { chunk: { bytes: new TextEncoder().encode(JSON.stringify(chunk)) } }
-        }
-        buffer = chunks.remaining
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-
-  /**
-   * Extract JSON chunks from event stream buffer
-   */
-  private extractJsonChunks(buffer: string): { parsed: unknown[]; remaining: string } {
-    const parsed: unknown[] = []
-    let remaining = buffer
-
-    // Look for complete JSON objects
-    // This is a simplified parser - the actual AWS event stream format is more complex
-    let braceCount = 0
-    let start = -1
-
-    for (let i = 0; i < remaining.length; i++) {
-      if (remaining[i] === '{') {
-        if (braceCount === 0) start = i
-        braceCount++
-      } else if (remaining[i] === '}') {
-        braceCount--
-        if (braceCount === 0 && start !== -1) {
-          try {
-            const json = JSON.parse(remaining.slice(start, i + 1))
-            parsed.push(json)
-            remaining = remaining.slice(i + 1)
-            i = -1 // Reset to search from beginning of new remaining
-            start = -1
-          } catch {
-            // Not valid JSON, continue
-          }
-        }
-      }
-    }
-
-    return { parsed, remaining }
-  }
-
-  /**
-   * Get credentials from environment
-   */
-  private getCredentialsFromEnv(): { accessKeyId: string; secretAccessKey: string; sessionToken?: string } {
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
-    const sessionToken = process.env.AWS_SESSION_TOKEN
-
-    if (!accessKeyId || !secretAccessKey) {
-      throw new Error('AWS credentials not found in environment variables')
-    }
-
-    return { accessKeyId, secretAccessKey, sessionToken }
-  }
-
-  /**
-   * Sign request for streaming (simplified SigV4)
-   */
-  private signStreamRequest(
-    method: string,
-    path: string,
-    headers: Record<string, string>,
-    body: string,
-    credentials: { accessKeyId: string; secretAccessKey: string; sessionToken?: string },
-  ): Record<string, string> {
-    const crypto = require('node:crypto')
-    const service = 'bedrock-runtime'
-    const region = this.region
-    const host = `${service}.${region}.amazonaws.com`
-
-    const now = new Date()
-    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
-    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
-
-    const allHeaders: Record<string, string> = {
-      host: host,
-      'x-amz-date': amzDate,
-      ...headers,
-    }
-
-    if (credentials.sessionToken) {
-      allHeaders['x-amz-security-token'] = credentials.sessionToken
-    }
-
-    const payloadHash = crypto.createHash('sha256').update(body, 'utf8').digest('hex')
-    allHeaders['x-amz-content-sha256'] = payloadHash
-    allHeaders['content-length'] = Buffer.byteLength(body).toString()
-
-    const sortedHeaderKeys = Object.keys(allHeaders).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-
-    const canonicalHeaders = sortedHeaderKeys.map((key) => `${key.toLowerCase()}:${allHeaders[key].trim()}\n`).join('')
-
-    const signedHeaders = sortedHeaderKeys.map((key) => key.toLowerCase()).join(';')
-
-    const canonicalRequest = [method, path, '', canonicalHeaders, signedHeaders, payloadHash].join('\n')
-
-    const algorithm = 'AWS4-HMAC-SHA256'
-    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`
-    const stringToSign = [
-      algorithm,
-      amzDate,
-      credentialScope,
-      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
-    ].join('\n')
-
-    const kDate = crypto.createHmac('sha256', `AWS4${credentials.secretAccessKey}`).update(dateStamp).digest()
-    const kRegion = crypto.createHmac('sha256', kDate).update(region).digest()
-    const kService = crypto.createHmac('sha256', kRegion).update(service).digest()
-    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
-    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
-
-    const authorizationHeader = `${algorithm} Credential=${credentials.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
-
     return {
-      ...allHeaders,
-      Authorization: authorizationHeader,
+      body: modelStreamChunks(response),
+      contentType: response.headers.get('content-type') || 'application/vnd.amazon.eventstream',
     }
   }
 
@@ -2063,19 +1916,48 @@ export class BedrockAgentRuntimeClient {
     if (params.memoryId) requestBody.memoryId = params.memoryId
     if (params.sessionState) requestBody.sessionState = params.sessionState
 
-    const result = await this.client.request({
+    // InvokeAgent answers with an event stream, not JSON: the completion
+    // arrives as `chunk` events, each carrying base64 text and the citations
+    // for it. Parsing the body as JSON returned the binary frames as a string.
+    const response: Response = await this.client.request({
       service: 'bedrock-agent-runtime',
       region: this.region,
       method: 'POST',
       path: `/agents/${encodeURIComponent(params.agentId)}/agentAliases/${encodeURIComponent(params.agentAliasId)}/sessions/${encodeURIComponent(params.sessionId)}/text`,
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'application/json',
+        Accept: 'application/vnd.amazon.eventstream',
       },
       body: JSON.stringify(requestBody),
+      streamResponse: true,
     })
 
-    return result
+    if (!response.body)
+      throw new Error('Bedrock Agents returned no body for InvokeAgent')
+
+    let completion = ''
+    const citations: NonNullable<Awaited<ReturnType<BedrockAgentRuntimeClient['invokeAgent']>>['citations']> = []
+    for await (const message of decodeEventStream(response.body)) {
+      const error = eventStreamError(message)
+      if (error)
+        throw error
+      if (message.headers[':event-type'] !== 'chunk')
+        continue
+
+      const chunk = JSON.parse(new TextDecoder().decode(message.payload)) as {
+        bytes?: string
+        attribution?: { citations?: typeof citations }
+      }
+      completion += Buffer.from(chunk.bytes ?? '', 'base64').toString('utf8')
+      citations.push(...(chunk.attribution?.citations ?? []))
+    }
+
+    return {
+      completion,
+      sessionId: response.headers.get('x-amz-bedrock-agent-session-id') ?? params.sessionId,
+      memoryId: response.headers.get('x-amz-bedrock-agent-memory-id') ?? undefined,
+      citations: citations.length > 0 ? citations : undefined,
+    }
   }
 
   /**
