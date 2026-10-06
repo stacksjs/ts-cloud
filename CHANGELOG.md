@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.43...v0.16.44)
+
+## ✨ Features
+
+- **bedrock**: stream the Converse API ([7f250ce](https://github.com/stacksjs/ts-cloud/commit/7f250ce)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.44 ([74d6e74](https://github.com/stacksjs/ts-cloud/commit/74d6e74)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.42...v0.16.43)
 
 ## ✨ Features
