@@ -266,3 +266,124 @@ people. What counts as "the same record" depends on the type:
 Cloudflare works as a plain DNS provider with no CDN at all — set
 `infrastructure.dns.provider: 'cloudflare'` and omit the `cdn` block. Records are
 then created unproxied and no zone settings, cache rules or purges are applied.
+
+## R2 buckets
+
+ts-cloud can provision [Cloudflare R2](https://developers.cloudflare.com/r2/)
+buckets on every `cloud deploy`: the bucket itself, its CORS policy, lifecycle
+rules, the public `r2.dev` URL, custom domains, and an edge cache rule for those
+domains. R2 is independent of AWS and of the CDN block above; a project can use
+it with any `cloud` provider.
+
+```ts
+// cloud.config.ts (or config/cloud.ts in a Stacks app)
+export default {
+  infrastructure: {
+    r2: {
+      buckets: {
+        tiles: {
+          name: 'my-app-tiles',
+          locationHint: 'wnam',               // wnam | enam | weur | eeur | apac | oc
+          customDomains: [
+            'tiles.example.com',              // minTLS defaults to 1.2
+            { domain: 'img.example.com', minTLS: '1.3' },
+          ],
+          cors: [
+            {
+              allowed: { origins: ['https://example.com'], methods: ['GET', 'HEAD'] },
+              exposeHeaders: ['ETag'],
+              maxAgeSeconds: 3600,
+            },
+          ],
+          lifecycle: [
+            { id: 'expire-tmp', prefix: 'tmp/', expireAfterDays: 7 },
+            { id: 'abort-uploads', abortMultipartUploadsAfterDays: 1 },
+          ],
+          publicDevUrl: false,                // the rate-limited *.r2.dev URL; off by default
+          cache: { edgeTtl: 86_400, browserTtl: 3_600 },
+        },
+      },
+    },
+  },
+}
+```
+
+Credentials come from the same environment variables as the rest of the
+Cloudflare integration:
+
+| Variable | Purpose |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Needs **Workers R2 Storage: Edit**. Custom domains also need **Zone: Read** on their zones, and `cache` needs **Zone: Cache Rules: Edit**. An account-owned token works. |
+| `CLOUDFLARE_ACCOUNT_ID` | The account the buckets live in. Required. |
+| `CLOUDFLARE_ZONE_ID` | Optional. Used for custom domains inside that zone; other domains have their zone looked up by apex. |
+
+If the `r2` block is present but the token or account id is missing, the deploy
+warns and skips R2 rather than failing.
+
+### What a deploy does
+
+For each bucket, in order, reading first and writing only what differs:
+
+1. **Bucket.** Created when missing, with `locationHint` (and `jurisdiction`,
+   for `eu` or `fedramp` buckets). Both only apply at creation; R2 cannot move a
+   bucket afterwards.
+2. **CORS.** Omit `cors` to leave the bucket's policy alone; `cors: []` removes
+   it. Rules use Cloudflare's own shape, so they can be pasted from its docs.
+3. **Lifecycle.** Each rule is flattened (`expireAfterDays`, `expireOn`,
+   `abortMultipartUploadsAfterDays`, `infrequentAccessAfterDays`) and converted
+   to R2's transition format. A declared list **replaces** the bucket's rules,
+   including the multipart-abort rule R2 adds to new buckets, so re-declare that
+   one if you want to keep it.
+4. **`r2.dev` URL.** Turned on or off to match `publicDevUrl`.
+5. **Custom domains.** Attached with `enabled: true` and the requested minimum
+   TLS. Cloudflare creates the proxied DNS record itself, so the hostname must
+   not already have a record; if it does, the attach fails with a warning and
+   the rest of the deploy continues. A new domain shows as `pending` until
+   Cloudflare has validated ownership and issued the edge certificate.
+6. **Cache rule.** `cache` becomes one `set_cache_settings` rule scoped to the
+   bucket's custom domains, tagged `[ts-cloud]` and merged into the zone's
+   cache rules the same way the CDN's are (see [Cache rules](#cache-rules)).
+   Rules you added in the dashboard are kept.
+
+Nothing is ever deleted: removing a bucket or a custom domain from the config
+leaves it in place. Detach or delete it in the dashboard when you mean it.
+
+`cloud deploy --dry-run` runs the same reads and lists what would change
+(`would create bucket`, `would attach custom domain tiles.example.com`, ...)
+without writing anything.
+
+The R2 step runs before the application is deployed, because the release may
+depend on the buckets. A bucket that cannot be created stops the deploy. So does
+an account where R2 has never been switched on: Cloudflare answers every R2 call
+with error `10042` until R2 is enabled once in the dashboard (**R2 Object
+Storage**), and ts-cloud reports that as an `R2NotEnabledError` saying exactly
+that.
+
+### Using R2 from code
+
+Everything is exported from the package root:
+
+```ts
+import { R2Provider, r2S3Credentials, reconcileR2Buckets } from '@stacksjs/ts-cloud'
+
+// Reconcile outside `cloud deploy` (this is what Stacks' buddy deploy calls).
+const summary = await reconcileR2Buckets(config, {
+  apiToken: process.env.CLOUDFLARE_API_TOKEN,
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+  zoneId: process.env.CLOUDFLARE_ZONE_ID,
+  log: line => console.log(line),
+})
+// { buckets: [{ name, changes: string[], domains: [{ domain, status }] }], warnings: string[] }
+
+// S3-compatible keys for the app, derived from the same API token.
+const { accessKeyId, secretAccessKey, endpoint, region } = await r2S3Credentials({
+  apiToken: process.env.CLOUDFLARE_API_TOKEN!,
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+})
+```
+
+`r2S3Credentials` follows Cloudflare's documented mapping: the access key id is
+the token's id (read from `/accounts/{id}/tokens/verify`, falling back to
+`/user/tokens/verify` for a user-owned token) and the secret is the lowercase
+hex SHA-256 of the token value. The endpoint is
+`https://{accountId}.r2.cloudflarestorage.com` and the region is `auto`.
