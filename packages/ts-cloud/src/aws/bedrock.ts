@@ -192,6 +192,44 @@ export interface ConverseCommandOutput {
   }
 }
 
+export type ConverseStopReason = ConverseCommandOutput['stopReason']
+
+/**
+ * One event of a `converse-stream` response, keyed by its kind the way the
+ * AWS SDK's `ConverseStreamOutput` union is.
+ *
+ * A text block arrives as `contentBlockDelta.delta.text` pieces. A tool call
+ * opens with `contentBlockStart.start.toolUse` (its id and name) and then
+ * streams its arguments as `delta.toolUse.input` fragments of one JSON
+ * string, complete at that block's `contentBlockStop`. Usage comes last, in
+ * `metadata`, after `messageStop` has given the stop reason.
+ */
+export type ConverseStreamEvent =
+  | { messageStart: { role: 'assistant' } }
+  | { contentBlockStart: { contentBlockIndex: number; start: { toolUse?: { toolUseId: string; name: string } } } }
+  | {
+    contentBlockDelta: {
+      contentBlockIndex: number
+      delta: {
+        text?: string
+        toolUse?: { input: string }
+        reasoningContent?: { text?: string; signature?: string; redactedContent?: string }
+      }
+    }
+  }
+  | { contentBlockStop: { contentBlockIndex: number } }
+  | { messageStop: { stopReason: ConverseStopReason; additionalModelResponseFields?: Record<string, unknown> } }
+  | {
+    metadata: {
+      usage: { inputTokens: number; outputTokens: number; totalTokens: number; serverToolUsage?: Record<string, number> }
+      metrics?: { latencyMs: number }
+    }
+  }
+
+export interface ConverseStreamCommandOutput {
+  stream: AsyncGenerator<ConverseStreamEvent>
+}
+
 // ============================================================================
 // Bedrock Management Types
 // ============================================================================
@@ -974,6 +1012,52 @@ async function* modelStreamChunks(response: Response): AsyncGenerator<BedrockStr
   }
 }
 
+const CONVERSE_STREAM_EVENTS = new Set(['messageStart', 'contentBlockStart', 'contentBlockDelta', 'contentBlockStop', 'messageStop', 'metadata'])
+
+/**
+ * The events of a `converse-stream` body.
+ *
+ * Each frame's `:event-type` header names the event and its payload is that
+ * event's fields, plus a `p` of random padding AWS adds so a frame's length
+ * does not reveal its content; the padding is dropped. An exception frame - a
+ * throttle mid-stream, a model timeout - throws rather than ending the stream
+ * as though the model had finished. An event type this does not know is
+ * skipped, so a new kind AWS adds does not break an existing caller.
+ */
+async function* converseStreamEvents(response: Response): AsyncGenerator<ConverseStreamEvent> {
+  if (!response.body)
+    throw new Error('Bedrock returned no body for a streaming request')
+
+  const decoder = new TextDecoder()
+  for await (const message of decodeEventStream(response.body)) {
+    const error = eventStreamError(message)
+    if (error)
+      throw error
+
+    const type = String(message.headers[':event-type'] ?? '')
+    if (!CONVERSE_STREAM_EVENTS.has(type))
+      continue
+
+    const { p: _padding, ...fields } = JSON.parse(decoder.decode(message.payload)) as Record<string, unknown>
+    yield { [type]: fields } as ConverseStreamEvent
+  }
+}
+
+/** The JSON body `converse` and `converse-stream` share. */
+function converseRequestBody(params: ConverseCommandInput): string {
+  const requestBody: Record<string, unknown> = {
+    modelId: params.modelId,
+    messages: params.messages,
+  }
+
+  if (params.system) requestBody.system = params.system
+  if (params.inferenceConfig) requestBody.inferenceConfig = params.inferenceConfig
+  if (params.toolConfig) requestBody.toolConfig = params.toolConfig
+  if (params.guardrailConfig) requestBody.guardrailConfig = params.guardrailConfig
+
+  return JSON.stringify(requestBody)
+}
+
 export class BedrockRuntimeClient {
   private client: AWSClient
   private region: string
@@ -1122,16 +1206,6 @@ export class BedrockRuntimeClient {
    * Converse API - unified conversation interface for all models
    */
   async converse(params: ConverseCommandInput): Promise<ConverseCommandOutput> {
-    const requestBody: Record<string, unknown> = {
-      modelId: params.modelId,
-      messages: params.messages,
-    }
-
-    if (params.system) requestBody.system = params.system
-    if (params.inferenceConfig) requestBody.inferenceConfig = params.inferenceConfig
-    if (params.toolConfig) requestBody.toolConfig = params.toolConfig
-    if (params.guardrailConfig) requestBody.guardrailConfig = params.guardrailConfig
-
     const result = await this.client.request({
       service: 'bedrock-runtime',
       region: this.region,
@@ -1141,10 +1215,36 @@ export class BedrockRuntimeClient {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify(requestBody),
+      body: converseRequestBody(params),
     })
 
     return result
+  }
+
+  /**
+   * The Converse API, streamed (matches AWS SDK ConverseStreamCommand).
+   *
+   * Same request as {@link converse}; the answer arrives as
+   * {@link ConverseStreamEvent}s on `stream`, text and tool-call arguments in
+   * pieces as the model produces them.
+   */
+  async converseStream(params: ConverseCommandInput): Promise<ConverseStreamCommandOutput> {
+    const response: Response = await this.client.request({
+      service: 'bedrock-runtime',
+      region: this.region,
+      method: 'POST',
+      path: `/model/${encodeURIComponent(params.modelId)}/converse-stream`,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.amazon.eventstream',
+      },
+      body: converseRequestBody(params),
+      // Resolves only once the status is a success, so a retry (throttling,
+      // say) never replays an event the caller has already seen.
+      streamResponse: true,
+    })
+
+    return { stream: converseStreamEvents(response) }
   }
 
   /**
