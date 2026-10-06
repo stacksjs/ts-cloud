@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.37...v0.16.38)
+
+## 🐛 Bug Fixes
+
+- **bedrock**: sign runtime requests as AWS scopes them and decode the event streams ([0d8a61c](https://github.com/stacksjs/ts-cloud/commit/0d8a61c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.38 ([24c9b09](https://github.com/stacksjs/ts-cloud/commit/24c9b09)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.36...v0.16.37)
 
 ## 🐛 Bug Fixes
