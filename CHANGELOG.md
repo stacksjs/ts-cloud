@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.41...v0.16.42)
+
+## ✨ Features
+
+- **workers**: deploy Cloudflare Workers with R2 bindings and custom domains ([4275175](https://github.com/stacksjs/ts-cloud/commit/4275175)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📝 Documentation
+
+- **cloudflare**: declaring Workers with R2 bindings and custom domains ([2248288](https://github.com/stacksjs/ts-cloud/commit/2248288)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.42 ([bea011a](https://github.com/stacksjs/ts-cloud/commit/bea011a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.40...v0.16.41)
 
 ## ✨ Features
