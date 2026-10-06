@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.39...v0.16.40)
+
+## ✨ Features
+
+- **r2**: provision Cloudflare R2 buckets with custom domains on deploy ([f6b0e5e](https://github.com/stacksjs/ts-cloud/commit/f6b0e5e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📝 Documentation
+
+- **cloudflare**: declaring R2 buckets with custom domains ([919eac2](https://github.com/stacksjs/ts-cloud/commit/919eac2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.40 ([fb2768f](https://github.com/stacksjs/ts-cloud/commit/fb2768f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.38...v0.16.39)
 
 ## 🐛 Bug Fixes
