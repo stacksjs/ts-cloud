@@ -1154,6 +1154,56 @@ export class EC2Client {
   }
 
   /**
+   * Import an SSH public key as an EC2 key pair, for a machine made with
+   * `KeyName`. The private key never leaves the caller.
+   */
+  async importKeyPair(options: {
+    KeyName: string
+    PublicKeyMaterial: string
+    TagSpecifications?: { ResourceType: string; Tags: { Key: string; Value: string }[] }[]
+  }): Promise<{ KeyName?: string; KeyPairId?: string; KeyFingerprint?: string }> {
+    const params: Record<string, string> = {
+      Action: 'ImportKeyPair',
+      Version: '2016-11-15',
+      KeyName: options.KeyName,
+      // The API takes the public key base64-encoded, whatever its format.
+      PublicKeyMaterial: Buffer.from(options.PublicKeyMaterial.trim()).toString('base64'),
+    }
+    options.TagSpecifications?.forEach((spec, i) => {
+      params[`TagSpecification.${i + 1}.ResourceType`] = spec.ResourceType
+      spec.Tags.forEach((tag, j) => {
+        params[`TagSpecification.${i + 1}.Tag.${j + 1}.Key`] = tag.Key
+        params[`TagSpecification.${i + 1}.Tag.${j + 1}.Value`] = tag.Value
+      })
+    })
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params).toString(),
+    })
+    const response = result.ImportKeyPairResponse || result
+    return { KeyName: response.keyName, KeyPairId: response.keyPairId, KeyFingerprint: response.keyFingerprint }
+  }
+
+  /**
+   * Delete an EC2 key pair by name. Deleting one that does not exist succeeds.
+   */
+  async deleteKeyPair(keyName: string): Promise<void> {
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ Action: 'DeleteKeyPair', Version: '2016-11-15', KeyName: keyName }).toString(),
+    })
+  }
+
+  /**
    * Create a Security Group
    */
   async createSecurityGroup(options: {
@@ -1530,6 +1580,20 @@ export class EC2Client {
     SubnetId?: string
     UserData?: string
     IamInstanceProfile?: { Name?: string; Arn?: string }
+    /** An EC2 key pair, for SSH as the image's default user. */
+    KeyName?: string
+    /**
+     * What an `shutdown` from inside the instance does. `terminate` lets a
+     * one-off job delete its own machine when it is done.
+     */
+    InstanceInitiatedShutdownBehavior?: 'stop' | 'terminate'
+    /** Root and extra EBS volumes, e.g. a larger root disk. */
+    BlockDeviceMappings?: {
+      DeviceName: string
+      Ebs?: { VolumeSize?: number; VolumeType?: string; Iops?: number; Throughput?: number; DeleteOnTermination?: boolean; Encrypted?: boolean }
+    }[]
+    /** Require IMDSv2 tokens, which is what AWS recommends for every instance. */
+    MetadataOptions?: { HttpTokens?: 'required' | 'optional'; HttpEndpoint?: 'enabled' | 'disabled' }
     TagSpecifications?: {
       ResourceType: string
       Tags: { Key: string; Value: string }[]
@@ -1568,6 +1632,39 @@ export class EC2Client {
         params['IamInstanceProfile.Arn'] = options.IamInstanceProfile.Arn
       }
     }
+
+    if (options.KeyName) {
+      params.KeyName = options.KeyName
+    }
+
+    if (options.InstanceInitiatedShutdownBehavior) {
+      params.InstanceInitiatedShutdownBehavior = options.InstanceInitiatedShutdownBehavior
+    }
+
+    options.BlockDeviceMappings?.forEach((mapping, i) => {
+      const prefix = `BlockDeviceMapping.${i + 1}`
+      params[`${prefix}.DeviceName`] = mapping.DeviceName
+      const ebs = mapping.Ebs
+      if (!ebs)
+        return
+      if (ebs.VolumeSize !== undefined)
+        params[`${prefix}.Ebs.VolumeSize`] = String(ebs.VolumeSize)
+      if (ebs.VolumeType)
+        params[`${prefix}.Ebs.VolumeType`] = ebs.VolumeType
+      if (ebs.Iops !== undefined)
+        params[`${prefix}.Ebs.Iops`] = String(ebs.Iops)
+      if (ebs.Throughput !== undefined)
+        params[`${prefix}.Ebs.Throughput`] = String(ebs.Throughput)
+      if (ebs.DeleteOnTermination !== undefined)
+        params[`${prefix}.Ebs.DeleteOnTermination`] = String(ebs.DeleteOnTermination)
+      if (ebs.Encrypted !== undefined)
+        params[`${prefix}.Ebs.Encrypted`] = String(ebs.Encrypted)
+    })
+
+    if (options.MetadataOptions?.HttpTokens)
+      params['MetadataOptions.HttpTokens'] = options.MetadataOptions.HttpTokens
+    if (options.MetadataOptions?.HttpEndpoint)
+      params['MetadataOptions.HttpEndpoint'] = options.MetadataOptions.HttpEndpoint
 
     if (options.TagSpecifications) {
       options.TagSpecifications.forEach((spec, i) => {
