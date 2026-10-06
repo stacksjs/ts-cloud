@@ -2106,6 +2106,16 @@ export interface DnsZoneConfig {
    * reported rather than failing the deploy.
    */
   minTlsVersion?: '1.0' | '1.1' | '1.2' | '1.3'
+  /**
+   * Tiered cache: a data center that misses asks an upper-tier data center
+   * before the origin, so the origin answers once per region rather than once
+   * per city. `smart` lets Cloudflare choose the upper tier by latency to the
+   * origin; `generic` uses a fixed set; `off` turns it off. Free on every plan.
+   * It applies to everything Cloudflare caches through the CDN, including a
+   * Worker's `fetch()` subrequests, but not to a Worker's Cache API, which is
+   * local to one data center.
+   */
+  tieredCache?: 'smart' | 'generic' | 'off'
 }
 
 /**

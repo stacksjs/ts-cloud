@@ -844,6 +844,53 @@ export class CloudflareProvider implements DnsProvider {
   }
 
   /**
+   * Make the zone's tiered cache what a project declared.
+   *
+   * Without it every data center that misses goes to the origin itself. With
+   * it, a miss asks an upper-tier data center first, so the origin answers a
+   * request once for a region rather than once per city. `smart` lets
+   * Cloudflare pick the upper tier from latency to the origin (Smart Tiered
+   * Cache Topology), `generic` uses a fixed set, and `off` turns both off.
+   * Free on every plan.
+   *
+   * Two endpoints, because Cloudflare models it as two switches: tiered
+   * caching itself (`/argo/tiered_caching`) and the smart topology on top of
+   * it (`/cache/tiered_cache_smart_topology_enable`). Each is read first and
+   * only written when it differs.
+   */
+  async applyTieredCache(
+    domain: string,
+    mode: 'smart' | 'generic' | 'off',
+  ): Promise<{ changed: Array<{ id: string, from: unknown, to: unknown }>, failed: Array<{ id: string, error: string }> }> {
+    const changed: Array<{ id: string, from: unknown, to: unknown }> = []
+    const failed: Array<{ id: string, error: string }> = []
+    const zoneId = await this.getZoneId(domain)
+    const switches: Array<[string, string, 'on' | 'off']> = [
+      ['tiered_caching', `/zones/${zoneId}/argo/tiered_caching`, mode === 'off' ? 'off' : 'on'],
+      ['tiered_cache_smart_topology_enable', `/zones/${zoneId}/cache/tiered_cache_smart_topology_enable`, mode === 'smart' ? 'on' : 'off'],
+    ]
+    // Smart topology sits on top of tiered caching: switched on first and off
+    // last, so the zone is never asked for a topology it has no tiers for.
+    if (mode === 'off')
+      switches.reverse()
+
+    for (const [id, endpoint, want] of switches) {
+      try {
+        const current = await this.request<{ value?: string }>('GET', endpoint)
+        const from = current.result?.value
+        if (from === want)
+          continue
+        await this.request('PATCH', endpoint, { value: want })
+        changed.push({ id, from, to: want })
+      }
+      catch (error) {
+        failed.push({ id, error: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    return { changed, failed }
+  }
+
+  /**
    * Turn managed request-header transforms on or off, skipping any already set.
    *
    * These are not zone settings and do not live under `/settings` — Cloudflare

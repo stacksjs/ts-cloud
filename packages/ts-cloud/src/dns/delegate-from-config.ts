@@ -36,6 +36,7 @@ export interface ZoneSettingsConfig {
   alwaysUseHttps?: boolean
   minTlsVersion?: '1.0' | '1.1' | '1.2' | '1.3'
   visitorLocationHeaders?: boolean
+  tieredCache?: 'smart' | 'generic' | 'off'
 }
 
 /**
@@ -264,7 +265,7 @@ export async function applyDeclaredZoneSettings(
   const desired = toCloudflareSettings(config.zone)
   const desiredHeaders = toManagedRequestHeaders(config.zone)
 
-  if (Object.keys(desired).length === 0 && Object.keys(desiredHeaders).length === 0)
+  if (Object.keys(desired).length === 0 && Object.keys(desiredHeaders).length === 0 && !config.zone.tieredCache)
     return { status: 'skipped', reason: 'dns.zone declares no settings' }
 
   const credentials = options.credentials ?? credentialsFromEnv(options.env ?? process.env)
@@ -284,8 +285,14 @@ export async function applyDeclaredZoneSettings(
     ? await provider.applyManagedRequestHeaders(config.domain, desiredHeaders)
     : { changed: [], failed: [] }
 
-  const changed = [...settings.changed, ...headers.changed]
-  const failed = [...settings.failed, ...headers.failed]
+  // Tiered cache is two more switches behind their own endpoints, declared in
+  // the same block for the same reason the header transforms are.
+  const tiered = config.zone.tieredCache
+    ? await provider.applyTieredCache(config.domain, config.zone.tieredCache)
+    : { changed: [], failed: [] }
+
+  const changed = [...settings.changed, ...headers.changed, ...tiered.changed]
+  const failed = [...settings.failed, ...headers.failed, ...tiered.failed]
 
   return {
     status: changed.length > 0 ? 'applied' : 'unchanged',
