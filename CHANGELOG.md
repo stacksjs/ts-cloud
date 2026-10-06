@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.36...v0.16.37)
+
+## 🐛 Bug Fixes
+
+- **compute**: launch the jump box from the region's own Amazon Linux, with no key pair it never needed ([8a25284](https://github.com/stacksjs/ts-cloud/commit/8a25284)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#2862](https://github.com/stacksjs/ts-cloud/issues/2862))
+
+## 🔧 Chores
+
+- release v0.16.37 ([9a7ff75](https://github.com/stacksjs/ts-cloud/commit/9a7ff75)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.35...v0.16.36)
 
 ## ✨ Features
