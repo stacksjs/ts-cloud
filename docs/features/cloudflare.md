@@ -387,3 +387,118 @@ the token's id (read from `/accounts/{id}/tokens/verify`, falling back to
 `/user/tokens/verify` for a user-owned token) and the secret is the lowercase
 hex SHA-256 of the token value. The endpoint is
 `https://{accountId}.r2.cloudflarestorage.com` and the region is `auto`.
+
+## Workers
+
+ts-cloud can deploy [Cloudflare Workers](https://developers.cloudflare.com/workers/)
+on every `cloud deploy`: it bundles each Worker's entry with `Bun.build`,
+uploads it as an ES module Worker with its bindings, and attaches its custom
+domains. Like R2, Workers are independent of AWS and of the CDN block, and run
+with any `cloud` provider.
+
+```ts
+// cloud.config.ts (or config/cloud.ts in a Stacks app)
+export default {
+  infrastructure: {
+    r2: {
+      buckets: {
+        tiles: { name: 'my-app-tiles', locationHint: 'wnam' },
+      },
+    },
+    workers: {
+      tiles: {
+        name: 'my-app-tiles',                 // the script name in Cloudflare
+        entry: 'workers/tiles.ts',            // relative to the project root
+        compatibilityDate: '2025-09-01',      // the default when omitted
+        compatibilityFlags: ['nodejs_compat'],
+        bindings: {
+          r2Buckets: { TILES: 'my-app-tiles' }, // env.TILES is the bucket
+          vars: { CACHE_SECONDS: '86400' },     // env.CACHE_SECONDS, plain text
+        },
+        customDomains: ['tiles.example.com'],
+      },
+    },
+  },
+}
+```
+
+```ts
+// workers/tiles.ts
+interface Env {
+  TILES: R2Bucket
+  CACHE_SECONDS: string
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const object = await env.TILES.get(new URL(request.url).pathname.slice(1))
+    if (!object)
+      return new Response('Not found', { status: 404 })
+    return new Response(object.body, {
+      headers: { 'Cache-Control': `public, max-age=${env.CACHE_SECONDS}` },
+    })
+  },
+}
+```
+
+The token needs **Account → Workers Scripts → Edit**. Custom domains also need
+**Zone → Workers Routes → Edit** and **Zone → Zone → Read** on their zones;
+reading **Zone → DNS** and **Workers R2 Storage** lets the deploy explain a
+conflicting hostname precisely (see below). `CLOUDFLARE_ACCOUNT_ID` is
+required, `CLOUDFLARE_ZONE_ID` is used the same way as for R2. When Cloudflare
+answers with a bare "Authentication error", the deploy reports which of these
+permissions the call needed.
+
+### What a deploy does
+
+For each Worker, in order:
+
+1. **Bundle.** The entry is built into one minified ES module
+   (`target: 'browser'`, `format: 'esm'`; `cloudflare:*` imports stay external
+   for the runtime). A build that fails, or that emits more than one file (an
+   imported image or `.wasm`), stops the deploy with the reason.
+2. **Upload, when changed.** The upload carries a plain-text binding,
+   `TS_CLOUD_CONTENT_HASH`, holding a SHA-256 over the bundle, the bindings
+   and the compatibility settings. Cloudflare returns plain-text bindings from
+   the script's settings, so the next deploy compares hashes and reports
+   `unchanged` instead of re-uploading. A binding edited in the dashboard since
+   also triggers an upload, putting it back. The Worker itself can read
+   `env.TS_CLOUD_CONTENT_HASH` to tell which build is live. Secrets set with
+   `wrangler secret put` or in the dashboard are kept across uploads.
+3. **Custom domains.** Each hostname not already attached to this Worker is
+   attached as a [Workers Custom
+   Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/);
+   Cloudflare creates the DNS record and certificate, so a new domain shows as
+   `pending` for a minute or two.
+
+A hostname something else already serves is **never taken over**. The deploy
+warns and leaves it alone when the hostname:
+
+- is attached to an R2 bucket as a custom domain (on the account, or in the
+  same config's `r2` block). Detach it from the bucket first; to serve the
+  bucket through the Worker, bind it with `bindings.r2Buckets` as above.
+- is attached to a different Worker. Detach it there first.
+- has an existing DNS record. Delete the record first.
+
+Nothing is deleted either: removing a Worker or a custom domain from the config
+leaves it in place.
+
+`cloud deploy --dry-run` bundles each Worker and reports `would upload` and
+`would attach custom domain tiles.example.com` without writing anything. The
+Workers step runs right after R2, before the application is deployed.
+
+### Using Workers from code
+
+```ts
+import { bundleWorker, reconcileCloudflareWorkers, WorkersProvider } from '@stacksjs/ts-cloud'
+
+// Reconcile outside `cloud deploy` (this is what Stacks' buddy deploy calls).
+const summary = await reconcileCloudflareWorkers(config, {
+  apiToken: process.env.CLOUDFLARE_API_TOKEN,
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+  zoneId: process.env.CLOUDFLARE_ZONE_ID,
+  projectRoot: process.cwd(),
+  log: line => console.log(line),
+})
+// { workers: [{ name, changes: ['bundled 4.2 KB', 'uploaded', ...], domains: [{ domain, status }] }], warnings: string[] }
+```
