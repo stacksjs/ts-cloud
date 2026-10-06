@@ -112,9 +112,44 @@ export interface BedrockStreamChunk {
   }
 }
 
+/**
+ * A Converse content block. Converse keys each block by its kind rather than
+ * tagging it with `type` the way Anthropic's Messages API does; a
+ * `{ type: 'text', text }` block is refused with a ValidationException.
+ */
+export type ConverseContentBlock =
+  | { text: string }
+  | { image: { format: 'png' | 'jpeg' | 'gif' | 'webp'; source: { bytes: string } } }
+  | {
+    document: {
+      format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md'
+      name: string
+      source: { bytes: string }
+    }
+  }
+  | { toolUse: { toolUseId: string; name: string; input: Record<string, unknown> } }
+  | {
+    toolResult: {
+      toolUseId: string
+      content: Array<{ text: string } | { json: unknown }>
+      status?: 'success' | 'error'
+    }
+  }
+
+export interface ConverseMessage {
+  role: 'user' | 'assistant'
+  content: ConverseContentBlock[]
+}
+
+export interface ConverseToolSpec {
+  name: string
+  description?: string
+  inputSchema: { json: Record<string, unknown> }
+}
+
 export interface ConverseCommandInput {
   modelId: string
-  messages: BedrockMessage[]
+  messages: ConverseMessage[]
   system?: Array<{ text: string }>
   inferenceConfig?: {
     maxTokens?: number
@@ -123,7 +158,7 @@ export interface ConverseCommandInput {
     stopSequences?: string[]
   }
   toolConfig?: {
-    tools: Array<{ toolSpec: BedrockToolDefinition }>
+    tools: Array<{ toolSpec: ConverseToolSpec }>
     toolChoice?: { auto: Record<string, never> } | { any: Record<string, never> } | { tool: { name: string } }
   }
   guardrailConfig?: {
@@ -135,9 +170,18 @@ export interface ConverseCommandInput {
 
 export interface ConverseCommandOutput {
   output: {
-    message?: BedrockMessage
+    message?: ConverseMessage
   }
-  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'guardrail_intervened' | 'content_filtered'
+  stopReason:
+    | 'end_turn'
+    | 'tool_use'
+    | 'max_tokens'
+    | 'stop_sequence'
+    | 'guardrail_intervened'
+    | 'content_filtered'
+    | 'malformed_model_output'
+    | 'malformed_tool_use'
+    | 'model_context_window_exceeded'
   usage: {
     inputTokens: number
     outputTokens: number
@@ -372,14 +416,44 @@ export interface GetCustomModelCommandOutput {
   creationTime: string
 }
 
-// Model entitlement / access request types
-export interface CreateFoundationModelEntitlementCommandInput {
+// Model access types (GetFoundationModelAvailability, ListFoundationModelAgreementOffers,
+// CreateFoundationModelAgreement)
+export interface GetFoundationModelAvailabilityCommandOutput {
+  modelId: string
+  agreementAvailability: { status: 'AVAILABLE' | 'PENDING' | 'NOT_AVAILABLE' | 'ERROR', errorMessage?: string | null }
+  authorizationStatus: 'AUTHORIZED' | 'NOT_AUTHORIZED'
+  entitlementAvailability: 'AVAILABLE' | 'NOT_AVAILABLE'
+  regionAvailability: 'AVAILABLE' | 'NOT_AVAILABLE'
+}
+
+export interface FoundationModelAgreementOffer {
+  offerId: string
+  offerToken: string
+  termDetails?: Record<string, unknown>
+}
+
+export interface ListFoundationModelAgreementOffersCommandOutput {
+  modelId: string
+  offers: FoundationModelAgreementOffer[]
+}
+
+export interface CreateFoundationModelAgreementCommandInput {
+  modelId: string
+  offerToken: string
+}
+
+export interface RequestModelAccessCommandInput {
   modelId: string
 }
 
-export interface CreateFoundationModelEntitlementCommandOutput {
-  status: 'PENDING' | 'APPROVED' | 'DENIED'
+export interface RequestModelAccessCommandOutput {
   modelId: string
+  /**
+   * `available` - the model can be invoked now, no agreement needed or one
+   * already in place. `requested` - an agreement was created from the model's
+   * public offer; Bedrock processes it asynchronously.
+   */
+  status: 'available' | 'requested'
 }
 
 export interface ListModelInvocationJobsCommandInput {
@@ -1349,21 +1423,86 @@ export class BedrockClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Request access to a foundation model
+   * Whether `modelId` can be invoked in this region by this account, and
+   * whether an agreement is still needed.
    */
-  async requestModelAccess(
-    params: CreateFoundationModelEntitlementCommandInput,
-  ): Promise<CreateFoundationModelEntitlementCommandOutput> {
+  async getFoundationModelAvailability(modelId: string): Promise<GetFoundationModelAvailabilityCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: `/foundation-model-availability/${encodeURIComponent(modelId)}`,
+    })
+  }
+
+  /**
+   * The agreement offers for a marketplace model. A first-party model takes
+   * no agreement and Bedrock answers 400 "Agreement not supported".
+   */
+  async listFoundationModelAgreementOffers(
+    modelId: string,
+    offerType: 'ALL' | 'PUBLIC' = 'PUBLIC',
+  ): Promise<ListFoundationModelAgreementOffersCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: `/list-foundation-model-agreement-offers/${encodeURIComponent(modelId)}`,
+      queryParams: { offerType },
+    })
+  }
+
+  /**
+   * Accept an offer for a model. Bedrock answers 202 and processes it
+   * asynchronously.
+   */
+  async createFoundationModelAgreement(params: CreateFoundationModelAgreementCommandInput): Promise<{ modelId: string }> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
       method: 'POST',
-      path: '/foundation-model-entitlement',
+      path: '/create-foundation-model-agreement',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ modelId: params.modelId }),
+      body: JSON.stringify({ modelId: params.modelId, offerToken: params.offerToken }),
     })
+  }
+
+  /**
+   * Make a foundation model invocable: a no-op for a model that needs no
+   * agreement or already has one, otherwise an agreement from its public offer.
+   *
+   * This used to POST to `/foundation-model-entitlement`, which is not a
+   * Bedrock operation, so it never requested anything. A model the account is
+   * not authorised for (Anthropic's first-use form, for one) is refused with
+   * the reason rather than reported as requested.
+   */
+  async requestModelAccess(params: RequestModelAccessCommandInput): Promise<RequestModelAccessCommandOutput> {
+    const { modelId } = params
+    const availability = await this.getFoundationModelAvailability(modelId)
+
+    if (availability.regionAvailability !== 'AVAILABLE')
+      throw new Error(`Bedrock does not offer ${modelId} in ${this.region}`)
+    if (availability.entitlementAvailability !== 'AVAILABLE')
+      throw new Error(`This account is not entitled to ${modelId} in ${this.region}`)
+    if (availability.authorizationStatus !== 'AUTHORIZED')
+      throw new Error(`This account is not authorized for ${modelId}; submit the provider's use case form (PutUseCaseForModelAccess) first`)
+
+    const agreement = availability.agreementAvailability?.status
+    if (agreement === 'AVAILABLE')
+      return { modelId, status: 'available' }
+    if (agreement === 'PENDING')
+      return { modelId, status: 'requested' }
+    if (agreement === 'ERROR')
+      throw new Error(`The agreement for ${modelId} failed: ${availability.agreementAvailability.errorMessage ?? 'no reason given'}`)
+
+    const { offers } = await this.listFoundationModelAgreementOffers(modelId, 'PUBLIC')
+    if (offers.length !== 1)
+      throw new Error(`Expected one public offer for ${modelId}, found ${offers.length}; accept the right one with createFoundationModelAgreement()`)
+
+    await this.createFoundationModelAgreement({ modelId, offerToken: offers[0]!.offerToken })
+    return { modelId, status: 'requested' }
   }
 
   // -------------------------------------------------------------------------

@@ -36,7 +36,7 @@ afterEach(() => {
 
 interface Captured { url: string, headers: Record<string, string> }
 
-function respondWith(body: BodyInit, init: ResponseInit = {}): Captured[] {
+function respondWith(body: ConstructorParameters<typeof Response>[0], init: ResponseInit = {}): Captured[] {
   const seen: Captured[] = []
   globalThis.fetch = (async (input: string | URL | Request, request?: RequestInit) => {
     seen.push({ url: String(input), headers: request?.headers as Record<string, string> })
@@ -226,5 +226,68 @@ describe('invokeAgent', () => {
 
     expect(result).toEqual({ completion: 'Hello, world.', sessionId: 'session-1', memoryId: 'memory-1', citations: [citation] })
     expect(seen[0]!.headers.Authorization).toContain('/us-east-1/bedrock/aws4_request')
+  })
+})
+
+describe('requestModelAccess', () => {
+  /** Answer each Bedrock control-plane path from a table, recording the calls. */
+  function bedrockRoutes(routes: Record<string, () => Response>): Array<{ method: string, path: string, body?: string }> {
+    const calls: Array<{ method: string, path: string, body?: string }> = []
+    globalThis.fetch = (async (input: string | URL | Request, request?: RequestInit) => {
+      const url = new URL(String(input))
+      const method = request?.method ?? 'GET'
+      calls.push({ method, path: url.pathname, body: request?.body as string | undefined })
+      const route = routes[`${method} ${url.pathname}`]
+      return route ? route() : new Response('{"message":"unexpected"}', { status: 418 })
+    }) as typeof fetch
+    return calls
+  }
+
+  const availability = (agreement: string, authorization = 'AUTHORIZED') => () => Response.json({
+    modelId: 'm',
+    agreementAvailability: { status: agreement, errorMessage: null },
+    authorizationStatus: authorization,
+    entitlementAvailability: 'AVAILABLE',
+    regionAvailability: 'AVAILABLE',
+  })
+
+  it('reports a first-party model as available without touching agreements', async () => {
+    // What Bedrock answers for amazon.nova-lite-v1:0: agreement AVAILABLE,
+    // and offers refused with "Agreement not supported for this model".
+    const calls = bedrockRoutes({ 'GET /foundation-model-availability/amazon.nova-lite-v1%3A0': availability('AVAILABLE') })
+    const { BedrockClient } = await import('../src/aws/bedrock')
+
+    expect(await new BedrockClient('us-east-1').requestModelAccess({ modelId: 'amazon.nova-lite-v1:0' }))
+      .toEqual({ modelId: 'amazon.nova-lite-v1:0', status: 'available' })
+    expect(calls.map(c => c.method)).toEqual(['GET'])
+  })
+
+  it('accepts a marketplace model\'s one public offer', async () => {
+    const calls = bedrockRoutes({
+      'GET /foundation-model-availability/anthropic.claude-sonnet-5-5': availability('NOT_AVAILABLE'),
+      'GET /list-foundation-model-agreement-offers/anthropic.claude-sonnet-5-5': () => Response.json({ modelId: 'anthropic.claude-sonnet-5-5', offers: [{ offerId: 'o-1', offerToken: 'token-1' }] }),
+      'POST /create-foundation-model-agreement': () => Response.json({ modelId: 'anthropic.claude-sonnet-5-5' }, { status: 202 }),
+    })
+    const { BedrockClient } = await import('../src/aws/bedrock')
+
+    expect(await new BedrockClient('us-east-1').requestModelAccess({ modelId: 'anthropic.claude-sonnet-5-5' }))
+      .toEqual({ modelId: 'anthropic.claude-sonnet-5-5', status: 'requested' })
+    expect(JSON.parse(calls.at(-1)!.body!)).toEqual({ modelId: 'anthropic.claude-sonnet-5-5', offerToken: 'token-1' })
+  })
+
+  it('refuses a model the account is not authorized for, instead of claiming a request', async () => {
+    bedrockRoutes({ 'GET /foundation-model-availability/anthropic.claude-sonnet-5-5': availability('NOT_AVAILABLE', 'NOT_AUTHORIZED') })
+    const { BedrockClient } = await import('../src/aws/bedrock')
+
+    await expect(new BedrockClient('us-east-1').requestModelAccess({ modelId: 'anthropic.claude-sonnet-5-5' }))
+      .rejects
+      .toThrow('PutUseCaseForModelAccess')
+  })
+
+  it('never calls the entitlement endpoint Bedrock does not have', async () => {
+    const calls = bedrockRoutes({ 'GET /foundation-model-availability/amazon.nova-lite-v1%3A0': availability('AVAILABLE') })
+    const { BedrockClient } = await import('../src/aws/bedrock')
+    await new BedrockClient('us-east-1').requestModelAccess({ modelId: 'amazon.nova-lite-v1:0' })
+    expect(calls.some(c => c.path.includes('entitlement'))).toBe(false)
   })
 })
