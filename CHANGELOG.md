@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.42...v0.16.43)
+
+## ✨ Features
+
+- **dns**: declare a zone's tiered cache ([d7ae40d](https://github.com/stacksjs/ts-cloud/commit/d7ae40d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.43 ([48fd1ad](https://github.com/stacksjs/ts-cloud/commit/48fd1ad)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.41...v0.16.42)
 
 ## ✨ Features
