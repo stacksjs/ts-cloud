@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.40...v0.16.41)
+
+## ✨ Features
+
+- **ec2**: key pairs, self-terminating machines and disk sizes at launch ([dddd86a](https://github.com/stacksjs/ts-cloud/commit/dddd86a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.41 ([cda7399](https://github.com/stacksjs/ts-cloud/commit/cda7399)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.39...v0.16.40)
 
 ## ✨ Features
