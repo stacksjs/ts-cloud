@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.45...v0.16.46)
+
+## ✨ Features
+
+- **dns**: remove one host's address records ([16dff0e](https://github.com/stacksjs/ts-cloud/commit/16dff0e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.46 ([086d434](https://github.com/stacksjs/ts-cloud/commit/086d434)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.44...v0.16.45)
 
 ## ✨ Features
