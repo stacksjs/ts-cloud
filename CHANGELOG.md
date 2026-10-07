@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.44...v0.16.45)
+
+## ✨ Features
+
+- **fly**: deploy to Fly.io Machines ([b2960fe](https://github.com/stacksjs/ts-cloud/commit/b2960fe)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#1044](https://github.com/stacksjs/ts-cloud/issues/1044))
+
+## 🔧 Chores
+
+- release v0.16.45 ([ab8edf1](https://github.com/stacksjs/ts-cloud/commit/ab8edf1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.43...v0.16.44)
 
 ## ✨ Features
