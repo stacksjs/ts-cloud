@@ -55,6 +55,17 @@ export interface CloudProviderConfig {
   attachTo?: string
 
   /**
+   * Preview deployments: a pull request deployed as its own tenant on this
+   * project's box at `<name>.<domain>` (Stacks' `buddy deploy:preview`).
+   */
+  previews?: {
+    /** The domain previews live under; its DNS must be at a provider the deploy has keys for. Env: `PREVIEW_DOMAIN`. */
+    domain?: string
+    /** The site a preview deploys. Defaults to the first site that runs a server. */
+    site?: string
+  }
+
+  /**
    * Hosts this project used to serve on the shared gateway and deliberately
    * does not any more.
    *
