@@ -9,9 +9,12 @@ export interface CloudProviderConfig {
    * Raspberry Pi on the LAN, a colocated box, a VM from a provider ts-cloud
    * has no API driver for). Nothing is created or destroyed on your behalf;
    * see {@link SshConfig}.
+   *
+   * `'fly'` runs the app as a container image on Fly.io Machines; there is no
+   * box to provision or reach over SSH. See {@link FlyConfig}.
    * @default 'aws'
    */
-  provider?: 'aws' | 'hetzner' | 'ssh'
+  provider?: 'aws' | 'hetzner' | 'ssh' | 'fly'
 
   /**
    * Attach this project's sites to a box owned by ANOTHER project instead of
@@ -176,6 +179,38 @@ export interface SshHostConfig {
  * redirect a deploy to another machine. Resolution lives in one place:
  * `resolveSshSettings` in `@stacksjs/ts-cloud` (`drivers/ssh/config.ts`).
  */
+/**
+ * A Fly.io app, run as Machines from a container image.
+ *
+ * The API token comes from `FLY_API_TOKEN`, never config: it can create and
+ * destroy every Machine in the organization.
+ */
+export interface FlyConfig {
+  /** The Fly app name, unique across Fly.io. Defaults to `<project.slug>-<environment>`. */
+  app?: string
+  /** The organization the app is created in. @default 'personal' */
+  org?: string
+  /** Regions to run in, one Machine per region per `count`. @default ['iad'] */
+  regions?: string[]
+  /** Machines per region. @default 1 */
+  count?: number
+  /** The port the app listens on inside the Machine. @default 3000 */
+  internalPort?: number
+  /** A path answering 200 when the app is up, checked before traffic arrives. @default '/' */
+  healthPath?: string
+  /** @default { cpuKind: 'shared', cpus: 1, memoryMb: 512 } */
+  vm?: { cpuKind?: 'shared' | 'performance', cpus?: number, memoryMb?: number }
+  /**
+   * A persistent volume per Machine, for SQLite or uploads. A Fly volume
+   * attaches to one Machine, so each Machine gets its own.
+   */
+  volume?: { name?: string, sizeGb: number, path: string }
+  /** Stop idle Machines and start them on the next request. @default false */
+  autoStop?: boolean
+  /** Custom hostnames to request certificates for, beside `<app>.fly.dev`. */
+  hostnames?: string[]
+}
+
 export interface SshConfig {
   /** The hosts to deploy to. Exactly one host is supported today. Env: `TS_CLOUD_SSH_HOST`. */
   hosts: SshHostConfig[]
@@ -278,6 +313,12 @@ export interface CloudConfig {
    * provider.
    */
   ssh?: SshConfig
+
+  /**
+   * Fly.io Machines (when cloud.provider is 'fly'): the app runs as a
+   * container image, deployed through the Machines API.
+   */
+  fly?: FlyConfig
 
   /**
    * Object storage provider selection (AWS S3, Backblaze B2, Hetzner Object Storage).

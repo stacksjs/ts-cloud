@@ -1,4 +1,4 @@
-import type { CloudConfig, CloudDriver, CloudProviderName } from '@ts-cloud/core'
+import type { CloudConfig, CloudDriver, DeployProviderName } from '@ts-cloud/core'
 import { resolveCloudProvider } from '@ts-cloud/core'
 import { AwsDriver } from './aws/driver'
 import { HetznerDriver } from './hetzner/driver'
@@ -7,7 +7,7 @@ import { SshDriver } from './ssh/driver'
 
 export interface CreateCloudDriverOptions {
   config: CloudConfig
-  provider?: CloudProviderName
+  provider?: DeployProviderName
 }
 
 /**
@@ -47,6 +47,11 @@ export function createCloudDriver(options: CreateCloudDriverOptions): CloudDrive
         publicIp: options.config.ssh?.publicIp,
         lan: options.config.ssh?.lan,
       })
+    case 'fly':
+      // A Fly app is a container image on Machines: there is no box to
+      // provision, ship a tarball to, or reach over SSH, which is all a
+      // CloudDriver does. It deploys through deployToFly() instead.
+      throw new Error('Fly.io has no box to provision or reach over SSH: deploy it with deployToFly() from @stacksjs/ts-cloud.')
     default:
       throw new Error(`Unknown cloud provider: ${(options.provider ?? resolveCloudProvider(options.config)) as string}`)
   }
@@ -58,7 +63,7 @@ export function createCloudDriver(options: CreateCloudDriverOptions): CloudDrive
 export class CloudDriverFactory {
   private drivers = new Map<string, CloudDriver>()
 
-  getDriver(config: CloudConfig, provider?: CloudProviderName): CloudDriver {
+  getDriver(config: CloudConfig, provider?: DeployProviderName): CloudDriver {
     const name = provider ?? resolveCloudProvider(config)
     const cacheKey = `${name}:${config.project.slug}:${config.project.region || 'default'}`
     const cached = this.drivers.get(cacheKey)

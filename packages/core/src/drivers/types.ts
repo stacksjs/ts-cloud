@@ -3,6 +3,14 @@ import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
 export type CloudProviderName = 'aws' | 'hetzner' | 'ssh'
 
 /**
+ * Everything `cloud.provider` accepts. Fly.io is not a {@link CloudProviderName}:
+ * it runs a container image on Machines, so it has no box for a CloudDriver to
+ * provision, ship a release to, or reach over SSH, and it deploys through
+ * `deployToFly()` instead.
+ */
+export type DeployProviderName = CloudProviderName | 'fly'
+
+/**
  * Exhaustive provider map. Provider-specific contract tests key off this type,
  * so adding a provider without adding its resilience coverage is a type error.
  */
@@ -207,7 +215,7 @@ export interface DeploySiteReleaseResult {
  * is a per-machine override, not a statement of intent); the Hetzner token
  * check keeps the behaviour it always had.
  */
-export function resolveCloudProvider(config: CloudConfig): CloudProviderName {
+export function resolveCloudProvider(config: CloudConfig): DeployProviderName {
   if (config.cloud?.provider) return config.cloud.provider
   if (config.ssh?.hosts?.length) return 'ssh'
   if (config.hetzner?.apiToken) return 'hetzner'
