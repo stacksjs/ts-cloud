@@ -83,6 +83,36 @@ export async function removeStaleServerAddressRecords(
 }
 
 /**
+ * Delete every A and AAAA record for exactly one hostname, as when a preview
+ * environment is removed. Records for any other name - the apex, a sibling,
+ * a host the hostname is a prefix of - are left alone, matched the same way
+ * the stale-record cleanup matches them, so a provider that lists names
+ * relative to the zone and one that lists them fully qualified both work.
+ */
+export async function removeAddressRecords(
+  provider: DnsProvider,
+  zone: string,
+  hostname: string,
+): Promise<{ removed: DnsRecordResult[], warnings: string[] }> {
+  const listed = await provider.listRecords(zone)
+  if (!listed.success)
+    return { removed: [], warnings: [`could not list records for ${zone}: ${listed.message || 'unknown provider error'}`] }
+
+  const removed: DnsRecordResult[] = []
+  const warnings: string[] = []
+  for (const record of listed.records) {
+    if ((record.type !== 'A' && record.type !== 'AAAA') || !matchesHostname(record, zone, hostname))
+      continue
+    const result = await provider.deleteRecord(zone, record)
+    if (result.success)
+      removed.push(record)
+    else
+      warnings.push(`could not remove ${record.type} ${hostname} ${record.content}: ${result.message || 'unknown provider error'}`)
+  }
+  return { removed, warnings }
+}
+
+/**
  * Turn whatever a provider reports as a box's IPv6 into an address an AAAA
  * record can point at.
  *

@@ -5,6 +5,7 @@ import {
   hostAcceptsIpv6,
   normalizePublicIpv6,
   reconcileAddressRecords,
+  removeAddressRecords,
   removeStaleServerAddressRecords,
 } from '../../src/deploy/server-dns'
 
@@ -229,5 +230,45 @@ describe('reconcileAddressRecords', () => {
 
     expect(report.published).toEqual([])
     expect(report.warnings[0]).toContain('no matching A record exists')
+  })
+})
+
+describe('removeAddressRecords', () => {
+  function zone(records: DnsRecordResult[], failDelete?: string) {
+    const deleted: DnsRecordResult[] = []
+    const provider = {
+      name: 'fake',
+      listRecords: async () => ({ success: true, records }),
+      deleteRecord: async (_zone: string, record: DnsRecordResult) => {
+        if (record.id === failDelete) return { success: false, message: 'locked' }
+        deleted.push(record)
+        return { success: true }
+      },
+    } as unknown as DnsProvider
+    return { provider, deleted }
+  }
+
+  it('deletes the A and AAAA records of exactly one host, however the provider names them', async () => {
+    const records: DnsRecordResult[] = [
+      { id: '1', name: 'pr-1', type: 'A', content: '1.2.3.4' },
+      { id: '2', name: 'pr-1.example.com.', type: 'AAAA', content: '2a01::1' },
+      { id: '3', name: 'pr-1', type: 'TXT', content: 'keep' },
+      { id: '4', name: 'pr-12', type: 'A', content: '1.2.3.4' },
+      { id: '5', name: 'docs.pr-1', type: 'A', content: '1.2.3.4' },
+      { id: '6', name: '@', type: 'A', content: '1.2.3.4' },
+    ]
+    const { provider, deleted } = zone(records)
+    const result = await removeAddressRecords(provider, 'example.com', 'pr-1.example.com')
+
+    expect(deleted.map(r => r.id)).toEqual(['1', '2'])
+    expect(result).toEqual({ removed: [records[0], records[1]], warnings: [] })
+  })
+
+  it('reports a record it could not delete, rather than claiming it is gone', async () => {
+    const { provider } = zone([{ id: '1', name: 'pr-1', type: 'A', content: '1.2.3.4' }], '1')
+    expect(await removeAddressRecords(provider, 'example.com', 'pr-1.example.com')).toEqual({
+      removed: [],
+      warnings: ['could not remove A pr-1.example.com 1.2.3.4: locked'],
+    })
   })
 })

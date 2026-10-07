@@ -335,6 +335,7 @@ export {
   IPV6_EXCLUDED_HOST_LABELS,
   normalizePublicIpv6,
   reconcileAddressRecords,
+  removeAddressRecords,
   removeStaleServerAddressRecords,
   verifyAddressRecord,
 } from './deploy/server-dns'
