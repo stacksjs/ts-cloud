@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.46...v0.16.47)
+
+## ✨ Features
+
+- **core**: declare cloud.previews in the config type ([d78941d](https://github.com/stacksjs/ts-cloud/commit/d78941d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.47 ([82bc879](https://github.com/stacksjs/ts-cloud/commit/82bc879)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.45...v0.16.46)
 
 ## ✨ Features
