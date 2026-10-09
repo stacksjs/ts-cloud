@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.48...v0.16.49)
+
+## 🐛 Bug Fixes
+
+- **rpx**: name dns-01 in a wildcard renewal unit's description ([e061264](https://github.com/stacksjs/ts-cloud/commit/e061264)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.49 ([e587afa](https://github.com/stacksjs/ts-cloud/commit/e587afa)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.47...v0.16.48)
 
 ## ✨ Features
