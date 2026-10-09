@@ -66,13 +66,15 @@ export function hasAutoWwwVariant(domain: string): boolean {
  * else's certificate and a browser warning, which is strictly worse than the
  * name not existing.
  *
- * Two rules, both mirroring the route builder:
+ * Three rules, all mirroring the route builder:
  *  - every site's literal `domain`, including an explicitly declared
  *    `www.<sub>.<apex>` (that host gets a real route here, so it needs a real
  *    record — collapsing it to its apex is what left `www.ps1.stacksjs.com`
  *    resolving onto another tenant's cert);
  *  - plus `www.<domain>` for two-label apexes, which the gateway synthesizes
- *    itself unless `autoWww` is off.
+ *    itself unless `autoWww` is off;
+ *  - plus every site's `aliases`, a wildcard one (`*.example.com`) as the
+ *    wildcard record.
  *
  * `bucket` sites are excluded: they live on object storage + CDN, not this box.
  */
@@ -88,12 +90,27 @@ export function gatewayHostnames(
     hosts.add(site.domain)
   }
 
+  // Aliases are routed exactly like the domain (see buildRpxConfigInternal),
+  // so they need records exactly like it: a wildcard alias is published as
+  // the wildcard record. Added after the www pass, which only ever applies to
+  // a site's own apex.
+  const aliases = new Set<string>()
+  for (const site of Object.values(sites)) {
+    if (!site?.domain || resolveSiteKind(site) === 'bucket') continue
+    for (const alias of site.aliases ?? []) {
+      const host = String(alias).trim().toLowerCase()
+      if (host && host !== site.domain) aliases.add(host)
+    }
+  }
+
   if (options.autoWww !== false) {
     for (const domain of [...hosts]) {
       if (!hasAutoWwwVariant(domain)) continue
       hosts.add(`www.${domain}`)
     }
   }
+
+  for (const alias of aliases) hosts.add(alias)
 
   return [...hosts]
 }
@@ -411,6 +428,35 @@ export interface RpxGatewayConfig {
    * direct hits to the CDN-fronted hosts that lack the shared-secret header.
    */
   originGuard?: { header: string; value: string; hosts: string[] }
+  /**
+   * Wildcard certificates the box issues and renews over dns-01, from sites'
+   * wildcard `aliases`. ts-cloud's own: it feeds the renewal script and is
+   * removed before anything is written for rpx ({@link rpxGatewayJson}).
+   */
+  wildcardCerts?: WildcardCert[]
+}
+
+/** A wildcard certificate the renewal unit keeps, and where its DNS credentials live. */
+export interface WildcardCert {
+  /** `*.example.com`. */
+  domain: string
+  /** The env file on the box holding `PORKBUN_API_KEY` / `PORKBUN_SECRET_KEY`. */
+  dnsEnvFile: string
+}
+
+/** True for `*.example.com`: one leading wildcard label over a real domain. */
+export function isWildcardHost(host: string): boolean {
+  const labels = host.split('.')
+  return labels.length >= 3 && labels[0] === '*' && labels.slice(1).every(label => /^[a-z0-9-]+$/i.test(label))
+}
+
+/**
+ * The gateway config as rpx reads it: without the keys that are ts-cloud's
+ * own bookkeeping, which rpx would at best ignore and at worst reject.
+ */
+export function rpxGatewayJson(config: RpxGatewayConfig, extra: Record<string, unknown> = {}): string {
+  const { wildcardCerts: _wildcardCerts, ...rest } = config
+  return JSON.stringify({ ...extra, ...rest }, null, 2)
 }
 
 export interface BuildRpxConfigOptions {
@@ -487,11 +533,33 @@ function buildRpxConfigInternal(
 
   const proxies: RpxRoute[] = []
   const domains = new Set<string>()
+  // Wildcard aliases: routed, given a certificate name, but never part of the
+  // http-01 set or the on-demand allowlist (see SiteConfig.aliases).
+  const wildcards = new Map<string, WildcardCert>()
 
   for (const [name, site] of Object.entries(sites)) {
     if (!site || !site.domain) continue
     const kind = resolveSiteKind(site)
     if (kind === 'bucket') continue
+
+    // The site's routes are built for its domain below; each alias then gets
+    // a copy of every route the site added, under its own host.
+    const firstRoute = proxies.length
+    const aliases = [...new Set((site.aliases ?? []).map(alias => String(alias).trim().toLowerCase()).filter(alias => alias && alias !== site.domain))]
+    const addAliases = () => {
+      const added = proxies.slice(firstRoute).filter(route => route.to === site.domain)
+      for (const alias of aliases) {
+        for (const route of added)
+          proxies.push({ ...route, to: alias, id: deriveRouteId(alias, route.path) })
+        if (isWildcardHost(alias)) {
+          if (!wildcards.has(alias))
+            wildcards.set(alias, { domain: alias, dnsEnvFile: `${wwwRoot}/${installSlug}-${name}/shared/.env` })
+        }
+        else {
+          domains.add(alias)
+        }
+      }
+    }
 
     const path = normalizeRoutePath(site.path)
     const id = deriveRouteId(site.domain, path)
@@ -508,6 +576,7 @@ function buildRpxConfigInternal(
         ...(auth ? { auth } : {}),
       })
       domains.add(site.domain)
+      addAliases()
       continue
     }
 
@@ -531,6 +600,7 @@ function buildRpxConfigInternal(
       // into certsDirServerNames + onDemandTls.allowedSuffixes, so the project's
       // rpx-cert-renew units cover a service ts-cloud never deploys.
       domains.add(site.domain)
+      addAliases()
       continue
     }
 
@@ -568,6 +638,7 @@ function buildRpxConfigInternal(
       })
     }
     domains.add(site.domain)
+    addAliases()
   }
 
   // Auto-add a `www.<domain>` -> `https://<domain>` redirect for every apex
@@ -597,10 +668,13 @@ function buildRpxConfigInternal(
 
   const config: RpxGatewayConfig = {
     proxies,
-    productionCerts: { certsDir, certsDirServerNames: [...domains] },
+    // A wildcard is a server name too: rpx loads `_wildcard.<apex>.crt` as
+    // `*.<apex>`. It stays out of the on-demand allowlist below.
+    productionCerts: { certsDir, certsDirServerNames: [...domains, ...wildcards.keys()] },
     https: true,
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
+    ...(wildcards.size > 0 ? { wildcardCerts: [...wildcards.values()] } : {}),
   }
 
   if (options.proxy.onDemandTls && domains.size > 0) {
@@ -738,7 +812,7 @@ export function buildRpxLbConfig(
  * resolves its own config from its install dir, not an arbitrary path.
  */
 export function renderRpxLauncher(config: RpxGatewayConfig): string {
-  const json = JSON.stringify(config, null, 2)
+  const json = rpxGatewayJson(config)
   return `// Generated by ts-cloud — rpx reverse-proxy gateway.
 // Routes are derived from the \`sites\` model on every \`buddy deploy\`.
 import { startProxies } from '@stacksjs/rpx'
@@ -1160,6 +1234,52 @@ export function certDomainsForConfig(config: RpxGatewayConfig): string[] {
 }
 
 /**
+ * The renewal script's lines for wildcard certificates (sites' wildcard
+ * `aliases`): one dns-01 certificate per wildcard, issued once and renewed
+ * within 30 days of expiry, like the http-01 ones above it.
+ *
+ * http-01 cannot prove control of a wildcard, so these need the DNS
+ * provider's API. Its two keys are read from the site's own env file for the
+ * tlsx command alone - nothing else in that file is loaded, and nothing is
+ * written anywhere new. A site without them is skipped with a message, never
+ * a failed unit. The certificate lands as `_wildcard.<apex>.crt`, the name
+ * rpx serves as `*.<apex>`.
+ *
+ * Every name is quoted: a bare `*.example.com` in sh is a glob.
+ */
+export function wildcardCertLines(certs: WildcardCert[]): string[] {
+  if (certs.length === 0) return []
+  const lines = [
+    '# Wildcards: dns-01 (Porkbun), keys read from the site\'s env file for tlsx alone.',
+    'dns_env() {',
+    '  [ -r "$1" ] || return 0',
+    '  sed -n "s/^$2=//p" "$1" | tail -n 1 | sed -e \'s/^"\\(.*\\)"$/\\1/\' -e "s/^\'\\(.*\\)\'$/\\1/"',
+    '}',
+    'wildcard() {',
+    '  apex="$1"',
+    '  envfile="$2"',
+    '  name="*.$apex"',
+    '  key=$(dns_env "$envfile" PORKBUN_API_KEY)',
+    '  secret=$(dns_env "$envfile" PORKBUN_SECRET_KEY)',
+    '  if [ -z "$key" ] || [ -z "$secret" ]; then',
+    '    echo "wildcard $name skipped: no PORKBUN_API_KEY / PORKBUN_SECRET_KEY in $envfile (non-fatal)"',
+    '    return 0',
+    '  fi',
+    '  if [ ! -s "$CERTS/_wildcard.$apex.crt" ]; then',
+    '    PORKBUN_API_KEY="$key" PORKBUN_SECRET_KEY="$secret" $TLSX acme:issue -d "$name" --method dns-01 --dns-provider porkbun --dir "$CERTS" --prod --email "$EMAIL" || echo "issue $name failed (non-fatal)"',
+    '  else',
+    '    PORKBUN_API_KEY="$key" PORKBUN_SECRET_KEY="$secret" $TLSX acme:renew --domains "$name" --method dns-01 --dir "$CERTS" --days 30 --prod --email "$EMAIL" || echo "renew $name failed (non-fatal)"',
+    '  fi',
+    '}',
+  ]
+  for (const cert of certs) {
+    const apex = cert.domain.replace(/^\*\./, '')
+    lines.push(`wildcard '${apex}' '${cert.dnsEnvFile.replace(/'/g, '')}'`)
+  }
+  return lines
+}
+
+/**
  * Commands that make ts-cloud manage the gateway's TLS certs end-to-end: install
  * tlsx, issue a Let's Encrypt cert for every routed domain via http-01 (the
  * running gateway serves the challenge from {@link RpxGatewayConfig.acmeChallengeWebroot}
@@ -1260,6 +1380,7 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
     '  fi',
     'done',
     '$TLSX acme:renew --domains "$DOMAINS" --method http-01 --webroot "$WEBROOT" --dir "$CERTS" --days 30 --prod --email "$EMAIL" || echo "renew: some domains failed (non-fatal)"',
+    ...wildcardCertLines(config.wildcardCerts ?? []),
     'rm -f "$CERTS"/*.chain.crt',
     'after=$(cat "$CERTS"/*.crt 2>/dev/null | sha256sum)',
     `[ "$before" = "$after" ] || systemctl restart ${RPX_SERVICE_NAME}`,
@@ -1323,7 +1444,7 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
   // the fragment (not the whole launcher) is what lets independent app deploys
   // share one box's gateway without clobbering each other (see RPX_SITES_DIR).
   const slug = (options.slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
-  const fragment = JSON.stringify({ slug, ...config }, null, 2)
+  const fragment = rpxGatewayJson(config, { slug })
   const assembler = renderRpxAssembler(RPX_SITES_DIR, certsDir)
 
   // A tenant publishes routes and certs; the gateway itself stays the owner's.
@@ -1531,7 +1652,7 @@ export function buildRpxFragmentRefreshScript(options: BuildRpxFragmentRefreshOp
   const slug = (options.slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
   // Byte-identical fragment serialization to buildRpxProvisionScript, so a box
   // cannot tell whether its fragment came from first boot or a later refresh.
-  const fragment = JSON.stringify({ slug, ...options.config }, null, 2)
+  const fragment = rpxGatewayJson(options.config, { slug })
   return [
     'set -euo pipefail',
     `mkdir -p ${RPX_SITES_DIR}`,

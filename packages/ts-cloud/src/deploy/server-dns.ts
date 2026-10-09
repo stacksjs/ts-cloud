@@ -2,17 +2,28 @@ import type { DnsProvider, DnsRecordResult } from '../dns/types'
 
 interface ServerSite {
   domain?: string
+  aliases?: string[]
   deploy?: string
   redirect?: string
   start?: string
 }
 
-/** Domains served by a compute box, including redirect-only virtual hosts. */
+/**
+ * Domains served by a compute box, including redirect-only virtual hosts and
+ * every site's `aliases`. A wildcard alias (`*.example.com`) is published as
+ * the wildcard record itself, which every name under it resolves through
+ * unless it has a record of its own.
+ */
 export function collectServerDnsDomains(sites: Record<string, ServerSite> = {}): Set<string> {
   const domains = new Set<string>()
   for (const site of Object.values(sites)) {
     if (!site.domain) continue
-    if (site.redirect || site.deploy === 'server' || site.start) domains.add(site.domain)
+    if (!(site.redirect || site.deploy === 'server' || site.start)) continue
+    domains.add(site.domain)
+    for (const alias of site.aliases ?? []) {
+      const host = String(alias).trim().toLowerCase()
+      if (host) domains.add(host)
+    }
   }
   return domains
 }

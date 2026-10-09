@@ -1559,7 +1559,27 @@ export interface SiteConfig {
   /** TLS configuration for this site's nginx vhost. */
   ssl?: SiteSslConfig
 
-  /** Additional hostnames served by the same vhost (nginx `server_name`). */
+  /**
+   * More hostnames this site answers on, routed to it exactly like `domain`.
+   *
+   * ```ts
+   * main: { domain: 'example.com', aliases: ['*.example.com'], start: '…', port: 3000 }
+   * ```
+   *
+   * Each alias gets a gateway route, an address record and a certificate.
+   * A literal alias (`app.example.com`) joins the site's normal http-01
+   * certificates. A wildcard (`*.example.com`) is one Let's Encrypt
+   * wildcard certificate, which only the dns-01 challenge can issue: the
+   * renewal unit reads `PORKBUN_API_KEY` / `PORKBUN_SECRET_KEY` (and only
+   * those) from the site's shared `.env` on the box, so the site must keep
+   * that file (`sharedPaths: ['.env']`, the default for a server app) and
+   * the domain must be at Porkbun. Wildcards are never issued on demand.
+   *
+   * Under nginx they are extra `server_name`s on the same vhost.
+   *
+   * What the app does with the extra hosts is the app's: in Stacks,
+   * `config/server.ts#domains` routes `{username}.example.com` to a page.
+   */
   aliases?: string[]
 
   /** `from` path/host → `to` URL redirects emitted into the nginx vhost. */

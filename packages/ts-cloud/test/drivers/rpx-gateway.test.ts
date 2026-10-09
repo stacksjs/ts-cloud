@@ -1134,3 +1134,55 @@ describe('gatewayHostnames', () => {
     expect(gatewayHostnames(sites, { autoWww: false })).toEqual(['example.com'])
   })
 })
+
+describe('site aliases', () => {
+  const tlsProxy: ComputeProxyConfig = { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'hello@hq.training' }
+  const aliased: Record<string, SiteConfig> = {
+    main: { domain: 'hq.training', aliases: ['*.hq.training', 'app.hq.training'], root: '.', start: 'bun serve.js', port: 3032 },
+  }
+  const config = buildRpxConfig(aliased, { proxy: tlsProxy, slug: 'training' })
+
+  it('routes every alias to the site, like its domain', () => {
+    const hosts = config.proxies.filter(route => route.from === 'localhost:3032').map(route => route.to).sort()
+    expect(hosts).toEqual(['*.hq.training', 'app.hq.training', 'hq.training'])
+    expect(config.proxies.find(route => route.to === '*.hq.training')!.id).toBe(deriveRouteId('*.hq.training'))
+  })
+
+  it('gives a literal alias an http-01 certificate and on-demand cover', () => {
+    expect(certDomainsForConfig(config)).toContain('app.hq.training')
+    expect(config.onDemandTls!.allowedSuffixes).toContain('app.hq.training')
+  })
+
+  it('keeps a wildcard out of http-01 and on-demand, and certifies it over dns-01', () => {
+    expect(certDomainsForConfig(config)).not.toContain('*.hq.training')
+    expect(config.onDemandTls!.allowedSuffixes).not.toContain('*.hq.training')
+    expect(config.productionCerts.certsDirServerNames).toContain('*.hq.training')
+    expect(config.wildcardCerts).toEqual([{ domain: '*.hq.training', dnsEnvFile: '/var/www/training-main/shared/.env' }])
+  })
+
+  it('writes the wildcard into the renewal script, quoted, with keys read for tlsx alone', () => {
+    const script = buildCertManagementCommands({ config, proxy: tlsProxy, slug: 'training' }).join('\n')
+    expect(script).toContain(`wildcard 'hq.training' '/var/www/training-main/shared/.env'`)
+    expect(script).toContain('--method dns-01 --dns-provider porkbun')
+    expect(script).toContain('"$CERTS/_wildcard.$apex.crt"')
+    // Never `. "$envfile"`: only the two keys are read from it.
+    expect(script).not.toMatch(/^\s*\.\s+"?\$envfile/m)
+  })
+
+  it('never hands rpx the wildcard bookkeeping', () => {
+    const fragment = buildRpxProvisionScript({ config, proxy: tlsProxy, slug: 'training', tenant: true }).join('\n')
+    expect(fragment).not.toContain('wildcardCerts')
+    expect(fragment).not.toContain('dnsEnvFile')
+    expect(fragment).toContain('"to": "*.hq.training"')
+  })
+
+  it('publishes a record for every alias, the wildcard as itself', () => {
+    expect(gatewayHostnames(aliased).sort()).toEqual(['*.hq.training', 'app.hq.training', 'hq.training', 'www.hq.training'])
+  })
+
+  it('changes nothing for a site without aliases', () => {
+    const plain = buildRpxConfig({ main: { domain: 'hq.training', root: '.', start: 'bun serve.js', port: 3032 } }, { proxy: tlsProxy })
+    expect(plain.wildcardCerts).toBeUndefined()
+    expect(buildCertManagementCommands({ config: plain, proxy: tlsProxy }).join('\n')).not.toContain('wildcard')
+  })
+})
