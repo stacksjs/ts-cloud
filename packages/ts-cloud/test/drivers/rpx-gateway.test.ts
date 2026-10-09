@@ -1169,6 +1169,13 @@ describe('site aliases', () => {
     expect(script).not.toMatch(/^\s*\.\s+"?\$envfile/m)
   })
 
+  it('names dns-01 in the renewal unit when it renews a wildcard', () => {
+    const script = buildCertManagementCommands({ config, proxy: tlsProxy, slug: 'training' }).join('\n')
+    expect(script).toContain('Description=Issue/renew rpx gateway TLS certs for training (tlsx http-01 + dns-01 wildcard)')
+    expect(script).toContain('certs via tlsx http-01 + dns-01 wildcard.')
+    expect(script).not.toContain('(tlsx http-01)')
+  })
+
   it('never hands rpx the wildcard bookkeeping', () => {
     const fragment = buildRpxProvisionScript({ config, proxy: tlsProxy, slug: 'training', tenant: true }).join('\n')
     expect(fragment).not.toContain('wildcardCerts')
@@ -1183,6 +1190,8 @@ describe('site aliases', () => {
   it('changes nothing for a site without aliases', () => {
     const plain = buildRpxConfig({ main: { domain: 'hq.training', root: '.', start: 'bun serve.js', port: 3032 } }, { proxy: tlsProxy })
     expect(plain.wildcardCerts).toBeUndefined()
-    expect(buildCertManagementCommands({ config: plain, proxy: tlsProxy }).join('\n')).not.toContain('wildcard')
+    const plainScript = buildCertManagementCommands({ config: plain, proxy: tlsProxy }).join('\n')
+    expect(plainScript).not.toContain('wildcard')
+    expect(plainScript).toContain('Description=Issue/renew rpx gateway TLS certs for app (tlsx http-01)')
   })
 })
