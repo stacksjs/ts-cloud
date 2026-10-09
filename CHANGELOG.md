@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.47...v0.16.48)
+
+## ✨ Features
+
+- **rpx**: site aliases, including a wildcard with its own dns-01 certificate ([82712b1](https://github.com/stacksjs/ts-cloud/commit/82712b1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.48 ([505737e](https://github.com/stacksjs/ts-cloud/commit/505737e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.46...v0.16.47)
 
 ## ✨ Features
