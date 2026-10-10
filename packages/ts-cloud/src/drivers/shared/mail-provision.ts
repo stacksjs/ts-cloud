@@ -211,7 +211,8 @@ export function buildMailEnvFile(mail: ResolvedMailService): string {
       // A catcher is reached over plain HTTP on loopback. A Secure cookie is
       // dropped by the browser on such a connection, so the UI would take a
       // login and then behave as though nobody had logged in.
-      `SMTP_WEBMAIL_SECURE_COOKIES=${mail.tls.enabled}`,
+      `SMTP_WEBMAIL_TLS=${mail.webmail.tls}`,
+      `SMTP_WEBMAIL_SECURE_COOKIES=${mail.webmail.secureCookies}`,
     )
   }
 
@@ -403,24 +404,8 @@ export function buildDkimScript(mail: ResolvedMailService): string[] {
   return lines
 }
 
-/**
- * Create the declared mailboxes.
- *
- * Both `create` and `change-password` run, unconditionally, and that is not
- * belt-and-braces. `mail user:local create` on an existing account prints
- * "already exists" and **exits 0**, so a `create || change-password` chain
- * would never reach the second command — an operator who rotated a password in
- * the config and redeployed would get a box that kept the old one and reported
- * success. Running both means the declaration is the truth on every deploy.
- *
- * Each is tolerated failing so one bad account cannot abort a provision that
- * has already installed and started the server, and each runs as the service
- * account with the server's own `SMTP_DB_PATH` — as root it would create a
- * second database beside the one the server reads, and the accounts would
- * exist in a file nothing opens. That is also why the path comes from
- * `$TS_CLOUD_MAIL_DB` rather than being written in twice: see
- * {@link mailDbPath}.
- */
+/** Create missing mailboxes without undoing users' password changes. Managed
+ * credentials explicitly opt into reconciliation on every deployment. */
 export function buildMailAccountScript(mail: ResolvedMailService): string[] {
   if (mail.accounts.length === 0) return []
 
@@ -432,11 +417,13 @@ export function buildMailAccountScript(mail: ResolvedMailService): string[] {
   // it never opens. `buildMailProvisionScript` keeps the existing value, so
   // this resolves to the same file the env declares either way.
   const cli = (args: string) =>
-    `runuser -u ${MAIL_USER} -- env SMTP_DB_PATH="$TS_CLOUD_MAIL_DB" ${PANTRY_BIN}/mail user:local ${args} || true`
+    `runuser -u ${MAIL_USER} -- env SMTP_DB_PATH="$TS_CLOUD_MAIL_DB" ${PANTRY_BIN}/mail user:local ${args}`
 
   return mail.accounts.flatMap(account => [
     cli(`create ${sh(account.address)} ${sh(account.password)} ${sh(account.address)}`),
-    cli(`change-password ${sh(account.address)} ${sh(account.password)}`),
+    ...(account.passwordPolicy === 'managed'
+      ? [cli(`change-password ${sh(account.address)} ${sh(account.password)}`)]
+      : []),
   ])
 }
 

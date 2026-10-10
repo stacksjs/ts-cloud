@@ -27,6 +27,7 @@ import type { RpxLanOptions } from '../shared/rpx-gateway'
 import type { SshLanConfig, SshProfile } from './config'
 import type { SshPreflightFacts } from './preflight'
 import { isIP } from 'node:net'
+import { resolveMailProxy, resolveMailService } from '@ts-cloud/core'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxProvisionScript, localCaCertPath, RPX_SITES_DIR } from '../shared/rpx-gateway'
 import { buildUbuntuBootstrapScript } from '../shared/ubuntu-bootstrap'
@@ -173,7 +174,7 @@ export function buildSshBootstrapScript(options: SshBootstrapOptions): string {
   const { config, environment, profile, sudoUser } = options
   assertArchSupported(config, profile, options.facts?.arch)
 
-  const compute = config.infrastructure?.compute ?? {}
+  const compute = { ...config.infrastructure?.compute, proxy: resolveMailProxy(config, { environment: options.environment, environmentType: options.environment }) }
   const sites = config.sites ?? {}
   const slug = config.project.slug
 
@@ -190,7 +191,7 @@ export function buildSshBootstrapScript(options: SshBootstrapOptions): string {
       }
     : undefined
   const rpxConfig =
-    compute.proxy?.engine === 'rpx' ? buildRpxConfig(sites, { proxy: compute.proxy, slug, lan }) : undefined
+    compute.proxy?.engine === 'rpx' ? buildRpxConfig(sites, { proxy: compute.proxy, slug, lan, mail: resolveMailService(config, { environment: options.environment, environmentType: options.environment }) }) : undefined
   const rpxProvision =
     compute.proxy?.engine === 'rpx' && rpxConfig
       ? buildRpxProvisionScript({

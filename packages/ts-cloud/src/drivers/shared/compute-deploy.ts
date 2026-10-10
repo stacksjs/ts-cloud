@@ -3,7 +3,7 @@ import type { RpxLanOptions, RpxLbAppBox } from './rpx-gateway'
 import { copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildMailEnv, hasManagementDashboardSite, resolveAppDatabase, resolveMailService, resolveProjectStackName } from '@ts-cloud/core'
+import { buildMailEnv, hasManagementDashboardSite, resolveAppDatabase, resolveMailProxy, resolveMailService, resolveProjectStackName } from '@ts-cloud/core'
 import { describeCredentialReach, formatCredentialReach, unrelatedReachCount } from '../../deploy/attach-credentials'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
@@ -96,7 +96,7 @@ export async function deploySiteRelease(
   // loopback too, so an application cannot accidentally bypass TLS, route
   // authentication, or proxy policy by listening on the public interface.
   // Explicit site env remains authoritative for uncommon direct-bind setups.
-  const proxyEnv: Record<string, string> = usesRpxProxy(compute) ? { HOST: '127.0.0.1' } : {}
+  const proxyEnv: Record<string, string> = usesRpxProxy({ ...compute, proxy: resolveMailProxy(config, { environment }) }) ? { HOST: '127.0.0.1' } : {}
   const productionEnv: Record<string, string> = environment === 'production'
     ? { APP_ENV: 'production', NODE_ENV: 'production' }
     : {}
@@ -911,7 +911,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   // Always regenerate the gateway from the FULL site model (never a single-site
   // subset), so a partial deploy can never drop the other sites' routes.
   const routeSource = options.rpxConfig ?? config
-  const proxy = routeSource.infrastructure?.compute?.proxy ?? config.infrastructure?.compute?.proxy
+  const proxy = resolveMailProxy(routeSource, { environment }) ?? resolveMailProxy(config, { environment })
   if (proxy?.engine !== 'rpx') return true
 
   const sites = routeSource.sites || {}
@@ -971,7 +971,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   // them here would silently strip the local CA from a working box on its
   // next deploy and leave it serving a certificate nothing trusts.
   const lan = await resolveDeployLan(config, stackName, options.cwd)
-  const rpxConfig = buildRpxConfig(sites, { proxy, slug, lan })
+  const rpxConfig = buildRpxConfig(sites, { proxy, slug, lan, mail: resolveMailService(config, { environment }) })
   if (rpxConfig.proxies.length === 0) {
     logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
     return true
@@ -1042,10 +1042,10 @@ export async function renewRpxCertificates(
 ): Promise<boolean> {
   const { config, environment, driver, logger = noopLogger } = options
   const routeSource = options.rpxConfig ?? config
-  const proxy = routeSource.infrastructure?.compute?.proxy ?? config.infrastructure?.compute?.proxy
+  const proxy = resolveMailProxy(routeSource, { environment }) ?? resolveMailProxy(config, { environment })
   if (proxy?.engine !== 'rpx' || !proxy.onDemandTls) return true
 
-  const rpxConfig = buildRpxConfig(routeSource.sites || {}, { proxy, slug: config.project.slug })
+  const rpxConfig = buildRpxConfig(routeSource.sites || {}, { proxy, slug: config.project.slug, mail: resolveMailService(config, { environment }) })
   if (rpxConfig.proxies.length === 0) return true
   const certDomains = certDomainsForConfig(rpxConfig)
   if (certDomains.length === 0) return true

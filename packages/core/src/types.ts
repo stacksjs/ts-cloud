@@ -4248,8 +4248,9 @@ export interface MailServiceConfig {
   webmail?: boolean | MailWebmailConfig
   /**
    * Mailboxes to create on first provision. Idempotent: an account that
-   * already exists has its password reset to what is declared here, so this
-   * stays the source of truth rather than drifting after the first boot.
+   * already exists keeps its password, so users can change it through webmail
+   * without a deploy undoing the change. Opt into `passwordPolicy: 'managed'`
+   * per account when the deployment must enforce its declared password.
    *
    * Passwords belong in the environment, not in a committed config - write
    * `password: process.env.MAIL_ADMIN_PASSWORD!` rather than a literal.
@@ -4361,10 +4362,16 @@ export interface MailWebmailConfig {
   port?: number
   /**
    * Hostname to route to the UI through the box's gateway, e.g.
-   * `mail.example.com`. Without one the UI is reachable on its port only,
-   * which for a catcher is exactly right.
+   * `mail.example.com`. Defaults to the mail hostname for a real server;
+   * a catcher remains on its loopback port. Set `false` to disable routing.
    */
-  domain?: string
+  domain?: string | false
+  /** Additional HTTPS hostnames serving the same accounts. */
+  aliases?: string[]
+  /** Listener TLS. Off behind the HTTPS gateway; otherwise follows mail TLS. */
+  tls?: boolean
+  /** Secure session cookies. On behind HTTPS or a TLS listener. */
+  secureCookies?: boolean
 }
 
 /** A mailbox created on first provision. See {@link MailServiceConfig.accounts}. */
@@ -4373,6 +4380,12 @@ export interface MailAccountConfig {
   address: string
   /** The password. Read it from the environment; never commit one. */
   password: string
+  /**
+   * `initial` creates a missing account and preserves user password changes.
+   * `managed` reapplies the configured password on every deployment.
+   * @default 'initial'
+   */
+  passwordPolicy?: 'initial' | 'managed'
 }
 
 /** Inbound spam handling. See {@link MailServiceConfig.spam}. */

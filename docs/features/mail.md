@@ -98,11 +98,11 @@ managedServices: {
 
 ### Accounts
 
-Declared accounts are the source of truth on every deploy, not only the first
-one. Change a password here and redeploy and the box follows — the provisioner
-runs both `create` and `change-password`, because the CLI's `create` reports
-success when the account already exists and a `create || change-password` chain
-would silently keep the old password forever.
+Declared accounts are created when missing. By default their passwords are
+initial credentials: a user's webmail password change survives future deploys.
+For service accounts whose credentials must follow configuration, set
+`passwordPolicy: 'managed'` on the account. Only that explicit policy runs
+`change-password` on redeploy.
 
 Read passwords from the environment. `cloud.config.ts` is committed.
 
@@ -216,3 +216,51 @@ and holds `CAP_NET_BIND_SERVICE` only when it was actually given a port below
 private key into a shared image means every box cloned from it signs with the
 same key, and anybody who can boot the image can sign mail as the domains it was
 baked for. Mail is provisioned per box at boot instead.
+
+## Webmail HTTPS and aliases
+
+A production mail server automatically routes webmail at its mail hostname,
+behind the shared rpx gateway with secure cookies. Gateway provisioning,
+HTTP-01 issuance, daily certificate renewal and route refresh use the same
+lifecycle as application sites. No separate UI service is needed: the STX UI
+ships inside the mail executable.
+
+```ts
+managedServices: {
+  mail: {
+    hostname: 'mail.example.com',
+    webmail: { port: 8099, aliases: ['mail.example.org'] },
+  },
+},
+proxy: { engine: 'rpx', onDemandTlsEmail: 'ops@example.com' },
+```
+
+The listener uses loopback HTTP while the gateway handles public HTTPS.
+SMTP/IMAP retain their independent TLS configuration. `webmail.domain`,
+`aliases`, `port`, `tls` and `secureCookies` are typed settings; `domain: false`
+keeps a direct listener instead of creating a gateway route. Catchers remain
+loopback-only by default. Configure gateway certificates, ACME contact,
+versions, directories and challenge webroot through `compute.proxy` as for
+other sites. Every alias must resolve to the gateway before certificate issuance.
+
+For an existing mail executable on a host, adopt only its webmail deployment:
+
+```ts
+import { deployMailWebmail } from '@stacksjs/ts-cloud/mail'
+import config from './cloud.config'
+
+await deployMailWebmail(config, {
+  target: 'root@server.example.com',
+  environment: 'production',
+})
+```
+
+This uses the existing shared gateway by default. Set `gateway: 'provision'`
+when this project owns a new gateway. `envFile`, `service`, `slug`, `bunBin`,
+`sshKeyPath`, `healthPath`, `timeoutMs` and `verify` are configurable. Existing
+SMTP settings, credentials, mailbox data and file permissions are preserved.
+The deploy patches only webmail settings, restarts mail only when needed,
+updates its gateway fragment, provisions renewal, and checks every HTTPS URL
+with certificate validation. The builder API can also generate the script for
+a provider's own transport. It lives in ts-cloud; applications carry only their
+configuration and an invocation.

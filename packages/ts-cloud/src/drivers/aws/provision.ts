@@ -9,6 +9,7 @@
  * driver; this module builds the inputs.
  */
 import type { CloudConfig } from '@ts-cloud/core'
+import { mailFirewallPorts, resolveMailProxy, resolveMailService } from '@ts-cloud/core'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
 import { buildUbuntuBootstrapScript } from '../shared/ubuntu-bootstrap'
@@ -30,7 +31,7 @@ export interface AwsIngressRule {
  * Ingress rules for a PHP/app box: SSH (deploy fallback), HTTP, HTTPS, and any
  * extra app ports any site declares. Deploys themselves run over SSM.
  */
-export function awsComputeIngressRules(config: CloudConfig): AwsIngressRule[] {
+export function awsComputeIngressRules(config: CloudConfig, environment?: string): AwsIngressRule[] {
   const rules: AwsIngressRule[] = [
     { port: 22, protocol: 'tcp', cidr: '0.0.0.0/0' },
     { port: 80, protocol: 'tcp', cidr: '0.0.0.0/0' },
@@ -40,6 +41,7 @@ export function awsComputeIngressRules(config: CloudConfig): AwsIngressRule[] {
   for (const site of Object.values(config.sites || {})) {
     if (site && typeof site.port === 'number' && ![22, 80, 443].includes(site.port)) extra.add(site.port)
   }
+  for (const port of mailFirewallPorts(resolveMailService(config, { environment }))) extra.add(port)
   for (const port of extra) rules.push({ port, protocol: 'tcp', cidr: '0.0.0.0/0' })
   return rules
 }
@@ -49,14 +51,14 @@ export function awsComputeIngressRules(config: CloudConfig): AwsIngressRule[] {
  * bootstrap — the exact same recipe Hetzner uses. Honors a baked golden image
  * (`compute.bakedImage`) by skipping the install-heavy steps.
  */
-export function buildAwsUserData(config: CloudConfig): string {
-  const compute = config.infrastructure?.compute ?? {}
-  const provision = buildComputeProvisionScripts(config)
+export function buildAwsUserData(config: CloudConfig, environment?: string): string {
+  const compute = { ...config.infrastructure?.compute, proxy: resolveMailProxy(config, { environment }) }
+  const provision = buildComputeProvisionScripts(config, { environment })
   const rpxProvision =
     compute.proxy?.engine === 'rpx'
       ? buildRpxProvisionScript({
           proxy: compute.proxy,
-          config: buildRpxConfig(config.sites ?? {}, { proxy: compute.proxy, slug: config.project.slug }),
+          config: buildRpxConfig(config.sites ?? {}, { proxy: compute.proxy, slug: config.project.slug, mail: resolveMailService(config, { environment }) }),
           slug: config.project.slug,
           bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
         })

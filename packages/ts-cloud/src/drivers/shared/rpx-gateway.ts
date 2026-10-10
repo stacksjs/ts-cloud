@@ -19,9 +19,9 @@
  * It replaces the old Caddyfile generation — pantry/stacks use rpx (their own
  * tooling), so the gateway is rpx, not Caddy.
  */
-import type { CloudConfig, ComputeProxyConfig, RpxLoadBalancerConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
+import type { CloudConfig, ComputeProxyConfig, ResolvedMailService, RpxLoadBalancerConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
 import { isIP } from 'node:net'
-import { isManagementDashboardSiteName } from '@ts-cloud/core'
+import { isManagementDashboardSiteName, mailWebmailSites } from '@ts-cloud/core'
 import { resolveProxyUpstreams, resolveSiteKind } from '../../deploy/site-target'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
@@ -460,6 +460,8 @@ export function rpxGatewayJson(config: RpxGatewayConfig, extra: Record<string, u
 }
 
 export interface BuildRpxConfigOptions {
+  /** Managed mail adds its webmail hosts to this same route/certificate set. */
+  mail?: ResolvedMailService
   /** Proxy config from `infrastructure.compute.proxy`. */
   proxy: ComputeProxyConfig
   /** Directory static sites are shipped to. @default '/var/www' */
@@ -774,7 +776,7 @@ export function buildRpxConfig(
   sites: Record<string, SiteConfig | undefined>,
   options: BuildRpxConfigOptions,
 ): RpxGatewayConfig {
-  return buildRpxConfigInternal(sites, options)
+  return buildRpxConfigInternal({ ...sites, ...(options.mail ? mailWebmailSites(options.mail) : {}) }, options)
 }
 
 /** An app box's addresses, as known to the LB box building routes to it. */
@@ -801,7 +803,7 @@ export function buildRpxLbConfig(
   appBoxes: RpxLbAppBox[],
   options: BuildRpxConfigOptions,
 ): RpxGatewayConfig {
-  return buildRpxConfigInternal(sites, options, appBoxes)
+  return buildRpxConfigInternal({ ...sites, ...(options.mail ? mailWebmailSites(options.mail) : {}) }, options, appBoxes)
 }
 
 /**

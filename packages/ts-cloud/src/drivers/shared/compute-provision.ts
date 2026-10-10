@@ -10,7 +10,7 @@
  * so a baked image and a cold boot install exactly the same stack.
  */
 import type { CloudConfig } from '@ts-cloud/core'
-import { mailFirewallPorts, resolveAppDatabase, resolveCloudProvider, resolveMailService } from '@ts-cloud/core'
+import { mailFirewallPorts, resolveAppDatabase, resolveCloudProvider, resolveMailProxy, resolveMailService } from '@ts-cloud/core'
 import { buildBackupProvisionScript } from './backups'
 import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-provision'
 import { buildAppUpdatesScript } from './app-updates'
@@ -77,7 +77,7 @@ export function buildComputeProvisionScripts(config: CloudConfig, options?: Comp
   const needsPantry = phpBox || !!compute.managedServices
   const pantryBootstrap = needsPantry ? buildPantryBootstrapScript() : []
 
-  const useNginx = !usesRpxProxy(compute)
+  const useNginx = !usesRpxProxy({ ...compute, proxy: resolveMailProxy(config, { environment: options?.environment }) })
   const phpProvision = phpBox
     ? [
         ...pantryBootstrap,

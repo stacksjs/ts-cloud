@@ -21,6 +21,7 @@ async function build() {
       join(__dirname, 'src/push/index.ts'),
       join(__dirname, 'src/spend/index.ts'),
       join(__dirname, 'src/protection/index.ts'),
+      join(__dirname, 'src/mail/index.ts'),
     ],
     outdir: join(__dirname, 'dist'),
     root: join(__dirname, 'src'),

@@ -7,7 +7,7 @@ import { execFileSync, execSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
+import { mailFirewallPorts, resolveDeployBucketName, resolveMailProxy, resolveMailService, resolveProjectStackName } from '@ts-cloud/core'
 import { normalizePublicIpv6 } from '../../deploy/server-dns'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { buildDiscardUploadScript, buildPublishUploadScript, HOST_ARTIFACT_CACHE_DIR } from '../shared/deploy-script'
@@ -193,6 +193,7 @@ export class HetznerDriver implements CloudDriver {
         allowedPorts: [
           ...(compute.firewall?.allowedPorts ?? []),
           ...sftpFirewallPorts(config.infrastructure?.sftp),
+          ...mailFirewallPorts(resolveMailService(config, { environment })),
         ],
       }),
     )
@@ -227,11 +228,12 @@ export class HetznerDriver implements CloudDriver {
 
     // Opt-in rpx gateway: generate the route config from the sites model and
     // install + start it on :80/:443 at first boot. Off by default.
+    const mailProxy = resolveMailProxy(config, { environment })
     const rpxProvision =
-      compute.proxy?.engine === 'rpx'
+      mailProxy?.engine === 'rpx'
         ? buildRpxProvisionScript({
-            proxy: compute.proxy,
-            config: buildRpxConfig(sites, { proxy: compute.proxy, slug: config.project.slug }),
+            proxy: mailProxy,
+            config: buildRpxConfig(sites, { proxy: mailProxy, slug: config.project.slug, mail: resolveMailService(config, { environment }) }),
             slug: config.project.slug,
             bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
           })

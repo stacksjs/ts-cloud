@@ -1,5 +1,7 @@
 import type {
   CloudConfig,
+  ComputeProxyConfig,
+  SiteConfig,
   EnvironmentType,
   MailPortsConfig,
   MailServiceConfig,
@@ -42,13 +44,13 @@ export interface ResolvedMailService {
   /** DKIM, resolved. Off means the server signs nothing. */
   dkim: { enabled: boolean, selector: string, rotate: boolean, rotateIntervalDays: number }
   /** Webmail UI, resolved. */
-  webmail: { enabled: boolean, port: number, domain?: string }
+  webmail: { enabled: boolean, port: number, domain?: string, aliases: string[], tls: boolean, secureCookies: boolean }
   /** How outbound mail leaves. */
   delivery: 'direct' | 'ses' | 'none'
   /** SES region for `delivery: 'ses'`. */
   sesRegion: string
   /** Mailboxes created on provision. */
-  accounts: Array<{ address: string, password: string }>
+  accounts: Array<{ address: string, password: string, passwordPolicy: 'initial' | 'managed' }>
   /** Where mailboxes, the database and the DKIM keys live. */
   storagePath: string
   /** Largest accepted message, in bytes. */
@@ -179,13 +181,18 @@ export function resolveMailService(
   const tlsDeclared = mail.tls ?? {}
   const tlsEnabled = tlsDeclared.enabled ?? server
   const explicitCert = !!(tlsDeclared.certPath && tlsDeclared.keyPath)
-  const accounts = (mail.accounts ?? []).map(account => ({ address: account.address, password: account.password }))
+  const accounts = (mail.accounts ?? []).map(account => ({ address: account.address, password: account.password, passwordPolicy: account.passwordPolicy ?? 'initial' as const }))
 
   const dkimDeclared = typeof mail.dkim === 'object' && mail.dkim !== null ? mail.dkim : {}
   const dkimEnabled = mail.dkim === false ? false : (mail.dkim === true || server)
 
   const webmailDeclared = typeof mail.webmail === 'object' && mail.webmail !== null ? mail.webmail : {}
   const webmailEnabled = mail.webmail === false ? false : (webmailDeclared.enabled ?? true)
+  const publicHostname = hostname.includes('.') && !hostname.endsWith('.local') && !/^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+  const webmailDomain = webmailDeclared.domain === false ? undefined : (webmailDeclared.domain ?? (server && publicHostname ? hostname : undefined))
+  const webmailTls = webmailDeclared.tls ?? (webmailDomain ? false : tlsEnabled)
+  const webmailAliases = [...new Set(webmailDeclared.aliases ?? [])].filter(alias => alias !== webmailDomain)
+
 
   const spamDeclared = mail.spam ?? {}
   const delivery = mail.delivery ?? (server ? 'direct' : 'none')
@@ -225,7 +232,10 @@ export function resolveMailService(
     webmail: {
       enabled: webmailEnabled,
       port: webmailDeclared.port ?? ports.webmail,
-      domain: webmailDeclared.domain,
+      domain: webmailDomain,
+      aliases: webmailAliases,
+      tls: webmailTls,
+      secureCookies: webmailDeclared.secureCookies ?? (!!webmailDomain || webmailTls),
     },
     delivery,
     sesRegion: mail.sesRegion ?? 'us-east-1',
@@ -315,4 +325,33 @@ export function buildMailEnv(mail: ResolvedMailService): Record<string, string> 
   }
 
   return env
+}
+
+
+/** Gateway routes derived from the managed service, so there is no second site
+ * declaration to keep in sync with its listener or certificate names. */
+export function mailWebmailSites(mail: ResolvedMailService): Record<string, SiteConfig> {
+  if (!mail.enabled || !mail.webmail.enabled || !mail.webmail.domain) return {}
+  const domains = [mail.webmail.domain, ...mail.webmail.aliases]
+  if (!Number.isInteger(mail.webmail.port) || mail.webmail.port < 1 || mail.webmail.port > 65535)
+    throw new Error('Mail webmail port must be between 1 and 65535')
+  return Object.fromEntries(domains.map((domain, index) => {
+    if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(domain))
+      throw new Error(`Invalid mail webmail hostname: ${domain}`)
+    return [`__mail_webmail_${index}`, { domain, proxyTo: `localhost:${mail.webmail.port}` }]
+  }))
+}
+
+/** A production webmail hostname gets managed HTTPS by default. Explicit
+ * gateway settings still win, including custom certificates and ACME contact. */
+export function resolveMailProxy(config: Pick<CloudConfig, 'project' | 'sites' | 'environments' | 'infrastructure'>, options: ResolveMailOptions = {}): ComputeProxyConfig | undefined {
+  const proxy = config.infrastructure?.compute?.proxy
+  const mail = resolveMailService(config, options)
+  if (!mail.enabled || !mail.webmail.enabled || !mail.webmail.domain) return proxy
+  return {
+    engine: 'rpx',
+    onDemandTls: true,
+    onDemandTlsEmail: mail.tls.acmeEmail ?? `webmaster@${mail.webmail.domain}`,
+    ...proxy,
+  }
 }

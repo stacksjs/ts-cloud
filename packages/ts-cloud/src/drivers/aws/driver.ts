@@ -133,7 +133,7 @@ export class AwsDriver implements CloudDriver {
       groupId = created.GroupId
     }
     // Authorize desired ingress; ignore "already exists" so this is idempotent.
-    const rules = awsComputeIngressRules(config)
+    const rules = awsComputeIngressRules(config, environment)
     await ec2
       .authorizeSecurityGroupIngress({
         GroupId: groupId!,
@@ -148,7 +148,7 @@ export class AwsDriver implements CloudDriver {
         if (!/InvalidPermission\.Duplicate/.test(e instanceof Error ? e.message : '')) throw e
       })
 
-    const userData = encodeUserData(buildAwsUserData(config))
+    const userData = encodeUserData(buildAwsUserData(config, environment))
     const instanceType = compute.server?.instanceType || 't3.small'
 
     const run = await ec2.runInstances({

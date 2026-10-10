@@ -80,7 +80,7 @@ describe('resolveMailService', () => {
   it('opens exactly the server’s listening ports', () => {
     const mail = resolveMailService(withMail(true), { environment: 'production' })
     expect(mail.bindAddress).toBe('0.0.0.0')
-    expect(mailFirewallPorts(mail)).toEqual([25, 143, 465, 587, 993, 8080])
+    expect(mailFirewallPorts(mail)).toEqual([25, 143, 465, 587, 993])
   })
 
   it('leaves the webmail port closed when a domain fronts it', () => {
@@ -240,23 +240,32 @@ describe('buildDkimScript', () => {
 })
 
 describe('buildMailAccountScript', () => {
-  it('runs create AND change-password, because create exits 0 when the account exists', () => {
+  it('preserves existing user passwords by default', () => {
     const mail = resolveMailService(
       withMail({ mode: 'server', accounts: [{ address: 'app@example.com', password: 'secret' }] }),
       { environment: 'production' },
     )
     const script = buildMailAccountScript(mail)
-    expect(script).toHaveLength(2)
+    expect(script).toHaveLength(1)
     expect(script[0]).toContain('user:local create')
-    expect(script[1]).toContain('user:local change-password')
+    expect(script.join('\n')).not.toContain('user:local change-password')
     // Against the server's own database, as the service account — as root it
     // would create a second database beside the one the server reads.
     expect(script[0]).toContain(`runuser -u ${MAIL_USER}`)
     // Resolved on the box from the env file, not written in here: a server
     // provisioned under a different name still has its accounts in that file.
     expect(script[0]).toContain('SMTP_DB_PATH="$TS_CLOUD_MAIL_DB"')
+
+  })
+
+  it('reconciles explicitly managed credentials on every deploy', () => {
+    const mail = resolveMailService(withMail({ mode: 'server', accounts: [{ address: 'app@example.com', password: 'secret', passwordPolicy: 'managed' }] }), { environment: 'production' })
+    const script = buildMailAccountScript(mail)
+    expect(script).toHaveLength(2)
+    expect(script[1]).toContain('user:local change-password')
     expect(script[1]).toContain('SMTP_DB_PATH="$TS_CLOUD_MAIL_DB"')
   })
+
 })
 
 /**
