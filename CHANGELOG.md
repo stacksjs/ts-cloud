@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.49...v0.16.50)
+
+## ✨ Features
+
+- **mail**: manage webmail routes and TLS through cloud configuration ([d940531](https://github.com/stacksjs/ts-cloud/commit/d940531)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.50 ([616f87c](https://github.com/stacksjs/ts-cloud/commit/616f87c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.48...v0.16.49)
 
 ## 🐛 Bug Fixes
