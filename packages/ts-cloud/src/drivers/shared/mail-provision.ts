@@ -213,6 +213,10 @@ export function buildMailEnvFile(mail: ResolvedMailService): string {
       // login and then behave as though nobody had logged in.
       `SMTP_WEBMAIL_TLS=${mail.webmail.tls}`,
       `SMTP_WEBMAIL_SECURE_COOKIES=${mail.webmail.secureCookies}`,
+      `SMTP_WEBMAIL_ATTACHMENT_MAX_FILE=${mail.webmail.attachmentMaxFileBytes}`,
+      `SMTP_WEBMAIL_ATTACHMENT_MAX_TOTAL=${mail.webmail.attachmentMaxTotalBytes}`,
+      `SMTP_WEBMAIL_ATTACHMENT_MAX_COUNT=${mail.webmail.attachmentMaxCount}`,
+      `SMTP_WEBMAIL_UNDO_SEND_SECONDS=${mail.webmail.undoSendSeconds}`,
     )
   }
 

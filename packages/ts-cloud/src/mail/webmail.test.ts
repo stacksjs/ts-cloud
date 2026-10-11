@@ -19,7 +19,7 @@ describe('native webmail defaults', () => {
   it('routes production mail through HTTPS without publishing a plain listener', () => {
     const c = config()
     const mail = resolveMailService(c, { environment: 'production' })
-    expect(mail.webmail).toEqual({ enabled: true, port: 8080, domain: 'mail.example.com', aliases: [], tls: false, secureCookies: true })
+    expect(mail.webmail).toEqual({ enabled: true, port: 8080, domain: 'mail.example.com', aliases: [], tls: false, secureCookies: true, attachmentMaxFileBytes: 20 * 1024 * 1024, attachmentMaxTotalBytes: 20 * 1024 * 1024, attachmentMaxCount: 20, undoSendSeconds: 10 })
     const proxy = resolveMailProxy(c, { environment: 'production' })!
     expect(proxy.engine).toBe('rpx')
     expect(proxy.onDemandTls).toBe(true)
@@ -37,6 +37,26 @@ describe('native webmail defaults', () => {
     const direct = resolveMailService(config({ webmail: { domain: false, port: 8443 } }), { environment: 'production' })
     expect(direct.webmail.tls).toBe(true)
     expect(mailWebmailSites(direct)).toEqual({})
+  })
+
+  it('carries configurable attachment and Undo Send settings into both provisioning paths', () => {
+    const c = config({ webmail: { attachments: { maxFileBytes: 8 * 1024 * 1024, maxTotalBytes: 12 * 1024 * 1024, maxCount: 8 }, undoSendSeconds: 5 } })
+    const resolved = resolveMailService(c, { environment: 'production' })
+    expect(resolved.webmail.attachmentMaxFileBytes).toBe(8 * 1024 * 1024)
+    expect(resolved.webmail.attachmentMaxTotalBytes).toBe(12 * 1024 * 1024)
+    expect(resolved.webmail.attachmentMaxCount).toBe(8)
+    expect(resolved.webmail.undoSendSeconds).toBe(5)
+    const patch = buildMailWebmailEnvPatch(resolved)
+    for (const key of ['SMTP_WEBMAIL_ATTACHMENT_MAX_FILE', 'SMTP_WEBMAIL_ATTACHMENT_MAX_TOTAL', 'SMTP_WEBMAIL_ATTACHMENT_MAX_COUNT', 'SMTP_WEBMAIL_UNDO_SEND_SECONDS']) expect(patch).toContain(key)
+  })
+
+  it('rejects invalid limits and accepts disabling uploads or the cancellation delay', () => {
+    for (const value of [-1, 1.5, Number.NaN, 101 * 1024 * 1024]) expect(() => resolveMailService(config({ webmail: { attachments: { maxFileBytes: value } } }))).toThrow('maxFileBytes')
+    expect(() => resolveMailService(config({ webmail: { attachments: { maxCount: 101 } } }))).toThrow('maxCount')
+    expect(() => resolveMailService(config({ webmail: { undoSendSeconds: 31 } }))).toThrow('undoSendSeconds')
+    const disabled = resolveMailService(config({ webmail: { attachments: { maxCount: 0 }, undoSendSeconds: 0 } }))
+    expect(disabled.webmail.attachmentMaxCount).toBe(0)
+    expect(disabled.webmail.undoSendSeconds).toBe(0)
   })
 
   it('puts every alias in the same gateway and certificate lifecycle', () => {

@@ -160,6 +160,30 @@ what you look at instead of mailpit's inbox:
   on 443 and the raw port stays closed. Opening both would publish a plain-HTTP
   login page beside the TLS one.
 
+Attachment limits and the initial Undo Send preference are configurable through
+the same mail service declaration:
+
+```ts
+mail: {
+  webmail: {
+    attachments: {
+      maxFileBytes: 20 * 1024 * 1024,
+      maxTotalBytes: 20 * 1024 * 1024,
+      maxCount: 20,
+    },
+    undoSendSeconds: 10,
+  },
+}
+```
+
+Both fresh server provisioning and deployment to an existing server write these
+settings into the mail environment. Byte limits accept integers from zero to
+100 MiB, attachment counts from zero to 100, and send delays from zero to 30
+seconds. Zero attachment count disables uploads; zero delay sends without a
+cancellation window. The server lowers the effective attachment budget when
+needed for account restrictions and the SMTP message limit, including MIME
+encoding overhead. Webmail displays that effective budget to the user.
+
 ## Firewall and exposure
 
 A server's listening ports join the host firewall's allow list automatically —

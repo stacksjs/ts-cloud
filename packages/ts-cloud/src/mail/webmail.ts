@@ -40,6 +40,10 @@ export function buildMailWebmailEnvPatch(mail: ResolvedMailService, envFile: str
     SMTP_WEBMAIL_PORT: String(mail.webmail.port),
     SMTP_WEBMAIL_TLS: String(mail.webmail.tls),
     SMTP_WEBMAIL_SECURE_COOKIES: String(mail.webmail.secureCookies),
+    SMTP_WEBMAIL_ATTACHMENT_MAX_FILE: String(mail.webmail.attachmentMaxFileBytes),
+    SMTP_WEBMAIL_ATTACHMENT_MAX_TOTAL: String(mail.webmail.attachmentMaxTotalBytes),
+    SMTP_WEBMAIL_ATTACHMENT_MAX_COUNT: String(mail.webmail.attachmentMaxCount),
+    SMTP_WEBMAIL_UNDO_SEND_SECONDS: String(mail.webmail.undoSendSeconds),
   }
   const program = `const fs=require('node:fs');const path=process.argv[1];const settings=JSON.parse(process.argv[2]);const before=fs.readFileSync(path,'utf8');const lines=before.split(/\\r?\\n/).filter(line=>line!==''&&!Object.hasOwn(settings,line.split('=',1)[0]));const after=lines.concat(Object.entries(settings).map(([key,value])=>key+'='+value)).join('\\n')+'\\n';if(after===before){console.log('unchanged')}else{const stat=fs.statSync(path);const backup=path+'.bak-webmail';fs.copyFileSync(path,backup);fs.chmodSync(backup,stat.mode&511);fs.chownSync(backup,stat.uid,stat.gid);const temporary=path+'.webmail-'+process.pid;fs.writeFileSync(temporary,after,{mode:stat.mode&511});fs.chownSync(temporary,stat.uid,stat.gid);fs.renameSync(temporary,path);console.log('changed')}`
   return `${sh(bunBin)} --eval ${sh(program)} ${sh(envFile)} ${sh(JSON.stringify(settings))}`

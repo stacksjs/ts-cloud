@@ -4372,6 +4372,17 @@ export interface MailWebmailConfig {
   tls?: boolean
   /** Secure session cookies. On behind HTTPS or a TLS listener. */
   secureCookies?: boolean
+  /** Browser attachment limits in bytes; the server also applies MIME and account limits. */
+  attachments?: {
+    /** @default 20971520 */
+    maxFileBytes?: number
+    /** @default 20971520 */
+    maxTotalBytes?: number
+    /** Set zero to disable uploads. @default 20 */
+    maxCount?: number
+  }
+  /** Initial per-account Undo Send preference, from 0 to 30 seconds. @default 10 */
+  undoSendSeconds?: number
 }
 
 /** A mailbox created on first provision. See {@link MailServiceConfig.accounts}. */

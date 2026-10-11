@@ -44,7 +44,7 @@ export interface ResolvedMailService {
   /** DKIM, resolved. Off means the server signs nothing. */
   dkim: { enabled: boolean, selector: string, rotate: boolean, rotateIntervalDays: number }
   /** Webmail UI, resolved. */
-  webmail: { enabled: boolean, port: number, domain?: string, aliases: string[], tls: boolean, secureCookies: boolean }
+  webmail: { enabled: boolean, port: number, domain?: string, aliases: string[], tls: boolean, secureCookies: boolean, attachmentMaxFileBytes: number, attachmentMaxTotalBytes: number, attachmentMaxCount: number, undoSendSeconds: number }
   /** How outbound mail leaves. */
   delivery: 'direct' | 'ses' | 'none'
   /** SES region for `delivery: 'ses'`. */
@@ -206,6 +206,18 @@ export function resolveMailService(
     ...(mail.domains ?? []),
   ])]
 
+  const attachmentMaxFileBytes = webmailDeclared.attachments?.maxFileBytes ?? 20 * 1024 * 1024
+  const attachmentMaxTotalBytes = webmailDeclared.attachments?.maxTotalBytes ?? 20 * 1024 * 1024
+  const attachmentMaxCount = webmailDeclared.attachments?.maxCount ?? 20
+  const undoSendSeconds = webmailDeclared.undoSendSeconds ?? 10
+  for (const [name, value, maximum] of [
+    ['maxFileBytes', attachmentMaxFileBytes, 100 * 1024 * 1024],
+    ['maxTotalBytes', attachmentMaxTotalBytes, 100 * 1024 * 1024],
+    ['maxCount', attachmentMaxCount, 100],
+    ['undoSendSeconds', undoSendSeconds, 30],
+  ] as const) {
+    if (!Number.isInteger(value) || value < 0 || value > maximum) throw new Error(`Mail webmail ${name} must be an integer from 0 to ${maximum}`)
+  }
   return {
     enabled: mailEnabled(declared),
     mode,
@@ -236,6 +248,10 @@ export function resolveMailService(
       aliases: webmailAliases,
       tls: webmailTls,
       secureCookies: webmailDeclared.secureCookies ?? (!!webmailDomain || webmailTls),
+      attachmentMaxFileBytes,
+      attachmentMaxTotalBytes,
+      attachmentMaxCount,
+      undoSendSeconds,
     },
     delivery,
     sesRegion: mail.sesRegion ?? 'us-east-1',
