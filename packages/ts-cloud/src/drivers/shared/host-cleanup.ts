@@ -210,7 +210,9 @@ function heavyRules(): string[] {
     // Retained releases contain installed dependencies; these are only
     // download caches.
     `find /root/.bun/install/cache -xdev -type f -mtime +${v('bunCacheMaxAgeDays')} -delete 2>/dev/null || true`,
-    'find /root/.bun/install/cache -xdev -depth -type d -empty -delete 2>/dev/null || true',
+    // Bun creates empty extraction directories before populating and renaming
+    // them. Apply the cache age bound before pruning those directories too.
+    `find /root/.bun/install/cache -xdev -depth -type d -empty -mtime +${v('bunCacheMaxAgeDays')} -delete 2>/dev/null || true`,
     // Only unused images past the window qualify. Daemon-less hosts skip this.
     `if command -v docker >/dev/null 2>&1; then docker image prune --all --force --filter "until=${'$'}{${WINDOW_VARS.containerImageMaxAgeHours}}h" >/dev/null 2>&1 || true; fi`,
     `if command -v podman >/dev/null 2>&1; then podman image prune --all --force --filter "until=${'$'}{${WINDOW_VARS.containerImageMaxAgeHours}}h" >/dev/null 2>&1 || true; fi`,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -211,6 +211,25 @@ describe('resolveHostCleanupConfig (#195)', () => {
 })
 
 describe('the cleanup script under disk pressure (#195)', () => {
+  it.each([60, 95])('preserves an in-flight Bun extraction at %i percent disk use', (percent) => {
+    const host = fakeHost()
+    host.setDisk(percent)
+    const cache = join(host.root, 'root/.bun/install/cache')
+    const extracting = join(cache, '.package-extracting')
+    const abandoned = join(cache, '.package-abandoned')
+    mkdirSync(extracting)
+    mkdirSync(abandoned)
+    age(abandoned, 30 * DAY)
+
+    expect(host.run(buildHostCleanupScript()).status).toBe(0)
+    expect(existsSync(abandoned)).toBe(false)
+    expect(existsSync(extracting)).toBe(true)
+    writeFileSync(join(extracting, 'package.json'), '{"name":"package"}')
+    const installed = join(cache, 'package@1.0.0')
+    renameSync(extracting, installed)
+    expect(readFileSync(join(installed, 'package.json'), 'utf8')).toBe('{"name":"package"}')
+  })
+
   it('below the low-water mark runs only the cheap rules', () => {
     const host = fakeHost()
     host.setDisk(30)
