@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.50...v0.16.51)
+
+## ✨ Features
+
+- **mail**: configure attachment limits and undo send defaults ([7a8bc65](https://github.com/stacksjs/ts-cloud/commit/7a8bc65)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.51 ([339ede5](https://github.com/stacksjs/ts-cloud/commit/339ede5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.49...v0.16.50)
 
 ## ✨ Features
