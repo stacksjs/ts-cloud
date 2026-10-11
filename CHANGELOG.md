@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.51...v0.16.52)
+
+## 🐛 Bug Fixes
+
+- preserve active Bun cache extraction directories ([abc3640](https://github.com/stacksjs/ts-cloud/commit/abc3640)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.52 ([93ca81b](https://github.com/stacksjs/ts-cloud/commit/93ca81b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.50...v0.16.51)
 
 ## ✨ Features
