@@ -58,7 +58,7 @@ monitoring's persisted state. Storage policy lives at
 `/etc/ts-cloud/compute-storage.json`; reports and migration health comparisons
 live under `/var/lib/ts-cloud`. The runtime is TypeScript executed by Bun.
 
-### Linux mount integration check
+## Linux mount integration check
 
 The storage agent keeps its root recovery view private before binding releases.
 Cleanup also verifies the original directory is on the root filesystem and is a
