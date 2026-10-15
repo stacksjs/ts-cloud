@@ -38,7 +38,10 @@ backup paths, and systemd dependencies prevent applications from starting on
 unmounted storage. Every minute, the storage check verifies volume identity and
 deployment mounts; the metrics collector reports each configured filesystem.
 Inactive root copies are reclaimed hourly, preserving active and current code.
-The dashboard exposes filesystem usage and mount health.
+The dashboard exposes filesystem usage and mount health. Declare additional
+writer locks in `deploymentStorage.locks` and systemd consumers in
+`deploymentStorage.dependentUnits`; the owner configuration keeps these
+host-specific integrations alongside the volume declaration.
 
 Keep webhook secrets on the host with a typed reference:
 

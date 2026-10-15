@@ -40,6 +40,13 @@ export function resolveComputeVolumes(config: CloudConfig, environment: Environm
       throw new Error('Compute volumes must have distinct names and non-overlapping mount paths')
   }
   const placement = config.infrastructure?.compute?.deploymentStorage
+  for (const file of placement?.locks ?? []) {
+    if (!file.startsWith('/run/lock/') || !file.slice('/run/lock/'.length).split('/').every(part => /^[\w.-]+$/.test(part) && part !== '.' && part !== '..')
+      || file === '/run/lock/ts-cloud-compute-storage.lock') throw new Error(`Invalid deployment storage lock: ${file}`)
+  }
+  for (const unit of placement?.dependentUnits ?? []) {
+    if (!/^[\w@.-]+\.service$/.test(unit)) throw new Error(`Invalid deployment storage dependent unit: ${unit}`)
+  }
   if (placement && !volumes.some(volume => volume.key === placement.volume))
     throw new Error(`deploymentStorage.volume references an undeclared compute volume: ${placement.volume}`)
   return volumes

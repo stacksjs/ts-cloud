@@ -1,3 +1,10 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.54...v0.16.55)
+
+## Fixes
+
+- Configure external deployment-storage locks and systemd consumers through typed cloud configuration.
+- Allow safe policy updates without relocating active deployment storage.
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.53...v0.16.54)
 
 ## Fixes

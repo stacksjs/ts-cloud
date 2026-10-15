@@ -216,7 +216,7 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
   }
   const installDependencies = (): void => {
     const paths = [deploymentVolume!.mountPath, ...state.entries.map(entry => entry.source)]
-    const units = new Set(['rpx-gateway.service', 'host-app-backup.service', 'host-app-backup-retry.service', 'host-backup-check.service', 'mail-host-maintenance.service'])
+    const units = new Set(['rpx-gateway.service', ...(placement?.dependentUnits ?? [])])
     for (const name of fs.readdirSync('/etc/systemd/system')) {
       if (!name.endsWith('.service')) continue
       try { if (fs.readFileSync(`/etc/systemd/system/${name}`, 'utf8').includes(policy.webRoot)) units.add(name) } catch {}
@@ -236,7 +236,8 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
         if (!policy.volumes.some(volume => volume.id === previous.id && volume.key === previous.key && volume.mountPath === previous.mountPath))
           throw new Error(`Refusing to remove or relocate managed volume ${previous.name}; migrate its data explicitly first`)
       }
-      if (JSON.stringify(previousPolicy.deploymentStorage) !== JSON.stringify(policy.deploymentStorage) && state.entries.length)
+      if (state.entries.length && (previousPolicy.deploymentStorage?.volume !== placement?.volume
+        || (previousPolicy.deploymentStorage?.includeBackups !== false) !== (placement?.includeBackups !== false)))
         throw new Error('Refusing to change an active deployment-storage policy; migrate its data explicitly first')
     }
     if (command === 'apply') mountVolumes()
@@ -270,7 +271,7 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
       console.log(`copy ${index + 1}/${entries.length}: ${entries[index].source}`)
       await sync(entries[index], false)
     }
-    for (const name of ['mail-host-maintenance', 'host-backup', 'ts-cloud-host-cleanup']) lock(`/run/lock/${name}.lock`)
+    for (const file of new Set([...(placement.locks ?? []), '/run/lock/ts-cloud-host-cleanup.lock'])) lock(file)
     for (const site of fs.readdirSync(policy.webRoot, { withFileTypes: true }).filter(site => site.isDirectory()).sort((a, b) => a.name.localeCompare(b.name)))
       lock(path.join(policy.webRoot, site.name, '.ts-cloud/deploy.lock'))
     for (const entry of command === 'reclaim' ? [] : discover(command === 'ensure-site' ? argv[1] : undefined, argv[2])) {

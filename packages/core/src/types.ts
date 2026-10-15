@@ -3279,6 +3279,10 @@ export interface ComputeConfig {
     migrateExisting?: boolean
     /** Include project-level pre-migration backup directories. @default true */
     includeBackups?: boolean
+    /** Other on-host writers to serialize with, in acquisition order. Paths under /run/lock. */
+    locks?: string[]
+    /** Additional systemd consumers that must wait for the storage mounts. */
+    dependentUnits?: string[]
   }
 
   /**

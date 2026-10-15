@@ -33,6 +33,14 @@ describe('configured compute volumes', () => {
     const invalid = structuredClone(config)
     invalid.infrastructure!.compute!.deploymentStorage!.volume = 'missing'
     expect(() => resolveComputeVolumes(invalid, 'production')).toThrow('undeclared')
+    invalid.infrastructure!.compute!.deploymentStorage!.volume = 'deployments'
+    for (const lock of ['/etc/passwd', '/run/lock/../passwd', '/run/lock/ts-cloud-compute-storage.lock']) {
+      invalid.infrastructure!.compute!.deploymentStorage!.locks = [lock]
+      expect(() => resolveComputeVolumes(invalid, 'production')).toThrow('lock')
+    }
+    invalid.infrastructure!.compute!.deploymentStorage!.locks = []
+    invalid.infrastructure!.compute!.deploymentStorage!.dependentUnits = ['../../mail.service']
+    expect(() => resolveComputeVolumes(invalid, 'production')).toThrow('unit')
   })
 
   it('adopts the exact existing volume without creating or authorizing a format', async () => {
