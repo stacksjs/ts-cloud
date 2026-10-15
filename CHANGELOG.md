@@ -1,3 +1,10 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.53...v0.16.54)
+
+## Fixes
+
+- Persist verified deployment mounts incrementally and flush the staged copy before activation.
+- Keep storage-failure alerts within webhook message limits when many mounts fail together.
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.52...v0.16.53)
 
 ## Features

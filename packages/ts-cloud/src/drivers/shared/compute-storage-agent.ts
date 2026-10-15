@@ -82,7 +82,9 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
       const alertPath = '/var/lib/ts-cloud/compute-storage-alert.json'
       const previous = readJson(alertPath, { problems: [] })
       if (JSON.stringify(previous.problems) !== JSON.stringify(report.problems)) {
-        run('/usr/local/bin/ts-cloud-notify', [`${report.problems.length ? 'Storage alert' : 'Storage recovered'} on ${tryRun('hostname', [])}: ${report.problems.join('; ') || 'all configured mounts are healthy'}`])
+        const details = report.problems.join('; ') || 'all configured mounts are healthy'
+        const message = `${report.problems.length ? 'Storage alert' : 'Storage recovered'} on ${tryRun('hostname', [])}: ${details}`
+        run('/usr/local/bin/ts-cloud-notify', [message.length > 1800 ? `${message.slice(0, 1600)}... Full report: /var/lib/ts-cloud/compute-storage-status.json` : message])
       }
       // Failed webhooks throw above, leaving the prior state intact for retry.
       save(alertPath, { problems: report.problems, timestamp: report.timestamp })
@@ -280,6 +282,8 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
     const mutable = processFiles().filter(file => file.write)
     if (mutable.length) throw new Error(`Live writable files must be shared before migration: ${mutable.map(file => file.file).join(', ')}`)
     const before = { entries: [...state.entries], fstab: fs.readFileSync('/etc/fstab', 'utf8') }
+    // Make the online copy durable before recording any boot-time bind mounts.
+    if (entries.length) run('sync', [])
     const newMounts: Entry[] = []
     try {
       for (let index = 0; index < entries.length; index++) {
@@ -296,6 +300,7 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
         if (!sameFile(entry.source, entry.destination)) throw new Error(`Bind verification failed: ${entry.source}`)
         newMounts.push(entry); state.entries.push(entry)
         save(statePath, state)
+        persistMounts()
       }
       persistMounts(); run('findmnt', ['--verify'])
       state.activatedAt = new Date().toISOString(); save(statePath, state)
