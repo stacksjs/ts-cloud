@@ -266,6 +266,15 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
     }
     if (!fs.existsSync(rootAlias)) fs.mkdirSync(rootAlias)
     if (!mounted(rootAlias)) run('mount', ['--bind', policy.webRoot, rootAlias])
+    // A bind inherits its parent's shared peer group. Detach this view before
+    // adding deployment mounts, or Linux also mounts them beneath the alias.
+    run('mount', ['--make-private', rootAlias])
+    const rootDevice = fs.statSync(policy.webRoot).dev
+    for (const entry of state.entries) {
+      const original = path.join(rootAlias, path.relative(policy.webRoot, entry.source))
+      if (fs.existsSync(original) && (fs.statSync(original).dev !== rootDevice || sameFile(original, entry.destination)))
+        throw new Error(`Root recovery view contains a deployment mount: ${original}`)
+    }
     for (let index = 0; index < entries.length; index++) {
       if (mounted(entries[index].source) && sameFile(entries[index].source, entries[index].destination)) continue
       console.log(`copy ${index + 1}/${entries.length}: ${entries[index].source}`)
@@ -327,12 +336,13 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
     }
     // Reclaim only verified duplicates. Keep the original current release and
     // every release still referenced by a running process; never restart apps.
-    const rootDevice = fs.statSync(policy.webRoot).dev
     const protectedFiles = processFiles().filter(file => file.device === rootDevice).map(file => file.file)
     for (const entry of state.entries) {
       if (!mounted(entry.source) || !sameFile(entry.source, entry.destination)) throw new Error(`Lost deployment mount: ${entry.source}`)
       const original = path.join(rootAlias, path.relative(policy.webRoot, entry.source))
       if (!fs.existsSync(original)) continue
+      if (fs.statSync(original).dev !== rootDevice || sameFile(original, entry.destination))
+        throw new Error(`Refusing to clean a deployment volume through the root recovery view: ${original}`)
       let current = ''
       try { current = path.basename(fs.realpathSync(path.join(path.dirname(entry.source), 'current'))) } catch {}
       for (const item of fs.readdirSync(original, { withFileTypes: true })) {

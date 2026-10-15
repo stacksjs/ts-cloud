@@ -57,3 +57,20 @@ The notifier reads assignments as data and retries failed deliveries through
 monitoring's persisted state. Storage policy lives at
 `/etc/ts-cloud/compute-storage.json`; reports and migration health comparisons
 live under `/var/lib/ts-cloud`. The runtime is TypeScript executed by Bun.
+
+### Linux mount integration check
+
+The storage agent keeps its root recovery view private before binding releases.
+Cleanup also verifies the original directory is on the root filesystem and is a
+different inode from the deployment destination. This prevents shared mount
+propagation from redirecting cleanup onto the volume.
+
+An opt-in Linux test runs the actual agent in an isolated mount namespace with
+fixture configuration, locks and services. It needs root and an existing ext4
+volume, and removes only its uniquely named temporary fixture directory:
+
+```sh
+TS_CLOUD_TEST_VOLUME_PATH=/var/lib/stacks-deployments \
+TS_CLOUD_TEST_VOLUME_DEVICE=/dev/disk/by-id/scsi-0HC_Volume_ID \
+bun test packages/ts-cloud/test/integration/compute-storage-mounts.test.ts
+```

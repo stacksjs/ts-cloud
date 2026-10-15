@@ -1,3 +1,10 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.55...v0.16.56)
+
+## Fixes
+
+- Isolate the root recovery view from shared mount propagation and verify filesystem identity before reclaiming deployment duplicates.
+- Exercise the actual storage agent in a Linux mount namespace to protect deployment data during cleanup.
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.54...v0.16.55)
 
 ## Fixes
