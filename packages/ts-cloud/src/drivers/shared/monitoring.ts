@@ -91,6 +91,24 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
   // Per-service health probes via bash /dev/tcp (no nc/curl dependency).
   const probeLines = SERVICE_PROBES.map(([name, port]) => `SVC_${name.toUpperCase()}=$(probe ${port})`)
   const servicesJson = SERVICE_PROBES.map(([name]) => `"${name}":"$SVC_${name.toUpperCase()}"`).join(',')
+  const filesystems = (typeof monitoring === 'object' ? monitoring.filesystems : undefined) ?? ['/']
+  if (!filesystems.length) throw new Error('monitoring.filesystems must include at least one path')
+  const disks = filesystems.map(value => typeof value === 'string' ? { path: value, requiredMount: false } : value)
+  for (const disk of disks) {
+    if (disk.path !== '/' && (!disk.path.startsWith('/') || !disk.path.slice(1).split('/').every(part => /^[\w-]+$/.test(part)))) throw new Error(`Invalid monitoring filesystem path: ${disk.path}`)
+  }
+  const diskLines = disks.flatMap((disk, index) => [
+    `DISK_${index}_MOUNTED=true; DISK_${index}_PCT=null`,
+    ...(disk.requiredMount ? [`if ! mountpoint -q '${disk.path}'; then DISK_${index}_MOUNTED=false; DISK_ALERTS="$DISK_ALERTS missing-mount=${disk.path}"; ALERT_KEY="$ALERT_KEY mount:${disk.path}"; fi`] : []),
+    `if [ "$DISK_${index}_MOUNTED" = true ]; then`,
+    `  DISK_${index}_PCT=$(df -Pk '${disk.path}' 2>/dev/null | awk 'NR==2{gsub("%","",$5);print $5}')`,
+    `  if [[ "$DISK_${index}_PCT" =~ ^[0-9]+$ ]]; then`,
+    `    [ "$DISK_${index}_PCT" -le "$DISK_PCT" ] || DISK_PCT=$DISK_${index}_PCT`,
+    `    if [ "$DISK_${index}_PCT" -ge ${diskPercent} ]; then DISK_ALERTS="$DISK_ALERTS disk=${disk.path}:$DISK_${index}_PCT%"; ALERT_KEY="$ALERT_KEY disk:${disk.path}"; fi`,
+    `  else DISK_${index}_PCT=null; DISK_ALERTS="$DISK_ALERTS unreadable-disk=${disk.path}"; ALERT_KEY="$ALERT_KEY unreadable:${disk.path}"; fi`,
+    'fi',
+  ])
+  const disksJson = disks.map((disk, index) => `{"path":"${disk.path}","usedPercent":$DISK_${index}_PCT,"mounted":$DISK_${index}_MOUNTED}`).join(',')
 
   return [
     // sysstat keeps CPU/RAM/swap history locally, so server:monitoring and the
@@ -106,7 +124,8 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
     `read MEM_TOTAL MEM_USED SWAP_TOTAL SWAP_USED <<EOF
 $(free -m | awk '/^Mem:/{total=$2; used=$3} /^Swap:/{print total, used, $2, $3}')
 EOF`,
-    'DISK_PCT=$(df -P / | awk \'NR==2{gsub("%","",$5); print $5}\')',
+    'DISK_PCT=0; DISK_ALERTS=""; ALERT_KEY=""',
+    ...diskLines,
     `UPTIME_SEC=$(cut -d' ' -f1 /proc/uptime | cut -d. -f1)`,
     // Network throughput: cumulative rx/tx bytes across non-loopback interfaces.
     `RX_BYTES=$(awk -F'[: ]+' 'NR>2 && $2!="lo"{rx+=$3} END{print rx+0}' /proc/net/dev)`,
@@ -164,6 +183,7 @@ EOF`,
     // Write atomically (temp + rename) so a reader never sees a half-written file.
     `cat > ${METRICS_PATH}.tmp <<JSON`,
     '{"load":$LOAD,"cpus":$CPUS,"memTotalMb":$MEM_TOTAL,"memUsedMb":$MEM_USED,"memUsedPct":$MEM_PCT,"swapTotalMb":$SWAP_TOTAL,"swapUsedMb":$SWAP_USED,"diskUsedPct":$DISK_PCT,"uptimeSec":$UPTIME_SEC,'
+      + `"disks":[${disksJson}],`
       + '"network":{"rxBytes":$RX_BYTES,"txBytes":$TX_BYTES,"rxBytesPerSec":$RX_RATE,"txBytesPerSec":$TX_RATE,'
       + '"dayKey":"$DAY_KEY","rxBytesToday":$DAY_RX,"txBytesToday":$DAY_TX,'
       + `"monthKey":"$MONTH_KEY","rxBytesMonth":$MONTH_RX,"txBytesMonth":$MONTH_TX,"budgetBytes":${bandwidthBudgetBytes}},"services":{`
@@ -172,17 +192,14 @@ EOF`,
     'JSON',
     `mv -f ${METRICS_PATH}.tmp ${METRICS_PATH}`,
     // Resource alerts: notify on OK→alert transition (and once on recovery).
-    'ALERTS=""',
-    `if awk -v l="$LOAD" -v c="$CPUS" -v t=${cpuLoadPerCore} 'BEGIN{exit !(c>0 && l/c > t)}'; then ALERTS="$ALERTS load=$LOAD/${cpuLoadPerCore}xCPU"; fi`,
-    `if [ "\${MEM_PCT:-0}" -ge ${memPercent} ]; then ALERTS="$ALERTS mem=\${MEM_PCT}%"; fi`,
-    `if [ "\${DISK_PCT:-0}" -ge ${diskPercent} ]; then ALERTS="$ALERTS disk=\${DISK_PCT}%"; fi`,
+    'ALERTS="$DISK_ALERTS"',
+    `if awk -v l="$LOAD" -v c="$CPUS" -v t=${cpuLoadPerCore} 'BEGIN{exit !(c>0 && l/c > t)}'; then ALERTS="$ALERTS load=$LOAD/${cpuLoadPerCore}xCPU"; ALERT_KEY="$ALERT_KEY cpu"; fi`,
+    `if [ "\${MEM_PCT:-0}" -ge ${memPercent} ]; then ALERTS="$ALERTS mem=\${MEM_PCT}%"; ALERT_KEY="$ALERT_KEY memory"; fi`,
     `PREV=$(cat ${ALERT_STATE_PATH} 2>/dev/null || echo ok)`,
     'if [ -n "$ALERTS" ]; then',
-    '  if [ "$PREV" != alert ] && [ -x /usr/local/bin/ts-cloud-notify ]; then /usr/local/bin/ts-cloud-notify "⚠️ $(hostname): resource alert —$ALERTS" || true; fi',
-    `  echo alert > ${ALERT_STATE_PATH}`,
+    `  if [ "$PREV" != "$ALERT_KEY" ] && [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "⚠️ $(hostname): resource alert:$ALERTS"; then printf '%s\\n' "$ALERT_KEY" > ${ALERT_STATE_PATH}; fi`,
     'else',
-    '  if [ "$PREV" = alert ] && [ -x /usr/local/bin/ts-cloud-notify ]; then /usr/local/bin/ts-cloud-notify "✅ $(hostname): resource usage back to normal" || true; fi',
-    `  echo ok > ${ALERT_STATE_PATH}`,
+    `  if [ "$PREV" != ok ] && [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "✅ $(hostname): resource usage back to normal"; then echo ok > ${ALERT_STATE_PATH}; fi`,
     'fi',
     // Bandwidth budget: a separate alert with its own state, because it moves on
     // a monthly timescale. Folding it into the resource alert would let a load
@@ -194,11 +211,9 @@ EOF`,
           `BW_PCT=$(( BW_TOTAL * 100 / ${bandwidthBudgetBytes} ))`,
           `BW_PREV=$(cat ${BANDWIDTH_ALERT_STATE_PATH} 2>/dev/null || echo ok)`,
           `if [ "$BW_PCT" -ge ${bandwidthPercent} ]; then`,
-          `  if [ "$BW_PREV" != alert ] && [ -x /usr/local/bin/ts-cloud-notify ]; then /usr/local/bin/ts-cloud-notify "⚠️ $(hostname): bandwidth at \${BW_PCT}% of the ${bandwidthTb} TB monthly allowance (\$MONTH_KEY)" || true; fi`,
-          `  echo alert > ${BANDWIDTH_ALERT_STATE_PATH}`,
+          `  if [ "$BW_PREV" != alert ] && [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "⚠️ $(hostname): bandwidth at \${BW_PCT}% of the ${bandwidthTb} TB monthly allowance (\$MONTH_KEY)"; then echo alert > ${BANDWIDTH_ALERT_STATE_PATH}; fi`,
           'else',
-          `  if [ "$BW_PREV" = alert ] && [ -x /usr/local/bin/ts-cloud-notify ]; then /usr/local/bin/ts-cloud-notify "✅ $(hostname): bandwidth back under the monthly allowance (\${BW_PCT}%)" || true; fi`,
-          `  echo ok > ${BANDWIDTH_ALERT_STATE_PATH}`,
+          `  if [ "$BW_PREV" = alert ] && [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "✅ $(hostname): bandwidth back under the monthly allowance (\${BW_PCT}%)"; then echo ok > ${BANDWIDTH_ALERT_STATE_PATH}; fi`,
           'fi',
         ]
       : []),

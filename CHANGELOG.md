@@ -1,3 +1,15 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.52...v0.16.53)
+
+## Features
+
+- Apply typed Hetzner server resizing, persistent volumes and deployment storage with cloud apply.
+- Migrate releases and deployment backups online with checksum verification, deployment locks, persistent mounts and application health comparisons.
+- Report per-filesystem usage and mount health in monitoring, telemetry and the dashboard.
+
+## Fixes
+
+- Resolve webhook secrets from protected server env files, escape notification payloads, and retry failed alert deliveries.
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.51...v0.16.52)
 
 ## 🐛 Bug Fixes

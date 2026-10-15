@@ -115,3 +115,43 @@ describe('bandwidth accounting', () => {
     expect(s).toContain('"budgetBytes":20000000000000')
   })
 })
+
+import { mkdtempSync, mkdirSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+it('reports each filesystem, detects missing mounts, and retries failed notifications without repeat spam', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-metrics-'))
+  try {
+    const bin = join(directory, 'bin'); mkdirSync(bin)
+    const fixture = (name: string, script: string): void => writeFileSync(join(bin, name), `#!/bin/bash\n${script}\n`, { mode: 0o755 })
+    fixture('cut', 'case "$*" in *loadavg*) echo 0;; *uptime*) echo 1000;; *) /usr/bin/cut "$@";; esac')
+    fixture('free', 'printf "Mem: 1000 200 100 0 0 800\\nSwap: 100 0 100\\n"')
+    fixture('nproc', 'echo 8')
+    fixture('mountpoint', '[ "${MISSING_MOUNT:-0}" != 1 ] || [ "${@: -1}" != /mnt/deployments ]')
+    fixture('df', 'PCT=30; if [ "${@: -1}" = /mnt/deployments ]; then PCT=${VOLUME_USAGE:-94}; fi; printf "Filesystem 1024-blocks Used Available Capacity Mounted on\\n/dev/test 1000 300 700 %s%% %s\\n" "$PCT" "${@: -1}"')
+    const notifier = join(directory, 'notify')
+    writeFileSync(notifier, '#!/bin/bash\nprintf "%s\\n" "$1" >> "$NOTIFICATION_LOG"\nexit "${NOTIFY_EXIT:-0}"\n', { mode: 0o755 })
+    const commands = buildMonitoringScript({ filesystems: ['/', { path: '/mnt/deployments', requiredMount: true }] })
+    let body = commands.slice(commands.indexOf("cat > /usr/local/bin/ts-cloud-metrics.sh <<'TS_CLOUD_METRICS_EOF'") + 1, commands.indexOf('TS_CLOUD_METRICS_EOF')).join('\n')
+    body = body.replaceAll('/var/lib/ts-cloud', directory).replaceAll('/usr/local/bin/ts-cloud-notify', notifier)
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, NOTIFICATION_LOG: join(directory, 'notifications') }
+    const execute = (extra: Record<string, string> = {}): void => {
+      const result = Bun.spawnSync(['bash', '-c', body], { env: { ...env, ...extra } })
+      expect(result.exitCode).toBe(0)
+      expect(() => JSON.parse(readFileSync(join(directory, 'metrics.json'), 'utf8'))).not.toThrow()
+    }
+    execute({ NOTIFY_EXIT: '22' })
+    expect(existsSync(join(directory, 'alert-state'))).toBe(false)
+    execute(); execute()
+    const report = JSON.parse(readFileSync(join(directory, 'metrics.json'), 'utf8'))
+    expect(report.diskUsedPct).toBe(94)
+    expect(report.disks.map((disk: any) => disk.usedPercent)).toEqual([30, 94])
+    expect(readFileSync(join(directory, 'notifications'), 'utf8').split('\n').filter(Boolean)).toHaveLength(2)
+    execute({ MISSING_MOUNT: '1' })
+    const missing = JSON.parse(readFileSync(join(directory, 'metrics.json'), 'utf8'))
+    expect(missing.disks[1]).toEqual({ path: '/mnt/deployments', usedPercent: null, mounted: false })
+    execute({ VOLUME_USAGE: '60' })
+    expect(readFileSync(join(directory, 'alert-state'), 'utf8').trim()).toBe('ok')
+  } finally { rmSync(directory, { recursive: true, force: true }) }
+})

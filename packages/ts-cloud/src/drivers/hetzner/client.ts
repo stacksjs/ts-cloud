@@ -97,6 +97,18 @@ export interface HetznerFirewall {
   rules?: HetznerFirewallRule[]
 }
 
+export interface HetznerVolume {
+  id: number
+  name: string
+  size: number
+  server: number | null
+  location: { name: string }
+  linux_device: string
+  status: string
+  protection: { delete: boolean }
+  labels?: Record<string, string>
+}
+
 export interface HetznerFirewallRule {
   direction: 'in' | 'out'
   protocol: 'tcp' | 'udp' | 'icmp' | 'esp' | 'gre'
@@ -305,6 +317,32 @@ export class HetznerClient {
   async getServer(id: number): Promise<HetznerServer> {
     const data = await this.request<{ server: HetznerServer }>('GET', `/servers/${id}`)
     return data.server
+  }
+
+  async listVolumes(): Promise<HetznerVolume[]> {
+    return this.requestAll<'volumes', HetznerVolume>('/volumes', 'volumes')
+  }
+
+  async getVolume(id: number): Promise<HetznerVolume> {
+    return (await this.request<{ volume: HetznerVolume }>('GET', `/volumes/${id}`)).volume
+  }
+
+  async createVolume(options: { name: string, size: number, server: number, labels?: Record<string, string> }): Promise<{ volume: HetznerVolume, action: HetznerAction, next_actions?: HetznerAction[] }> {
+    // No provider automount or implicit formatting: the host validates the exact
+    // device before creating a filesystem, and existing filesystems survive adoption.
+    return this.request('POST', '/volumes', { ...options, automount: false })
+  }
+
+  async attachVolume(id: number, server: number): Promise<HetznerAction> {
+    return (await this.request<{ action: HetznerAction }>('POST', `/volumes/${id}/actions/attach`, { server, automount: false })).action
+  }
+
+  async resizeVolume(id: number, size: number): Promise<HetznerAction> {
+    return (await this.request<{ action: HetznerAction }>('POST', `/volumes/${id}/actions/resize`, { size })).action
+  }
+
+  async protectVolume(id: number, enabled: boolean): Promise<HetznerAction> {
+    return (await this.request<{ action: HetznerAction }>('POST', `/volumes/${id}/actions/change_protection`, { delete: enabled })).action
   }
 
   async getServerMetrics(

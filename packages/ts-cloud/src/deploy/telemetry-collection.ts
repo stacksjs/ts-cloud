@@ -7,8 +7,8 @@ import { CloudWatchClient } from '../aws/cloudwatch'
 import { resolveRuntimeInventory, RuntimeOperationService } from '../runtime'
 import { loadTelemetryPolicy, pathTemplate, TelemetryStore } from '../telemetry'
 import { resolveDashboardData } from './dashboard-data'
-import { collectEgressMetrics } from './egress-collection'
 import { resolveServerDashboardData } from './dashboard-data-server'
+import { collectEgressMetrics } from './egress-collection'
 import { serverlessInfo } from './serverless-app'
 import { listTraces } from './serverless-operations'
 
@@ -462,6 +462,13 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
               value,
               unit,
             })
+
+        for (const disk of metrics.disks ?? []) {
+          if (disk.usedPercent === null || !Number.isFinite(Number(disk.usedPercent))) continue
+          records.push({ ...scope, id: id('host', `disk:${disk.path}`, now.toISOString()), kind: 'metric', source: 'host',
+            name: 'host.filesystem.used_percent', timestamp: now.toISOString(), value: Number(disk.usedPercent), unit: 'percent',
+            attributes: { path: String(disk.path), mounted: disk.mounted !== false } })
+        }
 
         for (const site of data.siteHealth ?? []) {
           const project = String(site.project ?? context.config.project.slug)

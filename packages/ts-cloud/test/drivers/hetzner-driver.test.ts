@@ -862,6 +862,19 @@ describe('HetznerDriver', () => {
     expect(state.serverId).toBe(77)
   })
 
+  it('reconciles explicitly configured volumes on a reused server', async () => {
+    await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
+    await writeFile(driverStatePath(stackName), JSON.stringify({ provider: 'hetzner', stackName, serverId: 42 }))
+    const client = mockHetznerClient()
+    const driver = new HetznerDriver({ client, sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    driver.applyComputeChanges = mock(async () => ({ serverId: '42', changes: [] }))
+    const config = structuredClone(baseConfig)
+    config.infrastructure!.compute!.volumes = { deployments: { size: 250, mountPath: '/var/lib/deployments' } }
+    await driver.provisionComputeInfrastructure({ config, environment: 'production' })
+    expect(driver.applyComputeChanges).toHaveBeenCalledTimes(1)
+    expect(client.createServer).not.toHaveBeenCalled()
+  })
+
   it('reuses an existing firewall (updating its rules) instead of creating one', async () => {
     const createFirewall = mock(async () => {
       throw new Error('should not create firewall')

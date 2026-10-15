@@ -368,6 +368,11 @@ export type {
 // Export cloud drivers
 export {
   createCloudDriver,
+  resolveComputeVolumes,
+  buildComputeStorageInstallScript,
+  buildComputeStorageSiteScript,
+  planHetznerVolumes,
+  applyHetznerVolumes,
   CloudDriverFactory,
   cloudDrivers,
   AwsDriver,

@@ -1853,15 +1853,18 @@ export interface DaemonConfig {
 /** A lifecycle event that can trigger a notification. */
 export type NotifyEvent = 'deploy' | 'deploy-failed' | 'ssl' | 'health' | 'backup'
 
+/** A literal URL, or a value read on the server without evaluating its env file. */
+export type NotificationEndpoint = string | { envFile: string, variable: string }
+
 /**
  * Notification channels (Forge-style). Configure any subset; each configured
  * channel receives the events listed in {@link events} (all events by default).
  */
 export interface NotificationsConfig {
   /** Slack incoming-webhook URL. */
-  slack?: { webhookUrl: string }
+  slack?: { webhookUrl: NotificationEndpoint }
   /** Discord webhook URL. */
-  discord?: { webhookUrl: string }
+  discord?: { webhookUrl: NotificationEndpoint }
   /** Telegram bot token + chat id. */
   telegram?: { botToken: string; chatId: string }
   /** Email recipients (sent via ts-cloud's email/SES client). */
@@ -3258,6 +3261,26 @@ export interface ContainerItemConfig {
 }
 
 export interface ComputeConfig {
+  /** Explicitly reconcile an existing Hetzner server's size. Never resize by default. */
+  resize?: {
+    /** Keep serving on the current type when the requested type has no capacity. */
+    whenUnavailable?: 'keep-current' | 'fail'
+    /** Enlarge the primary disk with the server. Cannot be undone. @default true */
+    upgradeDisk?: boolean
+  }
+
+  /** Named Hetzner block volumes. Reconciled only by the server owner; host requires Bun. */
+  volumes?: Record<string, ComputeVolumeConfig>
+
+  /** Place releases and optional deployment backups on a named volume. */
+  deploymentStorage?: {
+    volume: string
+    /** Copy existing release trees online, then verify under deployment locks. */
+    migrateExisting?: boolean
+    /** Include project-level pre-migration backup directories. @default true */
+    includeBackups?: boolean
+  }
+
   /**
    * Compute mode: 'server' for EC2, 'serverless' for Fargate/Lambda
    */
@@ -3733,6 +3756,18 @@ export interface ComputeConfig {
   hostCleanup?: boolean | ComputeHostCleanupConfig
 }
 
+/** Persistent Linux block storage managed by the compute owner. */
+export interface ComputeVolumeConfig {
+  /** Provider resource name; defaults to <project>-<environment>-<key>. */
+  name?: string
+  /** Capacity in GB. Existing volumes may grow but never shrink. */
+  size: number
+  /** Absolute Linux mount path, persisted by filesystem UUID. */
+  mountPath: string
+  /** Refuse provider-side deletion. @default true */
+  deleteProtection?: boolean
+}
+
 /**
  * Retention windows for {@link ComputeConfig.hostCleanup}. Each field is an age
  * past which the matching files are deleted; omit one to keep its default.
@@ -3838,6 +3873,8 @@ export interface SshKeyConfig {
 export interface ComputeMonitoringConfig {
   /** Enable the metrics collector. @default true */
   enabled?: boolean
+  /** Filesystems to report and alert on. A required mount must be a mount point. */
+  filesystems?: Array<string | { path: string, requiredMount?: boolean }>
   /** Alert thresholds; omit a field to keep its default. */
   alerts?: {
     /** Alert when 1-min load average per CPU exceeds this. @default 2 */

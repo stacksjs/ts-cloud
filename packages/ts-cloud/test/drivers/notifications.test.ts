@@ -88,3 +88,36 @@ describe('buildNotifierScript', () => {
     expect(buildNotifierScript(undefined)).toEqual([])
   })
 })
+
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { resolveNotificationEndpoint } from '../../src/drivers/shared/notifications'
+
+describe('on-box notification delivery', () => {
+  it('reads protected env references as data, escapes JSON and propagates delivery failure', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-notifier-'))
+    try {
+      const capture = join(directory, 'request')
+      const envFile = join(directory, 'mail.env')
+      const marker = join(directory, 'must-not-exist')
+      const url = `https://example.com/hook?token=$(touch ${marker})`
+      writeFileSync(envFile, `OTHER=unused\nexport DISCORD_WEBHOOK_URL='${url}'\n`)
+      expect(resolveNotificationEndpoint({ envFile, variable: 'DISCORD_WEBHOOK_URL' })).toBe(url)
+      const bin = join(directory, 'bin'); mkdirSync(bin)
+      writeFileSync(join(bin, 'curl'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\nexit "${CURL_EXIT:-0}"\n', { mode: 0o755 })
+      const commands = buildNotifierScript({ discord: { webhookUrl: { envFile, variable: 'DISCORD_WEBHOOK_URL' } } })
+      const body = commands.slice(1, commands.indexOf('TS_CLOUD_NOTIFY_EOF')).join('\n')
+      const message = 'A "quoted" \\ path\nwith\ttabs\rand emoji ✅'
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, CAPTURE: capture }
+      const result = Bun.spawnSync(['bash', '-c', body, 'notify', message], { env })
+      expect(result.stderr.toString()).toBe('')
+      expect(result.exitCode).toBe(0)
+      const args = readFileSync(capture, 'utf8').trimEnd().split('\n')
+      expect(JSON.parse(args[args.indexOf('--data') + 1])).toEqual({ content: message })
+      expect(args.at(-1)).toBe(url)
+      expect(Bun.spawnSync(['test', '-e', marker]).exitCode).toBe(1)
+      expect(Bun.spawnSync(['bash', '-c', body, 'notify', message], { env: { ...env, CURL_EXIT: '22' } }).exitCode).toBe(1)
+    } finally { rmSync(directory, { recursive: true, force: true }) }
+  })
+})

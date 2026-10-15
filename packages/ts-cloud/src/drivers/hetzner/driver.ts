@@ -1,5 +1,4 @@
-import type { CloudDriver, ComputeProxyConfig, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, ProvisionComputeOptions, ReachableResource, RemoteDeployResult, RunRemoteDeployOptions, SiteConfig, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
-import { REMOTE_SCRIPT_RUNNER } from '../shared/remote-exec'
+import type { ApplyComputeChangesOptions, CloudDriver, ComputeChangePlan, ComputeProxyConfig, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, ProvisionComputeOptions, ReachableResource, RemoteDeployResult, RunRemoteDeployOptions, SiteConfig, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import type { HetznerDriverState } from './state'
@@ -10,12 +9,15 @@ import { join } from 'node:path'
 import { mailFirewallPorts, resolveDeployBucketName, resolveMailProxy, resolveMailService, resolveProjectStackName } from '@ts-cloud/core'
 import { normalizePublicIpv6 } from '../../deploy/server-dns'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
+import { buildComputeStorageInstallScript, resolveComputeVolumes } from '../shared/compute-storage'
 import { buildDiscardUploadScript, buildPublishUploadScript, HOST_ARTIFACT_CACHE_DIR } from '../shared/deploy-script'
 import { buildFleetServicesBoxProvision, resolveFleetTopology } from '../shared/fleet'
 import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
 import { buildNotifierScript } from '../shared/notifications'
 import { buildPhpProvisionScript } from '../shared/php-provision'
+import { REMOTE_SCRIPT_RUNNER } from '../shared/remote-exec'
+import { describeScriptSyntaxError, formatSshFailure, summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { sftpFirewallPorts } from '../shared/sftp-provision'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
@@ -24,8 +26,10 @@ import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { resolveHetznerApiToken, resolveHetznerImage, resolveHetznerSettings } from './config'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, matchesTsCloudProject, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
-import { describeScriptSyntaxError, formatSshFailure, summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
+import { executeHetznerServerResize, planHetznerServerResize } from './resize'
+import { prepareHetznerResize, verifyHetznerResize } from './resize-remote'
 import { readDriverState, writeDriverState } from './state'
+import { applyHetznerVolumes, planHetznerVolumes } from './volumes'
 
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
 const SSH_MAX_BUFFER = 1024 * 1024 * 256
@@ -92,6 +96,60 @@ export class HetznerDriver implements CloudDriver {
   private stateOnly: boolean
   private waitForBoot: boolean
   private bootWait: Required<NonNullable<HetznerDriverOptions['bootWait']>>
+
+  async applyComputeChanges(options: ApplyComputeChangesOptions): Promise<ComputeChangePlan> {
+    const { config, environment } = options
+    if (config.cloud?.attachTo) throw new Error('Only the compute owner may reconcile server size and volumes')
+    const compute = config.infrastructure?.compute
+    if (compute?.resize && !compute.size) throw new Error('compute.resize requires an explicit compute.size')
+    const declarations = resolveComputeVolumes(config, environment)
+    const topology = resolveFleetTopology(compute ?? {})
+    if (topology.appServers > 1 || topology.dedicatedServices) throw new Error('Managed compute volumes currently require a single app server')
+    const outputs = await this.getComputeOutputs(options)
+    if (!outputs.appInstanceId) throw new Error('No existing compute server found; provision the server first')
+    const server = await this.client.getServer(Number(outputs.appInstanceId))
+    const volumes = await planHetznerVolumes(this.client, server, declarations)
+    const resize = compute?.resize && compute.size
+      ? await planHetznerServerResize(this.client, server.id, resolveHetznerServerType(compute.size), compute.resize.upgradeDisk !== false)
+      : undefined
+    const plan: ComputeChangePlan = {
+      serverId: String(server.id),
+      changes: volumes.flatMap(volume => volume.actions.map(action => ({ resource: volume.declaration.name, action, detail: `${volume.declaration.size} GB at ${volume.declaration.mountPath}` }))),
+    }
+    if (compute?.deploymentStorage) plan.changes.push({ resource: compute.deploymentStorage.volume, action: 'place-deployments',
+      detail: `Reconcile release directories${compute.deploymentStorage.includeBackups !== false ? ' and deployment backups' : ''} on the volume; ${compute.deploymentStorage.migrateExisting ? 'verify and migrate existing files' : 'refuse nonempty directories'}` })
+    if (resize && !resize.alreadyComplete) {
+      if (!resize.capacityAvailable) {
+        if (compute?.resize?.whenUnavailable !== 'keep-current') throw new Error(`${resize.targetType.name} is unavailable in ${resize.location}`)
+        plan.waitingForCapacity = `${resize.targetType.name} unavailable in ${resize.location}; keeping ${server.server_type.name} running`
+      }
+      else plan.changes.push({ resource: server.name, action: 'resize', detail: `${server.server_type.name} to ${resize.targetType.name}` })
+    }
+    if (options.dryRun) return plan
+    if (plan.waitingForCapacity) console.warn(`[ts-cloud] ${plan.waitingForCapacity}`)
+    const mounted = await applyHetznerVolumes(this.client, server, volumes)
+    const targets: ComputeTarget[] = [{ id: String(server.id), name: server.name, publicIp: server.public_net.ipv4?.ip }]
+    const commands = [
+      ...buildNotifierScript(config.notifications),
+      ...(compute?.volumes || compute?.deploymentStorage ? buildComputeStorageInstallScript({ volumes: mounted, deploymentStorage: compute?.deploymentStorage, webRoot: '/var/www' }) : []),
+      ...(compute?.monitoring !== false ? buildMonitoringScript(compute?.monitoring) : []),
+    ]
+    if (commands.length) {
+      const result = await this.runRemoteDeploy({ targets, commands, timeoutSeconds: 7200, comment: 'ts-cloud apply configured compute storage' })
+      if (!result.success) throw new Error(result.error || result.perInstance.map(instance => instance.error || instance.output).join('\n'))
+    }
+    if (resize?.capacityAvailable && !resize.alreadyComplete) {
+      const remote = { host: targets[0].publicIp!, user: this.sshUser, identityFile: this.sshPrivateKeyPath }
+      const result = await executeHetznerServerResize({ client: this.client, serverId: server.id,
+        targetType: resize.targetType.name, upgradeDisk: resize.upgradeDisk,
+        hooks: {
+          preflight: () => prepareHetznerResize(remote),
+          afterBoot: (_server, target, manifest, context) => verifyHetznerResize(remote, target, manifest!, context),
+        } })
+      if (result.status !== 'completed' && result.status !== 'already-complete') throw new Error(`Resize did not complete: ${result.status}`)
+    }
+    return plan
+  }
 
   constructor(options: HetznerDriverOptions = {}) {
     const apiToken = resolveHetznerApiToken(options.apiToken)
@@ -203,6 +261,7 @@ export class HetznerDriver implements CloudDriver {
     if (existing?.serverId) {
       const server = await this.tryGetServer(existing.serverId)
       if (server && server.status !== 'off') {
+        if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
         return this.outputsFromState(existing, server)
       }
     }
@@ -223,6 +282,7 @@ export class HetznerDriver implements CloudDriver {
         sshUser: this.sshUser,
       }
       await writeDriverState(stackName, rehydrated)
+      if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
       return this.outputsFromState(rehydrated, alreadyRunning)
     }
 
@@ -301,6 +361,7 @@ export class HetznerDriver implements CloudDriver {
       await this.waitForCloudInit(ip)
     }
 
+    if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
     return this.outputsFromState(state, running)
   }
 

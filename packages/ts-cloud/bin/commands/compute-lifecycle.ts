@@ -66,6 +66,30 @@ async function drainedSitesAllowTeardown(
  */
 export function registerComputeLifecycleCommands(app: CLI): void {
   app
+    .command('apply', 'Apply configured server resize, persistent volumes and deployment storage')
+    .option('--env <env>', 'Environment', { default: 'production' })
+    .option('--dry-run', 'Show the provider plan without changing anything')
+    .option('--yes', 'Apply the displayed compute plan without prompting')
+    .action(async (options?: { env?: string, dryRun?: boolean, yes?: boolean }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as EnvironmentType
+        const driver = createCloudDriver({ config })
+        if (!driver.applyComputeChanges) throw new Error('This provider does not support configured compute changes')
+        const plan = await driver.applyComputeChanges({ config, environment, dryRun: true })
+        console.log(JSON.stringify(plan, null, 2))
+        if (options?.dryRun) return
+        if (!options?.yes && !await cli.confirm('Apply these compute changes?', false)) return
+        const result = await driver.applyComputeChanges({ config, environment })
+        if (result.waitingForCapacity) cli.warn(result.waitingForCapacity)
+        cli.success('Configured compute changes applied')
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+        process.exitCode = 1
+      }
+    })
+
+  app
     .command('destroy', 'Destroy the single-server compute (instance + firewall)')
     .option('--env <env>', 'Environment', { default: 'production' })
     .option('--force', 'Skip the confirmation prompt')

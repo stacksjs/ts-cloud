@@ -74,6 +74,17 @@ export interface ProvisionComputeOptions {
   environment: EnvironmentType
 }
 
+export interface ComputeChangePlan {
+  serverId: string
+  changes: Array<{ resource: string, action: string, detail: string }>
+  waitingForCapacity?: string
+}
+
+export interface ApplyComputeChangesOptions extends ProvisionComputeOptions {
+  /** Plan without provider writes, remote commands, or local state writes. */
+  dryRun?: boolean
+}
+
 export interface FindComputeTargetsOptions {
   slug: string
   environment: EnvironmentType
@@ -129,6 +140,9 @@ export interface CloudDriver {
 
   /** Provision compute infrastructure (Hetzner). AWS uses InfrastructureGenerator + CFN. */
   provisionComputeInfrastructure?(options: ProvisionComputeOptions): Promise<ComputeStackOutputs>
+
+  /** Apply configured resize, persistent volumes and deployment placement without deploying sites. */
+  applyComputeChanges?(options: ApplyComputeChangesOptions): Promise<ComputeChangePlan>
 
   /**
    * Tear down the lightweight single-server compute (instance + security

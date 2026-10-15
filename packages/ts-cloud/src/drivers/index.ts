@@ -1,4 +1,8 @@
 export * from './factory'
+export { resolveComputeVolumes, buildComputeStorageInstallScript, buildComputeStorageSiteScript } from './shared/compute-storage'
+export type { ResolvedComputeVolume, MountedComputeVolume, ComputeStoragePolicy } from './shared/compute-storage'
+export { planHetznerVolumes, applyHetznerVolumes } from './hetzner/volumes'
+export type { HetznerVolumePlan } from './hetzner/volumes'
 export { AwsDriver } from './aws/driver'
 export { HetznerDriver } from './hetzner/driver'
 export { isBoxMode, LocalBoxDriver } from './local-box/driver'

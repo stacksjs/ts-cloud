@@ -320,6 +320,15 @@ function setRange(value) { historyRange.set(value); refresh() }
       </div>
     </div>
 
+    <div class="section" @show="!!currentData()?.systemMetrics?.disks?.length">
+      <h2>Filesystems</h2>
+      <div class="host-vitals vitals">
+        <template :for="disk in (currentData()?.systemMetrics?.disks || [])">
+          <div class="vital"><div class="vlabel">{{ disk.path }}</div><div class="vval">{{ disk.usedPercent == null ? 'Unavailable' : disk.usedPercent + '%' }}</div><div class="vnote">{{ disk.mounted === false ? 'Required mount missing' : 'Filesystem usage' }}</div></div>
+        </template>
+      </div>
+    </div>
+
     <div class="section" @show="!!currentData()">
       <h2>Current resource shape</h2>
       <div class="live-bars panel">

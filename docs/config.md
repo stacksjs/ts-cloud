@@ -31,6 +31,9 @@ what gets deployed:
 | `aws` | `AwsConfig` | AWS account/credential overrides. |
 | `stateDir` | `string` | Where machine-local state is kept. Defaults to `.ts-cloud` ([below](#state-directory)). |
 
+See [Persistent compute storage](/features/compute-storage) for typed server resizing,
+block volumes, deployment placement and filesystem alerts.
+
 ## State directory
 
 Everything ts-cloud persists on the machine running a deploy lives under one

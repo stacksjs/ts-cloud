@@ -243,6 +243,8 @@ export function metricsScript(
     'echo "DISKPCT=${DISKPCT:-0}"',
     'echo "DISKUSEDG=${DISKUSEDG:-0}"',
     'echo "DISKTOTG=${DISKTOTG:-0}"',
+    'if [ -r /var/lib/ts-cloud/compute-storage-status.json ]; then echo "STORAGE=$(base64 -w0 /var/lib/ts-cloud/compute-storage-status.json)"; fi',
+    'if [ -r /var/lib/ts-cloud/metrics.json ]; then echo "COLLECTOR=$(base64 -w0 /var/lib/ts-cloud/metrics.json)"; fi',
     'echo "INODEPCT=$(df -Pi / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
     'echo "NETRX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$3} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
     'echo "NETTX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$11} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
@@ -1074,7 +1076,11 @@ export async function resolveServerDashboardData(
     out.server.probeStatus = 'live'
     out.metricsUnavailable = false
     out._metricsStatus = 'live'
+    try { out.storage = JSON.parse(Buffer.from(parsed.STORAGE || '', 'base64').toString('utf8')) } catch { out.storage = null }
+    let disks: unknown[] = []
+    try { disks = JSON.parse(Buffer.from(parsed.COLLECTOR || '', 'base64').toString('utf8')).disks ?? [] } catch { /* collector not installed */ }
     out.systemMetrics = {
+      disks,
       load: num(parsed.LOAD),
       load5: num(parsed.LOAD5),
       load15: num(parsed.LOAD15),

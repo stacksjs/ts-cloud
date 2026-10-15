@@ -9,6 +9,7 @@ import { buildManagementDashboardArtifact, ensureManagementDashboard, management
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
 import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildSslScript, resolveSslProvider } from './certbot'
+import { buildComputeStorageSiteScript } from './compute-storage'
 import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
 import { buildAwsArtifactFetch, buildLocalArtifactFetch, buildSiteDeployScript, buildStaticSiteDeployScript, releaseTarballTmpPath, resolveExecStart } from './deploy-script'
 import { readDriverState } from './driver-state'
@@ -188,6 +189,7 @@ export async function deploySiteRelease(
       targets,
       commands: [
         ...buildSiteOwnerGuard(appBase, slug),
+        ...buildComputeStorageSiteScript(appBase, slug),
         ...deployScript,
         ...poolScript,
         ...vhostScript,
@@ -334,6 +336,7 @@ export async function deploySiteRelease(
     // After the history header (so a refusal is still recorded), before
     // anything touches the release layout.
     ...buildSiteOwnerGuard(appBase, slug),
+    ...buildComputeStorageSiteScript(appBase, slug),
     ...baseScript,
     ...staticVhost,
     ...staticSsl,
