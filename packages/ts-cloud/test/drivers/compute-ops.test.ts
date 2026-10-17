@@ -20,14 +20,48 @@ function mockDriver(targets = [{ id: 'srv-1', publicIp: '203.0.113.1', status: '
 const ctx = (driver: CloudDriver) => ({ driver, slug: 'acme', environment: 'production' as const })
 
 describe('rollbackComputeSite', () => {
-  it('rolls back to the previous release and reloads php-fpm + queues', async () => {
+  it('rolls back a declared PHP site and propagates runtime restart failures', async () => {
     const driver = mockDriver()
-    const res = await rollbackComputeSite(ctx(driver), { siteName: 'main' })
+    const res = await rollbackComputeSite(ctx(driver), { siteName: 'main', site: { type: 'laravel', domain: 'example.com' } })
     expect(res.success).toBe(true)
     const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
     expect(cmd).toContain('no release to roll back to')
     expect(cmd).toContain('pantry restart php-fpm')
     expect(cmd).toContain('php artisan queue:restart')
+    expect(cmd).toContain('if [ -f /var/www/acme-main/current/artisan ]')
+    expect(cmd).toContain('set -euo pipefail')
+    expect(cmd).not.toContain('pantry restart php-fpm) 2>/dev/null || true')
+  })
+
+  it('never starts PHP services for Bun, static or unspecified sites', async () => {
+    for (const site of [undefined, { start: 'bun run server.ts' }, { deploy: 'server' as const, root: 'dist' }]) {
+      const driver = mockDriver()
+      await rollbackComputeSite(ctx(driver), { siteName: 'main', site })
+      const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
+      expect(cmd).not.toContain('php-fpm')
+      expect(cmd).not.toContain('artisan')
+      expect(cmd).toContain('acme-main')
+    }
+  })
+
+  it('does not restart PHP during a preview, even for a PHP site', async () => {
+    const driver = mockDriver()
+    await rollbackComputeSite(ctx(driver), { siteName: 'main', dryRun: true, site: { type: 'laravel', domain: 'example.com' } })
+    const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
+    expect(cmd).not.toContain('php-fpm')
+    expect(cmd).not.toContain('artisan')
+  })
+
+  it('returns a failed PHP restart instead of executing the rest and reporting success', async () => {
+    const driver = mockDriver()
+    await rollbackComputeSite(ctx(driver), { siteName: 'main', site: { type: 'laravel', domain: 'example.com' } })
+    const commands: string[] = (driver.runRemoteDeploy as any).mock.calls[0][0].commands
+    // Exercise the actual generated runtime commands in a shell with a failing
+    // command-boundary fixture. No service, release or host path is changed.
+    const script = ['set -euo pipefail', 'cd() { return 0; }', 'pantry() { return 41; }', ...commands.slice(-2), 'printf unexpected-success'].join('\n')
+    const child = Bun.spawn(['bash', '-c', script], { stdout: 'pipe', stderr: 'pipe' })
+    expect(await child.exited).toBe(41)
+    expect(await new Response(child.stdout).text()).not.toContain('unexpected-success')
   })
 
   it('targets a specific release id when --to is given', async () => {

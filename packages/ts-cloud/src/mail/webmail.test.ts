@@ -96,7 +96,7 @@ it('webmail adoption preserves SMTP configuration, permissions and idempotence',
     chmodSync(path, 0o640)
     const mail = resolveMailService(config({ webmail: { port: 8099 } }), { environment: 'production' })
     const patch = buildMailWebmailEnvPatch(mail, path, process.execPath)
-    const first = Bun.spawnSync(['bash', '-c', patch], { stdout: 'pipe', stderr: 'pipe' })
+    const first = Bun.spawnSync(['bash', '-c', `umask 077\n${patch}`], { stdout: 'pipe', stderr: 'pipe' })
     expect(first.stderr.toString()).toBe('')
     expect(first.exitCode).toBe(0)
     expect(first.stdout.toString().trim()).toBe('changed')

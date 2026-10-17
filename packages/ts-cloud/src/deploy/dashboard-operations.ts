@@ -277,7 +277,7 @@ export async function runDashboardOperation(
 
   if (operation.group === 'deploy') {
     const to = options.to && /^[A-Za-z0-9._-]+$/.test(options.to) ? options.to : undefined
-    const r = await rollbackComputeSite(ctx, { siteName: operation.target, to })
+    const r = await rollbackComputeSite(ctx, { siteName: operation.target, to, site: config.sites?.[operation.target] })
     return fromComputeOps(operation.id, `rollback ${operation.target}${to ? ` → ${to}` : ''}`, r)
   }
   if (operation.id === 'backup:restore') {

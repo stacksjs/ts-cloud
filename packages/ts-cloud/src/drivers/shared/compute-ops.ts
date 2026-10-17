@@ -7,8 +7,8 @@
  * with the shared generators, and runs it on every box — mirroring how
  * {@link import('./compute-deploy').deploySiteRelease} drives a deploy.
  */
-import type { CloudDriver, DatabaseConfig, EnvironmentType, RemoteDeployInstanceResult } from '@ts-cloud/core'
-import { siteInstallBase } from '../../deploy/site-target'
+import type { CloudDriver, DatabaseConfig, EnvironmentType, RemoteDeployInstanceResult, SiteConfig } from '@ts-cloud/core'
+import { resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
 import { buildBackupRestoreScript } from './backups'
 import { PANTRY_PROJECT_DIR } from './package-manager'
 import { buildRollbackPlanScript, buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
@@ -58,12 +58,14 @@ async function findTargets(ctx: ComputeOpsContext) {
 /**
  * Roll a site back to a previous release (Forge-style). With `to`, points
  * `current` at `releases/<to>`; otherwise the most recent prior release. After
- * flipping the symlink, php-fpm is restarted and queue workers are signalled so
- * they pick up the rolled-back code.
+ * flipping the symlink, the release's service is restarted. Declared PHP sites
+ * also restart php-fpm and, when artisan exists, their Laravel queue workers.
+ * Pass the site's declared config to enable PHP runtime hooks; an unspecified
+ * site never starts an unrelated runtime.
  */
 export async function rollbackComputeSite(
   ctx: ComputeOpsContext,
-  options: { siteName: string; to?: string; dryRun?: boolean; onlyIfLive?: string },
+  options: { siteName: string; to?: string; dryRun?: boolean; onlyIfLive?: string; site?: SiteConfig },
 ): Promise<ComputeOpsResult> {
   const logger = ctx.logger || noopLogger
   const targets = await findTargets(ctx)
@@ -90,7 +92,7 @@ export async function rollbackComputeSite(
   }
 
   const commands = [
-    'set -uo pipefail',
+    'set -euo pipefail',
     ...guard,
     // unitBase lets the rollback swap the running templated release instance
     // (zero-downtime layout); legacy single-unit sites just get a restart.
@@ -98,10 +100,13 @@ export async function rollbackComputeSite(
       ...(options.to ? { to: options.to } : {}),
       unitBase: `${ctx.slug}-${options.siteName}`,
     }),
-    // Pick up the rolled-back code: restart php-fpm + signal queue workers.
-    `(cd ${PANTRY_PROJECT_DIR} && pantry restart php-fpm) 2>/dev/null || true`,
-    `(cd ${paths.current} && eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)" && php artisan queue:restart) 2>/dev/null || true`,
   ]
+  if (options.site && resolveSiteKind(options.site) === 'server-php') {
+    commands.push(
+      `(cd ${PANTRY_PROJECT_DIR} && pantry restart php-fpm)`,
+      `if [ -f ${paths.current}/artisan ]; then (cd ${paths.current} && TS_CLOUD_RB_ENV=$(cd ${PANTRY_PROJECT_DIR} && pantry env) && eval "$TS_CLOUD_RB_ENV" && php artisan queue:restart); fi`,
+    )
+  }
 
   logger.step(
     `Rolling back ${options.siteName}${options.to ? ` to ${options.to}` : ' to the previous release'} on ${targets.length} server(s)...`,

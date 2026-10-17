@@ -1178,7 +1178,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         for (const siteName of siteNames) {
           const result = await rollbackComputeSite(
             { driver, slug: config.project.slug, environment, logger: cli },
-            { siteName, to: options?.to, dryRun: options?.dryRun, onlyIfLive: options?.onlyIfLive },
+            { siteName, to: options?.to, dryRun: options?.dryRun, onlyIfLive: options?.onlyIfLive, site: config.sites?.[siteName] },
           )
           for (const inst of result.perInstance || [])
             cli.info(`  ${siteName} ${inst.instanceId}: ${inst.output?.trim() || inst.status}`)
