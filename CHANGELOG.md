@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.57...v0.16.58)
+
+## 🐛 Bug Fixes
+
+- scope rollback runtime hooks and preserve webmail permissions ([74adbc8](https://github.com/stacksjs/ts-cloud/commit/74adbc8)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.58 ([eed357b](https://github.com/stacksjs/ts-cloud/commit/eed357b)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.56...v0.16.57)
 
 ## 🐛 Bug Fixes
