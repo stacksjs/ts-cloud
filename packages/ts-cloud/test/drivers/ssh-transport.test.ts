@@ -194,7 +194,7 @@ describe('SystemSshTransport.scp and probe', () => {
     const transport = new SystemSshTransport(pinned, { run })
     await transport.scp('pi.local', '/tmp/r.tar.gz', '/var/ts-cloud/artifacts/.x.tmp')
     expect(calls).toHaveLength(3)
-    expect(calls[0].command[0]).toBe('scp')
+    expect(calls[0].command.slice(0, 3)).toEqual(['scp', '-S', 'ssh'])
     expect(calls[0].command).toContain('-P')
 
     const exhausted = recorder([failure, failure, failure])

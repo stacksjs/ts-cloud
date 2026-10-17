@@ -20,7 +20,7 @@ import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { resolveStatePath } from '@ts-cloud/core'
 import { describeScriptSyntaxError, formatSshFailure } from './remote-failure'
-import { remoteScriptRunner } from './remote-exec'
+import { remoteScriptRunner, SCP_SSH_TRANSPORT_ARGS } from './remote-exec'
 
 export type SshHostKeyPolicy = 'pin' | 'accept-new' | 'insecure'
 
@@ -298,7 +298,7 @@ export class SystemSshTransport implements SshTransport {
   }
 
   async scp(host: string, localPath: string, remotePath: string): Promise<void> {
-    const command = ['scp', ...buildScpArgsFor(this.options, host, localPath, remotePath)]
+    const command = ['scp', ...SCP_SSH_TRANSPORT_ARGS, ...buildScpArgsFor(this.options, host, localPath, remotePath)]
     // scp overwrites its destination, so a re-upload is idempotent and a single
     // dropped connection should not fail a whole deploy.
     const attempts = 3

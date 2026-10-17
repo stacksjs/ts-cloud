@@ -16,7 +16,7 @@ import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
 import { buildNotifierScript } from '../shared/notifications'
 import { buildPhpProvisionScript } from '../shared/php-provision'
-import { REMOTE_SCRIPT_RUNNER } from '../shared/remote-exec'
+import { REMOTE_SCRIPT_RUNNER, SCP_SSH_TRANSPORT_ARGS } from '../shared/remote-exec'
 import { describeScriptSyntaxError, formatSshFailure, summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { sftpFirewallPorts } from '../shared/sftp-provision'
@@ -1635,6 +1635,7 @@ export class HetznerDriver implements CloudDriver {
   private scpToHost(host: string, localPath: string, remotePath: string): void {
     const cmd = [
       'scp',
+      ...SCP_SSH_TRANSPORT_ARGS,
       '-i',
       this.sshPrivateKeyPath,
       ...HetznerDriver.SSH_HOST_KEY_OPTS,

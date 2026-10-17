@@ -7,6 +7,9 @@
  * managed here; pass `identityFile` or rely on the ambient SSH config.
  */
 
+/** Use PATH for SSH instead of scp's potentially non-relocatable build-time path. */
+export const SCP_SSH_TRANSPORT_ARGS = ['-S', 'ssh'] as const
+
 export interface RemoteExecOptions {
   /** SSH user. @default 'root' */
   user?: string
@@ -82,7 +85,7 @@ export async function scpUpload(
   options: RemoteExecOptions = {},
 ): Promise<void> {
   const proc = Bun.spawn(
-    ['scp', ...buildSshArgs(options, 'scp'), ...localPaths, `${options.user ?? 'root'}@${host}:${remoteDir}`],
+    ['scp', ...SCP_SSH_TRANSPORT_ARGS, ...buildSshArgs(options, 'scp'), ...localPaths, `${options.user ?? 'root'}@${host}:${remoteDir}`],
     {
       stdout: 'pipe',
       stderr: 'pipe',
