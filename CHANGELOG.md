@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.56...v0.16.57)
+
+## 🐛 Bug Fixes
+
+- resolve scp SSH transport through PATH ([b050088](https://github.com/stacksjs/ts-cloud/commit/b050088)) _(by Chris <chris@stacksjs.com>)_
+
+## 📝 Documentation
+
+- **compute**: correct storage integration heading level ([68710cc](https://github.com/stacksjs/ts-cloud/commit/68710cc)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.57 ([144684a](https://github.com/stacksjs/ts-cloud/commit/144684a)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.55...v0.16.56)
 
 ## Fixes
