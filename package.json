@@ -65,7 +65,7 @@
   },
   "devDependencies": {
     "@stacksjs/bumpx": "^0.2.21",
-    "better-dx": "^0.2.25"
+    "better-dx": "^0.2.38"
   },
   "overrides": {
     "typescript": "^7.0.2"
