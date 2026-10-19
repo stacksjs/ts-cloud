@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { BOX_PANTRY_BIN_DIR, BOX_PANTRY_CLI_DIR, boxResizeDecision, buildBoxConvergeScript, buildBoxDrainScript, parseBoxReport, provisionBox, renderBoxUnit, renderEnvFile } from './box-converge'
+import { BOX_PANTRY_BIN_DIR, BOX_PANTRY_CLI_DIR, boxResizeDecision, buildBoxConvergeScript, buildBoxDrainScript, parseBoxReport, provisionBox, renderBoxUnit, renderEnvFile, renderUsernsProfile } from './box-converge'
 
 const runner = {
   name: 'ci-runner-1',
@@ -78,6 +78,26 @@ describe('a declared box', () => {
     expect(floor).toBeLessThan(script.indexOf('pantry install'))
     expect(script).toContain('the box declares at least 12 GB')
     expect(buildBoxConvergeScript(runner)).toContain('-lt 10485760')
+  })
+
+  test('applies the disk floor only when the declared packages changed since the last install', () => {
+    const script = buildBoxConvergeScript(runner)
+    const wanted = Buffer.from(['git-scm.org@2.53.0', 'google.com/chrome@155.0.8059.84'].join('\n') + '\n').toString('base64')
+    expect(script).toContain(`WANTED_PACKAGES='${wanted}'`)
+    expect(script.indexOf('MISSING=1')).toBeLessThan(script.indexOf('FREE_KB='))
+    expect(script).toContain('if [ "$MISSING" = 1 ]; then')
+    // The record is written only after pantry install succeeded (set -e).
+    expect(script.indexOf('> /opt/pantry/pantry/.ts-cloud-packages')).toBeGreaterThan(script.indexOf('pantry install'))
+  })
+
+  test('gives pantry\'s Chrome its sandbox on Ubuntu, and nothing else', () => {
+    const profile = renderUsernsProfile('ts-cloud-pantry-chrome', '/opt/pantry/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome')
+    expect(profile).toContain('profile ts-cloud-pantry-chrome /opt/pantry/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome flags=(unconfined) {')
+    expect(profile).toContain('  userns,')
+    const script = buildBoxConvergeScript(runner)
+    expect(script).toContain('/etc/apparmor.d/ts-cloud-pantry-chrome')
+    expect(script).toContain('apparmor_parser -r /etc/apparmor.d/ts-cloud-pantry-chrome')
+    expect(buildBoxConvergeScript({ ...runner, packages: ['git-scm.org@2.53.0'] })).not.toContain('apparmor')
   })
 
   test('reports only its own lines', () => {

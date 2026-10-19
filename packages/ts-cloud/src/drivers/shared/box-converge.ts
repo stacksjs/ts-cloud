@@ -30,6 +30,42 @@ export const BOX_PANTRY_CLI_DIR = '/opt/pantry/cli'
 /** The PATH entry exposing pantry-installed packages to services. */
 export const BOX_PANTRY_BIN_DIR: string = `${PANTRY_PROJECT_DIR}/pantry/.bin`
 
+/**
+ * Pantry packages whose binary needs user namespaces for its sandbox, and
+ * where that binary lives under the pantry project.
+ *
+ * Ubuntu 23.10+ restricts unprivileged user namespaces through AppArmor
+ * (`kernel.apparmor_restrict_unprivileged_userns`), so Chrome run by a
+ * service user aborts with "No usable sandbox!". Ubuntu's own answer is a
+ * profile per browser binary granting only `userns` - it ships one for
+ * `/opt/google/chrome/chrome` - and this writes the same for pantry's path,
+ * rather than running Chrome with `--no-sandbox` or lifting the restriction
+ * for every program on the box.
+ */
+export const SANDBOXED_PACKAGES: Record<string, { profile: string, binary: string }> = {
+  'google.com/chrome': {
+    profile: 'ts-cloud-pantry-chrome',
+    binary: `${PANTRY_PROJECT_DIR}/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome`,
+  },
+}
+
+/** The AppArmor profile letting a pantry-installed browser create its sandbox. */
+export function renderUsernsProfile(name: string, binary: string): string {
+  return [
+    '# Written by ts-cloud: lets this pantry package create user namespaces for its',
+    '# sandbox, like Ubuntu\'s own profile for /opt/google/chrome/chrome.',
+    'abi <abi/4.0>,',
+    'include <tunables/global>',
+    '',
+    `profile ${name} ${binary} flags=(unconfined) {`,
+    '  userns,',
+    '',
+    `  include if exists <local/${name}>`,
+    '}',
+    '',
+  ].join('\n')
+}
+
 /** Prefix of the lines a converge prints about what it changed. */
 export const BOX_REPORT_PREFIX = 'ts-cloud:'
 
@@ -132,20 +168,43 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
   const packages = [...new Set(box.packages ?? [])]
   if (packages.length > 0) {
     const floorKb = Math.round((box.minFreeDiskGb ?? 10) * 1024 * 1024)
+    // What the last successful install was given, kept inside the tree it
+    // describes: comparing specs is alias-proof (`bun.sh` lands in `bun.com`),
+    // and removing the tree removes the record with it.
+    const record = `${PANTRY_PROJECT_DIR}/pantry/.ts-cloud-packages`
+    const wanted = `${[...packages].sort().join('\n')}\n`
     lines.push(
-      // Packages already present cost nothing; a missing tree can be gigabytes.
-      `FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')`,
-      `if [ "$FREE_KB" -lt ${floorKb} ]; then`,
-      `  say "not installing packages: $((FREE_KB / 1048576)) GB free, the box declares at least ${box.minFreeDiskGb ?? 10} GB"`,
-      `  exit 3`,
+      `WANTED_PACKAGES=${sh(b64(wanted))}`,
+      `if [ -f ${record} ] && [ "$(base64 -w0 < ${record})" = "$WANTED_PACKAGES" ]; then MISSING=0; else MISSING=1; fi`,
+    )
+    lines.push(
+      'if [ "$MISSING" = 1 ]; then',
+      // Only a missing tree costs space, and one can be gigabytes.
+      `  FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')`,
+      `  if [ "$FREE_KB" -lt ${floorKb} ]; then`,
+      `    say "not installing packages: $((FREE_KB / 1048576)) GB free, the box declares at least ${box.minFreeDiskGb ?? 10} GB"`,
+      `    exit 3`,
+      '  fi',
+      `  PANTRY_SERVICE_SCOPE=system PATH="${BOX_PANTRY_CLI_DIR}:$PATH" sh -c ${sh(`cd ${PANTRY_PROJECT_DIR} && pantry install ${packages.map(sh).join(' ')}`)}`,
+      // Readable by the service user: pantry installs as root.
+      `  chmod -R a+rX ${PANTRY_PROJECT_DIR}/pantry 2>/dev/null || true`,
+      `  printf %s "$WANTED_PACKAGES" | base64 -d > ${record}`,
+      `  say "packages ${packages.join(' ')}"`,
       'fi',
     )
-    lines.push(
-      `PANTRY_SERVICE_SCOPE=system PATH="${BOX_PANTRY_CLI_DIR}:$PATH" sh -c ${sh(`cd ${PANTRY_PROJECT_DIR} && pantry install ${packages.map(sh).join(' ')}`)}`,
-      // Readable by the service user: pantry installs as root.
-      `chmod -R a+rX ${PANTRY_PROJECT_DIR}/pantry 2>/dev/null || true`,
-      `say "packages ${packages.join(' ')}"`,
-    )
+    const sandboxed = Object.entries(SANDBOXED_PACKAGES).filter(([domain]) => packages.some((spec) => spec === domain || spec.startsWith(`${domain}@`)))
+    if (sandboxed.length > 0) {
+      lines.push('if command -v apparmor_parser >/dev/null 2>&1 && [ -d /etc/apparmor.d ]; then')
+      for (const [, { profile, binary }] of sandboxed) {
+        lines.push(
+          `  if write_if_changed /etc/apparmor.d/${profile} 644 root:root ${sh(b64(renderUsernsProfile(profile, binary)))}; then`,
+          `    apparmor_parser -r /etc/apparmor.d/${profile}`,
+          `    say "apparmor profile ${profile} (user namespaces for its sandbox)"`,
+          '  fi',
+        )
+      }
+      lines.push('fi')
+    }
   }
 
   if (user) {
