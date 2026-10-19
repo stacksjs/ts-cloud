@@ -1,0 +1,76 @@
+import { describe, expect, test } from 'bun:test'
+import { BOX_PANTRY_BIN_DIR, BOX_PANTRY_CLI_DIR, buildBoxConvergeScript, parseBoxReport, renderBoxUnit, renderEnvFile } from './box-converge'
+
+const runner = {
+  name: 'ci-runner-1',
+  size: 'cx23',
+  pantryVersion: '0.11.99',
+  packages: ['google.com/chrome@155.0.8059.84', 'git-scm.org@2.53.0'],
+  user: { name: 'runner', groups: ['docker'] },
+  services: {
+    'ci-runner': {
+      exec: '%h/ci-runner',
+      workingDirectory: '%h/work',
+      environmentFile: '%h/.config/ci-runner.env',
+      environment: { LANG: 'C.UTF-8', NOTE: 'say "hi" \\ there' },
+      path: ['%h/.bun/bin'],
+    },
+  },
+}
+
+describe('a declared box', () => {
+  test('renders a user unit with the pantry packages on PATH after the declared directories', () => {
+    const unit = renderBoxUnit('ci-runner', runner.services['ci-runner'], { userUnit: true })
+    expect(unit).toContain('ExecStart=%h/ci-runner')
+    expect(unit).toContain('WorkingDirectory=%h/work')
+    expect(unit).toContain('EnvironmentFile=%h/.config/ci-runner.env')
+    expect(unit).toContain('EnvironmentFile=%h/.config/ts-cloud/ci-runner.env')
+    expect(unit).toContain(`Environment=PATH=%h/.bun/bin:${BOX_PANTRY_BIN_DIR}:/usr/local/bin:/usr/bin:/bin`)
+    expect(unit).toContain('WantedBy=default.target')
+    // The pantry CLI is never on a service's PATH.
+    expect(unit).not.toContain(BOX_PANTRY_CLI_DIR)
+  })
+
+  test('escapes env file values for systemd', () => {
+    expect(renderEnvFile({ NOTE: 'say "hi" \\ there' })).toBe('NOTE="say \\"hi\\" \\\\ there"\n')
+    expect(() => renderEnvFile({ 'BAD NAME': 'x' })).toThrow()
+  })
+
+  test('is one script bash accepts, which installs the pinned pantry off PATH and the packages', () => {
+    const script = buildBoxConvergeScript(runner)
+    const check = Bun.spawnSync(['bash', '-n'], { stdin: Buffer.from(script) })
+    expect(check.exitCode).toBe(0)
+    expect(script).toContain(`PANTRY="${BOX_PANTRY_CLI_DIR}/pantry"`)
+    expect(script).toContain('grep -q "pantry 0.11.99\\b"')
+    expect(script).toContain("pantry install '\\''google.com/chrome@155.0.8059.84'\\'' '\\''git-scm.org@2.53.0'\\''")
+    expect(script).toContain('loginctl enable-linger runner')
+    expect(script).toContain('usermod -aG docker runner')
+  })
+
+  test('starts a stopped service, and leaves a running one for the operator unless it asked for a restart', () => {
+    const patient = buildBoxConvergeScript(runner)
+    expect(patient).toContain('svc start ci-runner.service')
+    expect(patient).not.toContain('svc restart ci-runner.service')
+    expect(patient).toContain('changed ci-runner; restart it to apply')
+    const eager = buildBoxConvergeScript({ ...runner, services: { 'ci-runner': { ...runner.services['ci-runner'], restartOnChange: true } } })
+    expect(eager).toContain('svc restart ci-runner.service')
+  })
+
+  test('refuses names that would need quoting in a unit path or a shell', () => {
+    expect(() => buildBoxConvergeScript({ ...runner, user: { name: 'run ner' } })).toThrow()
+    expect(() => buildBoxConvergeScript({ ...runner, services: { 'a;rm -rf /': { exec: 'x' } } })).toThrow()
+  })
+
+  test('refuses to install packages below the declared free space, before touching anything', () => {
+    const script = buildBoxConvergeScript({ ...runner, minFreeDiskGb: 12 })
+    const floor = script.indexOf('-lt 12582912')
+    expect(floor).toBeGreaterThan(-1)
+    expect(floor).toBeLessThan(script.indexOf('pantry install'))
+    expect(script).toContain('the box declares at least 12 GB')
+    expect(buildBoxConvergeScript(runner)).toContain('-lt 10485760')
+  })
+
+  test('reports only its own lines', () => {
+    expect(parseBoxReport('noise\nts-cloud: started ci-runner\nts-cloud: converged\n')).toEqual(['started ci-runner', 'converged'])
+  })
+})

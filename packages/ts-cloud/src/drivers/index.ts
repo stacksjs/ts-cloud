@@ -131,6 +131,16 @@ export type {
 export { buildSshArgs, REMOTE_SCRIPT_RUNNER, remoteScriptRunner, scpUpload, sshExec, sshExecOrThrow, waitForCloudInit, waitForSsh } from './shared/remote-exec'
 export type { RemoteExecOptions, RemoteExecResult, WaitOptions } from './shared/remote-exec'
 export {
+  BOX_PANTRY_BIN_DIR,
+  BOX_PANTRY_CLI_DIR,
+  buildBoxConvergeScript,
+  parseBoxReport,
+  provisionBox,
+  renderBoxUnit,
+  renderEnvFile,
+} from './shared/box-converge'
+export type { BoxProvisionResult, ProvisionBoxOptions } from './shared/box-converge'
+export {
   AwsBoxProvisioner,
   buildBoxUserData,
   createBoxProvisioner,

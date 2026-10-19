@@ -95,6 +95,7 @@ export interface HetznerFirewall {
   name: string
   labels?: Record<string, string>
   rules?: HetznerFirewallRule[]
+  applied_to?: Array<{ type: string; server?: { id: number } }>
 }
 
 export interface HetznerVolume {

@@ -76,6 +76,8 @@ function sh(value: string): string {
 export interface PantryBootstrapOptions {
   /** Pin the pantry CLI version (e.g. `'0.9.39'`). @default latest release */
   version?: string
+  /** Where to put the CLI. @default {@link PANTRY_INSTALL_DIR} */
+  installDir?: string
 }
 
 /**
@@ -85,6 +87,7 @@ export interface PantryBootstrapOptions {
  * units rather than the per-user units that can't run headlessly.
  */
 export function buildPantryBootstrapScript(options: PantryBootstrapOptions = {}): string[] {
+  const installDir = options.installDir ?? PANTRY_INSTALL_DIR
   const versionLine = options.version
     ? `export PANTRY_VERSION=${sh(options.version)}`
     : 'export PANTRY_VERSION="${PANTRY_VERSION:-latest}"'
@@ -92,7 +95,7 @@ export function buildPantryBootstrapScript(options: PantryBootstrapOptions = {})
     'export DEBIAN_FRONTEND=noninteractive',
     // Manage services as system (boot-time) systemd units, not `--user` units.
     'export PANTRY_SERVICE_SCOPE=system',
-    `export PANTRY_INSTALL_DIR=${PANTRY_INSTALL_DIR}`,
+    `export PANTRY_INSTALL_DIR=${installDir}`,
     versionLine,
     // The installer needs curl + unzip; everything else comes from pantry.
     'command -v curl >/dev/null 2>&1 || (apt-get update -y && apt-get install -y curl ca-certificates)',
@@ -109,10 +112,10 @@ export function buildPantryBootstrapScript(options: PantryBootstrapOptions = {})
       `if [ "\${PANTRY_VERSION:-latest}" = latest ]; then REL='latest/download'; else REL="download/v\${PANTRY_VERSION}"; fi; ` +
       `TMP=$(mktemp -d); ` +
       `curl -fsSL -o "\${TMP}/\${ZIP}" "https://github.com/pantry-pm/pantry/releases/\${REL}/\${ZIP}"; ` +
-      `unzip -o "\${TMP}/\${ZIP}" -d ${PANTRY_INSTALL_DIR}; ` +
-      `chmod +x ${PANTRY_INSTALL_DIR}/pantry; rm -rf "\${TMP}"`,
+      `mkdir -p ${installDir}; unzip -o "\${TMP}/\${ZIP}" -d ${installDir}; ` +
+      `chmod +x ${installDir}/pantry; rm -rf "\${TMP}"`,
     // The pantry CLI lives in PANTRY_INSTALL_DIR; put it on PATH for later steps.
-    `export PATH="${PANTRY_INSTALL_DIR}:$PATH"`,
+    `export PATH="${installDir}:$PATH"`,
     `mkdir -p ${PANTRY_PROJECT_DIR}`,
   ]
 }

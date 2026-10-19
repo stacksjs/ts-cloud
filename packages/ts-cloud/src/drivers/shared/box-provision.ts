@@ -129,6 +129,16 @@ export class HetznerBoxProvisioner implements BoxProvisioner {
       userData: buildBoxUserData(spec),
       labels: spec.labels,
     })
+    // Creation attaches the firewall; an adopted server gets it applied here,
+    // so a box declared after the fact ends up with the same ingress rules.
+    if (!created) {
+      const current = (await this.client.listFirewalls()).find((f) => f.id === firewall.id)
+      const applied = (current?.applied_to ?? []).some((r) => r.type === 'server' && r.server?.id === server.id)
+      if (!applied) {
+        const actions = await this.client.applyFirewallToResources(firewall.id, [{ type: 'server', server: server.id }])
+        for (const action of actions) await this.client.waitForAction(action.id).catch(() => {})
+      }
+    }
     return {
       provider: 'hetzner',
       id: String(server.id),

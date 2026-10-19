@@ -556,6 +556,32 @@ export interface InfrastructureConfig {
   compute?: ComputeConfig
 
   /**
+   * Dedicated machines that are not app servers - a CI runner, a build box.
+   *
+   * Each is a named server ts-cloud finds or creates (an existing server with
+   * the same name is adopted, never recreated), with the packages it needs
+   * installed through pantry and its long-running processes as systemd user
+   * units of an unprivileged account. Re-applying a declaration converges the
+   * box: missing packages are installed, changed units are rewritten, and a
+   * running service is left running unless it asked to be restarted.
+   *
+   * @example
+   * boxes: {
+   *   runner: {
+   *     name: 'ci-runner-1',
+   *     size: 'cx23',
+   *     location: 'fsn1',
+   *     packages: ['google.com/chrome@155.0.8059.84'],
+   *     user: { name: 'runner' },
+   *     services: {
+   *       'ci-runner': { exec: '%h/ci-runner', environmentFile: '%h/.config/ci-runner.env' },
+   *     },
+   *   },
+   * }
+   */
+  boxes?: Record<string, BoxConfig>
+
+  /**
    * Container configuration (ECS Fargate)
    * Defines containerized services for serverless deployment mode
    *
@@ -3258,6 +3284,68 @@ export interface ContainerItemConfig {
     targetCpuUtilization?: number
     targetMemoryUtilization?: number
   }
+}
+
+/** A long-running process on a {@link BoxConfig}, run as a systemd unit. */
+export interface BoxServiceConfig {
+  description?: string
+  /** `ExecStart`. `%h` is the service user's home. */
+  exec: string
+  /** @default '%h' */
+  workingDirectory?: string
+  /** Non-secret variables, written to an env file only the service user can read. */
+  environment?: Record<string, string>
+  /**
+   * An env file on the box that ts-cloud references but never writes - for
+   * credentials minted on the machine (a runner's registration token).
+   */
+  environmentFile?: string
+  /** Directories prepended to the service's PATH, ahead of the pantry packages. */
+  path?: string[]
+  /** @default 'always' */
+  restart?: 'always' | 'on-failure' | 'no'
+  /** @default 10 */
+  restartSec?: number
+  /**
+   * Restart a running service when its unit or environment changed.
+   * Off by default: a converge must never kill the job a runner is in the
+   * middle of. Restart it yourself, gracefully, when it is idle.
+   * @default false
+   */
+  restartOnChange?: boolean
+}
+
+/** A dedicated machine declared under `infrastructure.boxes`. */
+export interface BoxConfig {
+  /** Server name; an existing server with this name is adopted. */
+  name: string
+  /** Provider server type (Hetzner `cx23`, ...). */
+  size: string
+  location?: string
+  /** @default 'ubuntu-24.04' */
+  image?: string
+  /** Ingress besides SSH. */
+  ports?: Array<{ protocol: 'tcp' | 'udp' | 'icmp', port?: number }>
+  /** Pin the pantry CLI. @default latest release */
+  pantryVersion?: string
+  /** Pantry package specs (`domain` or `domain@version`), installed into /opt/pantry. */
+  packages?: string[]
+  /**
+   * Free space the root filesystem must have before packages are installed.
+   * Below it the converge installs nothing and says so: a package tree that
+   * fills the disk takes down whatever else the box is doing (on a CI runner,
+   * every job). Pantry's Chrome alone unpacks to about 5 GB on Linux.
+   * @default 10
+   */
+  minFreeDiskGb?: number
+  /** The unprivileged account services run as. Without it, services are system units run as root. */
+  user?: {
+    name: string
+    /** Supplementary groups (e.g. `docker`), added if they exist. */
+    groups?: string[]
+  }
+  services?: Record<string, BoxServiceConfig>
+  labels?: Record<string, string>
 }
 
 export interface ComputeConfig {
