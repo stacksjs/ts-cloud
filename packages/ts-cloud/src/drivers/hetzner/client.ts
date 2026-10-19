@@ -215,6 +215,15 @@ export interface CreateLoadBalancerOptions {
   labelSelector: string
 }
 
+/**
+ * Firewall targets as the API takes them: `{ type: 'server', server: { id } }`.
+ * A bare server number is refused with "A valid JSON document is required",
+ * which is how adopting an existing box failed at its firewall.
+ */
+function firewallTargets(applyTo: Array<{ type: 'server'; server: number }>): Array<{ type: 'server'; server: { id: number } }> {
+  return applyTo.map(target => ({ type: 'server', server: { id: target.server } }))
+}
+
 export interface CreateFirewallOptions {
   name: string
   rules: HetznerFirewallRule[]
@@ -478,7 +487,7 @@ export class HetznerClient {
       name: options.name,
       rules: options.rules,
       labels: options.labels,
-      apply_to: options.applyTo,
+      apply_to: options.applyTo ? firewallTargets(options.applyTo) : undefined,
     })
     return { firewall: data.firewall, actions: data.actions }
   }
@@ -511,7 +520,7 @@ export class HetznerClient {
       'POST',
       `/firewalls/${firewallId}/actions/apply_to_resources`,
       {
-        apply_to: applyTo,
+        apply_to: firewallTargets(applyTo),
       },
     )
     return data.actions
