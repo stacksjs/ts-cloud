@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.61...v0.16.62)
+
+## 🐛 Bug Fixes
+
+- **boxes**: give pantry's Chrome its sandbox and floor only real installs ([198c375](https://github.com/stacksjs/ts-cloud/commit/198c375)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.62 ([a103a33](https://github.com/stacksjs/ts-cloud/commit/a103a33)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.60...v0.16.61)
 
 ## 🐛 Bug Fixes
