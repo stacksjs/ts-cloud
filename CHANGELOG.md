@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.63...v0.16.64)
+
+## ✨ Features
+
+- **boxes**: restart a changed draining service after its current work ([a724e37](https://github.com/stacksjs/ts-cloud/commit/a724e37)) _(by Chris <chris@stacksjs.com>)_
+
+## 🐛 Bug Fixes
+
+- **boxes**: pin an adopted box's host key before the first command ([c69f9bf](https://github.com/stacksjs/ts-cloud/commit/c69f9bf)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.64 ([153bee2](https://github.com/stacksjs/ts-cloud/commit/153bee2)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.62...v0.16.63)
 
 ## 🐛 Bug Fixes
