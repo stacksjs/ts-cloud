@@ -60,8 +60,14 @@ export function renderEnvFile(environment: Record<string, string>): string {
     .concat('\n')
 }
 
-/** The systemd unit for one service. `%h` is the service user's home in a user unit. */
-export function renderBoxUnit(name: string, service: BoxServiceConfig, options: { userUnit: boolean }): string {
+/**
+ * The systemd unit for one service. `%h` is the service user's home in a user unit.
+ *
+ * The pantry packages go on its PATH only when the box declares some
+ * (`pantryOnPath`): adopting a box whose packages something else put there
+ * must not change which tools its services, and a runner's jobs, find first.
+ */
+export function renderBoxUnit(name: string, service: BoxServiceConfig, options: { userUnit: boolean, pantryOnPath?: boolean }): string {
   const home = options.userUnit ? '%h' : '/root'
   const lines = [
     '# Written by ts-cloud from the box declaration; edits here are overwritten.',
@@ -76,7 +82,7 @@ export function renderBoxUnit(name: string, service: BoxServiceConfig, options: 
   if (service.environmentFile) lines.push(`EnvironmentFile=${service.environmentFile}`)
   if (service.environment && Object.keys(service.environment).length > 0)
     lines.push(`EnvironmentFile=${home}/.config/ts-cloud/${name}.env`)
-  lines.push(`Environment=PATH=${[...(service.path ?? []), BOX_PANTRY_BIN_DIR, ...SYSTEM_PATH].join(':')}`)
+  lines.push(`Environment=PATH=${[...(service.path ?? []), ...(options.pantryOnPath === false ? [] : [BOX_PANTRY_BIN_DIR]), ...SYSTEM_PATH].join(':')}`)
   lines.push(`ExecStart=${service.exec}`)
   lines.push(`Restart=${service.restart ?? 'always'}`)
   lines.push(`RestartSec=${service.restartSec ?? 10}`)
@@ -158,7 +164,7 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
   const unitDir = user ? '$SVC_HOME/.config/systemd/user' : '/etc/systemd/system'
   if (services.length > 0) lines.push('RELOAD=0')
   for (const [name, service] of services) {
-    const unit = renderBoxUnit(name, service, { userUnit: Boolean(user) })
+    const unit = renderBoxUnit(name, service, { userUnit: Boolean(user), pantryOnPath: packages.length > 0 })
     lines.push(`CHANGED_${name.replace(/[^A-Za-z0-9_]/g, '_')}=0`)
     const changed = `CHANGED_${name.replace(/[^A-Za-z0-9_]/g, '_')}`
     if (service.environment && Object.keys(service.environment).length > 0) {

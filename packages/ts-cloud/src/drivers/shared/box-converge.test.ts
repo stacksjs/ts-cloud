@@ -31,6 +31,16 @@ describe('a declared box', () => {
     expect(unit).not.toContain(BOX_PANTRY_CLI_DIR)
   })
 
+  test('puts pantry packages on PATH only for a box that declares some', () => {
+    // The script carries each unit base64-encoded; decode them to read the PATH.
+    const units = (box: typeof runner) => [...buildBoxConvergeScript(box).matchAll(/'([A-Za-z0-9+/=]{40,})'/g)]
+      .map(match => Buffer.from(match[1]!, 'base64').toString('utf8'))
+      .filter(text => text.includes('[Service]'))
+    expect(units({ ...runner, packages: [] }).every(unit => !unit.includes(BOX_PANTRY_BIN_DIR))).toBe(true)
+    expect(units(runner).some(unit => unit.includes(BOX_PANTRY_BIN_DIR))).toBe(true)
+    expect(renderBoxUnit('ci-runner', runner.services['ci-runner'], { userUnit: true, pantryOnPath: false })).toContain('Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin')
+  })
+
   test('escapes env file values for systemd', () => {
     expect(renderEnvFile({ NOTE: 'say "hi" \\ there' })).toBe('NOTE="say \\"hi\\" \\\\ there"\n')
     expect(() => renderEnvFile({ 'BAD NAME': 'x' })).toThrow()
