@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.64...v0.16.65)
+
+## 🐛 Bug Fixes
+
+- **boxes**: drain only service main processes ([cce4290](https://github.com/stacksjs/ts-cloud/commit/cce4290)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.65 ([6067a2e](https://github.com/stacksjs/ts-cloud/commit/6067a2e)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.63...v0.16.64)
 
 ## ✨ Features
