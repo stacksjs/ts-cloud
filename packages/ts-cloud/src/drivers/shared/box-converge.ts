@@ -18,6 +18,7 @@
  */
 import type { BoxConfig, BoxServiceConfig } from '@ts-cloud/core'
 import type { HetznerClient } from '../hetzner/client'
+import { executeHetznerServerResize, type HetznerResizePlan, planHetznerServerResize } from '../hetzner/resize'
 import { HetznerBoxProvisioner, type ProvisionedBox } from './box-provision'
 import { buildPantryBootstrapScript, PANTRY_PROJECT_DIR } from './package-manager'
 import { waitForSsh } from './remote-exec'
@@ -149,15 +150,9 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
       ),
       // Linger: the user's units start at boot and outlive any login session.
       `if [ "$(loginctl show-user ${user} -p Linger --value 2>/dev/null)" != yes ]; then loginctl enable-linger ${user}; say "enabled linger for ${user}"; fi`,
-      `SVC_UID=$(id -u ${user})`,
-      `SVC_HOME=$(getent passwd ${user} | cut -d: -f6)`,
-      `svc() { sudo -u ${user} XDG_RUNTIME_DIR="/run/user/$SVC_UID" systemctl --user "$@"; }`,
-      'for _ in $(seq 1 30); do [ -S "/run/user/$SVC_UID/bus" ] && break; sleep 1; done',
     )
   }
-  else {
-    lines.push('SVC_HOME=/root', 'svc() { systemctl "$@"; }')
-  }
+  lines.push(...serviceManagerLines(box))
 
   const owner = user ? `${user}:${user}` : 'root:root'
   const unitDir = user ? '$SVC_HOME/.config/systemd/user' : '/etc/systemd/system'
@@ -191,6 +186,71 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
   return `${lines.join('\n')}\n`
 }
 
+/** `svc` (systemctl for the box's services) and `SVC_HOME`, as the service user when there is one. */
+function serviceManagerLines(box: BoxConfig): string[] {
+  const user = box.user?.name
+  if (!user) return ['SVC_HOME=/root', 'svc() { systemctl "$@"; }']
+  return [
+    `SVC_UID=$(id -u ${user})`,
+    `SVC_HOME=$(getent passwd ${user} | cut -d: -f6)`,
+    `svc() { sudo -u ${user} XDG_RUNTIME_DIR="/run/user/$SVC_UID" systemctl --user "$@"; }`,
+    'for _ in $(seq 1 30); do [ -S "/run/user/$SVC_UID/bus" ] && break; sleep 1; done',
+  ]
+}
+
+/**
+ * Drains a box before it is powered off. Runs as root.
+ *
+ * Each running service with a `drainSignal` is sent it, and the script waits
+ * for its process to exit - a CI runner finishing the job it holds - then
+ * stops the unit, inside the `RestartSec` window, so systemd does not start
+ * it again to claim more work. Exits 4, with the box left running, when a
+ * service outlives its `drainTimeoutSec`.
+ */
+export function buildBoxDrainScript(box: BoxConfig): string {
+  if (box.user?.name) assertName('user', box.user.name)
+  const draining = Object.entries(box.services ?? {}).filter(([, service]) => service.drainSignal)
+  const lines: string[] = [
+    'set -euo pipefail',
+    `say() { echo "${BOX_REPORT_PREFIX} $*"; }`,
+    ...serviceManagerLines(box),
+  ]
+  for (const [name, service] of draining) {
+    assertName('service', name)
+    const signal = String(service.drainSignal).replace(/^SIG/i, '').toUpperCase()
+    if (!/^[A-Z0-9]+$/.test(signal)) throw new Error(`Box service "${name}" has an invalid drainSignal`)
+    const timeout = service.drainTimeoutSec ?? 3600
+    lines.push(
+      `if svc is-active --quiet ${name}.service; then`,
+      `  PID=$(svc show -p MainPID --value ${name}.service)`,
+      `  svc kill -s SIG${signal} ${name}.service`,
+      `  say "draining ${name} (SIG${signal})"`,
+      `  WAITED=0`,
+      `  while [ "$PID" != 0 ] && kill -0 "$PID" 2>/dev/null; do`,
+      `    if [ "$WAITED" -ge ${timeout} ]; then say "${name} still busy after ${timeout}s; not powering off"; exit 4; fi`,
+      `    sleep 5; WAITED=$((WAITED + 5))`,
+      `  done`,
+      // The process exited on its own; stop the unit before Restart= brings it back.
+      `  svc stop ${name}.service`,
+      `  say "drained ${name} after \${WAITED}s"`,
+      'fi',
+    )
+  }
+  lines.push('say "drained"')
+  return `${lines.join('\n')}\n`
+}
+
+/**
+ * What a box's `resize` asks of its server: nothing, a resize, or (out of
+ * stock and allowed to wait) nothing yet. Throws when it may not wait.
+ */
+export function boxResizeDecision(box: BoxConfig, plan: HetznerResizePlan): 'none' | 'resize' | 'unavailable' {
+  if (!box.resize || plan.alreadyComplete) return 'none'
+  if (plan.capacityAvailable || box.resize.attemptUnavailable) return 'resize'
+  if (box.resize.whenUnavailable === 'keep-current') return 'unavailable'
+  throw new Error(`${plan.targetType.name} is out of stock in ${plan.location}; set resize.attemptUnavailable to ask anyway, or whenUnavailable: 'keep-current' to wait`)
+}
+
 /** The `ts-cloud:` lines a converge printed, without the prefix. */
 export function parseBoxReport(stdout: string): string[] {
   return stdout
@@ -208,6 +268,10 @@ export interface ProvisionBoxOptions {
   identityFile: string
   /** Pins the box's host key on first contact and refuses a different one after. */
   knownHostsFile: string
+  /** Report what would change without resizing or converging. */
+  dryRun?: boolean
+  /** Progress through a resize (draining, shutting down, resizing, ...). */
+  onPhase?: (phase: string) => void
 }
 
 export interface BoxProvisionResult {
@@ -219,6 +283,7 @@ export interface BoxProvisionResult {
 /** Find or create the box, then converge it over SSH. */
 export async function provisionBox(options: ProvisionBoxOptions): Promise<BoxProvisionResult> {
   const { box: config } = options
+  if (options.dryRun) return planBox(options)
   const box = await new HetznerBoxProvisioner(options.client).ensureBox({
     name: config.name,
     size: config.size,
@@ -234,6 +299,61 @@ export async function provisionBox(options: ProvisionBoxOptions): Promise<BoxPro
     identityFile: options.identityFile,
     hostKey: { policy: 'pin', knownHostsFile: options.knownHostsFile },
   })
+  const report: string[] = []
+
+  if (config.resize && !box.created) {
+    const plan = await planHetznerServerResize(options.client, Number(box.id), config.size, config.resize.upgradeDisk !== false)
+    const decision = boxResizeDecision(config, plan)
+    if (decision === 'unavailable')
+      report.push(`${plan.targetType.name} is out of stock in ${plan.location}; keeping ${plan.currentType.name}`)
+    if (decision === 'resize') {
+      const result = await executeHetznerServerResize({
+        client: options.client,
+        serverId: Number(box.id),
+        targetType: plan.targetType.name,
+        upgradeDisk: plan.upgradeDisk,
+        attemptUnavailable: config.resize.attemptUnavailable,
+        hooks: {
+          // Runs while the box is still up: nothing is powered off until
+          // every draining service has finished what it held.
+          preflight: async () => { report.push(...parseBoxReport(await transport.exec(box.publicIp, buildBoxDrainScript(config)))) },
+          onPhase: phase => options.onPhase?.(phase),
+        },
+      })
+      if (result.status === 'completed')
+        report.push(`resized ${plan.currentType.name} to ${plan.targetType.name}`)
+      else if (result.status === 'recovered')
+        report.push(`could not resize to ${plan.targetType.name} (${result.error}); back on ${plan.currentType.name}`)
+      else if (result.status === 'waiting-capacity')
+        report.push(`${plan.targetType.name} is out of stock in ${plan.location}; keeping ${plan.currentType.name}`)
+      // Powered off and on again: wait for it before converging, which starts the drained services.
+      await waitForSsh(box.publicIp, { identityFile: options.identityFile })
+    }
+  }
+
   const stdout = await transport.exec(box.publicIp, buildBoxConvergeScript(config))
-  return { box, report: parseBoxReport(stdout) }
+  return { box, report: [...report, ...parseBoxReport(stdout)] }
+}
+
+/** What {@link provisionBox} would do, read from the provider alone: nothing is created, resized or run. */
+async function planBox(options: ProvisionBoxOptions): Promise<BoxProvisionResult> {
+  const { box: config } = options
+  const server = (await options.client.listServers()).find(s => s.name === config.name)
+  if (!server)
+    return { box: { provider: 'hetzner', id: '', name: config.name, publicIp: '', created: false }, report: [`would create ${config.name} (${config.size})`, 'would converge'] }
+  const box: ProvisionedBox = { provider: 'hetzner', id: String(server.id), name: server.name, publicIp: server.public_net?.ipv4?.ip ?? '', created: false }
+  const report: string[] = []
+  if (config.resize) {
+    const plan = await planHetznerServerResize(options.client, server.id, config.size, config.resize.upgradeDisk !== false)
+    const decision = boxResizeDecision(config, plan)
+    if (decision === 'resize')
+      report.push(`would resize ${plan.currentType.name} to ${plan.targetType.name}${plan.capacityAvailable ? '' : ' (out of stock; asking placement anyway)'}, draining ${Object.entries(config.services ?? {}).filter(([, service]) => service.drainSignal).map(([name]) => name).join(', ') || 'nothing'} first`)
+    else if (decision === 'unavailable')
+      report.push(`${plan.targetType.name} is out of stock in ${plan.location}; would keep ${plan.currentType.name}`)
+  }
+  else if (server.server_type.name !== config.size) {
+    report.push(`runs ${server.server_type.name}, declared ${config.size}; set resize to change it`)
+  }
+  report.push('would converge')
+  return { box, report }
 }

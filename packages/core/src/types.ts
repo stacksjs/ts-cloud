@@ -3313,6 +3313,21 @@ export interface BoxServiceConfig {
    * @default false
    */
   restartOnChange?: boolean
+  /**
+   * The signal that asks this service to finish its work and exit, such as
+   * a CI runner's `SIGUSR2` (finish the current job, claim no other).
+   * Before a {@link BoxConfig.resize} powers the box off, each such service
+   * gets it and the resize waits for the process to exit, then stops the
+   * unit so `Restart=` cannot start it again and claim more work. Services
+   * without one are stopped by the shutdown itself.
+   */
+  drainSignal?: string
+  /**
+   * How long a drain may take before the resize gives up, with the box
+   * left running as it was.
+   * @default 3600
+   */
+  drainTimeoutSec?: number
 }
 
 /** A dedicated machine declared under `infrastructure.boxes`. */
@@ -3346,6 +3361,29 @@ export interface BoxConfig {
   }
   services?: Record<string, BoxServiceConfig>
   labels?: Record<string, string>
+  /**
+   * Change an existing server to {@link BoxConfig.size}. Without it a
+   * declared size only applies when the box is created: resizing powers the
+   * box off, so it never happens by accident. Services with a
+   * {@link BoxServiceConfig.drainSignal} are drained first.
+   */
+  resize?: {
+    /** Enlarge the disk with the type. It cannot be shrunk again. @default true */
+    upgradeDisk?: boolean
+    /**
+     * When the provider reports no stock of the type: `'fail'`, or
+     * `'keep-current'` to leave the box as it is and converge it anyway.
+     * @default 'fail'
+     */
+    whenUnavailable?: 'keep-current' | 'fail'
+    /**
+     * Ask for the type even when the provider's stock flag says none is
+     * left. The flag is best effort; if placement does fail, the box is
+     * powered on again as it was.
+     * @default false
+     */
+    attemptUnavailable?: boolean
+  }
 }
 
 export interface ComputeConfig {

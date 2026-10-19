@@ -33,6 +33,7 @@ import {
   registerDeployCommands,
   registerFullStackCommands,
   registerComputeLifecycleCommands,
+  registerBoxCommands,
   registerStackCommands,
   registerUtilsCommands,
   registerAnalyticsCommands,
@@ -95,6 +96,7 @@ registerGenerateCommands(app)
 registerDeployCommands(app)
 registerFullStackCommands(app)
 registerComputeLifecycleCommands(app)
+registerBoxCommands(app)
 registerStackCommands(app)
 
 // Infrastructure Management
