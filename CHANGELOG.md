@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.62...v0.16.63)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: send firewall targets as { server: { id } } ([4e0035f](https://github.com/stacksjs/ts-cloud/commit/4e0035f)) _(by Chris <chris@stacksjs.com>)_
+
+## 💚 Continuous Integration
+
+- **release**: publish again until npm shows every package ([a387dc6](https://github.com/stacksjs/ts-cloud/commit/a387dc6)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.63 ([55ca4ca](https://github.com/stacksjs/ts-cloud/commit/55ca4ca)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.61...v0.16.62)
 
 ## 🐛 Bug Fixes
