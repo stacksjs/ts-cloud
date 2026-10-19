@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.59...v0.16.60)
+
+## ✨ Features
+
+- **boxes**: resize a declared box after draining its services ([cdb5cb9](https://github.com/stacksjs/ts-cloud/commit/cdb5cb9)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.60 ([50fb25c](https://github.com/stacksjs/ts-cloud/commit/50fb25c)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.58...v0.16.59)
 
 ## ✨ Features
