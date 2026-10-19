@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.60...v0.16.61)
+
+## 🐛 Bug Fixes
+
+- **boxes**: put pantry packages on PATH only when a box declares some ([123fbb8](https://github.com/stacksjs/ts-cloud/commit/123fbb8)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.61 ([f61c1ce](https://github.com/stacksjs/ts-cloud/commit/f61c1ce)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.59...v0.16.60)
 
 ## ✨ Features
