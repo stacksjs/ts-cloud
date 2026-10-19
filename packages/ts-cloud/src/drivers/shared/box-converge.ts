@@ -243,12 +243,28 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
       `if ! svc is-active --quiet ${name}.service; then svc start ${name}.service; say "started ${name}"`,
       service.restartOnChange
         ? `elif [ "$${changed}" = 1 ]; then svc restart ${name}.service; say "restarted ${name}"`
-        : `elif [ "$${changed}" = 1 ]; then say "changed ${name}; restart it to apply"`,
+        // A service that can drain restarts itself gracefully: it finishes
+        // what it holds and exits, and Restart=always starts the new unit.
+        : drainsToRestart(service)
+          ? `elif [ "$${changed}" = 1 ]; then svc kill -s ${drainSignalName(name, service)} ${name}.service; say "changed ${name}; it restarts on the new unit once its current work is done"`
+          : `elif [ "$${changed}" = 1 ]; then say "changed ${name}; restart it to apply"`,
       'fi',
     )
   }
   lines.push('say "converged"')
   return `${lines.join('\n')}\n`
+}
+
+/** A service's drain signal as systemd takes it (`SIGUSR2`), validated. */
+function drainSignalName(name: string, service: BoxServiceConfig): string {
+  const signal = String(service.drainSignal).replace(/^SIG/i, '').toUpperCase()
+  if (!/^[A-Z0-9]+$/.test(signal)) throw new Error(`Box service "${name}" has an invalid drainSignal`)
+  return `SIG${signal}`
+}
+
+/** Whether signalling a drain also restarts the service: only when systemd brings back a clean exit. */
+function drainsToRestart(service: BoxServiceConfig): boolean {
+  return Boolean(service.drainSignal) && (service.restart ?? 'always') === 'always'
 }
 
 /** `svc` (systemctl for the box's services) and `SVC_HOME`, as the service user when there is one. */
@@ -282,8 +298,7 @@ export function buildBoxDrainScript(box: BoxConfig): string {
   ]
   for (const [name, service] of draining) {
     assertName('service', name)
-    const signal = String(service.drainSignal).replace(/^SIG/i, '').toUpperCase()
-    if (!/^[A-Z0-9]+$/.test(signal)) throw new Error(`Box service "${name}" has an invalid drainSignal`)
+    const signal = drainSignalName(name, service).slice(3)
     const timeout = service.drainTimeoutSec ?? 3600
     lines.push(
       `if svc is-active --quiet ${name}.service; then`,

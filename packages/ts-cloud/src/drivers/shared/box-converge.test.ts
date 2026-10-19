@@ -129,6 +129,16 @@ describe('resizing a declared box', () => {
     expect(script).toContain('sudo -u runner')
   })
 
+  test('a changed unit of a draining service restarts gracefully, after its current work', () => {
+    const script = buildBoxConvergeScript(draining)
+    expect(script).toContain('then svc kill -s SIGUSR2 ci-runner.service')
+    // Without a drain signal it is still left for the operator.
+    expect(script).toContain('changed log-shipper; restart it to apply')
+    // on-failure would not bring a clean exit back, so no signal there.
+    const onFailure = buildBoxConvergeScript({ ...draining, services: { 'ci-runner': { ...draining.services['ci-runner'], restart: 'on-failure' as const } } })
+    expect(onFailure).not.toContain('svc kill -s SIGUSR2')
+  })
+
   test('refuses a signal that is not a signal name', () => {
     expect(() => buildBoxDrainScript({ ...draining, services: { x: { exec: 'x', drainSignal: 'USR2; rm -rf /' } } })).toThrow()
   })
