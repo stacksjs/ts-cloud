@@ -365,6 +365,11 @@ export async function provisionBox(options: ProvisionBoxOptions): Promise<BoxPro
     hostKey: { policy: 'pin', knownHostsFile: options.knownHostsFile },
   })
   const report: string[] = []
+  // Pinned on first contact, refused if it ever changes. Without this the
+  // first command on an adopted box (one ts-cloud did not create, so never
+  // recorded) failed host key verification.
+  const hostKey = await transport.ensureHostKey(box.publicIp)
+  if (hostKey.pinnedNow) report.push(`pinned host key ${hostKey.fingerprint}`)
 
   if (config.resize && !box.created) {
     const plan = await planHetznerServerResize(options.client, Number(box.id), config.size, config.resize.upgradeDisk !== false)
