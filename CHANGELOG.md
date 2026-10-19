@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.58...v0.16.59)
+
+## ✨ Features
+
+- **boxes**: declared machines converged through pantry and user units ([3cf451d](https://github.com/stacksjs/ts-cloud/commit/3cf451d)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.59 ([60b29dd](https://github.com/stacksjs/ts-cloud/commit/60b29dd)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.57...v0.16.58)
 
 ## 🐛 Bug Fixes
