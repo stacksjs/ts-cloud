@@ -246,7 +246,7 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
         // A service that can drain restarts itself gracefully: it finishes
         // what it holds and exits, and Restart=always starts the new unit.
         : drainsToRestart(service)
-          ? `elif [ "$${changed}" = 1 ]; then svc kill -s ${drainSignalName(name, service)} ${name}.service; say "changed ${name}; it restarts on the new unit once its current work is done"`
+          ? `elif [ "$${changed}" = 1 ]; then svc kill --kill-who=main -s ${drainSignalName(name, service)} ${name}.service; say "changed ${name}; it restarts on the new unit once its current work is done"`
           : `elif [ "$${changed}" = 1 ]; then say "changed ${name}; restart it to apply"`,
       'fi',
     )
@@ -303,7 +303,9 @@ export function buildBoxDrainScript(box: BoxConfig): string {
     lines.push(
       `if svc is-active --quiet ${name}.service; then`,
       `  PID=$(svc show -p MainPID --value ${name}.service)`,
-      `  svc kill -s SIG${signal} ${name}.service`,
+      // systemctl otherwise signals every process in the unit, including
+      // the active job that the runner is supposed to finish before exiting.
+      `  svc kill --kill-who=main -s SIG${signal} ${name}.service`,
       `  say "draining ${name} (SIG${signal})"`,
       `  WAITED=0`,
       `  while [ "$PID" != 0 ] && kill -0 "$PID" 2>/dev/null; do`,

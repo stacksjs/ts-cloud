@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { BOX_PANTRY_BIN_DIR, BOX_PANTRY_CLI_DIR, boxResizeDecision, buildBoxConvergeScript, buildBoxDrainScript, parseBoxReport, provisionBox, renderBoxUnit, renderEnvFile, renderUsernsProfile } from './box-converge'
 
 const runner = {
@@ -120,7 +123,7 @@ describe('resizing a declared box', () => {
   test('drains only the services that declare a signal: signal, wait for the process, then stop the unit', () => {
     const script = buildBoxDrainScript(draining)
     expect(Bun.spawnSync(['bash', '-n'], { stdin: new TextEncoder().encode(script) }).exitCode).toBe(0)
-    expect(script).toContain('svc kill -s SIGUSR2 ci-runner.service')
+    expect(script).toContain('svc kill --kill-who=main -s SIGUSR2 ci-runner.service')
     expect(script).toContain('kill -0 "$PID"')
     expect(script).toContain('-ge 600')
     // Stopped after the process left, so Restart= cannot start it again.
@@ -131,17 +134,61 @@ describe('resizing a declared box', () => {
 
   test('a changed unit of a draining service restarts gracefully, after its current work', () => {
     const script = buildBoxConvergeScript(draining)
-    expect(script).toContain('then svc kill -s SIGUSR2 ci-runner.service')
+    expect(script).toContain('then svc kill --kill-who=main -s SIGUSR2 ci-runner.service')
     // Without a drain signal it is still left for the operator.
     expect(script).toContain('changed log-shipper; restart it to apply')
     // on-failure would not bring a clean exit back, so no signal there.
     const onFailure = buildBoxConvergeScript({ ...draining, services: { 'ci-runner': { ...draining.services['ci-runner'], restart: 'on-failure' as const } } })
-    expect(onFailure).not.toContain('svc kill -s SIGUSR2')
+    expect(onFailure).not.toContain('svc kill ')
   })
 
   test('refuses a signal that is not a signal name', () => {
     expect(() => buildBoxDrainScript({ ...draining, services: { x: { exec: 'x', drainSignal: 'USR2; rm -rf /' } } })).toThrow()
   })
+
+  test('a drain signal reaches the runner while its active job finishes normally', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'box-drain-job-'))
+    const ready = join(directory, 'ready.json')
+    const done = join(directory, 'job-finished')
+    const fixture = join(directory, 'runner.ts')
+    const systemctl = join(directory, 'systemctl')
+    writeFileSync(fixture, `
+      const job = Bun.spawn([process.execPath, '-e', 'setTimeout(() => { require("node:fs").writeFileSync(process.env.DRAIN_DONE, "finished"); process.exit(0) }, 800)'], { stdout: 'ignore', stderr: 'inherit' })
+      process.on('SIGUSR2', () => {})
+      await Bun.write(process.env.DRAIN_READY, JSON.stringify({ runner: process.pid, job: job.pid }))
+      process.exit(await job.exited)
+    `)
+    // Model systemctl's documented target selection. The signal delivery and
+    // job completion are real child processes, never the host's service manager.
+    writeFileSync(systemctl, `#!${process.execPath}
+      const ids = JSON.parse(require('node:fs').readFileSync(process.env.DRAIN_READY, 'utf8'))
+      const args = process.argv.slice(2)
+      if (args[0] === 'show') console.log(ids.runner)
+      if (args[0] === 'kill') {
+        process.kill(ids.runner, 'SIGUSR2')
+        if (!args.includes('--kill-who=main')) process.kill(ids.job, 'SIGUSR2')
+      }
+    `, { mode: 0o755 })
+    const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, DRAIN_READY: ready, DRAIN_DONE: done }
+    const child = Bun.spawn([process.execPath, fixture], { env, stdout: 'ignore', stderr: 'pipe' })
+    let shell: ReturnType<typeof Bun.spawn> | undefined
+    try {
+      const deadline = Date.now() + 5000
+      while (!existsSync(ready) && Date.now() < deadline) await Bun.sleep(5)
+      expect(existsSync(ready)).toBe(true)
+      const script = buildBoxDrainScript({ ...draining, user: undefined })
+      shell = Bun.spawn(['bash'], { env, stdin: Buffer.from(script), stdout: 'pipe', stderr: 'pipe' })
+      expect(await shell.exited).toBe(0)
+      expect(await child.exited).toBe(0)
+      expect(existsSync(done)).toBe(true)
+    }
+    finally {
+      shell?.kill()
+      child.kill()
+      await Promise.all([shell?.exited, child.exited])
+      rmSync(directory, { recursive: true, force: true })
+    }
+  }, 15_000)
 
   test('resizes only when asked, and asks out of stock only when allowed', () => {
     expect(boxResizeDecision({ ...draining, resize: undefined }, plan(type('cx43', 8, true)))).toBe('none')
