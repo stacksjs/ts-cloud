@@ -44,6 +44,10 @@ if name=='stat':
  elif fmt=='%a': print(oct(stat.S_IMODE(path.stat().st_mode))[2:])
  else: sys.exit(4)
  sys.exit(0)
+if name=='cat':
+ if os.environ.get('TEST_STATE_READ_FAIL')=='partial':
+  sys.stdout.write('unrelated (unconfined)\\n'); sys.exit(7)
+ os.execv('/bin/cat',sys.argv)
 if name=='install':
  if os.environ.get('TEST_INSTALL_FAIL')=='1': sys.exit(5)
  source,target=map(pathlib.Path,sys.argv[-2:])
@@ -61,7 +65,7 @@ if name=='apparmor_parser':
  shutil.copyfile(sys.argv[-1],root/'loaded'); sys.exit(0)
 sys.exit(9)
 `
-  for (const name of ['id', 'stat', 'install', 'apparmor_parser']) {
+  for (const name of ['id', 'stat', 'install', 'apparmor_parser', 'cat']) {
     writeFileSync(join(bin, name), stub)
     chmodSync(join(bin, name), 0o755)
   }
@@ -127,6 +131,26 @@ describe('policy-only sandbox convergence', () => {
     rmSync(f.target)
     rmSync(join(f.directory, 'profile-state'))
     expect(f.execute().exitCode).not.toBe(0)
+    expect(f.calls()).toEqual([])
+    expect(f.retained()).toEqual([])
+  }))
+
+  test('refuses a readable state stream whose actual read fails', () => fixture(f => {
+    rmSync(f.target)
+    rmSync(join(f.directory, 'profile-state'))
+    mkdirSync(join(f.directory, 'profile-state'))
+    expect(f.execute().exitCode).not.toBe(0)
+    expect(existsSync(f.target)).toBe(false)
+    expect(f.loaded()).toBe(previous)
+    expect(f.calls()).toEqual([])
+    expect(f.retained()).toEqual([])
+  }))
+
+  test('never uses a partial state snapshot after its reader reports failure', () => fixture(f => {
+    rmSync(f.target)
+    writeFileSync(join(f.directory, 'profile-state'), '')
+    expect(f.execute({ TEST_STATE_READ_FAIL: 'partial' }).exitCode).not.toBe(0)
+    expect(existsSync(f.target)).toBe(false)
     expect(f.calls()).toEqual([])
     expect(f.retained()).toEqual([])
   }))
