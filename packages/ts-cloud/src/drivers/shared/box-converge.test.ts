@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BOX_PANTRY_BIN_DIR, BOX_PANTRY_CLI_DIR, boxResizeDecision, buildBoxConvergeScript, buildBoxDrainScript, parseBoxReport, provisionBox, renderBoxUnit, renderEnvFile, renderUsernsProfile } from './box-converge'
+import { BOX_PANTRY_BIN_DIR, BOX_PANTRY_CLI_DIR, boxResizeDecision, buildBoxConvergeScript, buildBoxSandboxConvergeScript, buildBoxDrainScript, parseBoxReport, provisionBox, renderBoxUnit, renderEnvFile, renderUsernsProfile } from './box-converge'
 
 const runner = {
   name: 'ci-runner-1',
@@ -98,9 +98,85 @@ describe('a declared box', () => {
     expect(profile).toContain('profile ts-cloud-pantry-chrome /opt/pantry/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome flags=(unconfined) {')
     expect(profile).toContain('  userns,')
     const script = buildBoxConvergeScript(runner)
-    expect(script).toContain('/etc/apparmor.d/ts-cloud-pantry-chrome')
-    expect(script).toContain('apparmor_parser -r /etc/apparmor.d/ts-cloud-pantry-chrome')
+    expect(script).toContain('PROFILE_DIR=/etc/apparmor.d')
+    expect(script).toContain('TARGET="$PROFILE_DIR/ts-cloud-pantry-chrome"')
+    expect(script).toContain('apparmor_parser -r -K "$TARGET"')
     expect(buildBoxConvergeScript({ ...runner, packages: ['git-scm.org@2.53.0'] })).not.toContain('apparmor')
+  })
+
+  test('opts managed job projects into the same Chrome-only sandbox policy', () => {
+    const box = { ...runner, sandboxedPackageProjects: ['/tmp/reviewos-job-*'] }
+    const script = buildBoxConvergeScript(box)
+    const profiles = [...script.matchAll(/'([A-Za-z0-9+/=]{40,})'/g)]
+      .map(match => Buffer.from(match[1]!, 'base64').toString('utf8'))
+      .filter(text => text.includes('profile ts-cloud-pantry-chrome '))
+    expect(profiles).toHaveLength(1)
+    const profile = profiles[0]!
+    const attachment = profile.match(/profile ts-cloud-pantry-chrome (.+) flags=/)![1]!
+    expect(attachment).toBe('/{opt/pantry/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome,tmp/reviewos-job-*/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome}')
+    const roots = attachment.slice(2, -1).split(',').map(path => new Bun.Glob(`/${path}`))
+    const matches = (path: string) => roots.some(glob => glob.match(path))
+    expect(matches('/tmp/reviewos-job-2388-obs38g/pantry/google.com/chrome/v155.0.8059.84.1/lib/chrome-for-testing/chrome')).toBe(true)
+    expect(matches('/opt/pantry/pantry/google.com/chrome/v155.0.8059.84/lib/chrome-for-testing/chrome')).toBe(true)
+    for (const path of [
+      '/tmp/reviewos-jobs-2388-obs38g/pantry/google.com/chrome/v155/lib/chrome-for-testing/chrome',
+      '/tmp/unrelated-job-2388-obs38g/pantry/google.com/chrome/v155/lib/chrome-for-testing/chrome',
+      '/tmp/reviewos-job-2388-obs38g/nested/pantry/google.com/chrome/v155/lib/chrome-for-testing/chrome',
+      '/tmp/reviewos-job-2388-obs38g/pantry/other.com/chrome/v155/lib/chrome-for-testing/chrome',
+      '/tmp/reviewos-job-2388-obs38g/pantry/google.com/chrome/v155/bin/shell',
+      '/tmp/reviewos-job-2388-obs38g/pantry/google.com/chrome/v155/lib/chrome-for-testing/chrome_crashpad_handler',
+    ]) expect(matches(path)).toBe(false)
+    expect(script).not.toContain('sysctl')
+    expect(script).not.toContain('--no-sandbox')
+    expect(Bun.spawnSync(['bash', '-n'], { stdin: new TextEncoder().encode(script) }).exitCode).toBe(0)
+  })
+
+  test('matches the canonical managed job path without granting nested or sibling projects', () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'cloud-sandbox-project-')))
+    try {
+      const project = join(directory, 'reviewos-job-2388-obs38g')
+      const binary = join(project, 'pantry/google.com/chrome/v155.0.8059.84.1/lib/chrome-for-testing/chrome')
+      mkdirSync(join(binary, '..'), { recursive: true })
+      writeFileSync(binary, 'fixture only; matching a path never verifies executable bytes')
+      const script = buildBoxConvergeScript({ ...runner, sandboxedPackageProjects: [`${directory}/reviewos-job-*`] })
+      const profile = [...script.matchAll(/'([A-Za-z0-9+/=]{40,})'/g)]
+        .map(match => Buffer.from(match[1]!, 'base64').toString('utf8')).find(text => text.includes('profile ts-cloud-pantry-chrome '))!
+      const paths = profile.match(/profile ts-cloud-pantry-chrome \/\{(.+)\} flags=/)![1]!.split(',').map(path => `/${path}`)
+      expect(paths.some(path => new Bun.Glob(path).match(realpathSync(binary)))).toBe(true)
+      expect(paths.some(path => new Bun.Glob(path).match(`${directory}/sibling/pantry/google.com/chrome/v155/lib/chrome-for-testing/chrome`))).toBe(false)
+    }
+    finally { rmSync(directory, { recursive: true, force: true }) }
+  })
+
+  test.skipIf(!Bun.which('apparmor_parser'))('the Linux policy parser compiles the complete profile without loading it', () => {
+    const profile = renderUsernsProfile('ts-cloud-pantry-chrome', '/opt/pantry/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome', ['/tmp/reviewos-job-*/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome'])
+    const result = Bun.spawnSync([Bun.which('apparmor_parser')!, '-Q', '-K'], { stdin: new TextEncoder().encode(profile) })
+    expect(result.exitCode).toBe(0)
+  })
+
+  test('rejects broad, traversing and injectable managed project patterns before generating a script', () => {
+    for (const root of ['/tmp/**', '/tmp/*', '/tmp/reviewos-job-*/nested', '/tmp/../reviewos-job-*', 'tmp/reviewos-job-*', '/tmp/reviewos-job-*\nuserns,', '/tmp/{a,b}', '/tmp/reviewos-job-$(id)', '/tmp/reviewos-job-"', '/tmp/reviewos-job-*/', '/tmp//reviewos-job-*', '/tmp/reviewos-job-?', '/tmp/reviewos-job-*x*', '/tmp/reviewos-job-\r', '/tmp/reviewos-job-\u0000']) {
+      expect(() => buildBoxConvergeScript({ ...runner, sandboxedPackageProjects: [root] })).toThrow()
+    }
+    expect(() => buildBoxConvergeScript({ ...runner, packages: ['git-scm.org@2.53.0'], sandboxedPackageProjects: ['/tmp/reviewos-job-*'] })).toThrow()
+    expect(() => renderUsernsProfile('safe\nprofile injected', '/opt/chrome')).toThrow()
+    expect(() => renderUsernsProfile('safe\n', '/opt/chrome')).toThrow()
+    expect(() => renderUsernsProfile('safe', '/opt/chrome', ['/tmp/path} flags=(unconfined) { userns,'])).toThrow()
+    expect(() => buildBoxConvergeScript({ ...runner, sandboxedPackageProjects: Array.from({ length: 17 }, (_, index) => `/tmp/job-${index}`) })).toThrow()
+    expect(() => renderUsernsProfile('safe', '/opt/chrome { userns, }')).toThrow()
+  })
+
+  test('reconciles opt-out through the existing profile without restarting services', () => {
+    const enabled = buildBoxConvergeScript({ ...runner, sandboxedPackageProjects: ['/tmp/reviewos-job-*', '/tmp/reviewos-job-*'] })
+    const disabled = buildBoxConvergeScript(runner)
+    const profiles = (script: string) => [...script.matchAll(/'([A-Za-z0-9+/=]{40,})'/g)]
+      .map(match => Buffer.from(match[1]!, 'base64').toString('utf8')).filter(text => text.includes('profile ts-cloud-pantry-chrome '))
+    expect(profiles(enabled)[0]!.match(/reviewos-job-/g)).toHaveLength(1)
+    expect(profiles(disabled)[0]).toBe(renderUsernsProfile('ts-cloud-pantry-chrome', '/opt/pantry/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome'))
+    expect(disabled).toContain('apparmor_parser -r -K "$TARGET"')
+    expect(enabled).toContain('install -m 644 -o root -g root')
+    expect(enabled).not.toContain('systemctl restart')
+    expect(enabled).not.toContain('systemctl --user restart')
   })
 
   test('reports only its own lines', () => {

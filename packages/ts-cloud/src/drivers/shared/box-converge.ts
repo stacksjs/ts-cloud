@@ -49,19 +49,127 @@ export const SANDBOXED_PACKAGES: Record<string, { profile: string, binary: strin
   },
 }
 
-/** The AppArmor profile letting a pantry-installed browser create its sandbox. */
-export function renderUsernsProfile(name: string, binary: string): string {
+/** Accept only paths which can be emitted literally into an AppArmor attachment. */
+function assertSandboxPath(path: string): void {
+  if (!path.startsWith('/') || /[^A-Za-z0-9_./*-]/.test(path) || path.includes('**')
+    || path.split('/').slice(1).some(part => !part || part === '.' || part === '..')) {
+    throw new Error('Sandbox paths must be absolute without traversal or AppArmor control syntax')
+  }
+}
+
+/** Explicit administrator-owned project patterns; never commands or arbitrary profile text. */
+function sandboxProjects(box: BoxConfig): string[] {
+  const projects = [...new Set(box.sandboxedPackageProjects ?? [])].sort()
+  if (projects.length > 16) throw new Error('At most 16 sandboxed package projects may be declared')
+  for (const project of projects) {
+    assertSandboxPath(project)
+    const firstWildcard = project.indexOf('*')
+    const basename = project.slice(project.lastIndexOf('/') + 1)
+    if (project.length > 240 || (firstWildcard !== -1 && (firstWildcard !== project.length - 1 || !/^[A-Za-z0-9_][A-Za-z0-9_.-]+-\*$/.test(basename)))) {
+      throw new Error('Sandbox project wildcards must follow a named final directory prefix')
+    }
+  }
+  if (projects.length && !(box.packages ?? []).some(spec => spec === 'google.com/chrome' || spec.startsWith('google.com/chrome@'))) {
+    throw new Error('Sandboxed projects require the Chrome package to be explicitly declared')
+  }
+  return projects
+}
+
+/** The existing profile also reconciles opt-in job paths when they are removed. */
+export function renderUsernsProfile(name: string, binary: string, additionalBinaries: string[] = []): string {
+  assertName('sandbox profile', name)
+  if (/[^A-Za-z0-9_.-]/.test(name)) throw new Error('Invalid sandbox profile name')
+  const binaries = [...new Set([binary, ...additionalBinaries])]
+  for (const path of binaries) assertSandboxPath(path)
+  const attachment = binaries.length === 1 ? binaries[0] : `/{${binaries.map(path => path.slice(1)).join(',')}}`
   return [
     '# Written by ts-cloud: lets this pantry package create user namespaces for its',
     '# sandbox, like Ubuntu\'s own profile for /opt/google/chrome/chrome.',
     'abi <abi/4.0>,',
     'include <tunables/global>',
     '',
-    `profile ${name} ${binary} flags=(unconfined) {`,
+    `profile ${name} ${attachment} flags=(unconfined) {`,
     '  userns,',
     '',
     `  include if exists <local/${name}>`,
     '}',
+    '',
+  ].join('\n')
+}
+
+/** Only known package profiles, shared by full and policy-only convergence. */
+function boxSandboxProfiles(box: BoxConfig): Array<{ name: string, content: string }> {
+  const projects = sandboxProjects(box)
+  const packages = box.packages ?? []
+  return Object.entries(SANDBOXED_PACKAGES)
+    .filter(([domain]) => packages.some(spec => spec === domain || spec.startsWith(`${domain}@`)))
+    .map(([, { profile, binary }]) => ({
+      name: profile,
+      content: renderUsernsProfile(profile, binary, projects.map(project => `${project}/pantry/google.com/chrome/*/lib/chrome-for-testing/chrome`)),
+    }))
+}
+
+/**
+ * Converge only the declared browser sandbox policy on an existing Linux host.
+ * No provider calls, installs, accounts, units, resizing or service operations.
+ * Candidate policies compile before installation; a failed reload restores the
+ * prior file and reloads its saved on-disk policy. Removing the opt-in restores
+ * the global-only attachment through the same profile, without touching others.
+ */
+export function buildBoxSandboxConvergeScript(box: BoxConfig): string {
+  const profiles = boxSandboxProfiles(box)
+  if (!profiles.length) return 'set -euo pipefail\n# No declared sandboxed package profiles.\n'
+  return [
+    'set -euo pipefail',
+    'PROFILE_DIR=/etc/apparmor.d',
+    'PROFILE_STATE=/sys/kernel/security/apparmor/profiles',
+    '[ "$(id -u)" = 0 ] || { echo "Sandbox policy convergence requires root" >&2; exit 1; }',
+    'command -v apparmor_parser >/dev/null || { echo "AppArmor parser is required" >&2; exit 1; }',
+    '[ -d "$PROFILE_DIR" ] && [ ! -L "$PROFILE_DIR" ] || { echo "AppArmor policy directory must be a real directory" >&2; exit 1; }',
+    '[ "$(stat -c %u "$PROFILE_DIR")" = 0 ] || { echo "AppArmor policy directory must be root-owned" >&2; exit 1; }',
+    'MODE=$(stat -c %a "$PROFILE_DIR")',
+    '(( (8#$MODE & 022) == 0 )) || { echo "AppArmor policy directory must not be group/other writable" >&2; exit 1; }',
+    'WORK=$(mktemp -d "$PROFILE_DIR/.ts-cloud-sandbox.XXXXXX")',
+    'KEEP_BACKUP=0',
+    `trap 'if [ "$KEEP_BACKUP" = 0 ]; then rm -rf -- "$WORK"; fi' EXIT`,
+    ...profiles.flatMap(({ name, content }) => [
+      `TARGET="$PROFILE_DIR/${name}"`,
+      'if [ -L "$TARGET" ] || { [ -e "$TARGET" ] && [ ! -f "$TARGET" ]; }; then echo "Refusing non-regular sandbox policy" >&2; exit 1; fi',
+      'if [ -f "$TARGET" ] && [ "$(stat -c %u:%g "$TARGET")" != 0:0 ]; then echo "Sandbox policy must be root-owned" >&2; exit 1; fi',
+      'if [ -f "$TARGET" ]; then MODE=$(stat -c %a "$TARGET"); (( (8#$MODE & 022) == 0 )) || { echo "Sandbox policy must not be group/other writable" >&2; exit 1; }; fi',
+      'if [ ! -f "$TARGET" ]; then',
+      '  [ -r "$PROFILE_STATE" ] || { echo "Cannot inspect existing sandbox policy state" >&2; exit 1; }',
+      '  while IFS= read -r LOADED || [ -n "$LOADED" ]; do',
+      '    case "$LOADED" in',
+      `      "${name} ("*) echo "Refusing to replace an orphaned loaded policy without a recovery definition" >&2; exit 1 ;;`,
+      '    esac',
+      '  done < "$PROFILE_STATE"',
+      'fi',
+      `printf %s ${sh(b64(content))} | base64 -d > "$WORK/candidate"`,
+      'apparmor_parser -Q -K "$WORK/candidate"',
+      'if [ -f "$TARGET" ] && cmp -s "$WORK/candidate" "$TARGET"; then',
+      '  apparmor_parser -r -K "$TARGET"',
+      `  echo "${BOX_REPORT_PREFIX} sandbox profile ${name} reconciled"`,
+      'else',
+      '  HAD_PREVIOUS=0',
+      '  PREVIOUS_MODE=644',
+      '  if [ -f "$TARGET" ]; then cp -p -- "$TARGET" "$WORK/previous"; PREVIOUS_MODE=$(stat -c %a "$TARGET"); HAD_PREVIOUS=1; fi',
+      '  KEEP_BACKUP=1',
+      '  if install -m 644 -o root -g root "$WORK/candidate" "$WORK/ready" && mv -f -- "$WORK/ready" "$TARGET" && apparmor_parser -r -K "$TARGET"; then',
+      '    KEEP_BACKUP=0',
+      `    echo "${BOX_REPORT_PREFIX} sandbox profile ${name} converged"`,
+      '  else',
+      '    KEEP_BACKUP=1',
+      '    if [ "$HAD_PREVIOUS" = 1 ]; then',
+      '      if install -m "$PREVIOUS_MODE" -o root -g root "$WORK/previous" "$WORK/restore" && mv -f -- "$WORK/restore" "$TARGET" && apparmor_parser -r -K "$TARGET"; then KEEP_BACKUP=0; fi',
+      '    else',
+      '      if [ ! -e "$TARGET" ] || apparmor_parser -R -K "$TARGET"; then rm -f -- "$TARGET"; KEEP_BACKUP=0; fi',
+      '    fi',
+      '    echo "Sandbox reload failed; retained recovery files if rollback failed: $WORK" >&2',
+      '    exit 1',
+      '  fi',
+      'fi',
+    ]),
     '',
   ].join('\n')
 }
@@ -132,6 +240,7 @@ export function renderBoxUnit(name: string, service: BoxServiceConfig, options: 
  * operator to do.
  */
 export function buildBoxConvergeScript(box: BoxConfig): string {
+  sandboxProjects(box)
   const user = box.user?.name
   if (user) assertName('user', user)
   for (const group of box.user?.groups ?? []) assertName('group', group)
@@ -192,18 +301,10 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
       `  say "packages ${packages.join(' ')}"`,
       'fi',
     )
-    const sandboxed = Object.entries(SANDBOXED_PACKAGES).filter(([domain]) => packages.some((spec) => spec === domain || spec.startsWith(`${domain}@`)))
-    if (sandboxed.length > 0) {
-      lines.push('if command -v apparmor_parser >/dev/null 2>&1 && [ -d /etc/apparmor.d ]; then')
-      for (const [, { profile, binary }] of sandboxed) {
-        lines.push(
-          `  if write_if_changed /etc/apparmor.d/${profile} 644 root:root ${sh(b64(renderUsernsProfile(profile, binary)))}; then`,
-          `    apparmor_parser -r /etc/apparmor.d/${profile}`,
-          `    say "apparmor profile ${profile} (user namespaces for its sandbox)"`,
-          '  fi',
-        )
-      }
-      lines.push('fi')
+    if (boxSandboxProfiles(box).length > 0) {
+      lines.push('if command -v apparmor_parser >/dev/null 2>&1 && [ -d /etc/apparmor.d ]; then', '  (')
+      lines.push(...buildBoxSandboxConvergeScript(box).trimEnd().split('\n').map(line => `    ${line}`))
+      lines.push('  )', 'fi')
     }
   }
 

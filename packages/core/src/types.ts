@@ -3346,6 +3346,15 @@ export interface BoxConfig {
   /** Pantry package specs (`domain` or `domain@version`), installed into /opt/pantry. */
   packages?: string[]
   /**
+   * Additional managed Pantry project directories whose declared Chrome may
+   * create its normal user-namespace sandbox. Opt-in, for isolated CI jobs
+   * such as `/tmp/reviewos-job-*`; the global package path remains allowed.
+   * Only absolute literal paths or a final named-prefix wildcard are accepted.
+   * These trusted administrator paths are not a binary-integrity boundary:
+   * anyone able to replace their executable also receives this permission.
+   */
+  sandboxedPackageProjects?: string[]
+  /**
    * Free space the root filesystem must have before packages are installed.
    * Below it the converge installs nothing and says so: a package tree that
    * fills the disk takes down whatever else the box is doing (on a CI runner,

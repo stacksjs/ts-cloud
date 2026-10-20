@@ -134,6 +134,7 @@ export {
   BOX_PANTRY_BIN_DIR,
   BOX_PANTRY_CLI_DIR,
   buildBoxConvergeScript,
+  buildBoxSandboxConvergeScript,
   parseBoxReport,
   provisionBox,
   renderBoxUnit,
