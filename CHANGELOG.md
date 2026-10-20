@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.65...v0.16.66)
+
+## 🐛 Bug Fixes
+
+- reject incomplete sandbox policy state reads ([4ce3c7d](https://github.com/stacksjs/ts-cloud/commit/4ce3c7d)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+- converge scoped Chrome sandbox policies for managed jobs ([fc0364f](https://github.com/stacksjs/ts-cloud/commit/fc0364f)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.66 ([9e163ef](https://github.com/stacksjs/ts-cloud/commit/9e163ef)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.64...v0.16.65)
 
 ## 🐛 Bug Fixes
