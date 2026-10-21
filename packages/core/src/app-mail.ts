@@ -56,7 +56,7 @@ export interface ResolvedMailService {
   /** Largest accepted message, in bytes. */
   maxMessageSize: number
   /** Inbound spam handling, resolved. */
-  spam: { enabled: boolean, enforce: boolean, junkScore: number, rejectScore: number, dnsbl: boolean, greylist: boolean }
+  spam: { enabled: boolean, enforce: boolean, junkScore: number, rejectScore: number, dnsbl: boolean, dnsblReject: boolean, greylist: boolean }
   /** Where received mail is POSTed, when configured. */
   webhookUrl?: string
   /** Whether the mail ports face the internet. */
@@ -264,6 +264,7 @@ export function resolveMailService(
       junkScore: spamDeclared.junkScore ?? 5,
       rejectScore: spamDeclared.rejectScore ?? 12,
       dnsbl: spamDeclared.dnsbl ?? server,
+      dnsblReject: spamDeclared.dnsblReject ?? false,
       greylist: spamDeclared.greylist ?? false,
     },
     webhookUrl: mail.webhookUrl,

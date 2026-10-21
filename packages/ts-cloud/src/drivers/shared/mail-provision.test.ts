@@ -345,3 +345,21 @@ describe('buildServicesProvisionScript', () => {
     expect(buildServicesProvisionScript({})).toEqual([])
   })
 })
+
+
+describe('DNSBL rejection policy', () => {
+  it('keeps a shared sender listing as a score unless rejection is explicitly requested', () => {
+    const mail = resolveMailService(withMail({ mode: 'server' }), { environment: 'production' })
+    expect(mail.spam.dnsbl).toBe(true)
+    expect(mail.spam.dnsblReject).toBe(false)
+    expect(buildMailConfigToml(mail)).toContain('dnsbl_reject = false')
+    expect(buildMailEnvFile(mail)).toContain('SMTP_DNSBL_REJECT=false')
+  })
+
+  it('carries explicit SMTP rejection consistently into TOML and the server environment', () => {
+    const mail = resolveMailService(withMail({ mode: 'server', spam: { dnsblReject: true } }), { environment: 'production' })
+    expect(mail.spam.dnsblReject).toBe(true)
+    expect(buildMailConfigToml(mail)).toContain('dnsbl_reject = true')
+    expect(buildMailEnvFile(mail)).toContain('SMTP_DNSBL_REJECT=true')
+  })
+})

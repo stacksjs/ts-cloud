@@ -4591,6 +4591,8 @@ export interface MailSpamConfig {
   rejectScore?: number
   /** Consult DNS blocklists. @default true for a server. */
   dnsbl?: boolean
+  /** Reject DNSBL-listed peers at SMTP RCPT instead of scoring them. @default false */
+  dnsblReject?: boolean
   /** Greylist unknown senders. Off by default - it delays first contact. */
   greylist?: boolean
 }
