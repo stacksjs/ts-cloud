@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.66...v0.16.67)
+
+## ✨ Features
+
+- **deploy**: share stx's client bundle cache across releases ([0bf4593](https://github.com/stacksjs/ts-cloud/commit/0bf4593)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.67 ([b525d83](https://github.com/stacksjs/ts-cloud/commit/b525d83)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.65...v0.16.66)
 
 ## 🐛 Bug Fixes
