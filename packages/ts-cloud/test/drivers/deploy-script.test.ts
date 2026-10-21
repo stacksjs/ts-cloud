@@ -795,7 +795,7 @@ describe('resolveExecStart with an executable entry point', () => {
   })
 })
 
-describe('stx image cache shared across releases', () => {
+describe('stx image and bundle caches shared across releases', () => {
   // stx encodes every image a template renders before a production server
   // binds. Inside releases/<id> that started from nothing on every deploy and
   // outlasted the health check on a photo-heavy site.
@@ -813,7 +813,8 @@ describe('stx image cache shared across releases', () => {
     }).join('\n')
 
     expect(joined).toContain('Environment=STX_IMAGE_CACHE_DIR=/var/www/web/shared/stx-images')
-    expect(joined).toMatch(/mkdir -p \/var\/www\/web\/releases \/var\/www\/web\/shared \/var\/www\/web\/shared\/stx-images/)
+    expect(joined).toContain('Environment=STX_BUNDLE_CACHE_DIR=/var/www/web/shared/stx-bundles')
+    expect(joined).toMatch(/mkdir -p \/var\/www\/web\/releases \/var\/www\/web\/shared \/var\/www\/web\/shared\/stx-images \/var\/www\/web\/shared\/stx-bundles/)
   })
 
   it('points a site without zero-downtime overlap at the same directory', () => {
@@ -830,5 +831,6 @@ describe('stx image cache shared across releases', () => {
 
     expect(joined).not.toContain('my-app-web@')
     expect(joined).toContain('Environment=STX_IMAGE_CACHE_DIR=/var/www/web/shared/stx-images')
+    expect(joined).toContain('Environment=STX_BUNDLE_CACHE_DIR=/var/www/web/shared/stx-bundles')
   })
 })

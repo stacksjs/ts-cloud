@@ -76,6 +76,21 @@ export function stxImageCacheDir(paths: ReleasePaths): string {
   return `${paths.shared}/stx-images`
 }
 
+/**
+ * Where stx keeps its client script bundles, shared by every release.
+ *
+ * A page's first render bundles its client scripts, one build at a time, and
+ * a production server renders every page before it joins a deploy's shared
+ * port. Inside the release directory that started from nothing on every
+ * deploy, so a site with a hundred interactive pages warmed for minutes.
+ * stx keys the entries by project-relative path and validates them by
+ * content (stx >= 0.2.620), so an unchanged page in the next release is a
+ * cache hit. Handed to the server as `STX_BUNDLE_CACHE_DIR`.
+ */
+export function stxBundleCacheDir(paths: ReleasePaths): string {
+  return `${paths.shared}/stx-bundles`
+}
+
 export function releasePaths(base: string, releaseId: string): ReleasePaths {
   const root = base.replace(/\/+$/, '')
   return {
@@ -197,7 +212,7 @@ export function buildEnsureReleaseLayout(
   paths: ReleasePaths,
   sharedPaths: readonly SharedPathEntry[] = DEFAULT_SHARED_PATHS,
 ): string[] {
-  const lines = [`mkdir -p ${paths.releases} ${paths.shared} ${stxImageCacheDir(paths)}`, ...buildAdoptSharedPathFn(paths)]
+  const lines = [`mkdir -p ${paths.releases} ${paths.shared} ${stxImageCacheDir(paths)} ${stxBundleCacheDir(paths)}`, ...buildAdoptSharedPathFn(paths)]
   const resolved = sharedPaths.map(entry => resolveSharedPath(paths, entry))
 
   for (const { path: p, target, seed } of resolved) {

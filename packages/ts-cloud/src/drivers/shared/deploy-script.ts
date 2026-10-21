@@ -13,7 +13,7 @@
 import type { SharedPathEntry, SiteLivenessConfig } from '@ts-cloud/core'
 import type { ReleasePaths } from './releases'
 import { formatEnvFile } from './env-file'
-import { buildActivateRelease, buildDeployLock, buildRecordPreviousRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxImageCacheDir } from './releases'
+import { buildActivateRelease, buildDeployLock, buildRecordPreviousRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxBundleCacheDir, stxImageCacheDir } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
 
 /** Extensions that mark the first token as something a runtime should be given. */
@@ -902,6 +902,8 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       `EnvironmentFile=${paths.releases}/%i/.env`,
       `Environment=PORT=${port}`,
       `Environment=STX_IMAGE_CACHE_DIR=${stxImageCacheDir(paths)}`,
+    `Environment=STX_BUNDLE_CACHE_DIR=${stxBundleCacheDir(paths)}`,
+      `Environment=STX_BUNDLE_CACHE_DIR=${stxBundleCacheDir(paths)}`,
       '',
       '[Install]',
       'WantedBy=multi-user.target',
@@ -956,6 +958,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     `EnvironmentFile=${paths.current}/.env`,
     ...(port ? [`Environment=PORT=${port}`] : []),
     `Environment=STX_IMAGE_CACHE_DIR=${stxImageCacheDir(paths)}`,
+    `Environment=STX_BUNDLE_CACHE_DIR=${stxBundleCacheDir(paths)}`,
     '',
     '[Install]',
     'WantedBy=multi-user.target',
