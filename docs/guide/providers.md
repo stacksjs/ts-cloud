@@ -1,6 +1,6 @@
 # Cloud Providers
 
-ts-cloud deploys to **AWS**, **Hetzner Cloud**, or **your own Linux hosts over SSH** for compute, and can put object storage on **AWS S3**, **Backblaze B2**, or **Hetzner Object Storage**, independently of where compute runs. You pick all of this in `cloud.config.ts`; there is no separate provider plugin to install.
+ts-cloud deploys to **AWS**, **Hetzner Cloud**, or **your own Linux hosts over SSH** for compute, and can put object storage on **AWS S3**, **Backblaze B2**, **Hetzner Object Storage**, or **Cloudflare R2**, independently of where compute runs. You pick all of this in `cloud.config.ts`; there is no separate provider plugin to install.
 
 ## Choosing a compute provider
 
@@ -170,16 +170,18 @@ const config: CloudConfig = {
 
 | Field | Description | Default |
 | --- | --- | --- |
-| `provider` | `'aws'`, `'backblaze'`, or `'hetzner'` | `'aws'` |
-| `region` | Region / location slug | aws: `us-east-1`, backblaze: `us-west-004`, hetzner: `fsn1` |
+| `provider` | `'aws'`, `'backblaze'`, `'hetzner'`, or `'r2'` | `'aws'` |
+| `region` | Region / location slug | aws: `us-east-1`, backblaze: `us-west-004`, hetzner: `fsn1`, r2: `auto` |
 | `endpoint` | HTTP(S) endpoint origin or host, e.g. `https://<account>.r2.cloudflarestorage.com` | provider's standard endpoint |
-| `forcePathStyle` | Use path-style addressing (bucket in path) | `false` (virtual-hosted) |
+| `accountId` | R2 account ID when no endpoint is supplied | `R2_ACCOUNT_ID` / `CLOUDFLARE_ACCOUNT_ID` |
+| `forcePathStyle` | Use path-style addressing (bucket in path) | Always `true` for the R2 preset; otherwise `false` |
 
 Credentials are resolved from provider-specific environment variables when not supplied programmatically:
 
 - **AWS** — the standard AWS chain (profile / `AWS_*` env / instance role).
 - **Backblaze** — `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` (falls back to `S3_*` / `AWS_*`).
 - **Hetzner** — `HETZNER_S3_ACCESS_KEY` / `HETZNER_S3_SECRET_KEY` (falls back to `S3_*` / `AWS_*`).
+- **Cloudflare R2** — `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` (falls back to `S3_*` / `AWS_*`). These are S3 credentials, separate from the Cloudflare account API token.
 
 You can also drive object storage entirely from the environment with `OBJECT_STORAGE_PROVIDER` (or `STORAGE_PROVIDER`).
 
@@ -203,15 +205,16 @@ const s3 = createObjectStorageClient({
 await s3.putObject({ bucket: 'my-bucket', key: 'a.txt', body: 'hi' })
 ```
 
-The client also accepts an options object directly. Use virtual-hosted addressing for R2 and path-style addressing for local MinIO:
+Use the named R2 preset for account endpoint derivation, `auto` signing and path-style addressing. Supply an explicit endpoint for jurisdiction-specific R2 hosts. Clear inherited AWS/Hetzner regions or set `region: 'auto'`; stale non-R2 regions are rejected before a request. See [Cloudflare's S3 API reference](https://developers.cloudflare.com/r2/api/s3/api/).
 
 ```typescript
-const r2 = new S3Client({
-  region: 'auto',
-  endpoint: 'https://<account-id>.r2.cloudflarestorage.com',
+const r2 = createObjectStorageClient({
+  provider: 'r2',
+  accountId: '<account-id>',
   credentials: { accessKeyId, secretAccessKey },
 })
 
+// The S3 client also accepts options directly for other compatible services.
 const minio = new S3Client({
   region: 'us-east-1',
   endpoint: 'http://127.0.0.1:9000',

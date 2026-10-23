@@ -2,7 +2,7 @@
  * Cross-provider object-storage migration.
  *
  * Copies objects from one S3-compatible bucket to another — AWS S3, Backblaze
- * B2, Hetzner Object Storage, in any direction. Both sides are driven by the
+ * B2, Hetzner Object Storage or Cloudflare R2, in any direction. Both sides are driven by the
  * same {@link createObjectStorageClient}, so the only thing that changes per
  * side is the provider/region/endpoint/credentials.
  *
@@ -27,6 +27,8 @@ export interface MigrateEndpoint {
   region?: string
   /** Endpoint host override (no scheme). Defaults to the provider's standard endpoint. */
   endpoint?: string
+  /** R2 account ID, when the endpoint is not supplied explicitly. */
+  accountId?: string
   forcePathStyle?: boolean
   /** Key prefix. On the source it scopes/strips; on the dest it is prepended. */
   prefix?: string
@@ -161,6 +163,7 @@ function clientFor(endpoint: MigrateEndpoint): S3Client {
     provider: endpoint.provider,
     region: endpoint.region,
     endpoint: endpoint.endpoint,
+    accountId: endpoint.accountId,
     forcePathStyle: endpoint.forcePathStyle,
     credentials: endpoint.credentials,
   })

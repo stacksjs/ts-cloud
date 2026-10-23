@@ -1,9 +1,9 @@
 /**
  * Multi-provider object storage.
  *
- * AWS S3, Backblaze B2 and Hetzner Object Storage all speak the S3 API and
+ * AWS S3, Backblaze B2, Hetzner Object Storage and Cloudflare R2 speak the S3 API and
  * authenticate with AWS Signature V4, so a single {@link S3Client} drives all
- * three — the only differences are the endpoint host, the addressing style and
+ * four — the only differences are the endpoint host, the addressing style and
  * where the credentials come from. This module resolves those differences from
  * a small config object (or environment variables) and hands back a ready
  * {@link S3Client}.
@@ -24,10 +24,11 @@
  */
 import type { S3ClientOptions } from '../aws/s3'
 import { S3Client } from '../aws/s3'
+import { resolveS3Endpoint } from '../aws/client'
 
 export * from './migrate'
 
-export type ObjectStorageProvider = 'aws' | 'backblaze' | 'hetzner'
+export type ObjectStorageProvider = 'aws' | 'backblaze' | 'hetzner' | 'r2'
 
 export interface ObjectStorageCredentials {
   accessKeyId: string
@@ -42,11 +43,13 @@ export interface ObjectStorageConfig {
   region?: string
   /** Endpoint host override (no scheme). Defaults to the provider's standard endpoint for the region. */
   endpoint?: string
-  /** Force path-style addressing. Defaults to virtual-hosted, which all three providers support. */
+  /** R2 account ID. Defaults to R2_ACCOUNT_ID/CLOUDFLARE_ACCOUNT_ID; unnecessary with an explicit endpoint. */
+  accountId?: string
+  /** Force path-style addressing. The R2 preset always uses path-style; other providers default to virtual-hosted. */
   forcePathStyle?: boolean
   /** Explicit credentials. When omitted, resolved from provider-specific env vars (see below). */
   credentials?: ObjectStorageCredentials
-  /** AWS named profile (AWS provider only) — ignored by B2/Hetzner. */
+  /** AWS named profile (AWS provider only) — ignored by B2/Hetzner/R2. */
   profile?: string
 }
 
@@ -66,15 +69,20 @@ const DEFAULT_REGION: Record<ObjectStorageProvider, string> = {
   aws: 'us-east-1',
   backblaze: 'us-west-004',
   hetzner: 'fsn1',
+  r2: 'auto',
 }
 
 /** Standard endpoint host for a provider+region (undefined ⇒ use AWS default). */
-export function providerEndpoint(provider: ObjectStorageProvider, region: string): string | undefined {
+export function providerEndpoint(provider: ObjectStorageProvider, region: string, accountId?: string): string | undefined {
   switch (provider) {
     case 'backblaze':
       return `s3.${region}.backblazeb2.com`
     case 'hetzner':
       return `${region}.your-objectstorage.com`
+    case 'r2': {
+      const account = accountId || env('R2_ACCOUNT_ID', 'CLOUDFLARE_ACCOUNT_ID')
+      return account ? `${account}.r2.cloudflarestorage.com` : undefined
+    }
     case 'aws':
     default:
       return undefined
@@ -114,6 +122,9 @@ function resolveCredentials(
       'S3_SECRET_ACCESS_KEY',
       'AWS_SECRET_ACCESS_KEY',
     )
+  } else if (provider === 'r2') {
+    accessKeyId = env('R2_ACCESS_KEY_ID', 'S3_ACCESS_KEY_ID', 'AWS_ACCESS_KEY_ID')
+    secretAccessKey = env('R2_SECRET_ACCESS_KEY', 'R2_SECRET_KEY', 'S3_SECRET_ACCESS_KEY', 'AWS_SECRET_ACCESS_KEY')
   } else {
     // AWS: let S3Client's own profile/env/instance-role chain handle it.
     accessKeyId = env('S3_ACCESS_KEY_ID')
@@ -136,6 +147,9 @@ export function resolveObjectStorage(config: ObjectStorageConfig = {}): Resolved
     config.provider ||
     (env('OBJECT_STORAGE_PROVIDER', 'STORAGE_PROVIDER') as ObjectStorageProvider | undefined) ||
     'aws'
+  if (!Object.hasOwn(DEFAULT_REGION, provider)) {
+    throw new Error(`Unsupported storage provider: ${provider}`)
+  }
 
   const region =
     config.region ||
@@ -144,16 +158,24 @@ export function resolveObjectStorage(config: ObjectStorageConfig = {}): Resolved
     env('S3_REGION', 'AWS_REGION', 'AWS_DEFAULT_REGION') ||
     DEFAULT_REGION[provider]
 
-  const endpoint = config.endpoint || env('S3_ENDPOINT') || providerEndpoint(provider, region)
+  const endpoint = config.endpoint || env('S3_ENDPOINT') || providerEndpoint(provider, region, config.accountId)
+  if (provider === 'r2') {
+    if (!endpoint) {
+      throw new Error('R2 requires R2_ACCOUNT_ID, accountId or S3_ENDPOINT')
+    }
+    if (region !== 'auto') {
+      throw new Error('R2 requires S3_REGION=auto; clear inherited region settings or set region explicitly')
+    }
+  }
 
   // Virtual-hosted by default. Env opt-in for path-style (e.g. S3_FORCE_PATH_STYLE=true).
-  const forcePathStyle = config.forcePathStyle ?? env('S3_FORCE_PATH_STYLE') === 'true'
+  const forcePathStyle = provider === 'r2' || (config.forcePathStyle ?? env('S3_FORCE_PATH_STYLE') === 'true')
 
   const credentials = resolveCredentials(provider, config.credentials)
 
   const publicBaseUrl = (bucket: string): string => {
-    const base = endpoint || `s3.${region}.amazonaws.com`
-    return forcePathStyle ? `https://${base}/${bucket}` : `https://${bucket}.${base}`
+    const resolved = resolveS3Endpoint({ region, endpoint, forcePathStyle, bucket, path: '/' })
+    return `${resolved.protocol}://${resolved.host}${resolved.path === '/' ? '' : resolved.path}`
   }
 
   return {
@@ -162,7 +184,7 @@ export function resolveObjectStorage(config: ObjectStorageConfig = {}): Resolved
     endpoint,
     forcePathStyle,
     credentials,
-    profile: config.profile,
+    profile: provider === 'aws' ? config.profile : undefined,
     publicBaseUrl,
   }
 }

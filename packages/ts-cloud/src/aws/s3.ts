@@ -1056,7 +1056,7 @@ export class S3Client {
         service: 's3',
         region: this.region,
         method: 'HEAD',
-        path: `/${bucket}/${key}`,
+        path: `/${bucket}/${key.split('/').map(segment => encodeURIComponent(segment)).join('/')}`,
         returnHeaders: true,
       })
       return {
@@ -1077,8 +1077,8 @@ export class S3Client {
    * Get object as Buffer
    */
   async getObjectBuffer(bucket: string, key: string): Promise<Buffer> {
-    const content = await this.getObject(bucket, key)
-    return Buffer.from(content)
+    const content = await this.getObjectBytes(bucket, key)
+    return Buffer.from(content.body)
   }
 
   /**

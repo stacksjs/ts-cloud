@@ -126,6 +126,11 @@ describe('resolveObjectStorage', () => {
     'HETZNER_REGION',
     'HETZNER_S3_ACCESS_KEY',
     'HETZNER_S3_SECRET_KEY',
+    'R2_ACCOUNT_ID',
+    'CLOUDFLARE_ACCOUNT_ID',
+    'R2_ACCESS_KEY_ID',
+    'R2_SECRET_ACCESS_KEY',
+    'R2_SECRET_KEY',
   ]
   let saved: Record<string, string | undefined>
 
@@ -198,6 +203,87 @@ describe('resolveObjectStorage', () => {
   it('leaves credentials undefined for AWS when nothing is set (uses profile/role chain)', () => {
     const r = resolveObjectStorage({ provider: 'aws' })
     expect(r.credentials).toBeUndefined()
+  })
+
+  describe('Cloudflare R2', () => {
+    it('resolves account-scoped endpoints, auto signing and path-style despite an inherited false setting', () => {
+      Object.assign(process.env, {
+        STORAGE_PROVIDER: 'r2', R2_ACCOUNT_ID: 'test-account',
+        R2_ACCESS_KEY_ID: 'r2-key', R2_SECRET_ACCESS_KEY: 'r2-secret',
+        S3_ACCESS_KEY_ID: 'generic-key', S3_SECRET_ACCESS_KEY: 'generic-secret',
+        S3_FORCE_PATH_STYLE: 'false',
+      })
+      const resolved = resolveObjectStorage({ forcePathStyle: false, profile: 'aws-only' })
+      expect(resolved.provider).toBe('r2')
+      expect(resolved.region).toBe('auto')
+      expect(resolved.endpoint).toBe('test-account.r2.cloudflarestorage.com')
+      expect(resolved.forcePathStyle).toBe(true)
+      expect(resolved.credentials).toEqual({ accessKeyId: 'r2-key', secretAccessKey: 'r2-secret', sessionToken: undefined })
+      expect(resolved.profile).toBeUndefined()
+      expect(resolved.publicBaseUrl('registry')).toBe('https://test-account.r2.cloudflarestorage.com/registry')
+    })
+
+    it('supports explicit accounts/endpoints and generic credentials without reading a Cloudflare API token', () => {
+      process.env.CLOUDFLARE_ACCOUNT_ID = 'env-account'
+      process.env.S3_ACCESS_KEY_ID = 'generic-key'
+      process.env.S3_SECRET_ACCESS_KEY = 'generic-secret'
+      expect(providerEndpoint('r2', 'auto')).toBe('env-account.r2.cloudflarestorage.com')
+      expect(resolveObjectStorage({ provider: 'r2', accountId: 'explicit-account' }).endpoint).toBe('explicit-account.r2.cloudflarestorage.com')
+      const explicit = resolveObjectStorage({ provider: 'r2', endpoint: 'https://other.r2.cloudflarestorage.com', credentials: { accessKeyId: 'explicit-key', secretAccessKey: 'explicit-secret' } })
+      expect(explicit.publicBaseUrl('bucket')).toBe('https://other.r2.cloudflarestorage.com/bucket')
+      expect(explicit.credentials?.accessKeyId).toBe('explicit-key')
+      expect(resolveObjectStorage({ provider: 'r2' }).credentials?.accessKeyId).toBe('generic-key')
+      delete process.env.S3_ACCESS_KEY_ID
+      delete process.env.S3_SECRET_ACCESS_KEY
+      process.env.AWS_ACCESS_KEY_ID = 'aws-fallback'
+      process.env.AWS_SECRET_ACCESS_KEY = 'aws-fallback-secret'
+      expect(resolveObjectStorage({ provider: 'r2' }).credentials?.accessKeyId).toBe('aws-fallback')
+    })
+
+    it('rejects missing accounts, stale regions and unsupported provider names before a transfer', () => {
+      expect(() => createObjectStorageClient({ provider: 'r2' })).toThrow('R2 requires R2_ACCOUNT_ID')
+      process.env.R2_ACCOUNT_ID = 'test-account'
+      process.env.AWS_REGION = 'fsn1'
+      expect(() => createObjectStorageClient({ provider: 'r2' })).toThrow('R2 requires S3_REGION=auto')
+      expect(resolveObjectStorage({ provider: 'r2', region: 'auto' }).region).toBe('auto')
+      expect(() => resolveObjectStorage({ provider: 'invalid' as never })).toThrow('Unsupported storage provider')
+    })
+
+    it('uses the same account host, encoded path and auto signing scope for reads, writes, HEAD and signed URLs', async () => {
+      const originalFetch = globalThis.fetch
+      const calls: { url: string, method: string }[] = []
+      globalThis.fetch = Object.assign(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const method = init?.method || 'GET'
+        calls.push({ url: String(input), method })
+        expect(new Headers(init?.headers).get('authorization')).toContain('/auto/s3/aws4_request')
+        return new Response(method === 'GET' ? 'archive bytes' : null)
+      }, { preconnect: originalFetch.preconnect })
+      try {
+        const client = createObjectStorageClient({ provider: 'r2', accountId: 'test-account', credentials: { accessKeyId: 'key', secretAccessKey: 'secret' } })
+        expect(await client.getObject('registry', 'binaries/tool + build.tar.gz')).toBe('archive bytes')
+        await client.putObject({ bucket: 'registry', key: 'binaries/tool + build.tar.gz', body: 'archive bytes' })
+        await client.headObject('registry', 'binaries/tool + build.tar.gz')
+        expect(calls).toEqual(['GET', 'PUT', 'HEAD'].map(method => ({ method, url: 'https://test-account.r2.cloudflarestorage.com/registry/binaries/tool%20%2B%20build.tar.gz' })))
+        const signed = new URL(await client.getSignedUrl({ bucket: 'registry', key: 'binaries/tool + build.tar.gz', expiresIn: 60 }))
+        expect(signed.hostname).toBe('test-account.r2.cloudflarestorage.com')
+        expect(signed.pathname).toBe('/registry/binaries/tool%20%2B%20build.tar.gz')
+        expect(signed.searchParams.get('X-Amz-Credential')).toContain('/auto/s3/aws4_request')
+      } finally {
+        globalThis.fetch = originalFetch
+      }
+    })
+
+    it('preserves binary archive bytes through getObjectBuffer instead of decoding them as UTF-8', async () => {
+      const originalFetch = globalThis.fetch
+      const archive = Uint8Array.from([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x80, 0xfe])
+      globalThis.fetch = Object.assign(async () => new Response(archive), { preconnect: originalFetch.preconnect })
+      try {
+        const client = createObjectStorageClient({ provider: 'r2', accountId: 'test-account', credentials: { accessKeyId: 'key', secretAccessKey: 'secret' } })
+        expect(await client.getObjectBuffer('registry', 'binary.tar.gz')).toEqual(Buffer.from(archive))
+      } finally {
+        globalThis.fetch = originalFetch
+      }
+    })
   })
 })
 
