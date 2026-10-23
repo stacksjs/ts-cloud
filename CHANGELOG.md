@@ -1,3 +1,19 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.67...v0.16.68)
+
+## 🐛 Bug Fixes
+
+- **storage**: support native R2 clients and preserve binary downloads ([00b70e0](https://github.com/stacksjs/ts-cloud/commit/00b70e0)) _(by Chris <chris@stacksjs.com>)_
+- **mail**: make DNSBL rejection an explicit provisioning policy ([b3811e6](https://github.com/stacksjs/ts-cloud/commit/b3811e6)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.68 ([19edea3](https://github.com/stacksjs/ts-cloud/commit/19edea3)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.66...v0.16.67)
 
 ## ✨ Features
