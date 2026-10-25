@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.69...v0.16.70)
+
+## 🐛 Bug Fixes
+
+- honor release-local background runtimes ([64ab19d](https://github.com/stacksjs/ts-cloud/commit/64ab19d)) _(by Chris Breuer <chris@stacksjs.com>)_ ([#197](https://github.com/stacksjs/ts-cloud/issues/197))
+
+## 🔧 Chores
+
+- release v0.16.70 ([dd89a99](https://github.com/stacksjs/ts-cloud/commit/dd89a99)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.67...v0.16.68)
 
 ## 🐛 Bug Fixes
