@@ -38,6 +38,10 @@ backup paths, and systemd dependencies prevent applications from starting on
 unmounted storage. Every minute, the storage check verifies volume identity and
 deployment mounts; the metrics collector reports each configured filesystem.
 Inactive root copies are reclaimed hourly, preserving active and current code.
+Reclamation defers to the next timer run when a deployment, backup, or configured
+writer lock is busy. It releases acquired locks immediately instead of blocking
+deployments behind a backup. Applying an unchanged, verified placement also
+avoids backup locks; copying and activating new placement still requires them.
 The dashboard exposes filesystem usage and mount health. Declare additional
 writer locks in `deploymentStorage.locks` and systemd consumers in
 `deploymentStorage.dependentUnits`; the owner configuration keeps these

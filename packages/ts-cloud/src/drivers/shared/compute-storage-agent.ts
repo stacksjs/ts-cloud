@@ -141,14 +141,23 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
     persistMounts()
     run('systemctl', ['daemon-reload'])
   }
-  const { dlopen } = await import('bun:ffi')
-  const libc = dlopen('libc.so.6', { flock: { args: ['i32', 'i32'], returns: 'i32' } })
+  const { dlopen, read } = await import('bun:ffi')
+  const libc = dlopen('libc.so.6', {
+    flock: { args: ['i32', 'i32'], returns: 'i32' },
+    __errno_location: { args: [], returns: 'ptr' },
+  })
   const descriptors: number[] = []
-  const lock = (file: string): void => {
+  const lock = (file: string, wait = true): boolean => {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     const fd = fs.openSync(file, fs.constants.O_CREAT | fs.constants.O_RDWR | fs.constants.O_NOFOLLOW, 0o600)
-    if (libc.symbols.flock(fd, 2) !== 0) { fs.closeSync(fd); throw new Error(`Could not acquire lock: ${file}`) }
+    if (libc.symbols.flock(fd, wait ? 2 : 6) !== 0) {
+      const errno = read.i32(libc.symbols.__errno_location()!)
+      fs.closeSync(fd)
+      if (!wait && errno === 11) return false
+      throw new Error(`Could not acquire lock: ${file} (errno ${errno})`)
+    }
     descriptors.push(fd)
+    return true
   }
   const processFiles = (): Array<{ file: string, write: boolean, device: number }> => {
     const files: Array<{ file: string, write: boolean, device: number }> = []
@@ -228,7 +237,18 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
     run('systemctl', ['daemon-reload'])
   }
   try {
-    lock('/run/lock/ts-cloud-compute-storage.lock')
+    // Reclamation is optional maintenance. Never hold the deployment lock
+    // while waiting for a backup or another maintenance operation to finish.
+    const maintenanceLocks = [...new Set([...(placement?.locks ?? []), '/run/lock/ts-cloud-host-cleanup.lock'])]
+    if (command === 'reclaim') {
+      for (const file of ['/run/lock/ts-cloud-compute-storage.lock', ...maintenanceLocks]) {
+        if (!lock(file, false)) {
+          console.log(`Deferring deployment storage reclamation; lock busy: ${file}`)
+          return { deferred: true, lock: file }
+        }
+      }
+    }
+    else lock('/run/lock/ts-cloud-compute-storage.lock')
     state = readJson(statePath, { entries: [] })
     const previousPolicy = readJson(configPath, null) as ComputeStoragePolicy | null
     if (previousPolicy) {
@@ -256,6 +276,13 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
       if (!mounted(entry.source) || !sameFile(entry.source, entry.destination)) throw new Error(`Recorded deployment mount is missing: ${entry.source}`)
     }
     if (!entries.length && command === 'ensure-site') return { inherited: true, volume: deploymentVolume.name }
+    if (!entries.length && command === 'apply') {
+      // The mounts above are already verified, and mountVolumes persisted the
+      // policy. Backup exclusion is needed for cutover and reclamation only.
+      installDependencies()
+      const report = status(); save('/var/lib/ts-cloud/compute-storage-status.json', report)
+      console.log(JSON.stringify(report)); return report
+    }
     if (!placement.migrateExisting && entries.some(entry => fs.readdirSync(entry.source).length > 0))
       throw new Error('Existing deployments require deploymentStorage.migrateExisting: true')
     if (entries.length) {
@@ -280,7 +307,7 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
       console.log(`copy ${index + 1}/${entries.length}: ${entries[index].source}`)
       await sync(entries[index], false)
     }
-    for (const file of new Set([...(placement.locks ?? []), '/run/lock/ts-cloud-host-cleanup.lock'])) lock(file)
+    if (command !== 'reclaim') for (const file of maintenanceLocks) lock(file)
     for (const site of fs.readdirSync(policy.webRoot, { withFileTypes: true }).filter(site => site.isDirectory()).sort((a, b) => a.name.localeCompare(b.name)))
       lock(path.join(policy.webRoot, site.name, '.ts-cloud/deploy.lock'))
     for (const entry of command === 'reclaim' ? [] : discover(command === 'ensure-site' ? argv[1] : undefined, argv[2])) {
