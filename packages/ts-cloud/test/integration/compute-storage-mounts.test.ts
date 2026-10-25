@@ -16,6 +16,8 @@ test.skipIf(!enabled)('shared parent mounts cannot redirect root cleanup onto de
   const webRoot = path.join(fixture, 'www')
   const site = path.join(webRoot, name)
   const destination = path.join(volumePath!, 'releases', name)
+  const pendingSite = `${site}-pending`
+  const pendingDestination = `${destination}-pending`
   const policy = { webRoot, volumes: [{ key: 'deployments', name: 'fixture', size: 250, id: 1,
     device: device!, mountPath: volumePath!, allowFormat: false }],
   deploymentStorage: { volume: 'deployments', migrateExisting: true, includeBackups: false,
@@ -33,6 +35,7 @@ test.skipIf(!enabled)('shared parent mounts cannot redirect root cleanup onto de
     fs.writeFileSync(script, `await (${computeStorageAgent.toString()})(${JSON.stringify(policy)}, ['ensure-site', ${JSON.stringify(site)}, ${JSON.stringify(name)}]);`)
     for (const command of ['apply', 'reclaim'])
       fs.writeFileSync(path.join(fixture, `${command}.mjs`), `await (${computeStorageAgent.toString()})(${JSON.stringify(policy)}, [${JSON.stringify(command)}]);`)
+    fs.writeFileSync(path.join(fixture, 'pending.mjs'), `await (${computeStorageAgent.toString()})(${JSON.stringify(policy)}, ['ensure-site', ${JSON.stringify(pendingSite)}, ${JSON.stringify(name)}]);`)
     const quote = (value: string): string => `'${value.replaceAll("'", `'"'"'`)}'`
     const commands = [
       'set -eu',
@@ -56,6 +59,11 @@ test.skipIf(!enabled)('shared parent mounts cannot redirect root cleanup onto de
       `PATH=${quote(path.join(fixture, 'bin'))}:$PATH timeout 5 bun ${quote(path.join(fixture, 'apply.mjs'))}`,
       `PATH=${quote(path.join(fixture, 'bin'))}:$PATH timeout 5 bun ${quote(script)}`,
       `test -f ${quote(path.join(destination, 'retired', 'proof'))}`,
+      `mkdir -p ${quote(path.join(pendingSite, 'releases', 'current'))}`,
+      `touch ${quote(path.join(pendingSite, 'releases', 'current', 'proof'))}`,
+      `if PATH=${quote(path.join(fixture, 'bin'))}:$PATH timeout 1 bun ${quote(path.join(fixture, 'pending.mjs'))}; then exit 1; else test "$?" = 124; fi`,
+      `! mountpoint -q ${quote(path.join(pendingSite, 'releases'))}`,
+      `test -f ${quote(path.join(pendingSite, 'releases', 'current', 'proof'))}`,
     ]
     const child = Bun.spawn(['unshare', '--mount', '--propagation', 'private', 'bash', '-c', commands.join('\n')], { stdout: 'pipe', stderr: 'pipe' })
     const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited])
@@ -63,6 +71,7 @@ test.skipIf(!enabled)('shared parent mounts cannot redirect root cleanup onto de
     expect(fs.readFileSync(path.join(destination, 'retired', 'proof'), 'utf8')).toBe('preserved volume data\n')
   } finally {
     fs.rmSync(destination, { recursive: true, force: true })
+    fs.rmSync(pendingDestination, { recursive: true, force: true })
     fs.rmSync(fixture, { recursive: true, force: true })
   }
 }, 60_000)
