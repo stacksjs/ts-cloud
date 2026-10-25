@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
+import { validateBackgroundBunRuntime } from '../src/drivers/shared/background-bun'
 
 process.env.APP_ENV ||= 'production'
 process.env.NODE_ENV ||= 'production'
@@ -18,6 +19,7 @@ process.env.NODE_ENV ||= 'production'
  * `--tries` and `--timeout` from argv itself, so the flags pass through as is.
  */
 async function main(): Promise<void> {
+  validateBackgroundBunRuntime()
   const candidates = [
     'storage/framework/core/actions/src/queue/work.ts',
     'node_modules/@stacksjs/actions/src/queue/work.ts',

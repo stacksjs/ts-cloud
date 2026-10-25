@@ -1352,6 +1352,13 @@ export interface SiteConfig {
   start?: string
 
   /**
+   * Stacks scheduler and queue Bun executable, relative to the active release.
+   * Example: pantry/bun.sh/v1.4.4/bin/bun. No global fallback when selected.
+   * Omit to retain the host runtime. This does not change the main start command.
+   */
+  backgroundBun?: string
+
+  /**
    * Port the SSR app listens on. Required when `start` is set.
    * Two SSR sites on the same EC2 instance must use different ports.
    */

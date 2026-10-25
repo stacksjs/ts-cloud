@@ -834,3 +834,24 @@ describe('stx image and bundle caches shared across releases', () => {
     expect(joined).toContain('Environment=STX_BUNDLE_CACHE_DIR=/var/www/web/shared/stx-bundles')
   })
 })
+
+
+describe('release resources reconcile before old releases are pruned', () => {
+  const hook = 'systemctl restart example-background.service'
+  const base = { siteName: 'app', slug: 'example', artifactFetch: [], releaseId: 'b', appDir: '/srv/example', keepReleases: 1, postActivateCommands: [hook] }
+  const scripts = [
+    buildSiteDeployScript({ ...base, execStart: '/usr/local/bin/bun server.ts', envEntries: {} }),
+    buildSiteDeployScript({ ...base, execStart: '/usr/local/bin/bun server.ts', envEntries: {}, port: 3000 }),
+    buildStaticSiteDeployScript(base),
+  ]
+  for (const [index, script] of scripts.entries()) it(`reconciles after activation and before pruning for release shape ${index}`, () => {
+    const activate = script.findIndex(line => line.includes('mv -Tf /srv/example/current.tmp /srv/example/current'))
+    const reconcile = script.indexOf(hook)
+    const prune = script.findIndex(line => line.startsWith('TS_CLOUD_CURRENT=$(readlink -f '))
+    expect(activate).toBeGreaterThan(-1)
+    expect(reconcile).toBeGreaterThan(activate)
+    expect(prune).toBeGreaterThan(reconcile)
+    expect(script.filter(line => line === hook)).toHaveLength(1)
+    expect(script.join('\n')).toContain('tail -n +2')
+  })
+})

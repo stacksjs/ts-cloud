@@ -12,6 +12,7 @@
  */
 import type { QueueWorkerConfig, SiteConfig } from '@ts-cloud/core'
 import { PANTRY_PROJECT_DIR } from './package-manager'
+import { releaseLocalBunPath } from './background-bun'
 
 export type FrameworkId = 'stacks' | 'laravel'
 
@@ -32,6 +33,8 @@ export function resolveSiteFramework(site: Pick<SiteConfig, 'framework' | 'type'
 export interface FrameworkExecContext {
   /** The active-release directory (`/var/www/<site>/current`). */
   current: string
+  /** Explicit release-relative Bun for Stacks scheduler and queue services. */
+  backgroundBun?: string
 }
 
 export interface AppFrameworkDriver {
@@ -45,6 +48,8 @@ export interface AppFrameworkDriver {
   wrapExec: (command: string) => string
   /** Static `Environment=` vars for a unit (systemd inherits no shell env). */
   readonly execEnv?: Record<string, string>
+  /** Runtime environment for generated scheduler and queue units. */
+  executionEnvironment?: (ctx: FrameworkExecContext) => Record<string, string>
   /**
    * How the app scheduler runs:
    *  - `'cron'`   → `schedule:run` is one-shot; run it every minute via cron (Laravel).
@@ -67,6 +72,24 @@ const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/n
 
 /** The ts-cloud-installed bun (see ubuntu-bootstrap) + dedicated runtime entries. */
 const BUN_BIN = '/usr/local/bin/bun'
+const STACKS_EXEC_ENV: Record<string, string> = {
+  PATH: '/usr/local/bin:/usr/bin:/bin',
+  BUN_INSTALL: '/root/.bun',
+  APP_ENV: 'production',
+  NODE_ENV: 'production',
+}
+
+function backgroundBun(ctx: FrameworkExecContext): string {
+  if (ctx.backgroundBun === undefined) return BUN_BIN
+  return releaseLocalBunPath(ctx.current, ctx.backgroundBun)
+}
+function validateSelectedQueueOptions(worker: QueueWorkerConfig): void {
+  const queue = worker.queue ?? 'default'
+  const numbers = [worker.sleep, worker.tries, worker.timeout, worker.processes, worker.stopWaitSecs]
+  if (typeof queue !== 'string' || !/^[a-zA-Z0-9_.:,{}/@+-]+$/.test(queue || 'default')
+    || numbers.some(value => value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))))
+    throw new Error('Stacks background queue options require safe queue names and finite numeric values')
+}
 const STACKS_SCHEDULER = 'node_modules/@stacksjs/ts-cloud/dist/bin/stacks-scheduler.js'
 // Not `storage/framework/core/buddy/src/cli.ts queue:work`: that path exists
 // only in the framework's monorepo, never in an app installed from npm, so
@@ -83,25 +106,30 @@ const STACKS_QUEUE_WORKER = 'node_modules/@stacksjs/ts-cloud/dist/bin/stacks-que
 export const stacksDriver: AppFrameworkDriver = {
   id: 'stacks',
   wrapExec: (command) => command,
-  execEnv: {
-    PATH: '/usr/local/bin:/usr/bin:/bin',
-    BUN_INSTALL: '/root/.bun',
-    APP_ENV: 'production',
-    NODE_ENV: 'production',
+  execEnv: STACKS_EXEC_ENV,
+  executionEnvironment: (ctx) => {
+    const executable = backgroundBun(ctx)
+    return ctx.backgroundBun === undefined ? STACKS_EXEC_ENV : {
+      ...STACKS_EXEC_ENV,
+      PATH: `${executable.slice(0, executable.lastIndexOf('/'))}:${STACKS_EXEC_ENV.PATH}`,
+      TS_CLOUD_BACKGROUND_BUN: ctx.backgroundBun,
+    }
   },
   // The scheduler action stays alive through its in-process timers. Launch it
   // through ts-cloud's dedicated production entry so Buddy's full command
   // dispatcher does not remain resident while waiting on a child process.
   schedulerMode: 'daemon',
-  schedulerCommand: () => `${BUN_BIN} ${STACKS_SCHEDULER}`,
-  queueWorkerCommand: (worker, { current }) => {
+  schedulerCommand: (ctx) => `${backgroundBun(ctx)} ${STACKS_SCHEDULER}`,
+  queueWorkerCommand: (worker, ctx) => {
+    if (ctx.backgroundBun !== undefined) validateSelectedQueueOptions(worker)
+    const { current } = ctx
     const flags = [
       `--queue=${worker.queue || 'default'}`,
       `--sleep=${worker.sleep ?? 3}`,
       `--tries=${worker.tries ?? 3}`,
       `--timeout=${worker.timeout ?? 60}`,
     ]
-    return `${BUN_BIN} ${current}/${STACKS_QUEUE_WORKER} ${flags.join(' ')}`
+    return `${backgroundBun(ctx)} ${current}/${STACKS_QUEUE_WORKER} ${flags.join(' ')}`
   },
 }
 

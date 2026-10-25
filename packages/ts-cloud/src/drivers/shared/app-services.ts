@@ -13,9 +13,10 @@
  *   <slug>-<site>-daemon-<slug-of-name>.service
  * Scheduler cron lives at /etc/cron.d/<slug>-<site>-scheduler.
  *
- * ExecStart commands target `<base>/current/...` (the active-release symlink),
- * so workers/daemons always run the live code; `queue:restart` (run by the
- * deploy's $RESTART_QUEUES macro) cycles them onto the new release.
+ * Default services target `<base>/current/...`. An explicitly selected Stacks
+ * background runtime binds scheduler and queue units to `<base>/releases/<id>`
+ * from process startup, including their child PATH. Reconciliation restarts
+ * these units for each promoted release; arbitrary daemons retain their defaults.
  */
 import type { SiteConfig } from '@ts-cloud/core'
 import { buildClearAutoMemoryHigh } from './deploy-script'
@@ -29,6 +30,8 @@ export interface SiteServicesOptions {
   phpVersion?: string
   /** Site base dir. @default `/var/www/<siteName>` */
   appBase?: string
+  /** Physical release ID, required when selecting a release-local Stacks background runtime. */
+  releaseId?: string
 }
 
 /** Escape a string for safe use inside a POSIX/ERE regex character context. */
@@ -49,6 +52,15 @@ function slugify(value: string): string {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'unnamed'
   )
+}
+
+function managedUnitsLoop(slug: string, siteName: string): string {
+  return `for unit in $(ls /etc/systemd/system/ 2>/dev/null | grep -E '^${reEscape(slug)}-${reEscape(siteName)}-((queue|daemon)-.*|scheduler)\\.service$' || true); do`
+}
+
+/** Stop existing managed background work before its release directory can be replaced. */
+export function buildStopSiteServicesScript(options: Pick<SiteServicesOptions, 'slug' | 'siteName'>): string[] {
+  return [managedUnitsLoop(options.slug, options.siteName), '  systemctl stop "$unit"', 'done']
 }
 
 export function queueUnitName(slug: string, siteName: string, index: number): string {
@@ -131,7 +143,12 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   const base = options.appBase ?? `/var/www/${siteName}`
   const current = `${base}/current`
   const driver = getAppFrameworkDriver(resolveSiteFramework(site))
-  const ctx = { current }
+  const selectedRuntime = driver.id === 'stacks' && site.backgroundBun !== undefined
+  if (selectedRuntime && (!options.releaseId || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(options.releaseId)))
+    throw new Error('Stacks backgroundBun requires a safe physical releaseId')
+  const backgroundDirectory = selectedRuntime ? `${base}/releases/${options.releaseId}` : current
+  const ctx = { current: backgroundDirectory, backgroundBun: site.backgroundBun }
+  const executionEnvironment = driver.executionEnvironment?.(ctx) ?? driver.execEnv
 
   const out: string[] = []
   const desiredUnits: string[] = []
@@ -140,6 +157,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   // the worker command; the driver's exec wrapper supplies its runtime env.
   const queues = site.queues || []
   queues.forEach((worker, qIndex) => {
+    const execStart = driver.wrapExec(driver.queueWorkerCommand(worker, ctx))
     const processes = Math.max(1, worker.processes ?? 1)
     for (let p = 0; p < processes; p++) {
       const name = queueUnitName(slug, siteName, desiredUnits.length)
@@ -149,9 +167,9 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
           name,
           systemdUnit({
             description: `${siteName} queue worker ${qIndex}.${p} (managed by ts-cloud)`,
-            workingDir: current,
-            execStart: driver.wrapExec(driver.queueWorkerCommand(worker, ctx)),
-            environment: driver.execEnv,
+            workingDir: backgroundDirectory,
+            execStart,
+            environment: executionEnvironment,
             stopWaitSecs: worker.stopWaitSecs ?? 90,
           }),
         ),
@@ -197,9 +215,9 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
         schedulerUnit,
         systemdUnit({
           description: `${siteName} scheduler (managed by ts-cloud)`,
-          workingDir: current,
+          workingDir: backgroundDirectory,
           execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
-          environment: driver.execEnv,
+          environment: executionEnvironment,
           memoryHigh: limits.memoryHigh,
           memoryMax: limits.memoryMax,
         }),
@@ -223,10 +241,10 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     // Escape regex metachars in slug/siteName and anchor to `.service` so a
     // sibling site whose name is a prefix (e.g. `app` vs `app-admin`) or a slug
     // with a `.`/`+` doesn't over-match and prune another site's units.
-    `for unit in $(ls /etc/systemd/system/ 2>/dev/null | grep -E '^${reEscape(slug)}-${reEscape(siteName)}-((queue|daemon)-.*|scheduler)\\.service$' || true); do`,
+    managedUnitsLoop(slug, siteName),
     '  case " $TS_CLOUD_DESIRED " in',
     '    *" $unit "*) ;;',
-    '    *) systemctl stop "$unit" 2>/dev/null || true; systemctl disable "$unit" 2>/dev/null || true; rm -f "/etc/systemd/system/$unit" ;;',
+    '    *) systemctl stop "$unit"; systemctl disable "$unit"; rm -f "/etc/systemd/system/$unit" ;;',
     '  esac',
     'done',
     'systemctl daemon-reload',

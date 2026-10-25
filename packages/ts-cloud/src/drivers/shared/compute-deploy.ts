@@ -7,7 +7,7 @@ import { buildMailEnv, hasManagementDashboardSite, resolveAppDatabase, resolveMa
 import { describeCredentialReach, formatCredentialReach, unrelatedReachCount } from '../../deploy/attach-credentials'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
-import { buildSiteServicesScript, siteHasServices } from './app-services'
+import { buildSiteServicesScript, buildStopSiteServicesScript, siteHasServices } from './app-services'
 import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildComputeStorageSiteScript } from './compute-storage'
 import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
@@ -251,6 +251,10 @@ export async function deploySiteRelease(
   // WorkingDirectory, rpx static root, ownership guard, deploy history) derives
   // from it so a shared box never collides two projects on /var/www/<name>.
   const appBase = siteInstallBase(slug, siteName)
+  // Background services must stop/drain on their existing release before its
+  // files can be pruned, including the selected private runtime and job assets.
+  // An empty desired set must still stop and remove units from earlier releases.
+  const servicesScript = buildSiteServicesScript({ slug, siteName, site, appBase, releaseId: sha })
   const baseScript =
     kind === 'server-static'
       ? buildStaticSiteDeployScript({
@@ -260,6 +264,8 @@ export async function deploySiteRelease(
           artifactFetch,
           releaseId: sha,
           preStartCommands: site.preStart,
+          postActivateCommands: servicesScript,
+          beforeResetCommands: buildStopSiteServicesScript({ slug, siteName }),
         })
       : buildSiteDeployScript({
           siteName,
@@ -280,6 +286,8 @@ export async function deploySiteRelease(
           envEntries: envWithServices,
           port: site.port,
           preStartCommands: site.preStart,
+          postActivateCommands: servicesScript,
+          beforeResetCommands: buildStopSiteServicesScript({ slug, siteName }),
           sharedPaths: site.sharedPaths,
           // Ported sites cut over with SO_REUSEPORT overlap + health gate by
           // default; `zeroDowntime: false` opts back into stop/start. Portless
@@ -321,11 +329,6 @@ export async function deploySiteRelease(
     : []
   const staticSsl = wantsNginxStatic ? buildSslScript(site) : []
 
-  // Reconcile background services (scheduler / queue workers / daemons) for
-  // non-PHP sites too — not just Laravel. The framework driver (app-services)
-  // renders the right commands for Stacks (bun) vs Laravel, so a Stacks
-  // server-app can run its scheduler + workers the same way.
-  const servicesScript = siteHasServices(site) ? buildSiteServicesScript({ slug, siteName, site, appBase }) : []
 
   const remoteScript = [
     ...buildDeployHistoryHeader(appBase, {
@@ -340,7 +343,6 @@ export async function deploySiteRelease(
     ...baseScript,
     ...staticVhost,
     ...staticSsl,
-    ...servicesScript,
     // Refreshes the cleanup timer, then cleans once now (#195).
     ...hostCleanup,
   ]

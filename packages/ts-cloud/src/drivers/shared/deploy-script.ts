@@ -615,6 +615,12 @@ export function buildZeroDowntimeCutover(options: ZeroDowntimeCutoverOptions): s
   ]
 }
 
+function buildBeforeReleaseReset(paths: ReleasePaths, commands: string[]): string[] {
+  if (!commands.length) return []
+  const target = quoteShellArg(paths.release)
+  return [`if [ -e ${target} ] || [ -L ${target} ]; then`, ...commands, 'fi']
+}
+
 export interface BuildSiteDeployScriptOptions {
   siteName: string
   slug: string
@@ -637,6 +643,10 @@ export interface BuildSiteDeployScriptOptions {
    * `node_modules`.
    */
   preStartCommands?: string[]
+  /** Reconcile release-bound work after activation/health gates, before old releases are pruned. */
+  postActivateCommands?: string[]
+  /** Stop release-bound work before an existing target directory can be replaced. */
+  beforeResetCommands?: string[]
   /**
    * Extra paths kept in `shared/` and symlinked into each release, so they
    * survive a deploy. `.env` is always shared; anything the app WRITES and must
@@ -765,6 +775,8 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     port,
     keepReleases = DEFAULT_KEEP_RELEASES,
     preStartCommands = [],
+    postActivateCommands = [],
+    beforeResetCommands = [],
     healthCheckPath,
     healthGateSeconds = 5,
     liveness,
@@ -830,16 +842,16 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // buildDeployLock): a second deploy racing the first is how a release dir
     // gets `rm -rf`'d while it is still being extracted into.
     ...buildDeployLock(paths),
-    // A failed deploy must not strand its half-built release dir: rollback
-    // picks the newest non-current dir and would activate this never-activated
-    // (broken) release. On any failure before activation, remove it.
-    buildStrandedReleaseTrap(paths),
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, sharedPaths),
     // Unpack this deploy into its own release dir. When that id is the one
     // being served — the same commit deployed twice, a retry after an
     // interrupted run — it is staged beside the live tree and swapped in
     // below, rather than deleted out from under the running service.
+    ...buildBeforeReleaseReset(paths, beforeResetCommands),
+    // A refused drain must not give cleanup ownership of an existing target.
+    // After the drain succeeds, remove any newly half-built non-current release.
+    buildStrandedReleaseTrap(paths),
     ...buildResetReleaseDir(paths),
     `tar xzf ${tarball} -C "$TS_CLOUD_STAGED"`,
     // Drop the staged tarball once extracted — don't leave a world-readable
@@ -914,6 +926,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
         : [...buildClearAutoMemoryHigh(`${unitBase}@.service`), ...buildCommitmentReport()]),
       ...buildSliceReconcile(instance),
       ...buildZeroDowntimeCutover({ paths, unitBase, releaseId, port, healthCheckPath: gatePath, healthGateSeconds }),
+      ...postActivateCommands,
       ...buildPruneReleases(paths, keepReleases),
       // The deploy gate proves this release came up. Nothing after today
       // proves it is still answering, which is what the timer below is for.
@@ -981,6 +994,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // failure puts `current` back and restarts the previous release.
     `for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${serviceName} || { echo "[ts-cloud] release ${releaseId} of ${serviceName} did not stay up — restoring the previous release" >&2; journalctl -u ${serviceName} -n 50 --no-pager >&2 || true; if [ -n "$TS_CLOUD_PREV_CURRENT" ] && [ -d "$TS_CLOUD_PREV_CURRENT" ] && [ "$(readlink -f "$TS_CLOUD_PREV_CURRENT")" != "$(readlink -f ${paths.release})" ]; then ln -sfn "$TS_CLOUD_PREV_CURRENT" ${paths.current}.tmp && mv -Tf ${paths.current}.tmp ${paths.current}; systemctl restart ${serviceName} || true; fi; exit 1; }; done`,
     ...buildRecordPreviousRelease(paths),
+    ...postActivateCommands,
     ...buildPruneReleases(paths, keepReleases),
     // Only a ported service can be probed over HTTP. A worker or scheduler has
     // no port to ask, so it gets no timer rather than a check that would call
@@ -1015,6 +1029,10 @@ export interface BuildStaticSiteDeployScriptOptions {
    * tarball ships source rather than a pre-built site.
    */
   preStartCommands?: string[]
+  /** Reconcile release-bound work after activation/health gates, before old releases are pruned. */
+  postActivateCommands?: string[]
+  /** Stop release-bound work before an existing target directory can be replaced. */
+  beforeResetCommands?: string[]
 }
 
 /**
@@ -1026,7 +1044,7 @@ export interface BuildStaticSiteDeployScriptOptions {
  * tlsx), which ts-cloud points at the symlink. Old releases are pruned.
  */
 export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScriptOptions): string[] {
-  const { siteName, artifactFetch, releaseId, keepReleases = DEFAULT_KEEP_RELEASES, preStartCommands = [] } = options
+  const { siteName, artifactFetch, releaseId, keepReleases = DEFAULT_KEEP_RELEASES, preStartCommands = [], postActivateCommands = [], beforeResetCommands = [] } = options
   const base = options.appDir ?? `/var/www/${siteName}`
   const paths = releasePaths(base, releaseId)
   const tarball = releaseTarballTmpPath(options.slug, siteName, releaseId)
@@ -1036,13 +1054,14 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
   return [
     'set -euo pipefail',
     ...buildDeployLock(paths),
-    // Same stranded-release guard as buildSiteDeployScript: never let a failed
-    // deploy leave a release rollback could activate.
-    buildStrandedReleaseTrap(paths),
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, []),
     // Same staging rule as buildSiteDeployScript: never delete the tree the
     // docroot currently points at.
+    ...buildBeforeReleaseReset(paths, beforeResetCommands),
+    // A refused drain must not give cleanup ownership of an existing target.
+    // After the drain succeeds, remove any newly half-built non-current release.
+    buildStrandedReleaseTrap(paths),
     ...buildResetReleaseDir(paths),
     `tar xzf ${tarball} -C "$TS_CLOUD_STAGED"`,
     ...buildPromoteStagedRelease(paths),
@@ -1051,6 +1070,7 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
     ...preStart,
     // Promote atomically — the docroot (`current`) is never empty during the swap.
     ...buildActivateRelease(paths),
+    ...postActivateCommands,
     ...buildPruneReleases(paths, keepReleases),
   ]
 }

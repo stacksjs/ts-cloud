@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import type { CloudConfig, CloudDriver } from '@ts-cloud/core'
+import type { CloudConfig, CloudDriver, SiteConfig } from '@ts-cloud/core'
 import { deriveManagementDashboardPort } from '@ts-cloud/core'
 import {
   buildManagementDashboardServiceReconciliationScript,
@@ -1303,5 +1303,59 @@ describe('deployAllComputeSites attach-mode credential reach', () => {
     })
     expect(ok).toBe(true)
     expect(warnings.join('\n')).not.toContain('credential')
+  })
+})
+
+
+describe('compute release background lifecycle', () => {
+  for (const kind of ['app', 'static'] as const) for (const selected of [false, true]) it(`${kind} background services drain before pruning with ${selected ? 'selected' : 'default'} Bun`, async () => {
+    const driver = createMockDriver()
+    const site: SiteConfig = { root: '.', deploy: 'server', scheduler: true, queues: [{ queue: 'reports' }], ...(kind === 'app' ? { start: 'bun server.ts', port: 3000 } : {}), ...(selected ? { backgroundBun: 'runtime/bin/bun' } : {}) }
+    const result = await deploySiteRelease(driver, { config, environment: 'production', siteName: 'background', site, slug: 'my-app', sha: 'abc123', runtime: 'bun', localTarballPath: '/tmp/fixture-release.tar.gz' })
+    expect(result.success).toBe(true)
+    const commands: string[] = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands
+    const prune = commands.findIndex(line => line.startsWith('TS_CLOUD_CURRENT=$(readlink -f '))
+    for (const unit of ['queue-0', 'scheduler']) {
+      const command = `systemctl restart my-app-background-${unit}.service`
+      const restart = commands.indexOf(command)
+      expect(restart).toBeGreaterThan(-1)
+      expect(prune).toBeGreaterThan(restart)
+      expect(commands.filter(line => line === command)).toHaveLength(1)
+    }
+    expect(commands.join('\n')).toContain(selected ? 'ExecStart=/var/www/my-app-background/releases/abc123/runtime/bin/bun' : 'ExecStart=/usr/local/bin/bun')
+  })
+})
+
+
+describe('removing all managed background services', () => {
+  for (const kind of ['app', 'static'] as const) for (const keepRuntimeOption of [false, true]) it(`${kind} removes stale units with runtime option ${keepRuntimeOption}`, async () => {
+    const driver = createMockDriver()
+    const site: SiteConfig = { root: '.', deploy: 'server', scheduler: false, queues: [], daemons: [], ...(kind === 'app' ? { start: 'bun server.ts', port: 3000 } : {}), ...(keepRuntimeOption ? { backgroundBun: 'runtime/bin/bun' } : {}) }
+    const result = await deploySiteRelease(driver, { config, environment: 'production', siteName: 'background', site, slug: 'my-app', sha: 'abc123', runtime: 'bun', localTarballPath: '/tmp/fixture-release.tar.gz' })
+    expect(result.success).toBe(true)
+    const commands: string[] = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands
+    const stop = commands.findIndex(line => line.includes('systemctl stop "$unit"') && line.includes('rm -f'))
+    const prune = commands.findIndex(line => line.startsWith('TS_CLOUD_CURRENT=$(readlink -f '))
+    expect(stop).toBeGreaterThan(-1)
+    expect(prune).toBeGreaterThan(stop)
+    expect(commands).toContain('TS_CLOUD_DESIRED=""')
+    expect(commands.some(line => line.startsWith('cat > /etc/systemd/system/my-app-background-scheduler.service '))).toBe(false)
+  })
+})
+
+
+describe('background drain before a same-ID directory replacement', () => {
+  for (const kind of ['app', 'static'] as const) for (const selected of [false, true]) it(`${kind} drains existing units before reset with runtime option ${selected}`, async () => {
+    const driver = createMockDriver()
+    const site: SiteConfig = { root: '.', deploy: 'server', scheduler: true, ...(kind === 'app' ? { start: 'bun server.ts', port: 3000 } : {}), ...(selected ? { backgroundBun: 'runtime/bin/bun' } : {}) }
+    const result = await deploySiteRelease(driver, { config, environment: 'production', siteName: 'background', site, slug: 'my-app', sha: 'abc123', runtime: 'bun', localTarballPath: '/tmp/fixture-release.tar.gz' })
+    expect(result.success).toBe(true)
+    const commands: string[] = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands
+    const stop = commands.findIndex(line => line.includes('systemctl stop "$unit"'))
+    const reset = commands.indexOf('rm -rf /var/www/my-app-background/releases/abc123.incoming')
+    const guard = commands.findIndex(line => line.startsWith("if [ -e '/var/www/my-app-background/releases/abc123' ]"))
+    expect(guard).toBeGreaterThan(-1)
+    expect(stop).toBeGreaterThan(guard)
+    expect(reset).toBeGreaterThan(stop)
   })
 })

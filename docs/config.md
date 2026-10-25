@@ -448,6 +448,60 @@ sharedPaths: [{ path: 'database/app.sqlite', target: '/var/www/acme-app/shared/d
 Each site installs under its own base, so a plain string would give each of them
 a database of its own. `seed: false` marks the sites that do not own the file.
 
+### Background services and release-local Bun
+
+Stacks server sites can select a Bun executable shipped inside each release for
+their scheduler and queue workers:
+
+```typescript
+sites: {
+  main: {
+    root: '.',
+    start: 'bun server.ts',
+    port: 3000,
+    backgroundBun: 'pantry/bun.com/v1.4.4/bin/bun',
+    scheduler: true,
+    queues: [{ queue: 'reports,emails', tries: 3, stopWaitSecs: 120 }],
+  },
+}
+```
+
+Install the selected executable into the release during your normal artifact
+build or `preStart` commands. This option does not install Bun, infer a runtime
+from `start`, or change the main service's start command. Omission retains the
+host Bun for background services. Laravel commands and arbitrary daemon commands
+retain their existing runtime behavior.
+
+The native deploy supplies its release ID. Selected scheduler and queue units
+use that physical `releases/<id>` directory for WorkingDirectory, ExecStart and
+child PATH from process launch. Switching `current` cannot redirect a running
+worker's later Bun children. Bun's default child environment is
+[captured at worker launch](https://bun.com/reference/bun/Spawn/BaseOptions).
+
+The selected path must be relative, contain only ASCII letters, digits, `_`,
+`.`, `/` and `-`, and end in `bun`. Empty, `.` and `..` segments are refused. Release-directory paths use the
+same ASCII characters.
+A symlink may resolve inside the same physical release, including a Pantry
+`.bin/bun` alias. Before loading application work, the native entry verifies the
+selected executable, its release containment, the running executable and the
+leading PATH entry. A missing or mismatched selection fails that process;
+there is no global-runtime retry.
+
+Selected Stacks queue names accept ASCII letters, digits and `_ . : , { } / @ + -`
+without spaces. Tuning values must be finite numbers. Whitespace, directives,
+systemd expansion characters and command fragments are refused before unit
+creation.
+
+For non-PHP server sites, background services reconcile after the new release's
+activation and any health gate, before old releases are pruned. Removing the
+last declared service still reconciles the empty desired set and stops its old managed units. When a deploy
+replaces an existing release ID, managed background work stops before that
+directory is reset. Stopped background services restart only after activation;
+a failed replacement can leave them stopped until a recovery deploy. Systemd's
+configured stop timeout bounds worker draining. The configured release
+retention count still applies after reconciliation. A refused stop or disable stops the deploy
+before unit-file removal and this pruning step.
+
 ### Liveness probe
 
 Every server-app site with a `port` gets a systemd timer,
