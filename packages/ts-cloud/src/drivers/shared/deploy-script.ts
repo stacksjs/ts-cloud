@@ -19,13 +19,19 @@ import { sqliteSharedPaths } from './sqlite-shared-path'
 import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
 
 /** Managed engine clients must be available to migrations and their backups. */
-function releasePreStart(directory: string, commands: string[]): string[] {
+function releasePreStart(directory: string, commands: string[], environment: Record<string, string> = {}): string[] {
   if (!commands.length) return []
+  const exports = Object.entries(environment).flatMap(([name, value]) => {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error('Invalid pre-start environment variable name')
+    if (['PORT', 'PORT_BACKEND', 'PORT_ADMIN', 'PORT_FRONTEND'].includes(name)) return []
+    return [`export ${name}=${quoteShellArg(String(value))}`]
+  })
   return [
     `cd ${directory}`,
     `if [ -d ${PANTRY_PROJECT_DIR} ] && command -v pantry >/dev/null 2>&1; then`,
     `  ${pantryEnvActivation()}`,
     'fi',
+    ...exports,
     ...commands,
   ]
 }
@@ -849,7 +855,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   // the linked `.env` from the cwd, so build steps see the same config as the
   // running service. The release isn't live yet, so a slow build never affects
   // the currently-serving release.
-  const preStart = releasePreStart(paths.release, preStartCommands)
+  const preStart = releasePreStart(paths.release, preStartCommands, envEntries)
 
   const stageRelease = [
     'set -euo pipefail',

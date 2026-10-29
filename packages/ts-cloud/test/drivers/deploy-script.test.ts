@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'bun:test'
+import {mkdtempSync,writeFileSync,rmSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+import {formatEnvFile} from '../../src/drivers/shared/env-file'
 import {
   buildAwsArtifactFetch,
   buildHostCleanupScript,
@@ -20,6 +24,23 @@ describe('resolveExecStart', () => {
 })
 
 describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
+
+  it('passes resolved JSON and literal secrets to pre-start without dotenv re-escaping or shell expansion',()=>{
+    const directory=mkdtempSync(join(tmpdir(),'prestart-env-'))
+    const values={SDK_TEST_JSON:'[{"demo":"synthetic"}]',SDK_TEST_TEXT:'single\' double" dollar$HOME $(exit 73) `exit 74` \\ tail',SDK_TEST_MULTILINE:'line one\nline two'}
+    try{
+      const file=join(directory,'.env')
+      writeFileSync(file,formatEnvFile(values))
+      const script=buildSiteDeployScript({slug:'fixture',siteName:'fixture',releaseId:'abc123',artifactFetch:[],execStart:'bun app.ts',envEntries:{...values,PORT:'9999'},preStartCommands:['bun migrate']})
+      const exports=script.filter(line=>line.startsWith('export SDK_TEST_'))
+      const reader='process.stdout.write(JSON.stringify(Object.fromEntries(["SDK_TEST_JSON","SDK_TEST_TEXT","SDK_TEST_MULTILINE"].map(key=>[key,process.env[key]]))))'
+      const result=Bun.spawnSync(['sh','-c',exports.join('\n')+`\n"$SDK_TEST_BUN" --env-file "$SDK_TEST_ENV_FILE" -e '${reader}'`],{cwd:directory,env:{PATH:process.env.PATH,SDK_TEST_BUN:process.execPath,SDK_TEST_ENV_FILE:file}})
+      expect(result.exitCode).toBe(0)
+      expect(JSON.parse(result.stdout.toString())).toEqual(values)
+      expect(script.some(line=>line.startsWith('export PORT='))).toBe(false)
+      expect(()=>buildSiteDeployScript({slug:'fixture',siteName:'fixture',releaseId:'abc123',artifactFetch:[],execStart:'bun app.ts',envEntries:{'INVALID;name':'fixture'},preStartCommands:['bun migrate']})).toThrow('Invalid pre-start environment')
+    }finally{rmSync(directory,{recursive:true,force:true})}
+  })
   const opts = {
     siteName: 'web',
     slug: 'my-app',
