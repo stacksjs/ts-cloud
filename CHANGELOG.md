@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.76...v0.16.77)
+
+## 🐛 Bug Fixes
+
+- resolve relative daemon executables for systemd ([351024e](https://github.com/stacksjs/ts-cloud/commit/351024e)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.77 ([7ddaaab](https://github.com/stacksjs/ts-cloud/commit/7ddaaab)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.75...v0.16.76)
 
 ## 🐛 Bug Fixes
