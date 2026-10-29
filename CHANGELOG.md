@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.79...v0.16.80)
+
+## 🐛 Bug Fixes
+
+- provision private encrypted recovery backups ([0c55ac9](https://github.com/stacksjs/ts-cloud/commit/0c55ac9)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.80 ([ff9556b](https://github.com/stacksjs/ts-cloud/commit/ff9556b)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.78...v0.16.79)
 
 ## 🐛 Bug Fixes
