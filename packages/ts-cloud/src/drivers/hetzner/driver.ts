@@ -223,6 +223,16 @@ export class HetznerDriver implements CloudDriver {
     // see provisionBunFleet's services-box step.
     const phpBox = compute.runtime === 'php' || !!compute.php
     const topology = resolveFleetTopology(compute)
+    const residency = config.cloud?.residency || this.residency
+    const { assertComputeResidency } = await import('../../deploy/residency')
+    const assertServerResidency = (server: HetznerServer): void => {
+      if (residency) assertComputeResidency(residency, { country: server.location?.country, location: server.location?.name || server.datacenter?.location?.name })
+    }
+    if (residency) {
+      if (topology.dedicatedServices || topology.appServers > 1) throw new Error('Residency policy currently requires single-host compute')
+      const location = await this.client.getLocation(config.hetzner?.location || this.location)
+      assertComputeResidency(residency, { country: location.country, location: location.name })
+    }
     if (topology.dedicatedServices || topology.appServers > 1) {
       return phpBox ? this.provisionFleet(options, topology) : this.provisionBunFleet(options, topology)
     }
@@ -263,7 +273,10 @@ export class HetznerDriver implements CloudDriver {
     const existing = await readDriverState(stackName)
     if (existing?.serverId) {
       const server = await this.tryGetServer(existing.serverId)
-      if (server && server.status !== 'off') {
+      // Removing attachTo must not turn its historical shared-host pin into
+      // ownership of that host. Rediscover or provision this project's server.
+      if (server && server.status !== 'off' && server.labels?.['ts-cloud/project'] === slug && server.labels?.['ts-cloud/environment'] === environment) {
+        assertServerResidency(server)
         if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
         return this.outputsFromState(existing, server)
       }
@@ -274,6 +287,7 @@ export class HetznerDriver implements CloudDriver {
     // labels before creating a duplicate, and rehydrate local state from it.
     const alreadyRunning = await this.findExistingServer(slug, environment, serverName)
     if (alreadyRunning && alreadyRunning.status !== 'off') {
+      assertServerResidency(alreadyRunning)
       const rehydrated: HetznerDriverState = {
         provider: 'hetzner',
         stackName,
@@ -340,6 +354,7 @@ export class HetznerDriver implements CloudDriver {
 
     await this.client.waitForAction(action.id)
     const running = await this.client.waitForServerRunning(server.id)
+    assertServerResidency(running)
 
     const state: HetznerDriverState = {
       provider: 'hetzner',

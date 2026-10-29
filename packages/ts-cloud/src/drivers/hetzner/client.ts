@@ -324,6 +324,13 @@ export class HetznerClient {
     return this.requestAll<'servers', HetznerServer>('/servers', 'servers')
   }
 
+  async getLocation(name: string): Promise<{ name: string, country: string }> {
+    const data = await this.request<{ locations: Array<{ name: string, country: string }> }>('GET', `/locations?name=${encodeURIComponent(name)}`)
+    const location = data.locations.find(location => location.name === name)
+    if (!location) throw new Error(`Hetzner location not found: ${name}`)
+    return location
+  }
+
   async getServer(id: number): Promise<HetznerServer> {
     const data = await this.request<{ server: HetznerServer }>('GET', `/servers/${id}`)
     return data.server

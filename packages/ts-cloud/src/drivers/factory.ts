@@ -19,8 +19,8 @@ export interface CreateCloudDriverOptions {
  */
 export function createCloudDriver(options: CreateCloudDriverOptions): CloudDriver {
   const selectedProvider = options.provider ?? resolveCloudProvider(options.config)
-  if (options.config.cloud?.residency && (isBoxMode() || selectedProvider !== 'hetzner' || !options.config.cloud?.attachTo))
-    throw new Error('Residency policy currently requires an attached Hetzner host with live provider evidence')
+  if (options.config.cloud?.residency && (isBoxMode() || selectedProvider !== 'hetzner'))
+    throw new Error('Residency policy requires a Hetzner host with live provider evidence')
   if (isBoxMode()) return new LocalBoxDriver()
 
   const provider = options.provider ?? resolveCloudProvider(options.config)

@@ -192,6 +192,41 @@ describe('HetznerDriver', () => {
     expect(state.firewallId).toBe(10)
   })
 
+  it('verifies the requested provider location before creating resident infrastructure', async () => {
+    const config = { ...baseConfig, cloud: { provider: 'hetzner' as const, residency: { countries: ['DE'], locations: ['fsn1'] } } }
+    for (const location of [{ name: 'fsn1', country: 'US' }, { name: 'hel1', country: 'FI' }, { name: 'fsn1', country: '' }]) {
+      const client = mockHetznerClient({ getLocation: mock(async () => location) })
+      const driver = new HetznerDriver({ client, waitForBoot: false })
+      await expect(driver.provisionComputeInfrastructure({ config, environment: 'production' })).rejects.toThrow('residency')
+      expect(client.createFirewall).not.toHaveBeenCalled()
+      expect(client.createServer).not.toHaveBeenCalled()
+    }
+  })
+
+  it('provisions resident compute without adopting an old attachment pin', async () => {
+    const config = { ...baseConfig, cloud: { provider: 'hetzner' as const, residency: { countries: ['DE'], locations: ['fsn1'] } } }
+    const client = mockHetznerClient({ getLocation: mock(async () => ({ name: 'fsn1', country: 'DE' })) })
+    const running = { ...await client.waitForServerRunning(42), location: { name: 'fsn1', country: 'DE' } }
+    client.waitForServerRunning = mock(async () => running)
+    client.getServer = mock(async () => ({ ...running, id: 99, labels: { 'ts-cloud/project': 'shared-owner', 'ts-cloud/environment': 'production' } }))
+    await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
+    await writeFile(driverStatePath(stackName), JSON.stringify({ serverId: 99, publicIp: '192.0.2.99' }))
+    const driver = new HetznerDriver({ client, sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    expect((await driver.provisionComputeInfrastructure({ config, environment: 'production' })).appInstanceId).toBe('42')
+    expect(client.createServer).toHaveBeenCalledTimes(1)
+    expect((client.createServer as any).mock.calls[0][0].location).toBe('fsn1')
+  })
+
+  it('refuses a newly running server whose actual country contradicts the requested location', async () => {
+    const config = { ...baseConfig, cloud: { provider: 'hetzner' as const, residency: { countries: ['DE'], locations: ['fsn1'] } } }
+    const client = mockHetznerClient({ getLocation: mock(async () => ({ name: 'fsn1', country: 'DE' })) })
+    const running = { ...await client.waitForServerRunning(42), location: { name: 'fsn1', country: 'US' } }
+    client.waitForServerRunning = mock(async () => running)
+    const driver = new HetznerDriver({ client, sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    await expect(driver.provisionComputeInfrastructure({ config, environment: 'production' })).rejects.toThrow('residency')
+    expect(await Bun.file(driverStatePath(stackName)).exists()).toBe(false)
+  })
+
   it('attaches to an owner project without provisioning tenant infrastructure', async () => {
     const ownerServer = (id: number, role: 'app' | 'lb', ip: string) => ({
       id,
