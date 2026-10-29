@@ -1,3 +1,4 @@
+import { runtimeIsolationDirectives, runtimeIsolationSetup, runtimeIsolationUser } from './runtime-isolation'
 /**
  * Shared deploy script helpers for Forge-style compute deploys.
  *
@@ -622,6 +623,7 @@ function buildBeforeReleaseReset(paths: ReleasePaths, commands: string[]): strin
 }
 
 export interface BuildSiteDeployScriptOptions {
+  isolation?: boolean
   siteName: string
   slug: string
   /** How the remote host obtains the release tarball */
@@ -879,6 +881,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     `sed -i -E '/^[[:space:]]*(PORT|PORT_BACKEND|PORT_ADMIN|PORT_FRONTEND)[[:space:]]*=/d' ${paths.shared}/.env 2>/dev/null || true`,
     ...buildLinkSharedPaths(paths, sharedPaths),
     ...preStart,
+    ...(options.isolation ? runtimeIsolationSetup(options.slug || siteName, paths.base, sharedPaths.flatMap(entry => typeof entry === 'string' || !entry.target ? [] : [entry.target])) : []),
   ]
 
   if (zeroDowntime && port != null) {
@@ -901,6 +904,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       '',
       '[Service]',
       'Type=simple',
+      ...(options.isolation ? runtimeIsolationDirectives(runtimeIsolationUser(options.slug || siteName)) : []),
       `WorkingDirectory=${paths.releases}/%i`,
       `ExecStart=${execStart}`,
       'Restart=always',
@@ -953,6 +957,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     '',
     '[Service]',
     'Type=simple',
+    ...(options.isolation ? runtimeIsolationDirectives(runtimeIsolationUser(options.slug || siteName)) : []),
     `WorkingDirectory=${paths.current}`,
     `ExecStart=${execStart}`,
     'Restart=always',

@@ -18,6 +18,9 @@ export interface CreateCloudDriverOptions {
  * scripts and operations against localhost instead of reaching out over SSH/SSM.
  */
 export function createCloudDriver(options: CreateCloudDriverOptions): CloudDriver {
+  const selectedProvider = options.provider ?? resolveCloudProvider(options.config)
+  if (options.config.cloud?.residency && (isBoxMode() || selectedProvider !== 'hetzner' || !options.config.cloud?.attachTo))
+    throw new Error('Residency policy currently requires an attached Hetzner host with live provider evidence')
   if (isBoxMode()) return new LocalBoxDriver()
 
   const provider = options.provider ?? resolveCloudProvider(options.config)
@@ -36,6 +39,7 @@ export function createCloudDriver(options: CreateCloudDriverOptions): CloudDrive
         sshPublicKeyPath: options.config.hetzner?.sshPublicKeyPath,
         sshUser: options.config.hetzner?.sshUser,
         location: options.config.hetzner?.location,
+        residency: options.config.cloud?.residency,
       })
     case 'ssh':
       // Same rule: every `ssh.*` field goes through, or setting it does nothing.
@@ -65,7 +69,7 @@ export class CloudDriverFactory {
 
   getDriver(config: CloudConfig, provider?: DeployProviderName): CloudDriver {
     const name = provider ?? resolveCloudProvider(config)
-    const cacheKey = `${name}:${config.project.slug}:${config.project.region || 'default'}`
+    const cacheKey = `${name}:${config.project.slug}:${config.project.region || 'default'}:${JSON.stringify(config.cloud?.residency || null)}`
     const cached = this.drivers.get(cacheKey)
     if (cached) return cached
 

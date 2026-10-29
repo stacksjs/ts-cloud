@@ -53,6 +53,8 @@ export interface CloudProviderConfig {
    * @see https://github.com/stacksjs/ts-cloud/issues/169
    */
   attachTo?: string
+  /** Require fresh provider evidence for the attached Hetzner host before deploying data-bearing services. */
+  residency?: { countries: string[], locations?: string[] }
 
   /**
    * Preview deployments: a pull request deployed as its own tenant on this
@@ -1369,6 +1371,8 @@ export interface SiteConfig {
    * (`/var/www/<site>/.env`). Available as process.env.* inside the running app.
    */
   env?: Record<string, string>
+  /** False ships only this site's explicit env; deployment/provider credentials stay on the deployer. */
+  inheritEnv?: boolean
 
   /**
    * SSR only. Commands run on the server inside the app directory after the
@@ -1619,8 +1623,8 @@ export interface SiteConfig {
   redirects?: Record<string, string>
 
   /**
-   * Give this site a dedicated php-fpm pool (isolated user/process) rather than
-   * sharing the default pool (Forge's "User Isolation").
+   * Give PHP a dedicated php-fpm pool. Runtime server apps use a project-scoped
+   * unprivileged Unix identity for the app, scheduler, queue workers and daemons.
    */
   isolation?: boolean
 

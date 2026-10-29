@@ -284,6 +284,7 @@ export async function deploySiteRelease(
             `${appBase.replace(/\/+$/, '')}/releases/%i`,
           ),
           envEntries: envWithServices,
+          isolation: site.isolation,
           port: site.port,
           preStartCommands: site.preStart,
           postActivateCommands: servicesScript,

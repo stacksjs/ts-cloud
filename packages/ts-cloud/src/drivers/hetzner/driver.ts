@@ -49,6 +49,7 @@ async function sha256File(path: string): Promise<string> {
 export { describeScriptSyntaxError, formatSshFailure }
 
 export interface HetznerDriverOptions {
+  residency?: { countries: string[], locations?: string[] }
   apiToken?: string
   /**
    * Permit SSH-only deploy operations to use an existing local state pin when
@@ -94,6 +95,7 @@ export class HetznerDriver implements CloudDriver {
   private sshUser: string
   private location: string
   private stateOnly: boolean
+  private residency?: HetznerDriverOptions['residency']
   private waitForBoot: boolean
   private bootWait: Required<NonNullable<HetznerDriverOptions['bootWait']>>
 
@@ -152,6 +154,7 @@ export class HetznerDriver implements CloudDriver {
   }
 
   constructor(options: HetznerDriverOptions = {}) {
+    this.residency = options.residency
     const apiToken = resolveHetznerApiToken(options.apiToken)
     this.stateOnly = !options.client && !apiToken && options.allowStateOnly === true
     if (!options.client && !apiToken && !this.stateOnly) {
@@ -1137,15 +1140,19 @@ export class HetznerDriver implements CloudDriver {
   }
 
   async findComputeTargets(options: FindComputeTargetsOptions): Promise<ComputeTarget[]> {
+    const { assertComputeResidency } = await import('../../deploy/residency')
     const role = options.role || 'app'
-    const toTarget = (server: HetznerServer): ComputeTarget => ({
+    const toTarget = (server: HetznerServer): ComputeTarget => {
+      if (this.residency) assertComputeResidency(this.residency, { country: server.location?.country, location: server.location?.name || server.datacenter?.location?.name })
+      return {
       id: String(server.id),
       name: server.name,
       publicIp: server.public_net.ipv4?.ip,
       publicIpv6: normalizePublicIpv6(server.public_net.ipv6?.ip),
       privateIp: server.private_net?.[0]?.ip,
       status: server.status,
-    })
+      }
+    }
 
     // 1) State pinning: a project that rides a shared box records its server
     //    in `storage/cloud/state/<stack>.json`, but the box's labels belong to the
@@ -1169,6 +1176,7 @@ export class HetznerDriver implements CloudDriver {
         ),
       ].filter((id): id is number => typeof id === 'number')
       if (this.stateOnly) {
+        if (this.residency) throw new Error('Residency requires fresh provider evidence; a local state pin alone is insufficient')
         if (pinnedIds.length > 0 && state?.publicIp) {
           return pinnedIds.map((id) => ({
             id: String(id),

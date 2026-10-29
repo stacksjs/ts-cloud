@@ -1,4 +1,6 @@
 export * from './config'
+export { assertComputeResidency } from './deploy/residency'
+export type { ResidencyPolicy, ResidencyEvidence } from './deploy/residency'
 export * from './operations'
 export * from './auth'
 export * from './automation'

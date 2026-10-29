@@ -20,6 +20,7 @@
  */
 import type { SiteConfig } from '@ts-cloud/core'
 import { buildClearAutoMemoryHigh } from './deploy-script'
+import { runtimeIsolationDirectives, runtimeIsolationUser } from './runtime-isolation'
 import { getAppFrameworkDriver, resolveSiteFramework } from './app-frameworks'
 
 export interface SiteServicesOptions {
@@ -84,6 +85,7 @@ function systemdUnit(opts: {
   restart?: string
   stopWaitSecs?: number
   user?: string
+  isolatedUser?: string
   environment?: Record<string, string>
   /**
    * Soft memory ceiling. Defaults to the same 2G an app unit gets, because
@@ -114,7 +116,8 @@ function systemdUnit(opts: {
     `MemoryHigh=${opts.memoryHigh ?? '2G'}`,
     ...(opts.memoryMax ? [`MemoryMax=${opts.memoryMax}`] : []),
   ]
-  if (opts.user) lines.push(`User=${opts.user}`)
+  if (opts.isolatedUser) lines.push(...runtimeIsolationDirectives(opts.isolatedUser))
+  else if (opts.user) lines.push(`User=${opts.user}`)
   if (typeof opts.stopWaitSecs === 'number') lines.push(`TimeoutStopSec=${opts.stopWaitSecs}`)
   lines.push('', '[Install]', 'WantedBy=multi-user.target')
   return `${lines.join('\n')}\n`
@@ -139,6 +142,8 @@ export function schedulerCronPath(slug: string, siteName: string): string {
  * scheduler cron, prune stale units for this site, and reload systemd.
  */
 export function buildSiteServicesScript(options: SiteServicesOptions): string[] {
+  const isolatedUser = options.site.isolation && !['laravel', 'php', 'statamic', 'wordpress'].includes(options.site.type || '')
+    ? runtimeIsolationUser(options.slug) : undefined
   const { slug, siteName, site } = options
   const base = options.appBase ?? `/var/www/${siteName}`
   const current = `${base}/current`
@@ -170,6 +175,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
             workingDir: backgroundDirectory,
             execStart,
             environment: executionEnvironment,
+            isolatedUser,
             stopWaitSecs: worker.stopWaitSecs ?? 90,
           }),
         ),
@@ -180,6 +186,8 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   // Daemons — one systemd unit per process, run under the framework's env.
   const daemons = site.daemons || []
   daemons.forEach((daemon, dIndex) => {
+    if (isolatedUser && daemon.user && daemon.user !== isolatedUser)
+      throw new Error('An isolated runtime daemon cannot change its project identity')
     const processes = Math.max(1, daemon.processes ?? 1)
     for (let p = 0; p < processes; p++) {
       const name = `${daemonUnitName(slug, siteName, daemon, dIndex)}-${p}`
@@ -194,6 +202,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
             environment: driver.execEnv,
             restart: daemon.restart,
             user: daemon.user,
+            isolatedUser,
           }),
         ),
       )
@@ -218,6 +227,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
           workingDir: backgroundDirectory,
           execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
           environment: executionEnvironment,
+          isolatedUser,
           memoryHigh: limits.memoryHigh,
           memoryMax: limits.memoryMax,
         }),
