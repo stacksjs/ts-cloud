@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.80...v0.16.81)
+
+## 🐛 Bug Fixes
+
+- reconcile declared recovery and mail services on owned servers ([6600971](https://github.com/stacksjs/ts-cloud/commit/6600971)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.81 ([a8c14a4](https://github.com/stacksjs/ts-cloud/commit/a8c14a4)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.79...v0.16.80)
 
 ## 🐛 Bug Fixes
