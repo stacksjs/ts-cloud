@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.73...v0.16.74)
+
+## 🐛 Bug Fixes
+
+- activate managed database tools before release pre-start commands ([ff3e989](https://github.com/stacksjs/ts-cloud/commit/ff3e989)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.74 ([93bed88](https://github.com/stacksjs/ts-cloud/commit/93bed88)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.72...v0.16.73)
 
 ## 🐛 Bug Fixes
