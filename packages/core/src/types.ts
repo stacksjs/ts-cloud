@@ -1873,7 +1873,7 @@ export interface QueueWorkerConfig {
  * See {@link SiteConfig.daemons}.
  */
 export interface DaemonConfig {
-  /** Command to run (becomes systemd `ExecStart`). */
+  /** Command to run (systemd `ExecStart`), with this site's resolved environment loaded first. */
   command: string
   /** Working directory. Defaults to the site's `current` release directory. */
   directory?: string

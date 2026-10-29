@@ -89,6 +89,7 @@ function systemdUnit(opts: {
   isolationRoot?: string
   isolationSlug?: string
   environment?: Record<string, string>
+  environmentFile?: string
   /**
    * Soft memory ceiling. Defaults to the same 2G an app unit gets, because
    * these are the processes with the least reason to be unbounded: a queue
@@ -111,6 +112,7 @@ function systemdUnit(opts: {
     'Type=simple',
     `WorkingDirectory=${opts.workingDir}`,
     ...Object.entries(opts.environment ?? {}).map(([k, v]) => `Environment="${k}=${v}"`),
+    ...(opts.environmentFile ? [`EnvironmentFile=-${opts.environmentFile}`] : []),
     `ExecStart=${opts.execStart}`,
     `Restart=${opts.restart || 'always'}`,
     'RestartSec=5',
@@ -211,6 +213,9 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
             workingDir,
             execStart: driver.wrapExec(command),
             environment: driver.execEnv,
+            // A shell daemon can need configuration before an application's
+            // dotenv loader runs (private runtime paths, for example).
+            environmentFile: `${current}/.env`,
             restart: daemon.restart,
             user: daemon.user,
             isolatedUser,

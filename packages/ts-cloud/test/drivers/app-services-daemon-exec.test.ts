@@ -16,6 +16,7 @@ for (const custom of [false, true]) test.skipIf(process.platform === 'win32')(`a
     const start = lines.find(line => line.startsWith('ExecStart='))!
     expect(start).toBe(`ExecStart=${entry} ready`)
     expect(lines).toContain(`WorkingDirectory=${directory}`)
+    expect(lines).toContain(`EnvironmentFile=-${base}/current/.env`)
     // Execute the generated absolute command from elsewhere, so process cwd
     // cannot hide the invalid ExecStart that systemd refused on a fresh host.
     const child = Bun.spawn(start.slice('ExecStart='.length).split(' '), { cwd: base, env: { PATH: '/usr/bin:/bin' }, stdout: 'pipe', stderr: 'pipe' })
