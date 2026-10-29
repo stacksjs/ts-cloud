@@ -137,5 +137,8 @@ describe('dashboard release integration', () => {
         })
       ).json(),
     ).toMatchObject({ operation: { kind: 'release.rollback', input: { targetReleaseId: first.id }, state: 'queued' } })
-  }, 10_000)
+  // 30s to match the other dashboard integrations (#177). Booting a real
+  // dashboard costs 6.6s on an idle machine, and a loaded full-suite run was
+  // measured slowing these 2.4-3.6x, which overran the previous limit outright.
+  }, 30_000)
 })

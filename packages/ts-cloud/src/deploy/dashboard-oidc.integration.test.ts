@@ -218,5 +218,9 @@ describe('dashboard OIDC integration', () => {
     })
     expect(revoked.status).toBe(200)
     expect((await dashboardFetch('/api/v1/projects', { headers: bearer })).status).toBe(401)
-  }, 20_000)
+  // 30s to match the other dashboard integrations (#177). This one boots a
+  // real dashboard, builds the cockpit, and drives a full HTTP round trip per
+  // assertion; it was left below that standard and timed out at 20218ms
+  // under a loaded full-suite run — a margin of nothing.
+  }, 30_000)
 })

@@ -215,5 +215,8 @@ describe('dashboard data-service integration', () => {
       created.oneTimeCredential.password,
     )
     expect(Buffer.from(store.database.serialize()).toString()).not.toContain(created.oneTimeCredential.password)
-  }, 15_000)
+  // 30s to match the other dashboard integrations (#177). Booting a real
+  // dashboard costs 5.8s on an idle machine, and a loaded full-suite run was
+  // measured slowing these 2.4-3.6x, which overran the previous limit outright.
+  }, 30_000)
 })

@@ -187,5 +187,9 @@ describe('dashboard recovery integration', () => {
     expect(Buffer.from(database.database.serialize()).toString()).not.toContain(credential.secretAccessKey)
     expect(Buffer.from(database.database.serialize()).toString()).not.toContain(encryptionKey)
     database.close()
-  }, 15_000)
+  // 30s to match the other dashboard integrations (#177). This one boots a
+  // real dashboard, builds the cockpit, and drives a full HTTP round trip per
+  // assertion; it was left below that standard and timed out at 15010ms
+  // under a loaded full-suite run — a margin of nothing.
+  }, 30_000)
 })
