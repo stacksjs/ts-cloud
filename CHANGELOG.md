@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.82...v0.16.83)
+
+## 🐛 Bug Fixes
+
+- reload private gateway certificates in the mail service ([1f04544](https://github.com/stacksjs/ts-cloud/commit/1f04544)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.83 ([6c3264e](https://github.com/stacksjs/ts-cloud/commit/6c3264e)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.81...v0.16.82)
 
 ## 🐛 Bug Fixes
