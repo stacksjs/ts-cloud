@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.78...v0.16.79)
+
+## 🐛 Bug Fixes
+
+- keep the managed Bun runtime outside protected homes ([f0d44db](https://github.com/stacksjs/ts-cloud/commit/f0d44db)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.79 ([cedce8c](https://github.com/stacksjs/ts-cloud/commit/cedce8c)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.77...v0.16.78)
 
 ## 🐛 Bug Fixes
