@@ -47,7 +47,7 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     // The monorepo-only source path an installed app never has.
     expect(script).not.toContain('storage/framework/core/buddy')
     expect(script).toContain('--tries=5')
-    expect(script).toContain('Environment="BUN_INSTALL=/root/.bun"')
+    expect(script).toContain('Environment="BUN_INSTALL=/opt/ts-cloud/bun"')
     expect(script).toContain('Environment="APP_ENV=production"')
     expect(script).toContain('Environment="NODE_ENV=production"')
     // No login-shell wrapper (that would hang `systemctl restart` over SSH).

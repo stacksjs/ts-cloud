@@ -1,5 +1,21 @@
 import { createHash } from 'node:crypto'
 
+/** Preserve ProtectHome when adopting a host whose Bun was installed under root. */
+export function buildAccessibleBunScript(): string[] {
+  return [
+    'if [ -x /usr/local/bin/bun ]; then',
+    '  TS_CLOUD_HOST_BUN="$(readlink -f /usr/local/bin/bun)"',
+    '  case "$TS_CLOUD_HOST_BUN" in /root/*|/home/*)',
+    '    install -d -m 755 /opt/ts-cloud /opt/ts-cloud/bun /opt/ts-cloud/bun/bin',
+    '    TS_CLOUD_BUN_STAGE="$(mktemp /opt/ts-cloud/bun/bin/.bun.XXXXXX)"',
+    '    install -m 755 "$TS_CLOUD_HOST_BUN" "$TS_CLOUD_BUN_STAGE"',
+    '    mv -f "$TS_CLOUD_BUN_STAGE" /opt/ts-cloud/bun/bin/bun',
+    '    ln -sfn /opt/ts-cloud/bun/bin/bun /usr/local/bin/bun',
+    '  ;; esac',
+    'fi',
+  ]
+}
+
 /** One unprivileged identity per project; its web/API/workers may share that project's data. */
 export function runtimeIsolationUser(slug: string): string {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new Error('Runtime isolation requires a safe project slug')
@@ -25,6 +41,7 @@ export function runtimeIsolationSetup(slug: string, base: string, targets: reado
       throw new Error(`Runtime isolation cannot take ownership outside project ${slug}`)
   }
   return [
+    ...buildAccessibleBunScript(),
     `if ! id -u ${user} >/dev/null 2>&1; then useradd --system --user-group --create-home --home-dir ${home} --shell /usr/sbin/nologin ${user}; fi`,
     `[ "$(id -u ${user})" != 0 ] && [ "$(getent passwd ${user} | cut -d: -f6)" = ${home} ] || { echo 'Unexpected runtime isolation identity' >&2; exit 1; }`,
     `install -d -m 700 -o ${user} -g ${user} ${home}`,

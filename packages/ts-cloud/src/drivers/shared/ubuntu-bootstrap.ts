@@ -148,7 +148,8 @@ ${servicesProvision.join('\n')}
 # aborts with "HOME: unbound variable" and /usr/local/bin/bun never appears —
 # breaking a from-scratch provision (adopting an existing box masked it).
 export HOME="\${HOME:-/root}"
-export BUN_INSTALL="/root/.bun"
+export BUN_INSTALL="/opt/ts-cloud/bun"
+install -d -m 755 /opt/ts-cloud /opt/ts-cloud/bun /opt/ts-cloud/bun/bin
 # bun.sh's installer references $HOME internally and runs under this
 # script's \`set -u\` (inherited by the piped bash) — cloud-init's runcmd
 # environment doesn't export HOME by default, so without this the
@@ -161,8 +162,9 @@ export BUN_INSTALL="/root/.bun"
 # actually done.
 export HOME="\${HOME:-/root}"
 curl -fsSL https://bun.sh/install | bash${runtimeVersion === 'latest' ? '' : ` -s "bun-v${runtimeVersion}"`}
-ln -sf /root/.bun/bin/bun /usr/local/bin/bun
-echo 'export BUN_INSTALL="/root/.bun"' > /etc/profile.d/bun.sh
+chmod 755 /opt/ts-cloud/bun/bin/bun
+ln -sf /opt/ts-cloud/bun/bin/bun /usr/local/bin/bun
+echo 'export BUN_INSTALL="/opt/ts-cloud/bun"' > /etc/profile.d/bun.sh
 echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> /etc/profile.d/bun.sh
 `
     } else if (runtime === 'node') {

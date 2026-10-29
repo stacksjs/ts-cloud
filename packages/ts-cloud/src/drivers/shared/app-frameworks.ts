@@ -74,7 +74,7 @@ const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/n
 const BUN_BIN = '/usr/local/bin/bun'
 const STACKS_EXEC_ENV: Record<string, string> = {
   PATH: '/usr/local/bin:/usr/bin:/bin',
-  BUN_INSTALL: '/root/.bun',
+  BUN_INSTALL: '/opt/ts-cloud/bun',
   APP_ENV: 'production',
   NODE_ENV: 'production',
 }

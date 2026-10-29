@@ -38,7 +38,7 @@ describe('buildUbuntuBootstrapScript', () => {
   it('still runs everything after the bun install (symlink, dirs) on a fresh (non-baked) box', () => {
     const script = buildUbuntuBootstrapScript({ runtime: 'bun', baked: false })
 
-    expect(script).toContain('ln -sf /root/.bun/bin/bun /usr/local/bin/bun')
+    expect(script).toContain('ln -sf /opt/ts-cloud/bun/bin/bun /usr/local/bin/bun')
   })
 
   it('is a no-op for non-bun runtimes (no stray HOME export)', () => {
