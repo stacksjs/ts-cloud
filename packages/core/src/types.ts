@@ -1956,6 +1956,8 @@ export interface DatabaseConfig {
   username?: string
   /** Password for {@link username}. */
   password?: string
+  /** Owned local PostgreSQL: require SCRAM passwords on loopback TCP, including replication. */
+  requireLocalPasswordAuth?: boolean
   /** Hostname for a managed/external database (default `127.0.0.1` on-box). */
   host?: string
   /** Port (defaults: mysql/mariadb/singlestore 3306, vitess 15306, postgres 5432). */

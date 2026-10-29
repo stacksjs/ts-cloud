@@ -1,5 +1,40 @@
 import { describe, expect, it } from 'bun:test'
 import { buildDatabaseSetupScript, buildManagedDbEnv, isLocalDatabase } from './db-provision'
+import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+
+it('places password rules before existing trust rules and preserves them across repeated deployment',()=>{
+  const directory=mkdtempSync(join(tmpdir(),'postgres-auth-'))
+  try{
+    const input=join(directory,'existing hba.conf'),output=join(directory,'new hba.conf')
+    const trusted='host all all 127.0.0.1/32 trust\n'
+    writeFileSync(input,trusted)
+    const script=buildDatabaseSetupScript({engine:'postgres',name:'app',username:'app',password:'fixture',requireLocalPasswordAuth:true})
+    const start=script.indexOf('{'),end=script.indexOf('} > "$TS_CLOUD_PG_AUTH"')
+    expect(start).toBeGreaterThan(-1)
+    for(let attempt=0;attempt<2;attempt++){
+      const result=Bun.spawnSync(['sh','-c',script.slice(start,end+1).join('\n')],{env:{...process.env,TS_CLOUD_PG_HBA:input,TS_CLOUD_PG_AUTH:output}})
+      expect(result.exitCode).toBe(0)
+      const text=readFileSync(output,'utf8')
+      const rules=text.split('\n').filter(line=>line.startsWith('host ')).map(line=>line.split(/\s+/))
+      expect(rules.slice(0,4).every(rule=>rule[4]==='scram-sha-256')).toBe(true)
+      expect(rules.slice(0,4).map(rule=>rule[3])).toEqual(['127.0.0.1/32','::1/128','127.0.0.1/32','::1/128'])
+      expect(rules.slice(0,4).filter(rule=>rule[1]==='replication').length).toBe(2)
+      expect(text.endsWith(trusted)).toBe(true)
+      expect(text.match(/# BEGIN ts-cloud password authentication/g)?.length).toBe(1)
+      writeFileSync(input,text)
+    }
+  }finally{rmSync(directory,{recursive:true,force:true})}
+})
+
+it('refuses password-auth enforcement when the configured database cannot authenticate its own login', () => {
+  for (const database of [
+    {engine:'postgres',name:'app',username:'app',password:''},
+    {engine:'postgres',name:'app',username:'app',password:'secret',host:'external.test'},
+    {engine:'mysql',name:'app',username:'app',password:'secret'},
+  ]) expect(()=>buildDatabaseSetupScript({...database,requireLocalPasswordAuth:true} as any)).toThrow('Password authentication requires')
+})
 
 describe('buildManagedDbEnv — SingleStore', () => {
   it('wires DB_CONNECTION=singlestore over the MySQL port with TLS on', () => {

@@ -669,18 +669,22 @@ async function preflightAttachedHostServices(
  * the database. It touches ONLY the configured tenant role/database (+ any
  * configured extra users) against the box's co-located engine — never the engine
  * install (the owner manages services), never another tenant's database.
+ * Owned installations that request password authentication also reconcile their
+ * host policy on every deploy. An attached tenant cannot alter that policy.
  *
  * Returns `true` when there is nothing to ensure or the ensure succeeded.
  */
-async function ensureAttachModeDatabase(
+async function ensureComputeDatabase(
   driver: CloudDriver,
   options: DeployAllSitesOptions,
   logger: ComputeDeployLogger,
 ): Promise<boolean> {
   const { config, environment } = options
-  if (!config.cloud?.attachTo) return true
   const compute = config.infrastructure?.compute
   const database = resolveAppDatabase(config)
+  if (config.cloud?.attachTo && database?.requireLocalPasswordAuth)
+    throw new Error('PostgreSQL host authentication can only be managed by an owned compute installation')
+  if (!config.cloud?.attachTo && !database?.requireLocalPasswordAuth) return true
   const commands = buildDatabaseSetupScript(database, compute?.managedServices ?? {})
   if (commands.length === 0) return true
 
@@ -826,7 +830,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // so no cloud-init of ours ever ran this project's on-box database setup — the
   // tenant role + database would not exist unless someone created them by hand.
   // Ensure them before the first site ships (idempotent; no-op otherwise).
-  if (!(await ensureAttachModeDatabase(driver, options, logger))) return false
+  if (!(await ensureComputeDatabase(driver, options, logger))) return false
 
   // Use the internally-built dashboard tarball when we injected it; otherwise the
   // consumer supplies every tarball (the CLI builds the dashboard in its own loop).

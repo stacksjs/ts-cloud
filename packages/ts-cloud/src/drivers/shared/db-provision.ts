@@ -55,9 +55,9 @@ export function isLocalDatabase(database: DatabaseConfig | undefined): boolean {
  * Build the connection prefix for a postgres admin command (`psql`/`pg_dump`)
  * run on the box.
  *
- * The pantry postgres pg_hba grants `trust` on the local unix socket but
- * requires md5 password auth over TCP loopback — and the `postgres` superuser
- * has no password — so against the co-located engine admin clients MUST use
+ * Pantry grants `trust` on the local unix socket. Password-enforced hosts
+ * require SCRAM over TCP loopback, and the `postgres` superuser has no password,
+ * so against the co-located engine admin clients MUST use
  * the socket: omit `-h` entirely and the pantry client uses its compiled-in
  * default socket dir, which matches the server's by construction (verified
  * on-box: `psql -U postgres` from root connects passwordless). Against an
@@ -163,6 +163,8 @@ export function buildDatabaseSetupScript(
   database: DatabaseConfig | undefined,
   services: ComputeServicesConfig = {},
 ): string[] {
+  if (database?.requireLocalPasswordAuth && (database.engine !== 'postgres' || !isLocalDatabase(database) || !database.name || !database.username || !database.password || database.users?.some(user => !user.password)))
+    throw new Error('Password authentication requires a named local PostgreSQL database and nonempty login passwords')
   if (!database?.name) return []
   // A managed/external DB is created out-of-band; nothing to do on the box.
   if (!isLocalDatabase(database)) return []
@@ -177,7 +179,7 @@ export function buildDatabaseSetupScript(
 
   if (usePostgres && !useMysql && !useMariadb) {
     // Create role + database via a psql heredoc over the local unix socket
-    // (pg_hba `trust`; TCP loopback demands md5, which the superuser lacks —
+    // (pg_hba `trust`; password-enforced TCP rejects the passwordless superuser —
     // see pgAdminCommand). Identifiers are double-quoted (Postgres treats
     // single-quoted as string literals, which is a syntax error for a role/db
     // name); string literals (the password, existence-check comparisons) are
@@ -188,6 +190,7 @@ export function buildDatabaseSetupScript(
     const pgLit = (v: string): string => `'${v.replace(/'/g, "''")}'`
     // Idempotently ensure a login role exists with the given password.
     const pgEnsureRole = (u: string, p: string): string[] => [
+      ...(database.requireLocalPasswordAuth ? ["SET password_encryption = 'scram-sha-256';"] : []),
       'DO $$ BEGIN',
       `  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${pgLit(u)}) THEN`,
       `    CREATE ROLE ${pgIdent(u)} LOGIN PASSWORD ${pgLit(p)};`,
@@ -230,13 +233,27 @@ export function buildDatabaseSetupScript(
       // (first boot runs initdb, which takes a few seconds) before setup. Probe
       // over the local socket (no -h), same trust path as the setup itself.
       `for i in $(seq 1 30); do pg_isready -p ${pgPort} -q && break; sleep 2; done`,
-      `${pgAdminCommand(database)} <<'TS_CLOUD_PG_EOF'`,
+      `${pgAdminCommand(database)}${database.requireLocalPasswordAuth ? ' -v ON_ERROR_STOP=1' : ''} <<'TS_CLOUD_PG_EOF'`,
       ...pgEnsureRole(user, pass),
       `SELECT 'CREATE DATABASE ${pgIdent(name)} OWNER ${pgIdent(user)}' ` +
         `WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,
       // Additional users (read-only / extra logins) with their own grants.
       ...extraUsers.flatMap((u) => [...pgEnsureRole(u.username, u.password), ...pgGrant(u)]),
       'TS_CLOUD_PG_EOF',
+      ...(database.requireLocalPasswordAuth ? [
+        `TS_CLOUD_PG_HBA=$(${pgAdminCommand(database)} -Atc 'SHOW hba_file')`,
+        'case "$TS_CLOUD_PG_HBA" in /*) ;; *) echo "Invalid PostgreSQL authentication path" >&2; exit 1 ;; esac',
+        '[ -f "$TS_CLOUD_PG_HBA.before-ts-cloud-password-auth" ] || cp -p "$TS_CLOUD_PG_HBA" "$TS_CLOUD_PG_HBA.before-ts-cloud-password-auth"',
+        'TS_CLOUD_PG_AUTH=$(mktemp "$TS_CLOUD_PG_HBA.ts-cloud.XXXXXXXX")',
+        '{',
+        "  printf '%s\\n' '# BEGIN ts-cloud password authentication' 'host all all 127.0.0.1/32 scram-sha-256' 'host all all ::1/128 scram-sha-256' 'host replication all 127.0.0.1/32 scram-sha-256' 'host replication all ::1/128 scram-sha-256' '# END ts-cloud password authentication'",
+        "  sed '/^# BEGIN ts-cloud password authentication$/,/^# END ts-cloud password authentication$/d' \"$TS_CLOUD_PG_HBA\"",
+        '} > "$TS_CLOUD_PG_AUTH"',
+        'chown --reference="$TS_CLOUD_PG_HBA" "$TS_CLOUD_PG_AUTH"',
+        'chmod --reference="$TS_CLOUD_PG_HBA" "$TS_CLOUD_PG_AUTH"',
+        'mv -f "$TS_CLOUD_PG_AUTH" "$TS_CLOUD_PG_HBA"',
+        `${pgAdminCommand(database)} -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'`,
+      ] : []),
       ...pgConnectionCapacityWarning(database),
     ]
   }
