@@ -16,6 +16,7 @@ import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-pro
 import { buildAppUpdatesScript } from './app-updates'
 import { buildAutoUpdatesScript } from './maintenance'
 import { buildMonitoringScript } from './monitoring'
+import { buildMailProvisionScript } from './mail-provision'
 import { buildNginxServiceScript } from './nginx-vhost'
 import { buildNotifierScript } from './notifications'
 import { buildPantryBootstrapScript } from './package-manager'
@@ -159,4 +160,15 @@ export function buildComputeProvisionScripts(config: CloudConfig, options?: Comp
     phpProvision,
     servicesProvision: extras.length > 0 ? extras : undefined,
   }
+}
+
+/** Reconcile explicitly declared operational services when an owned box is reused. */
+export function buildOwnedServicesReconcileScript(config: CloudConfig, environment: string): string[] {
+  if (config.cloud?.attachTo) return []
+  const compute = config.infrastructure?.compute
+  const mail = resolveMailService(config, { environment })
+  return [
+    ...(compute?.backups?.enabled ? buildBackupProvisionScript({ database: resolveAppDatabase(config), backups: compute.backups }) : []),
+    ...(mail.enabled ? buildMailProvisionScript(mail) : []),
+  ]
 }

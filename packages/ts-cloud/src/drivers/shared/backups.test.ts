@@ -29,3 +29,11 @@ it('fails before provisioning with incomplete secrets, unpinned tools or injecte
   ]) expect(() => buildBackupProvisionScript({ backups })).toThrow()
   expect(buildBackupProvisionScript({ backups: { enabled: false } })).toEqual([])
 })
+
+it('reconciles declared backups on reused owned hosts and never changes an attached host', async () => {
+  const { buildOwnedServicesReconcileScript } = await import('./compute-provision')
+  const config = { environments: {}, project: { name: 'owned', slug: 'owned', region: 'fsn1' }, cloud: { provider: 'hetzner' as const }, infrastructure: { appDatabase: { engine: 'postgres' as const, name: 'owned' }, compute: { backups: { enabled: true, version: '0.1.6' } } } }
+  expect(buildOwnedServicesReconcileScript(config, 'production').join('\n')).toContain('/etc/cron.d/ts-cloud-backups')
+  expect(buildOwnedServicesReconcileScript({ ...config, cloud: { ...config.cloud, attachTo: 'another-owner' } }, 'production')).toEqual([])
+  expect(buildOwnedServicesReconcileScript({ ...config, infrastructure: {} }, 'production')).toEqual([])
+})

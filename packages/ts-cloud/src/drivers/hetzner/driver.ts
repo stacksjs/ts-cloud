@@ -8,7 +8,7 @@ import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mailFirewallPorts, resolveDeployBucketName, resolveMailProxy, resolveMailService, resolveProjectStackName } from '@ts-cloud/core'
 import { normalizePublicIpv6 } from '../../deploy/server-dns'
-import { buildComputeProvisionScripts } from '../shared/compute-provision'
+import { buildComputeProvisionScripts, buildOwnedServicesReconcileScript } from '../shared/compute-provision'
 import { buildComputeStorageInstallScript, resolveComputeVolumes } from '../shared/compute-storage'
 import { buildDiscardUploadScript, buildPublishUploadScript, HOST_ARTIFACT_CACHE_DIR } from '../shared/deploy-script'
 import { buildFleetServicesBoxProvision, resolveFleetTopology } from '../shared/fleet'
@@ -278,6 +278,7 @@ export class HetznerDriver implements CloudDriver {
       if (server && server.status !== 'off' && server.labels?.['ts-cloud/project'] === slug && server.labels?.['ts-cloud/environment'] === environment) {
         assertServerResidency(server)
         if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
+        this.reconcileOwnedServices(options, server)
         return this.outputsFromState(existing, server)
       }
     }
@@ -300,6 +301,7 @@ export class HetznerDriver implements CloudDriver {
       }
       await writeDriverState(stackName, rehydrated)
       if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
+      this.reconcileOwnedServices(options, alreadyRunning)
       return this.outputsFromState(rehydrated, alreadyRunning)
     }
 
@@ -1681,6 +1683,14 @@ export class HetznerDriver implements CloudDriver {
         if (attempt === attempts) throw new Error(formatSshFailure(error))
       }
     }
+  }
+
+  private reconcileOwnedServices(options: ProvisionComputeOptions, server: HetznerServer): void {
+    const scripts = buildOwnedServicesReconcileScript(options.config, options.environment)
+    if (!scripts.length) return
+    const ip = server.public_net.ipv4?.ip
+    if (!ip) throw new Error('The owned server needs a reachable address to reconcile operational services')
+    this.sshExec(ip, ['set -e', ...scripts].join('\n'))
   }
 
   private sshExec(host: string, script: string): string {
