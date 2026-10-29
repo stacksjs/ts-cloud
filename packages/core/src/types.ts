@@ -3409,6 +3409,8 @@ export interface BoxConfig {
 }
 
 export interface ComputeConfig {
+  /** Desired PTR hostname on a single owned Hetzner server's public IPs. */
+  reverseDns?: string
   /** Explicitly reconcile an existing Hetzner server's size. Never resize by default. */
   resize?: {
     /** Keep serving on the current type when the requested type has no capacity. */

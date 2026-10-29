@@ -76,8 +76,8 @@ export interface HetznerServer {
   public_net: {
     // The id is what primary-IP assignment works in terms of; the address
     // itself cannot be moved between servers by value.
-    ipv4?: { ip: string; id?: number }
-    ipv6?: { ip: string; id?: number }
+    ipv4?: { ip: string; id?: number; dns_ptr?: string }
+    ipv6?: { ip: string; id?: number; dns_ptr?: Array<{ ip: string; dns_ptr: string }> }
   }
   private_net?: Array<{ ip: string }>
   labels?: Record<string, string>
@@ -334,6 +334,11 @@ export class HetznerClient {
   async getServer(id: number): Promise<HetznerServer> {
     const data = await this.request<{ server: HetznerServer }>('GET', `/servers/${id}`)
     return data.server
+  }
+
+  async changeServerReverseDns(id: number, ip: string, hostname: string): Promise<HetznerAction> {
+    const result = await this.request<{ action: HetznerAction }>('POST', `/servers/${id}/actions/change_dns_ptr`, { ip, dns_ptr: hostname })
+    return result.action
   }
 
   async listVolumes(): Promise<HetznerVolume[]> {

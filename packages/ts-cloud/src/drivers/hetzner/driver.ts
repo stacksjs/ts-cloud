@@ -22,6 +22,7 @@ import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildR
 import { sftpFirewallPorts } from '../shared/sftp-provision'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
 import { HetznerClient, normalizeSshPublicKey } from './client'
+import { planServerReverseDns } from './reverse-dns'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { resolveHetznerApiToken, resolveHetznerImage, resolveHetznerSettings } from './config'
 import { buildHetznerFirewallRules } from './firewall-rules'
@@ -223,6 +224,7 @@ export class HetznerDriver implements CloudDriver {
     // see provisionBunFleet's services-box step.
     const phpBox = compute.runtime === 'php' || !!compute.php
     const topology = resolveFleetTopology(compute)
+    if (compute.reverseDns && (topology.dedicatedServices || topology.appServers > 1)) throw new Error('Reverse DNS currently requires a single owned app server')
     const residency = config.cloud?.residency || this.residency
     const { assertComputeResidency } = await import('../../deploy/residency')
     const assertServerResidency = (server: HetznerServer): void => {
@@ -277,6 +279,7 @@ export class HetznerDriver implements CloudDriver {
       // ownership of that host. Rediscover or provision this project's server.
       if (server && server.status !== 'off' && server.labels?.['ts-cloud/project'] === slug && server.labels?.['ts-cloud/environment'] === environment) {
         assertServerResidency(server)
+        await this.reconcileReverseDns(options, server)
         if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
         this.reconcileOwnedServices(options, server)
         return this.outputsFromState(existing, server)
@@ -302,6 +305,7 @@ export class HetznerDriver implements CloudDriver {
       await writeDriverState(stackName, rehydrated)
       if (compute.resize || compute.volumes || compute.deploymentStorage) await this.applyComputeChanges(options)
       this.reconcileOwnedServices(options, alreadyRunning)
+      await this.reconcileReverseDns(options, alreadyRunning)
       return this.outputsFromState(rehydrated, alreadyRunning)
     }
 
@@ -357,6 +361,7 @@ export class HetznerDriver implements CloudDriver {
     await this.client.waitForAction(action.id)
     const running = await this.client.waitForServerRunning(server.id)
     assertServerResidency(running)
+    await this.reconcileReverseDns(options, running)
 
     const state: HetznerDriverState = {
       provider: 'hetzner',
@@ -1691,6 +1696,14 @@ export class HetznerDriver implements CloudDriver {
     const ip = server.public_net.ipv4?.ip
     if (!ip) throw new Error('The owned server needs a reachable address to reconcile operational services')
     this.sshExec(ip, ['set -e', ...scripts].join('\n'))
+  }
+
+  private async reconcileReverseDns(options: ProvisionComputeOptions, server: HetznerServer): Promise<void> {
+    if (options.config.cloud?.attachTo) return
+    for (const change of planServerReverseDns(server, options.config.infrastructure?.compute?.reverseDns)) {
+      const action = await this.client.changeServerReverseDns(server.id, change.ip, change.hostname)
+      await this.client.waitForAction(action.id)
+    }
   }
 
   private sshExec(host: string, script: string): string {
