@@ -205,8 +205,10 @@ describe('buildMailEnvFile', () => {
       { environment: 'production' },
     )
     const env = buildMailEnvFile(mail)
-    expect(env).toContain('DKIM_DOMAIN=mail.example.com')
-    expect(env).toContain(`DKIM_EXTRA_KEYS=example.com:default:${dkimKeyPath(mail, 'example.com')},other.test:default:${dkimKeyPath(mail, 'other.test')}`)
+    expect(env).toContain('SMTP_HOSTNAME=mail.example.com')
+    expect(env).toContain('DKIM_DOMAIN=example.com')
+    expect(env).toContain(`DKIM_PRIVATE_KEY_PATH=${dkimKeyPath(mail, 'example.com')}`)
+    expect(env).toContain(`DKIM_EXTRA_KEYS=mail.example.com:default:${dkimKeyPath(mail, 'mail.example.com')},other.test:default:${dkimKeyPath(mail, 'other.test')}`)
   })
 
   it('omits IMAP and submission for a catcher', () => {
