@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.81...v0.16.82)
+
+## 🐛 Bug Fixes
+
+- verify versioned backup archives before provisioning ([02c6f8a](https://github.com/stacksjs/ts-cloud/commit/02c6f8a)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.82 ([73779da](https://github.com/stacksjs/ts-cloud/commit/73779da)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.80...v0.16.81)
 
 ## 🐛 Bug Fixes
