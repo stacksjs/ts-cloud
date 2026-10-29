@@ -324,8 +324,11 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(joined).toContain('cd /var/www/web/releases/abc123')
     const extractIdx = script.findIndex((l) => l.includes('tar xzf'))
     const installIdx = script.findIndex((l) => l === 'bun install --frozen-lockfile')
+    const toolsIdx = script.findIndex((l) => l.includes('cd /opt/pantry && pantry env'))
     const startIdx = script.findIndex((l) => l === 'systemctl restart my-app-web@abc123.service')
     expect(extractIdx).toBeLessThan(installIdx)
+    expect(toolsIdx).toBeGreaterThan(extractIdx)
+    expect(toolsIdx).toBeLessThan(installIdx)
     expect(installIdx).toBeLessThan(startIdx)
   })
 

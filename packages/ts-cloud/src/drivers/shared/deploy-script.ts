@@ -16,6 +16,19 @@ import type { ReleasePaths } from './releases'
 import { formatEnvFile } from './env-file'
 import { buildActivateRelease, buildDeployLock, buildRecordPreviousRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxBundleCacheDir, stxImageCacheDir } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
+import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
+
+/** Managed engine clients must be available to migrations and their backups. */
+function releasePreStart(directory: string, commands: string[]): string[] {
+  if (!commands.length) return []
+  return [
+    `cd ${directory}`,
+    `if [ -d ${PANTRY_PROJECT_DIR} ] && command -v pantry >/dev/null 2>&1; then`,
+    `  ${pantryEnvActivation()}`,
+    'fi',
+    ...commands,
+  ]
+}
 
 /** Extensions that mark the first token as something a runtime should be given. */
 const MODULE_EXTENSIONS = /\.(?:[cm]?[jt]sx?)$/
@@ -836,7 +849,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   // the linked `.env` from the cwd, so build steps see the same config as the
   // running service. The release isn't live yet, so a slow build never affects
   // the currently-serving release.
-  const preStart = preStartCommands.length > 0 ? [`cd ${paths.release}`, ...preStartCommands] : []
+  const preStart = releasePreStart(paths.release, preStartCommands)
 
   const stageRelease = [
     'set -euo pipefail',
@@ -1054,7 +1067,7 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
   const paths = releasePaths(base, releaseId)
   const tarball = releaseTarballTmpPath(options.slug, siteName, releaseId)
 
-  const preStart = preStartCommands.length > 0 ? [`cd ${paths.release}`, ...preStartCommands] : []
+  const preStart = releasePreStart(paths.release, preStartCommands)
 
   return [
     'set -euo pipefail',
