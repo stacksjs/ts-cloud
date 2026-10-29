@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.71...v0.16.72)
+
+## 🐛 Bug Fixes
+
+- hide other tenants from isolated runtime namespaces ([3f39c7e](https://github.com/stacksjs/ts-cloud/commit/3f39c7e)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.72 ([1e82075](https://github.com/stacksjs/ts-cloud/commit/1e82075)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.69...v0.16.70)
 
 ## 🐛 Bug Fixes
