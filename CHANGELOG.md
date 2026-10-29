@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.72...v0.16.73)
+
+## 🐛 Bug Fixes
+
+- retain residency evidence from the legacy provider response ([f746bcb](https://github.com/stacksjs/ts-cloud/commit/f746bcb)) _(by Chris <chris@stacksjs.com>)_
+- enforce residency when provisioning dedicated enterprise hosts ([63d5e99](https://github.com/stacksjs/ts-cloud/commit/63d5e99)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.73 ([d611bc2](https://github.com/stacksjs/ts-cloud/commit/d611bc2)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.71...v0.16.72)
 
 ## 🐛 Bug Fixes
