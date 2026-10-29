@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.74...v0.16.75)
+
+## 🐛 Bug Fixes
+
+- enforce password authentication for owned PostgreSQL installations ([6beac7d](https://github.com/stacksjs/ts-cloud/commit/6beac7d)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.75 ([852575f](https://github.com/stacksjs/ts-cloud/commit/852575f)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.73...v0.16.74)
 
 ## 🐛 Bug Fixes
