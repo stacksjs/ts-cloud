@@ -45,4 +45,7 @@ it('checks actual provider target metadata before returning a deploy target', as
   expect((await driver.findComputeTargets(target)).length).toBe(1)
   server.location.country='US'
   await expect(driver.findComputeTargets(target)).rejects.toThrow('residency')
+  delete server.location
+  server.datacenter={name:'fsn1-dc14',location:{name:'fsn1',country:'DE'}}
+  expect((await driver.findComputeTargets(target)).length).toBe(1)
 })

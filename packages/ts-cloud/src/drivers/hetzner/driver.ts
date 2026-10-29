@@ -226,7 +226,7 @@ export class HetznerDriver implements CloudDriver {
     const residency = config.cloud?.residency || this.residency
     const { assertComputeResidency } = await import('../../deploy/residency')
     const assertServerResidency = (server: HetznerServer): void => {
-      if (residency) assertComputeResidency(residency, { country: server.location?.country, location: server.location?.name || server.datacenter?.location?.name })
+      if (residency) assertComputeResidency(residency, { country: server.location?.country || server.datacenter?.location?.country, location: server.location?.name || server.datacenter?.location?.name })
     }
     if (residency) {
       if (topology.dedicatedServices || topology.appServers > 1) throw new Error('Residency policy currently requires single-host compute')
@@ -1158,7 +1158,7 @@ export class HetznerDriver implements CloudDriver {
     const { assertComputeResidency } = await import('../../deploy/residency')
     const role = options.role || 'app'
     const toTarget = (server: HetznerServer): ComputeTarget => {
-      if (this.residency) assertComputeResidency(this.residency, { country: server.location?.country, location: server.location?.name || server.datacenter?.location?.name })
+      if (this.residency) assertComputeResidency(this.residency, { country: server.location?.country || server.datacenter?.location?.country, location: server.location?.name || server.datacenter?.location?.name })
       return {
       id: String(server.id),
       name: server.name,

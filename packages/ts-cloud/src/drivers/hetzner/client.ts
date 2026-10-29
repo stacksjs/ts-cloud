@@ -85,7 +85,7 @@ export interface HetznerServer {
   /** Current API shape. */
   location?: { id?: number; name: string; description?: string; city?: string; country?: string }
   /** Legacy API shape retained for compatibility with recorded fixtures. */
-  datacenter?: { name: string; location: { name: string } }
+  datacenter?: { name: string; location: { name: string, country?: string } }
   primary_disk_size?: number
   locked?: boolean
 }
