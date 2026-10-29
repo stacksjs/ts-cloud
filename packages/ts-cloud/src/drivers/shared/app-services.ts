@@ -195,6 +195,11 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     if (isolatedUser && daemon.user && daemon.user !== isolatedUser)
       throw new Error('An isolated runtime daemon cannot change its project identity')
     const processes = Math.max(1, daemon.processes ?? 1)
+    const workingDir = daemon.directory || current
+    // systemd rejects ./executables even with WorkingDirectory set. Qualify
+    // that path before the framework adds its environment wrapper; leave bare
+    // commands (including sh) and their arguments untouched.
+    const command = daemon.command.trim().replace(/^\.\//, () => `${workingDir.replace(/\/+$/, '')}/`)
     for (let p = 0; p < processes; p++) {
       const name = `${daemonUnitName(slug, siteName, daemon, dIndex)}-${p}`
       desiredUnits.push(name)
@@ -203,8 +208,8 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
           name,
           systemdUnit({
             description: `${siteName} daemon ${daemon.name || daemon.command} (managed by ts-cloud)`,
-            workingDir: daemon.directory || current,
-            execStart: driver.wrapExec(daemon.command),
+            workingDir,
+            execStart: driver.wrapExec(command),
             environment: driver.execEnv,
             restart: daemon.restart,
             user: daemon.user,
