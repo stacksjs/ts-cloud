@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.77...v0.16.78)
+
+## 🐛 Bug Fixes
+
+- load the site environment before starting daemons ([69183af](https://github.com/stacksjs/ts-cloud/commit/69183af)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.78 ([b2cc150](https://github.com/stacksjs/ts-cloud/commit/b2cc150)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.76...v0.16.77)
 
 ## 🐛 Bug Fixes
