@@ -4,16 +4,19 @@ import {
   buildBackupScript,
   buildCreateDatabaseScript,
   buildCreateUserScript,
+  buildListBackupsScript,
   buildListScript,
   buildVitessListScript,
+  DEFAULT_DB_BACKUP_RETENTION,
   isExternalEngine,
   isValidDbIdentifier,
-  parseVitessTopology,
-  shardsMissingPrimary,
-  unhealthyTablets,
   parseBackups,
   parseDbList,
+  parseVitessTopology,
+  resolveDbBackupRetention,
   resolveDbEngine,
+  shardsMissingPrimary,
+  unhealthyTablets,
 } from './dashboard-database'
 
 describe('resolveDbEngine', () => {
@@ -149,10 +152,12 @@ describe('buildListScript + parseDbList', () => {
       expect(script.filter(line => line.includes('$(date'))).toHaveLength(1)
       expect(script.some(line => line.startsWith('TS_CLOUD_BACKUP_STAMP='))).toBe(true)
 
-      // The write, the report and the listing must all name the same thing.
-      const named = script.filter(line => line.includes('acme-'))
+      // The publish, the report and the listing must all name the same thing.
+      const named = script.filter(line => line.includes('acme-$TS_CLOUD_BACKUP_STAMP.sql.gz'))
       expect(named).toHaveLength(3)
-      for (const line of named) expect(line).toContain('acme-$TS_CLOUD_BACKUP_STAMP.sql.gz')
+      // And the scratch file is named once and consistently: written to,
+      // renamed from, removed on failure.
+      expect(script.filter(line => line.includes('.acme-$TS_CLOUD_BACKUP_STAMP.part'))).toHaveLength(3)
 
       // And the stamp is set before anything uses it.
       expect(script.findIndex(l => l.startsWith('TS_CLOUD_BACKUP_STAMP=')))
@@ -160,6 +165,91 @@ describe('buildListScript + parseDbList', () => {
     }
   })
 
+
+  /**
+   * Every on-demand dump used to be kept forever: `buildBackupScript` wrote a
+   * timestamped file and nothing pruned the directory, so each dashboard
+   * "Backup" click left a full dump on the box. The scheduled path has honoured
+   * `retentionCount`/`retentionDays` all along; this path had no bound at all.
+   */
+  describe('on-demand dump retention', () => {
+    it('keeps the newest N dumps of that database and drops the rest', () => {
+      const script = buildBackupScript('mysql', 'acme', '/var/backups/ts-cloud/databases', undefined, { count: 3 }).join('\n')
+      // Newest first, so `+4` is everything past the newest 3. The dump just
+      // taken is newest, so it always survives.
+      expect(script).toContain('ls -1t /var/backups/ts-cloud/databases/acme-*.sql.gz 2>/dev/null | tail -n +4 | xargs -r rm -f')
+    })
+
+    it('drops dumps older than the configured age', () => {
+      const script = buildBackupScript('mysql', 'acme', '/var/backups/ts-cloud/databases', undefined, { days: 7 }).join('\n')
+      expect(script).toContain('-name "acme-*.sql.gz" -mtime +7 -delete')
+    })
+
+    it('defaults to a bound rather than to unbounded', () => {
+      const script = buildBackupScript('mysql', 'acme').join('\n')
+      expect(script).toContain(`tail -n +${DEFAULT_DB_BACKUP_RETENTION.count + 1}`)
+      expect(script).toContain(`-mtime +${DEFAULT_DB_BACKUP_RETENTION.days} -delete`)
+    })
+
+    /** A shared box holds every database's dumps in one directory. */
+    it('never prunes another database\'s dumps', () => {
+      const script = buildBackupScript('mysql', 'acme').join('\n')
+      for (const line of script.split('\n').filter(l => l.includes('rm -f') || l.includes('-delete')))
+        expect(line).toContain('acme-')
+    })
+
+    it('can be turned off for a caller that owns the directory itself', () => {
+      const script = buildBackupScript('postgres', 'acme', '/tmp', undefined, false).join('\n')
+      expect(script).not.toContain('-delete')
+      expect(script).not.toContain('tail -n +')
+    })
+
+    /**
+     * `runDb` runs these under `set -uo pipefail` with NO `-e`, so a failed dump
+     * does not stop the script — and `gzip` exits 0 even when its upstream died.
+     * If retention ran anyway it would count a 20-byte gzip header as the newest
+     * backup and delete a good one to make room: adding a bound would then
+     * destroy data that accumulating never did.
+     */
+    it('prunes nothing when the dump fails', () => {
+      const script = buildBackupScript('mysql', 'acme')
+      const elseAt = script.indexOf('else')
+      expect(elseAt).toBeGreaterThan(-1)
+      const failureBranch = script.slice(elseAt).join('\n')
+      expect(failureBranch).not.toContain('-delete')
+      expect(failureBranch).not.toContain('tail -n +')
+      // And it reports the failure rather than exiting 0 with no dump.
+      expect(failureBranch).toContain('exit 1')
+    })
+
+    /**
+     * The stamp is only second-granular. Redirecting straight to the final name
+     * opens and truncates it before the dump is known to work, so a failed retry
+     * within the same second as a good dump destroyed that dump. Reproduced
+     * before the fix.
+     */
+    it('publishes by rename, so a failed retry cannot clobber a good dump', () => {
+      const script = buildBackupScript('mysql', 'acme')
+      const dumpLine = script.find(l => l.startsWith('if '))!
+      // The dump writes to the scratch name, never to the published one.
+      expect(dumpLine).toContain('.acme-$TS_CLOUD_BACKUP_STAMP.part"')
+      expect(dumpLine).not.toContain('acme-$TS_CLOUD_BACKUP_STAMP.sql.gz')
+      expect(script.join('\n')).toContain('mv -f "/var/backups/ts-cloud/databases/.acme-$TS_CLOUD_BACKUP_STAMP.part"')
+      // Scratch files are outside the `*.sql.gz` glob, so they are never listed
+      // as a backup — and stale ones get reaped.
+      expect(buildListBackupsScript()).toEqual([expect.stringContaining('*.sql.gz')])
+      expect(script.join('\n')).toContain('-name ".acme-*.part" -mmin +60 -delete')
+    })
+
+    it('reads its bounds from the same config the scheduled path uses', () => {
+      const base = { project: { name: 'acme', slug: 'acme' } } as any
+      expect(resolveDbBackupRetention(base)).toEqual(DEFAULT_DB_BACKUP_RETENTION)
+      expect(resolveDbBackupRetention({
+        ...base,
+        infrastructure: { compute: { backups: { retentionCount: 2, retentionDays: 3 } } },
+      })).toEqual({ count: 2, days: 3 })
+    })
+  })
 
   it('parses BACKUP= lines into database + file, deriving the db from the filename', () => {
     const parsed = parseBackups(

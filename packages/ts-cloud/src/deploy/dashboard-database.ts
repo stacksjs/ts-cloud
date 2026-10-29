@@ -428,17 +428,71 @@ export async function createDatabaseUser(
 export const DB_BACKUP_DIR = '/var/backups/ts-cloud/databases'
 
 /**
- * Script that dumps a single database to a timestamped, gzipped file. The name
- * is a validated SQL identifier (no shell metacharacters), so it is safe to
- * embed directly. The timestamp is computed on the box. Postgres connects over
- * the local unix socket for a co-located engine, or TCP with credentials for
- * an external host (see {@link pgAdminCommand}).
+ * Local retention for on-box dumps, mirroring the bounds the scheduled path
+ * already honours ({@link ComputeBackupConfig.retentionCount} /
+ * {@link ComputeBackupConfig.retentionDays}).
+ */
+export interface DbBackupRetention {
+  /** Keep the newest N dumps of this database. @default 5 */
+  count?: number
+  /** Delete this database's dumps older than N days. @default 30 */
+  days?: number
+}
+
+/** Applied when `compute.backups` configures no bounds of its own. */
+export const DEFAULT_DB_BACKUP_RETENTION = { count: 5, days: 30 } as const
+
+/**
+ * Retention for an on-demand dump. Falls back to the defaults rather than to
+ * "unbounded" even when scheduled backups are disabled: `compute.backups` turns
+ * the *schedule* off, and a dashboard button that leaves dumps on the box
+ * forever is the bug this resolves, not a documented mode.
+ */
+export function resolveDbBackupRetention(config: CloudConfig): DbBackupRetention {
+  const backups = config.infrastructure?.compute?.backups
+  return {
+    count: backups?.retentionCount ?? DEFAULT_DB_BACKUP_RETENTION.count,
+    days: backups?.retentionDays ?? DEFAULT_DB_BACKUP_RETENTION.days,
+  }
+}
+
+/**
+ * Prune one database's dumps. Scoped to `<name>-*.sql.gz` so a shared box does
+ * not let one database's retention delete another's, and emitted only on the
+ * success branch of {@link buildBackupScript}.
+ */
+function buildDbBackupRetentionScript(destDir: string, name: string, retention: DbBackupRetention): string[] {
+  const count = Math.max(1, Math.floor(retention.count ?? DEFAULT_DB_BACKUP_RETENTION.count))
+  const days = Math.max(1, Math.floor(retention.days ?? DEFAULT_DB_BACKUP_RETENTION.days))
+  const pattern = `${name}-*.sql.gz`
+  return [
+    // Newest first, so `tail -n +N+1` is everything past the newest N. The dump
+    // just taken is the newest, so a count of at least 1 always keeps it.
+    `  ls -1t ${destDir}/${pattern} 2>/dev/null | tail -n +${count + 1} | xargs -r rm -f`,
+    `  find ${destDir} -xdev -maxdepth 1 -type f -name ${JSON.stringify(pattern)} -mtime +${days} -delete 2>/dev/null || true`,
+    // Scratch files from a dump whose process was killed before either branch
+    // ran. An hour bounds a concurrent dump that is still writing.
+    `  find ${destDir} -xdev -maxdepth 1 -type f -name ${JSON.stringify(`.${name}-*.part`)} -mmin +60 -delete 2>/dev/null || true`,
+  ]
+}
+
+/**
+ * Script that dumps a single database to a timestamped, gzipped file, then
+ * prunes older dumps of that database. The name is a validated SQL identifier
+ * (no shell metacharacters), so it is safe to embed directly. The timestamp is
+ * computed on the box. Postgres connects over the local unix socket for a
+ * co-located engine, or TCP with credentials for an external host (see
+ * {@link pgAdminCommand}).
+ *
+ * Pass `retention: false` for a caller that owns the destination directory's
+ * lifetime itself (a dump staged for a one-shot move, say).
  */
 export function buildBackupScript(
   engine: DbEngine,
   name: string,
   destDir: string = DB_BACKUP_DIR,
   database?: DatabaseConfig,
+  retention: DbBackupRetention | false = {},
 ): string[] {
   // The timestamp is taken ONCE into a variable rather than embedded as a
   // command substitution. Written inline, `$(date …)` runs again in every
@@ -448,22 +502,41 @@ export function buildBackupScript(
   // find, which is the worst way for a backup to fail.
   const stamp = 'TS_CLOUD_BACKUP_STAMP="$(date +%Y%m%d-%H%M%S)"'
   const file = `${destDir}/${name}-$TS_CLOUD_BACKUP_STAMP.sql.gz`
-  const mkdir = `mkdir -p ${destDir}`
-  if (engine === 'postgres')
-    return [
-      mkdir,
-      stamp,
-      `${pgAdminCommand(database, 'pg_dump')} ${name} | gzip > "${file}"`,
-      `echo "BACKUP=${file}"`,
-      `ls -l "${file}"`,
-    ]
+  // Dump to a scratch name and rename only on success. Redirecting straight to
+  // `${file}` opens (and truncates) the final name before the dump is known to
+  // have worked, so two dumps of one database in the same second — the second
+  // failing — destroyed the first: same stamp, same path. The stamp is only
+  // second-granular, and a retry after a failure is exactly when that happens.
+  // `.part` is outside the `*.sql.gz` glob, so a scratch file is never listed
+  // as a backup nor counted by retention.
+  const part = `${destDir}/.${name}-$TS_CLOUD_BACKUP_STAMP.part`
   const sock = engine === 'mariadb' ? SOCKETS.mariadb : SOCKETS.mysql
+  const dump = engine === 'postgres'
+    ? `${pgAdminCommand(database, 'pg_dump')} ${name} | gzip > "${part}"`
+    : `mysqldump --socket=${sock} -u root ${name} | gzip > "${part}"`
+
   return [
-    mkdir,
+    `mkdir -p ${destDir}`,
     stamp,
-    `mysqldump --socket=${sock} -u root ${name} | gzip > "${file}"`,
-    `echo "BACKUP=${file}"`,
-    `ls -l "${file}"`,
+    // Branch explicitly on the dump rather than letting the script run on.
+    // `runDb` executes these under `set -uo pipefail` with NO `-e`, so a failed
+    // dump does not stop what follows — and `gzip` exits 0 even when its
+    // upstream died, so pipefail is the only thing that tells a real dump from
+    // a 20-byte gzip header. Without this gate, retention would count that
+    // header as the newest backup and delete a good one to make room for it:
+    // adding a bound would then destroy data that accumulating never did.
+    `if ${dump}; then`,
+    `  mv -f "${part}" "${file}"`,
+    `  echo "BACKUP=${file}"`,
+    `  ls -l "${file}"`,
+    ...(retention === false ? [] : buildDbBackupRetentionScript(destDir, name, retention)),
+    'else',
+    // A partial file is worse than none: `buildListBackupsScript` would report
+    // it as a backup, and `ls -1t` would rank it newest.
+    `  rm -f "${part}"`,
+    `  echo "[ts-cloud] backup failed for ${name}; no dump was kept" >&2`,
+    '  exit 1',
+    'fi',
   ]
 }
 
@@ -502,7 +575,7 @@ export async function backupDatabase(
   const r = await runDb(
     config,
     environment,
-    buildBackupScript(engine, name, DB_BACKUP_DIR, resolveAppDatabase(config)),
+    buildBackupScript(engine, name, DB_BACKUP_DIR, resolveAppDatabase(config), resolveDbBackupRetention(config)),
     `ts-cloud db:backup ${name}`,
   )
   return { ...r, database: name }
