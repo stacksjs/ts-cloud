@@ -21,69 +21,35 @@ export const BACKUP_RUNNER_PATH = '/usr/local/bin/ts-cloud-backup.sh'
 /** Map a ts-cloud DB engine to a ts-backups database entry. Returns null if unmappable. */
 function backupEntryFor(database: DatabaseConfig): string | null {
   if (!database.name) return null
-  const host = database.host || '127.0.0.1'
-  const isPostgres = database.engine === 'postgres'
-  const type = isPostgres ? 'postgresql' : 'mysql'
-  const port = database.port ?? (isPostgres ? 5432 : 3306)
-  // Escape for a single-quoted TS string literal so a `'` or `\` in a
-  // credential can't break the generated backups.config.ts.
-  const ts = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-
-  return [
-    '  {',
-    `    type: '${type}',`,
-    `    name: '${ts(database.name)}',`,
-    '    connection: {',
-    `      hostname: '${ts(host)}',`,
-    `      port: ${port},`,
-    `      database: '${ts(database.name)}',`,
-    `      username: '${ts(database.username || database.name)}',`,
-    `      password: '${ts(database.password || '')}',`,
-    '      ssl: false,',
-    '    },',
-    '    includeSchema: true,',
-    '    includeData: true,',
-    '  },',
-  ].join('\n')
+  if (!['postgres', 'mysql', 'mariadb'].includes(database.engine || '')) throw new Error('Unsupported scheduled SQL backup engine')
+  return JSON.stringify({
+    type: database.engine === 'postgres' ? 'postgresql' : 'mysql', name: database.name,
+    connection: { hostname: database.host || '127.0.0.1', port: database.port ?? (database.engine === 'postgres' ? 5432 : 3306), database: database.name, username: database.username || database.name, password: database.password || '', ssl: false },
+    includeSchema: true, includeData: true,
+  })
 }
 
 /** Generate the `ts-backups` config file content from the database config. */
 export function buildBackupsConfigTs(database: DatabaseConfig | undefined, backups: ComputeBackupConfig): string {
   const entry = database ? backupEntryFor(database) : null
-  // Use ts-backups' native S3 destination (uploads every backup off-box, S3 +
-  // S3-compatible endpoints like Hetzner Object Storage) instead of a separate
-  // `aws s3 sync`. `optional: false` so an upload failure fails the run.
-  const destinations = backups.bucket
-    ? [
-        '  destinations: [',
-        '    {',
-        "      type: 's3',",
-        `      bucket: '${backups.bucket}',`,
-        "      prefix: 'db-backups',",
-        ...(backups.endpoint ? [`      endpoint: '${backups.endpoint}',`] : []),
-        '      optional: false,',
-        '    },',
-        '  ],',
-      ]
-    : []
+  const destination = backups.bucket ? {
+    type: 's3', bucket: backups.bucket, prefix: backups.prefix || 'db-backups',
+    ...(backups.endpoint ? { endpoint: backups.endpoint } : {}),
+    ...(backups.region ? { region: backups.region } : {}),
+    keepDays: backups.retentionDays ?? 30, optional: false,
+    ...(backups.encryptionKey ? { encryption: { keyEnv: 'TS_CLOUD_BACKUP_ENCRYPTION_KEY' } } : {}),
+  } : undefined
+  const config = {
+    verbose: true, outputPath: BACKUP_OUTPUT_DIR,
+    retention: { count: backups.retentionCount ?? 5, maxAge: backups.retentionDays ?? 30 },
+    databases: [], files: backups.files || [], destinations: destination ? [destination] : [],
+  }
   return [
     "import type { BackupConfig } from 'ts-backups'",
-    '',
-    'const config: BackupConfig = {',
-    '  verbose: true,',
-    `  outputPath: '${BACKUP_OUTPUT_DIR}',`,
-    '  retention: {',
-    `    count: ${backups.retentionCount ?? 5},`,
-    `    maxAge: ${backups.retentionDays ?? 30},`,
-    '  },',
-    '  databases: [',
-    ...(entry ? [entry] : []),
-    '  ],',
-    ...destinations,
-    '}',
-    '',
-    'export default config',
-    '',
+    `const config: BackupConfig = ${JSON.stringify(config, null, 2)}`,
+    `config.databases = [\n${entry || ''}\n]`,
+    ...(backups.credentials ? ['config.destinations![0]!.credentials = { accessKeyId: process.env.TS_CLOUD_BACKUP_ACCESS_KEY!, secretAccessKey: process.env.TS_CLOUD_BACKUP_SECRET_KEY! }'] : []),
+    'export default config', '',
   ].join('\n')
 }
 
@@ -99,38 +65,43 @@ export interface BackupProvisionOptions {
 export function buildBackupProvisionScript(options: BackupProvisionOptions): string[] {
   const { database, backups } = options
   if (!backups.enabled) return []
-
+  if (backups.credentials && (!backups.bucket || !backups.credentials.accessKeyId || !backups.credentials.secretAccessKey))
+    throw new Error('Scheduled backups require complete destination credentials and a bucket')
+  if (backups.encryptionKey && (backups.encryptionKey.length < 32 || !backups.bucket))
+    throw new Error('Encrypted offsite backups require a bucket and a separate recovery key of at least 32 characters')
+  const version = backups.version || '0.1.6'
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Pin a released ts-backups version')
   const schedule = backups.schedule || '0 2 * * *'
-  const configTs = buildBackupsConfigTs(database, backups)
-
+  if (!/^[0-9*,/ -]+$/.test(schedule) || schedule.trim().split(/\s+/).length !== 5) throw new Error('Invalid backup schedule')
+  const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
+  const environment = Object.entries({
+    ...(backups.credentials ? { TS_CLOUD_BACKUP_ACCESS_KEY: backups.credentials.accessKeyId, TS_CLOUD_BACKUP_SECRET_KEY: backups.credentials.secretAccessKey } : {}),
+    ...(backups.encryptionKey ? { TS_CLOUD_BACKUP_ENCRYPTION_KEY: backups.encryptionKey } : {}),
+  }).map(([name, value]) => `${name}=${quote(value)}`).join('\n')
+  const install = '/opt/ts-cloud/backups'
   return [
-    'export DEBIAN_FRONTEND=noninteractive',
-    `mkdir -p /etc/ts-cloud ${BACKUP_OUTPUT_DIR}`,
-    // Bun runtime for ts-backups (no-op if already installed).
-    'command -v bun >/dev/null 2>&1 || (curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun)',
-    // Install ts-backups globally at provision time so scheduled runs don't
-    // depend on the registry being reachable each night.
-    'bun add -g ts-backups || true',
-    // Generated ts-backups config (dump + native off-box S3 upload).
-    `cat > ${BACKUP_CONFIG_PATH} <<'TS_CLOUD_BACKUP_CFG_EOF'`,
-    configTs.replace(/\n$/, ''),
-    'TS_CLOUD_BACKUP_CFG_EOF',
-    // Runner: ts-backups dumps + uploads to the configured destination natively.
+    'umask 077',
+    `mkdir -p /etc/ts-cloud ${BACKUP_OUTPUT_DIR} ${install}`,
+    `chmod 700 ${BACKUP_OUTPUT_DIR} ${install}`,
+    'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/bin:/usr/bin:/bin"',
+    `test -f ${install}/package.json || printf '%s' '{"private":true}' > ${install}/package.json`,
+    `bun add --cwd ${install} --no-save ts-backups@${version}`,
+    `printf '%s' ${quote(buildBackupsConfigTs(database, backups))} > ${BACKUP_CONFIG_PATH}`,
+    `printf '%s\\n' ${quote(environment)} > /etc/ts-cloud/backups.env`,
+    `chmod 600 ${BACKUP_CONFIG_PATH} /etc/ts-cloud/backups.env`,
     `cat > ${BACKUP_RUNNER_PATH} <<'TS_CLOUD_BACKUP_RUN_EOF'`,
-    '#!/bin/bash',
-    'set -uo pipefail',
-    // cron has a minimal PATH; make the globally-installed bun/ts-backups reachable.
-    'export PATH="/root/.bun/bin:/usr/local/bin:$PATH"',
+    '#!/bin/bash', 'set -euo pipefail', 'umask 077',
+    'exec 9>/run/lock/ts-cloud-backups.lock', 'flock -n 9 || exit 0',
+    'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/bin:/usr/bin:/bin"',
+    'eval "$(cd /opt/pantry && pantry env)"',
+    'set -a', '. /etc/ts-cloud/backups.env', 'set +a',
     'notify() { [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "$1" || true; }',
     'cd /etc/ts-cloud',
-    // `start` is ts-backups' backup command; it has no `backup` subcommand.
-    'if ! ts-backups start --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed"; exit 1; fi',
+    `if ! ${install}/node_modules/.bin/ts-backups start --config ${BACKUP_CONFIG_PATH}; then notify "ts-cloud backup failed"; exit 1; fi`,
+    'date -u +%FT%TZ > /var/backups/ts-cloud/last-success',
     'TS_CLOUD_BACKUP_RUN_EOF',
-    `chmod +x ${BACKUP_RUNNER_PATH}`,
-    // Cron entry.
-    `cat > ${BACKUP_CRON_PATH} <<'TS_CLOUD_BACKUP_CRON_EOF'`,
-    `${schedule} root ${BACKUP_RUNNER_PATH} >> /var/log/ts-cloud-backup.log 2>&1`,
-    'TS_CLOUD_BACKUP_CRON_EOF',
+    `chmod 700 ${BACKUP_RUNNER_PATH}`,
+    `printf '%s\\n' ${quote(`${schedule} root ${BACKUP_RUNNER_PATH} >> /var/log/ts-cloud-backup.log 2>&1`)} > ${BACKUP_CRON_PATH}`,
     `chmod 644 ${BACKUP_CRON_PATH}`,
   ]
 }

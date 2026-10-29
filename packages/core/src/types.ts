@@ -4199,6 +4199,8 @@ export interface ComputeAppUpdateTarget {
 }
 
 export interface ComputeBackupConfig {
+  /** Pin the first-party backup tool used by the scheduled runner. */
+  version?: string
   /** Enable scheduled backups. @default false */
   enabled?: boolean
   /** Cron schedule for the backup run. @default '0 2 * * *' (daily 02:00) */
@@ -4211,6 +4213,14 @@ export interface ComputeBackupConfig {
   bucket?: string
   /** S3-compatible endpoint (e.g. Hetzner object storage). Omit for AWS S3. */
   endpoint?: string
+  /** Explicit destination region, independent of any application AWS region. */
+  region?: string
+  prefix?: string
+  credentials?: { accessKeyId: string; secretAccessKey: string }
+  /** Separate recovery secret; provisioned root-only and never sent to app sites. */
+  encryptionKey?: string
+  /** Additional project-owned files included in the encrypted recovery copies. */
+  files?: Array<{ name: string; path: string; optional?: boolean; include?: string[]; exclude?: string[] }>
 }
 
 /**
