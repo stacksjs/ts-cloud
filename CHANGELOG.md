@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.75...v0.16.76)
+
+## 🐛 Bug Fixes
+
+- preserve resolved values in release pre-start environments ([3168743](https://github.com/stacksjs/ts-cloud/commit/3168743)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.76 ([3ba880a](https://github.com/stacksjs/ts-cloud/commit/3ba880a)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.74...v0.16.75)
 
 ## 🐛 Bug Fixes
