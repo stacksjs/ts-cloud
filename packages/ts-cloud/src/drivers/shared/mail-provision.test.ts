@@ -38,6 +38,20 @@ function withMail(mail: any, overrides: Partial<CloudConfig> = {}): CloudConfig 
   } as CloudConfig
 }
 
+it('loads private gateway certificates through systemd and reloads them on renewal', () => {
+  const sources = { certPath: '/etc/rpx/certs/mail.example.com.crt', keyPath: '/etc/rpx/certs/mail.example.com.key' }
+  const mail = resolveMailService(withMail({ mode: 'server', hostname: 'mail.example.com', tls: { systemCredentials: sources } }), { environment: 'production' })
+  expect(mail.tls.acme).toBe(false)
+  expect(buildMailConfigToml(mail)).toContain('/run/credentials/mail.service/server.key')
+  expect(buildMailUnit(mail)).toContain(`LoadCredential=server.key:${sources.keyPath}`)
+  const script = buildMailProvisionScript(mail).join('\n')
+  expect(script).toContain(`PathChanged=${sources.certPath}`)
+  expect(script).toContain(`PathChanged=${sources.keyPath}`)
+  expect(script).toContain('ExecStart=/usr/bin/systemctl restart mail.service')
+  expect(script).not.toContain(`chmod 644 ${sources.keyPath}`)
+  expect(() => resolveMailService(withMail({ tls: { systemCredentials: { ...sources, keyPath: '/etc/key\nExecStart=bad' } } }))).toThrow()
+})
+
 describe('resolveMailService', () => {
   it('is disabled when nothing declares it', () => {
     const mail = resolveMailService(config(), { environment: 'production' })

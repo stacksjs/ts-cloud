@@ -4524,6 +4524,8 @@ export interface MailPortsConfig {
 
 /** TLS for the mail server's SMTP/IMAP listeners. */
 export interface MailTlsConfig {
+  /** Root-owned gateway certificate sources delivered through systemd credentials. */
+  systemCredentials?: { certPath: string; keyPath: string }
   /** Serve TLS at all. @default true for a server, false for a catcher. */
   enabled?: boolean
   /**

@@ -40,7 +40,7 @@ export interface ResolvedMailService {
   /** Resolved listening ports; a port that is off is absent. */
   ports: ResolvedMailPorts
   /** TLS, resolved. `acme` implies the server obtains its own certificate. */
-  tls: { enabled: boolean, acme: boolean, certPath?: string, keyPath?: string, requireForAuth: boolean, acmeEmail?: string }
+  tls: { enabled: boolean, acme: boolean, certPath?: string, keyPath?: string, requireForAuth: boolean, acmeEmail?: string, systemCredentials?: { certPath: string; keyPath: string } }
   /** DKIM, resolved. Off means the server signs nothing. */
   dkim: { enabled: boolean, selector: string, rotate: boolean, rotateIntervalDays: number }
   /** Webmail UI, resolved. */
@@ -180,7 +180,9 @@ export function resolveMailService(
 
   const tlsDeclared = mail.tls ?? {}
   const tlsEnabled = tlsDeclared.enabled ?? server
-  const explicitCert = !!(tlsDeclared.certPath && tlsDeclared.keyPath)
+  const explicitCert = !!(tlsDeclared.systemCredentials || (tlsDeclared.certPath && tlsDeclared.keyPath))
+  if (tlsDeclared.systemCredentials && Object.values(tlsDeclared.systemCredentials).some(path => !/^\/[a-z0-9_./-]+$/i.test(path) || path.includes('/../')))
+    throw new Error('Mail system credentials require absolute certificate paths')
   const accounts = (mail.accounts ?? []).map(account => ({ address: account.address, password: account.password, passwordPolicy: account.passwordPolicy ?? 'initial' as const }))
 
   const dkimDeclared = typeof mail.dkim === 'object' && mail.dkim !== null ? mail.dkim : {}
@@ -228,8 +230,9 @@ export function resolveMailService(
     tls: {
       enabled: tlsEnabled,
       acme: tlsEnabled && !explicitCert && (tlsDeclared.acme ?? true),
-      certPath: tlsDeclared.certPath,
-      keyPath: tlsDeclared.keyPath,
+      certPath: tlsDeclared.systemCredentials ? '/run/credentials/mail.service/server.crt' : tlsDeclared.certPath,
+      keyPath: tlsDeclared.systemCredentials ? '/run/credentials/mail.service/server.key' : tlsDeclared.keyPath,
+      systemCredentials: tlsDeclared.systemCredentials,
       // Only meaningful where TLS exists at all; a catcher with no TLS that
       // required it for AUTH would refuse every login it offers.
       requireForAuth: tlsDeclared.requireForAuth ?? (tlsEnabled && server),
