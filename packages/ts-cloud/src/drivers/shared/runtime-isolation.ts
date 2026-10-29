@@ -7,8 +7,8 @@ export function runtimeIsolationUser(slug: string): string {
   return `tsc-${suffix}`
 }
 
-export function runtimeIsolationDirectives(user: string): string[] {
-  return [`User=${user}`, `Group=${user}`, 'NoNewPrivileges=true', 'PrivateTmp=true', 'ProtectHome=true', 'InaccessiblePaths=-/run/postgresql -/var/run/postgresql', 'UMask=0077', `Environment=HOME=/var/lib/ts-cloud/${user}`]
+export function runtimeIsolationDirectives(user: string, base: string, slug: string): string[] {
+  return [`User=${user}`, `Group=${user}`, 'NoNewPrivileges=true', 'PrivateTmp=true', 'ProtectHome=true', 'ProtectProc=invisible', 'InaccessiblePaths=-/run/postgresql -/var/run/postgresql', 'TemporaryFileSystem=/var/www:ro', `BindPaths=${base} -/var/www/${slug}-shared`, 'UMask=0077', `Environment=HOME=/var/lib/ts-cloud/${user}`]
 }
 
 /** Only take ownership of this project's release and explicitly shared project data. */

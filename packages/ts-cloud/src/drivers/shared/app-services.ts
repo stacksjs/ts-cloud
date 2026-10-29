@@ -86,6 +86,8 @@ function systemdUnit(opts: {
   stopWaitSecs?: number
   user?: string
   isolatedUser?: string
+  isolationRoot?: string
+  isolationSlug?: string
   environment?: Record<string, string>
   /**
    * Soft memory ceiling. Defaults to the same 2G an app unit gets, because
@@ -116,7 +118,10 @@ function systemdUnit(opts: {
     `MemoryHigh=${opts.memoryHigh ?? '2G'}`,
     ...(opts.memoryMax ? [`MemoryMax=${opts.memoryMax}`] : []),
   ]
-  if (opts.isolatedUser) lines.push(...runtimeIsolationDirectives(opts.isolatedUser))
+  if (opts.isolatedUser) {
+    if (!opts.isolationRoot || !opts.isolationSlug) throw new Error('Runtime isolation requires its project directory')
+    lines.push(...runtimeIsolationDirectives(opts.isolatedUser, opts.isolationRoot, opts.isolationSlug))
+  }
   else if (opts.user) lines.push(`User=${opts.user}`)
   if (typeof opts.stopWaitSecs === 'number') lines.push(`TimeoutStopSec=${opts.stopWaitSecs}`)
   lines.push('', '[Install]', 'WantedBy=multi-user.target')
@@ -176,6 +181,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
             execStart,
             environment: executionEnvironment,
             isolatedUser,
+            isolationRoot: base, isolationSlug: slug,
             stopWaitSecs: worker.stopWaitSecs ?? 90,
           }),
         ),
@@ -203,6 +209,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
             restart: daemon.restart,
             user: daemon.user,
             isolatedUser,
+            isolationRoot: base, isolationSlug: slug,
           }),
         ),
       )
@@ -228,6 +235,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
           execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
           environment: executionEnvironment,
           isolatedUser,
+          isolationRoot: base, isolationSlug: slug,
           memoryHigh: limits.memoryHigh,
           memoryMax: limits.memoryMax,
         }),

@@ -8,6 +8,8 @@ it('binds both cutover modes and every background service to the project identit
     const script = buildSiteDeployScript({ slug: 'lsu', siteName: 'api', appDir: '/var/www/lsu-api', releaseId: 'abc123', artifactFetch: [], execStart: '/usr/local/bin/bun server.ts', envEntries: {}, isolation: true, zeroDowntime, port: 3251, sharedPaths: [{path: 'storage/app', target: '/var/www/lsu-shared/training'}] }).join('\n')
     expect(script).toContain('User=tsc-lsu')
     expect(script).toContain('NoNewPrivileges=true')
+    expect(script).toContain('TemporaryFileSystem=/var/www:ro')
+    expect(script).toContain('BindPaths=/var/www/lsu-api -/var/www/lsu-shared')
     expect(script).toContain('chmod 600 /var/www/lsu-api/shared/.env')
     expect(script).toContain('chown -hR tsc-lsu:tsc-lsu /var/www/lsu-shared/training')
     expect(script.indexOf('useradd --system')).toBeLessThan(script.indexOf('User=tsc-lsu'))
