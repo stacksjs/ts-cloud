@@ -3,6 +3,7 @@ import { buildUfwScript, UFW_BASE_PORTS } from '../../src/drivers/shared/ufw'
 import { buildAutoUpdatesScript } from '../../src/drivers/shared/maintenance'
 import { buildMonitoringScript } from '../../src/drivers/shared/monitoring'
 import { buildBackupProvisionScript, buildBackupsConfigTs } from '../../src/drivers/shared/backups'
+import { readBackupConfig } from './backup-config-fixture'
 
 describe('buildUfwScript', () => {
   it('allows SSH + 80/443 and extra ports, then enables', () => {
@@ -54,9 +55,9 @@ describe('backups (ts-backups integration)', () => {
   it('generates a ts-backups config from the database', () => {
     const cfg = buildBackupsConfigTs(database, { enabled: true, retentionCount: 7 })
     expect(cfg).toContain("import type { BackupConfig } from 'ts-backups'")
-    expect(cfg).toContain("type: 'mysql'")
-    expect(cfg).toContain("database: 'forge'")
-    expect(cfg).toContain('count: 7')
+    const config = readBackupConfig(cfg)
+    expect(config.databases[0]).toMatchObject({ type: 'mysql', connection: { database: 'forge' } })
+    expect(config.retention.count).toBe(7)
   })
 
   it('configures a native S3 destination (no aws-cli sync) when a bucket is set', () => {
@@ -65,11 +66,7 @@ describe('backups (ts-backups integration)', () => {
       bucket: 'my-backups',
       endpoint: 'https://hel1.your-objectstorage.com',
     })
-    expect(cfg).toContain('destinations: [')
-    expect(cfg).toContain("type: 's3'")
-    expect(cfg).toContain("bucket: 'my-backups'")
-    expect(cfg).toContain("endpoint: 'https://hel1.your-objectstorage.com'")
-    expect(cfg).toContain('optional: false')
+    expect(readBackupConfig(cfg).destinations).toEqual([expect.objectContaining({ type: 's3', bucket: 'my-backups', endpoint: 'https://hel1.your-objectstorage.com', optional: false })])
   })
 
   it('installs Bun + ts-backups and schedules a cron (native upload, no aws-cli)', () => {
@@ -82,8 +79,8 @@ describe('backups (ts-backups integration)', () => {
         schedule: '0 3 * * *',
       },
     }).join('\n')
-    expect(script).toContain('bun.sh/install')
-    expect(script).toContain('bun add -g ts-backups')
+    expect(script).toContain('bun add --cwd /opt/ts-cloud/backups --no-save ts-backups@0.1.6')
+    expect(script).toContain('chmod 600 /etc/ts-cloud/backups.config.ts /etc/ts-cloud/backups.env')
     expect(script).toContain('ts-backups start --config /etc/ts-cloud/backups.config.ts')
     expect(script).not.toContain('aws s3 sync')
     expect(script).toContain('0 3 * * * root /usr/local/bin/ts-cloud-backup.sh')

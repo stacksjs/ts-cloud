@@ -4201,6 +4201,8 @@ export interface ComputeAppUpdateTarget {
 export interface ComputeBackupConfig {
   /** Pin the first-party backup tool used by the scheduled runner. */
   version?: string
+  /** Optional published package archive; verify its SHA-256 before installation. */
+  archive?: { url: string; sha256: string }
   /** Enable scheduled backups. @default false */
   enabled?: boolean
   /** Cron schedule for the backup run. @default '0 2 * * *' (daily 02:00) */

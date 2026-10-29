@@ -74,6 +74,11 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
   const schedule = backups.schedule || '0 2 * * *'
   if (!/^[0-9*,/ -]+$/.test(schedule) || schedule.trim().split(/\s+/).length !== 5) throw new Error('Invalid backup schedule')
   const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
+  if (backups.archive) {
+    const url = new URL(backups.archive.url)
+    if (url.protocol !== 'https:' || url.username || url.password || !/^[a-f0-9]{64}$/i.test(backups.archive.sha256))
+      throw new Error('Backup archives require an HTTPS URL and SHA-256 checksum')
+  }
   const environment = Object.entries({
     ...(backups.credentials ? { TS_CLOUD_BACKUP_ACCESS_KEY: backups.credentials.accessKeyId, TS_CLOUD_BACKUP_SECRET_KEY: backups.credentials.secretAccessKey } : {}),
     ...(backups.encryptionKey ? { TS_CLOUD_BACKUP_ENCRYPTION_KEY: backups.encryptionKey } : {}),
@@ -85,7 +90,12 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     `chmod 700 ${BACKUP_OUTPUT_DIR} ${install}`,
     'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/bin:/usr/bin:/bin"',
     `test -f ${install}/package.json || printf '%s' '{"private":true}' > ${install}/package.json`,
-    `bun add --cwd ${install} --no-save ts-backups@${version}`,
+    ...(backups.archive ? [
+      `curl --fail --silent --show-error --location ${quote(backups.archive.url)} --output ${install}/release.tgz`,
+      `printf '%s\\n' ${quote(`${backups.archive.sha256.toLowerCase()}  ${install}/release.tgz`)} | sha256sum --check --status`,
+      `bun add --cwd ${install} --no-save ${install}/release.tgz`,
+      `test "$(cd ${install} && bun -e 'console.log((await Bun.file("node_modules/ts-backups/package.json").json()).version)')" = ${quote(version)}`,
+    ] : [`bun add --cwd ${install} --no-save ts-backups@${version}`]),
     `printf '%s' ${quote(buildBackupsConfigTs(database, backups))} > ${BACKUP_CONFIG_PATH}`,
     `printf '%s\\n' ${quote(environment)} > /etc/ts-cloud/backups.env`,
     `chmod 600 ${BACKUP_CONFIG_PATH} /etc/ts-cloud/backups.env`,

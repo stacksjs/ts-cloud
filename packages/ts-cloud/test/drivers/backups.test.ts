@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { buildBackupRestoreScript, buildBackupsConfigTs } from '../../src/drivers/shared/backups'
+import { buildBackupProvisionScript, buildBackupRestoreScript, buildBackupsConfigTs } from '../../src/drivers/shared/backups'
+import { readBackupConfig } from './backup-config-fixture'
 
 describe('buildBackupsConfigTs', () => {
   it('maps a mysql database + S3 destination', () => {
@@ -7,9 +8,19 @@ describe('buildBackupsConfigTs', () => {
       { engine: 'mysql', name: 'acme', username: 'acme', password: 'pw' },
       { enabled: true, bucket: 'acme-backups' },
     )
-    expect(cfg).toContain("type: 'mysql'")
-    expect(cfg).toContain("name: 'acme'")
-    expect(cfg).toContain("bucket: 'acme-backups'")
+    const config = readBackupConfig(cfg)
+    expect(config.databases[0]).toMatchObject({ type: 'mysql', name: 'acme', connection: { database: 'acme' } })
+    expect(config.destinations[0]).toMatchObject({ type: 's3', bucket: 'acme-backups', optional: false })
+  })
+  it('verifies a published archive before installing its pinned version', () => {
+    const archive = { url: 'https://github.com/stacksjs/ts-backups/releases/download/v0.1.6/ts-backups-0.1.6.tgz', sha256: 'a'.repeat(64) }
+    const script = buildBackupProvisionScript({ backups: { enabled: true, version: '0.1.6', archive } }).join('\n')
+    expect(script.indexOf('sha256sum --check --status')).toBeLessThan(script.indexOf('bun add'))
+    expect(script).toContain(archive.sha256)
+    expect(script).toContain('package.json").json()).version')
+    for (const url of ['http://example.test/tool.tgz', 'https://user:secret@example.test/tool.tgz'])
+      expect(() => buildBackupProvisionScript({ backups: { enabled: true, archive: { ...archive, url } } })).toThrow()
+    expect(() => buildBackupProvisionScript({ backups: { enabled: true, archive: { ...archive, sha256: 'bad' } } })).toThrow()
   })
 })
 
