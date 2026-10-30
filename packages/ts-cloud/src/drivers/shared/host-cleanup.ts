@@ -186,7 +186,13 @@ function cheapRules(paths: HostCleanupPathRule[]): string[] {
     `find /tmp -xdev -maxdepth 1 -type f -name "*-release.tar.gz" -mmin +${v('stagingMaxAgeMinutes')} -delete 2>/dev/null || true`,
     // Completed artifacts past their window (stacksjs/ts-cloud#194: a week of
     // tarballs grew one 140-site box's cache to 23 GB).
-    `find ${HOST_ARTIFACT_CACHE_DIR} -xdev -maxdepth 1 -type f -name "*.tar.gz" -mtime +${v('artifactMaxAgeDays')} -delete 2>/dev/null || true`,
+    // -mtime rounds down to whole days, so +0 retains today's completed
+    // archives even under pressure. Keep minute precision and a one-minute
+    // minimum so a just-completed archive remains available for immediate
+    // reuse on both GNU and BSD find, whose age rounding differs.
+    'TS_CLOUD_HC_ARTIFACT_MIN=$((TS_CLOUD_HC_ARTIFACT_DAYS * 1440))',
+    '[ "$TS_CLOUD_HC_ARTIFACT_MIN" -gt 0 ] || TS_CLOUD_HC_ARTIFACT_MIN=1',
+    `find ${HOST_ARTIFACT_CACHE_DIR} -xdev -maxdepth 1 -type f -name "*.tar.gz" -mmin +"$TS_CLOUD_HC_ARTIFACT_MIN" -delete 2>/dev/null || true`,
     // Uploads that died before their rename. `.tmp` never matches the rule
     // above, so these used to leak forever. An upload still in flight is
     // younger than the bound and is never deleted out from under its scp.

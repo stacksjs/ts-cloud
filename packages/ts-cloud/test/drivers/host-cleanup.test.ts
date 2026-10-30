@@ -93,7 +93,7 @@ describe('host cleanup covers the release artifact cache (#194)', () => {
   const script = buildHostCleanupScript()
 
   it('prunes completed artifacts and stranded `.tmp` uploads', () => {
-    expect(script).toContain(`find ${HOST_ARTIFACT_CACHE_DIR} -xdev -maxdepth 1 -type f -name "*.tar.gz" -mtime +"$TS_CLOUD_HC_ARTIFACT_DAYS" -delete 2>/dev/null || true`)
+    expect(script).toContain(`find ${HOST_ARTIFACT_CACHE_DIR} -xdev -maxdepth 1 -type f -name "*.tar.gz" -mmin +"$TS_CLOUD_HC_ARTIFACT_MIN" -delete 2>/dev/null || true`)
     expect(script).toContain(`find ${HOST_ARTIFACT_CACHE_DIR} -xdev -maxdepth 1 -type f -name ".*.tmp" -mmin +"$TS_CLOUD_HC_UPLOAD_MIN" -delete 2>/dev/null || true`)
     expect(script.join('\n')).toContain('TS_CLOUD_HC_ARTIFACT_DAYS=2 ')
     expect(script.join('\n')).toContain('TS_CLOUD_HC_UPLOAD_MIN=60 ')
@@ -126,6 +126,16 @@ describe('host cleanup covers the release artifact cache (#194)', () => {
     expect(existsSync(freshArtifact)).toBe(true)
     expect(existsSync(inFlight)).toBe(true)
     expect(existsSync(unrelated)).toBe(true)
+  })
+
+  it('expires completed artifacts after the configured two days without an extra rounded day', () => {
+    const host = fakeHost()
+    const expired = host.file(`var/ts-cloud/artifacts/${'a'.repeat(64)}.tar.gz`, 49 * 60)
+    const retained = host.file(`var/ts-cloud/artifacts/${'b'.repeat(64)}.tar.gz`, 47 * 60)
+
+    expect(host.run(script).status).toBe(0)
+    expect(existsSync(expired)).toBe(false)
+    expect(existsSync(retained)).toBe(true)
   })
 })
 
@@ -211,6 +221,22 @@ describe('resolveHostCleanupConfig (#195)', () => {
 })
 
 describe('the cleanup script under disk pressure (#195)', () => {
+  it('honors zero-day artifact retention while protecting recent cache reuse and in-flight files', () => {
+    const host = fakeHost()
+    host.setDisk(91)
+    const completed = host.file(`var/ts-cloud/artifacts/${'a'.repeat(64)}.tar.gz`, 60)
+    const recent = host.file(`var/ts-cloud/artifacts/${'b'.repeat(64)}.tar.gz`, 0)
+    const upload = host.file(`var/ts-cloud/artifacts/.${'c'.repeat(64)}-nonce.tmp`, 30)
+    const staging = host.file('var/ts-cloud/staging/project-web-release.tar.gz', 30)
+
+    const result = host.run(buildHostCleanupScript())
+    expect(result.status).toBe(0)
+    expect(existsSync(completed)).toBe(false)
+    expect(existsSync(recent)).toBe(true)
+    expect(existsSync(upload)).toBe(true)
+    expect(existsSync(staging)).toBe(true)
+  })
+
   it.each([60, 95])('preserves an in-flight Bun extraction at %i percent disk use', (percent) => {
     const host = fakeHost()
     host.setDisk(percent)
