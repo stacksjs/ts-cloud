@@ -1,5 +1,17 @@
 {
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>ow3org/renovate-config"
+  ],
+  "description": [
+    "buddy-bot owns dependency updates for this repo (see .config/buddy-bot.ts).",
+    "Renovate is kept only for the two ecosystems buddy-bot does not detect:",
+    "packages/serverless-php-bridge/composer.json (illuminate/*, php) and",
+    "docker-compose. Without this restriction both bots raised competing PRs for",
+    "the same npm and github-actions updates."
+  ],
+  "enabledManagers": [
+    "composer",
+    "docker-compose"
   ]
 }
