@@ -70,13 +70,19 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
   if (backups.encryptionKey && (backups.encryptionKey.length < 32 || !backups.bucket))
     throw new Error('Encrypted offsite backups require a bucket and a separate recovery key of at least 32 characters')
   const version = backups.version || '0.1.6'
+  // The official archive is a complete, published distribution. Fresh hosts
+  // need no npm authentication or access to the maintainer's release account.
+  const archive = backups.archive || (!backups.version ? {
+    url: 'https://github.com/stacksjs/ts-backups/releases/download/v0.1.6/ts-backups-0.1.6.tgz',
+    sha256: '20b8295d8c092f9e0ed17239b0233e781d71466077b555f163d67dfcfa2a9744',
+  } : undefined)
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Pin a released ts-backups version')
   const schedule = backups.schedule || '0 2 * * *'
   if (!/^[0-9*,/ -]+$/.test(schedule) || schedule.trim().split(/\s+/).length !== 5) throw new Error('Invalid backup schedule')
   const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
-  if (backups.archive) {
-    const url = new URL(backups.archive.url)
-    if (url.protocol !== 'https:' || url.username || url.password || !/^[a-f0-9]{64}$/i.test(backups.archive.sha256))
+  if (archive) {
+    const url = new URL(archive.url)
+    if (url.protocol !== 'https:' || url.username || url.password || !/^[a-f0-9]{64}$/i.test(archive.sha256))
       throw new Error('Backup archives require an HTTPS URL and SHA-256 checksum')
   }
   const environment = Object.entries({
@@ -90,9 +96,9 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     `chmod 700 ${BACKUP_OUTPUT_DIR} ${install}`,
     'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"',
     `test -f ${install}/package.json || printf '%s' '{"private":true}' > ${install}/package.json`,
-    ...(backups.archive ? [
-      `curl --fail --silent --show-error --location ${quote(backups.archive.url)} --output ${install}/release.tgz`,
-      `printf '%s\\n' ${quote(`${backups.archive.sha256.toLowerCase()}  ${install}/release.tgz`)} | sha256sum --check --status`,
+    ...(archive ? [
+      `curl --fail --silent --show-error --location ${quote(archive.url)} --output ${install}/release.tgz`,
+      `printf '%s\\n' ${quote(`${archive.sha256.toLowerCase()}  ${install}/release.tgz`)} | sha256sum --check --status`,
       `bun add --cwd ${install} --no-save ${install}/release.tgz`,
       `test "$(cd ${install} && bun -e 'console.log((await Bun.file("node_modules/ts-backups/package.json").json()).version)')" = ${quote(version)}`,
     ] : [`bun add --cwd ${install} --no-save ts-backups@${version}`]),

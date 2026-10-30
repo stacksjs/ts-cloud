@@ -79,7 +79,9 @@ describe('backups (ts-backups integration)', () => {
         schedule: '0 3 * * *',
       },
     }).join('\n')
-    expect(script).toContain('bun add --cwd /opt/ts-cloud/backups --no-save ts-backups@0.1.6')
+    expect(script).toContain('https://github.com/stacksjs/ts-backups/releases/download/v0.1.6/ts-backups-0.1.6.tgz')
+    expect(script).toContain('sha256sum --check --status')
+    expect(script).toContain('bun add --cwd /opt/ts-cloud/backups --no-save /opt/ts-cloud/backups/release.tgz')
     expect(script).toContain('chmod 600 /etc/ts-cloud/backups.config.ts /etc/ts-cloud/backups.env')
     expect(script).toContain('ts-backups start --config /etc/ts-cloud/backups.config.ts')
     expect(script).not.toContain('aws s3 sync')
