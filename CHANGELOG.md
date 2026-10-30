@@ -1,3 +1,19 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.89...v0.16.90)
+
+## 🐛 Bug Fixes
+
+- release the storage coordinator before waiting for maintenance ([2f9fb88](https://github.com/stacksjs/ts-cloud/commit/2f9fb88)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.90 ([f40e4f4](https://github.com/stacksjs/ts-cloud/commit/f40e4f4)) _(by Chris <chris@stacksjs.com>)_
+- **deps**: let buddy-bot own npm, leave renovate only composer ([a9f7907](https://github.com/stacksjs/ts-cloud/commit/a9f7907)) _(by glennmichael123 <gtorregosa@gmail.com>)_ ([#187](https://github.com/stacksjs/ts-cloud/issues/187), [#188](https://github.com/stacksjs/ts-cloud/issues/188))
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.88...v0.16.89)
 
 ## 🐛 Bug Fixes
