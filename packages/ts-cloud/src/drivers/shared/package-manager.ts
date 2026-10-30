@@ -137,8 +137,20 @@ export function pantryEnvActivation(): string {
 export function buildPantryInstallScript(specs: readonly PantrySpec[]): string[] {
   if (specs.length === 0) return []
   const unique = [...new Set(specs)]
+  // Package files are public executables, also used by unprivileged services.
+  // Reconcile only their known ancestor directories, never credential trees.
+  const ancestors = new Set([PANTRY_PROJECT_DIR, `${PANTRY_PROJECT_DIR}/pantry`])
+  for (const spec of unique) {
+    let path = `${PANTRY_PROJECT_DIR}/pantry`
+    for (const segment of spec.split('@')[0].split('/')) {
+      if (!/^[a-zA-Z0-9._-]+$/.test(segment)) throw new Error('Invalid pantry package domain')
+      path += `/${segment}`
+      ancestors.add(path)
+    }
+  }
+  const directories = [...ancestors].map(sh).join(' ')
   // `pantry install` is project-scoped; install into the fixed project root.
-  return [`(cd ${PANTRY_PROJECT_DIR} && pantry install ${unique.map(sh).join(' ')})`]
+  return [`(umask 022; mkdir -p ${directories} && chmod 0755 ${directories} && cd ${PANTRY_PROJECT_DIR} && pantry install ${unique.map(sh).join(' ')})`]
 }
 
 /**

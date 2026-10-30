@@ -91,6 +91,7 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
   }).map(([name, value]) => `${name}=${quote(value)}`).join('\n')
   const install = '/opt/ts-cloud/backups'
   return [
+    '(',
     'umask 077',
     `mkdir -p /etc/ts-cloud ${BACKUP_OUTPUT_DIR} ${install}`,
     `chmod 700 ${BACKUP_OUTPUT_DIR} ${install}`,
@@ -119,6 +120,7 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     `chmod 700 ${BACKUP_RUNNER_PATH}`,
     `printf '%s\\n' ${quote(`${schedule} root ${BACKUP_RUNNER_PATH} >> /var/log/ts-cloud-backup.log 2>&1`)} > ${BACKUP_CRON_PATH}`,
     `chmod 644 ${BACKUP_CRON_PATH}`,
+    ')',
   ]
 }
 

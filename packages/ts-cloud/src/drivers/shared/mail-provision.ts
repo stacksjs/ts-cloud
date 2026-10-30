@@ -459,6 +459,8 @@ export function buildMailProvisionScript(mail: ResolvedMailService): string[] {
     // parses attacker-supplied bytes on an open port.
     `id -u ${MAIL_USER} >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin ${MAIL_USER}`,
     `mkdir -p ${mail.storagePath} ${MAIL_CONFIG_DIR}`,
+    `chown root:${MAIL_USER} ${MAIL_CONFIG_DIR}`,
+    `chmod 0750 ${MAIL_CONFIG_DIR}`,
     `chown -R ${MAIL_USER}:${MAIL_USER} ${mail.storagePath}`,
     // Whatever database this server is ALREADY using wins over the default.
     //
@@ -486,8 +488,8 @@ export function buildMailProvisionScript(mail: ResolvedMailService): string[] {
     `sed -i "s|^SMTP_DB_PATH=.*|SMTP_DB_PATH=$TS_CLOUD_MAIL_DB|" ${MAIL_CONFIG_DIR}/mail.env`,
     // The env file holds account and DKIM paths, and on a server the ACME
     // contact. Readable by the service, by nobody else.
-    `chmod 0640 ${MAIL_CONFIG_DIR}/mail.env`,
-    `chown root:${MAIL_USER} ${MAIL_CONFIG_DIR}/mail.env`,
+    `chmod 0640 ${MAIL_CONFIG_DIR}/mail.env ${MAIL_CONFIG_DIR}/config.toml`,
+    `chown root:${MAIL_USER} ${MAIL_CONFIG_DIR}/mail.env ${MAIL_CONFIG_DIR}/config.toml`,
     ...buildDkimScript(mail),
     `cat > /etc/systemd/system/${MAIL_UNIT}.service <<'TS_CLOUD_MAIL_UNIT_EOF'`,
     buildMailUnit(mail),
