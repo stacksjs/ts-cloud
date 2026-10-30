@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.85...v0.16.86)
+
+## 🐛 Bug Fixes
+
+- retain system administration tools during service provisioning ([f1f76d1](https://github.com/stacksjs/ts-cloud/commit/f1f76d1)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.86 ([df4c160](https://github.com/stacksjs/ts-cloud/commit/df4c160)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.84...v0.16.85)
 
 ## ✨ Features
