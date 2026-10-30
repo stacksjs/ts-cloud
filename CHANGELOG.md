@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.87...v0.16.88)
+
+## 🐛 Bug Fixes
+
+- isolate backup permissions from unprivileged service provisioning ([6f02b6f](https://github.com/stacksjs/ts-cloud/commit/6f02b6f)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.88 ([216d6df](https://github.com/stacksjs/ts-cloud/commit/216d6df)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.86...v0.16.87)
 
 ## 🐛 Bug Fixes
