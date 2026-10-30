@@ -88,7 +88,7 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     'umask 077',
     `mkdir -p /etc/ts-cloud ${BACKUP_OUTPUT_DIR} ${install}`,
     `chmod 700 ${BACKUP_OUTPUT_DIR} ${install}`,
-    'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/bin:/usr/bin:/bin"',
+    'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"',
     `test -f ${install}/package.json || printf '%s' '{"private":true}' > ${install}/package.json`,
     ...(backups.archive ? [
       `curl --fail --silent --show-error --location ${quote(backups.archive.url)} --output ${install}/release.tgz`,
@@ -102,7 +102,7 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     `cat > ${BACKUP_RUNNER_PATH} <<'TS_CLOUD_BACKUP_RUN_EOF'`,
     '#!/bin/bash', 'set -euo pipefail', 'umask 077',
     'exec 9>/run/lock/ts-cloud-backups.lock', 'flock -n 9 || exit 0',
-    'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/bin:/usr/bin:/bin"',
+    'export PATH="/opt/ts-cloud/bun/bin:/opt/pantry/pantry/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"',
     'eval "$(cd /opt/pantry && pantry env)"',
     'set -a', '. /etc/ts-cloud/backups.env', 'set +a',
     'notify() { [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "$1" || true; }',
