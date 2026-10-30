@@ -49,7 +49,7 @@ test.skipIf(!enabled)('shared parent mounts cannot redirect root cleanup onto de
       `test "$(findmnt -n -o PROPAGATION --mountpoint /run/ts-cloud-root-web)" = private`,
       `test ! -e ${quote(path.join('/run/ts-cloud-root-web', name, 'releases', 'retired', 'proof'))}`,
       `test -f ${quote(path.join(destination, 'retired', 'proof'))}`,
-      'flock /run/lock/backup.lock sleep 20 &',
+      'flock --no-fork /run/lock/backup.lock sleep 20 &',
       'backup=$!; trap "kill $backup 2>/dev/null || true" EXIT',
       'for attempt in $(seq 1 50); do if ! flock -n /run/lock/backup.lock true; then break; fi; sleep 0.02; done',
       '! flock -n /run/lock/backup.lock true',
@@ -60,15 +60,44 @@ test.skipIf(!enabled)('shared parent mounts cannot redirect root cleanup onto de
       `PATH=${quote(path.join(fixture, 'bin'))}:$PATH timeout 5 bun ${quote(script)}`,
       `test -f ${quote(path.join(destination, 'retired', 'proof'))}`,
       `mkdir -p ${quote(path.join(pendingSite, 'releases', 'current'))}`,
-      `touch ${quote(path.join(pendingSite, 'releases', 'current', 'proof'))}`,
-      `if PATH=${quote(path.join(fixture, 'bin'))}:$PATH timeout 1 bun ${quote(path.join(fixture, 'pending.mjs'))}; then exit 1; else test "$?" = 124; fi`,
+      `echo 'pending volume data' > ${quote(path.join(pendingSite, 'releases', 'current', 'proof'))}`,
+      `PATH=${quote(path.join(fixture, 'bin'))}:$PATH bun ${quote(path.join(fixture, 'pending.mjs'))} > ${quote(path.join(fixture, 'pending.log'))} 2>&1 &`,
+      'pending=$!; trap "kill $pending $backup 2>/dev/null || true" EXIT',
+      'for attempt in $(seq 1 100); do if grep -q locks_lock_inode_wait /proc/$pending/wchan; then break; fi; sleep 0.05; done',
+      'grep -q locks_lock_inode_wait /proc/$pending/wchan',
+      // Required backup exclusion remains held, but a waiting placement must
+      // release the coordinator so a healthy tenant can validate its mounts.
+      '! flock -n /run/lock/backup.lock true',
+      'flock -n /run/lock/ts-cloud-compute-storage.lock true',
+      `PATH=${quote(path.join(fixture, 'bin'))}:$PATH timeout 5 bun ${quote(script)}`,
       `! mountpoint -q ${quote(path.join(pendingSite, 'releases'))}`,
       `test -f ${quote(path.join(pendingSite, 'releases', 'current', 'proof'))}`,
+      // A second caller observes the same unplaced entry. After the first
+      // commits, the second must reload the journal instead of mounting twice.
+      `PATH=${quote(path.join(fixture, 'bin'))}:$PATH bun ${quote(path.join(fixture, 'pending.mjs'))} > ${quote(path.join(fixture, 'pending-second.log'))} 2>&1 &`,
+      'second=$!; trap "kill $pending $second $backup 2>/dev/null || true" EXIT',
+      'for attempt in $(seq 1 100); do if grep -q locks_lock_inode_wait /proc/$second/wchan; then break; fi; sleep 0.05; done',
+      'grep -q locks_lock_inode_wait /proc/$second/wchan',
+      'flock -n /run/lock/ts-cloud-compute-storage.lock true',
+      'kill $backup; wait $backup 2>/dev/null || true',
+      'wait $pending; wait $second',
+      `test -f ${quote(path.join(pendingDestination, 'current', 'proof'))}`,
+      `flock --no-fork ${quote(path.join(site, '.ts-cloud/deploy.lock'))} sleep 20 &`,
+      'deploy=$!; trap "kill $deploy 2>/dev/null || true" EXIT',
+      `for attempt in $(seq 1 50); do if ! flock -n ${quote(path.join(site, '.ts-cloud/deploy.lock'))} true; then break; fi; sleep 0.02; done`,
+      `! flock -n ${quote(path.join(site, '.ts-cloud/deploy.lock'))} true`,
+      `PATH=${quote(path.join(fixture, 'bin'))}:$PATH timeout 5 bun ${quote(path.join(fixture, 'reclaim.mjs'))} | tee ${quote(path.join(fixture, 'reclaim-deploy.log'))}`,
+      `grep -q 'Deferring deployment storage reclamation' ${quote(path.join(fixture, 'reclaim-deploy.log'))}`,
+      'flock -n /run/lock/ts-cloud-compute-storage.lock true',
+      `test -f ${quote(path.join(destination, 'retired', 'proof'))}`,
     ]
     const child = Bun.spawn(['unshare', '--mount', '--propagation', 'private', 'bash', '-c', commands.join('\n')], { stdout: 'pipe', stderr: 'pipe' })
     const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited])
     expect({ exit, stderr: exit ? stderr : '', stdout: exit ? stdout : '' }).toEqual({ exit: 0, stderr: '', stdout: '' })
     expect(fs.readFileSync(path.join(destination, 'retired', 'proof'), 'utf8')).toBe('preserved volume data\n')
+    expect(fs.readFileSync(path.join(pendingDestination, 'current', 'proof'), 'utf8')).toBe('pending volume data\n')
+    const journal = JSON.parse(fs.readFileSync(path.join(fixture, 'state', 'compute-storage-state.json'), 'utf8'))
+    expect(journal.entries.filter((entry: { source: string }) => entry.source === path.join(pendingSite, 'releases'))).toHaveLength(1)
   } finally {
     fs.rmSync(destination, { recursive: true, force: true })
     fs.rmSync(pendingDestination, { recursive: true, force: true })

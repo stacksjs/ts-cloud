@@ -236,19 +236,7 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
     }
     run('systemctl', ['daemon-reload'])
   }
-  try {
-    // Reclamation is optional maintenance. Never hold the deployment lock
-    // while waiting for a backup or another maintenance operation to finish.
-    const maintenanceLocks = [...new Set([...(placement?.locks ?? []), '/run/lock/ts-cloud-host-cleanup.lock'])]
-    if (command === 'reclaim') {
-      for (const file of ['/run/lock/ts-cloud-compute-storage.lock', ...maintenanceLocks]) {
-        if (!lock(file, false)) {
-          console.log(`Deferring deployment storage reclamation; lock busy: ${file}`)
-          return { deferred: true, lock: file }
-        }
-      }
-    }
-    else lock('/run/lock/ts-cloud-compute-storage.lock')
+  const reloadPlacementPolicy = (): void => {
     state = readJson(statePath, { entries: [] })
     const previousPolicy = readJson(configPath, null) as ComputeStoragePolicy | null
     if (previousPolicy) {
@@ -260,6 +248,21 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
         || (previousPolicy.deploymentStorage?.includeBackups !== false) !== (placement?.includeBackups !== false)))
         throw new Error('Refusing to change an active deployment-storage policy; migrate its data explicitly first')
     }
+  }
+  try {
+    // Reclamation is optional maintenance. Never hold the deployment lock
+    // while waiting for a backup or another maintenance operation to finish.
+    const maintenanceLocks = [...new Set([...(placement?.locks ?? []), '/run/lock/ts-cloud-host-cleanup.lock'])].sort()
+    if (command === 'reclaim') {
+      for (const file of ['/run/lock/ts-cloud-compute-storage.lock', ...maintenanceLocks]) {
+        if (!lock(file, false)) {
+          console.log(`Deferring deployment storage reclamation; lock busy: ${file}`)
+          return { deferred: true, lock: file }
+        }
+      }
+    }
+    else lock('/run/lock/ts-cloud-compute-storage.lock')
+    reloadPlacementPolicy()
     if (command === 'apply') mountVolumes()
     for (const volume of policy.volumes) if (!deviceMatches(volume)) throw new Error(`Required volume is not mounted: ${volume.name}`)
     if (!placement || !deploymentVolume) return { volumes: policy.volumes }
@@ -270,7 +273,7 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
       fs.mkdirSync(path.join(base, 'releases'), { recursive: true })
       if (placement.includeBackups !== false) fs.mkdirSync(path.join(policy.webRoot, `${slug}-shared`, 'backups'), { recursive: true })
     }
-    const entries = (command === 'reclaim' ? [] : discover(command === 'ensure-site' ? argv[1] : undefined, argv[2]))
+    let entries = (command === 'reclaim' ? [] : discover(command === 'ensure-site' ? argv[1] : undefined, argv[2]))
       .filter(entry => !state.entries.some(previous => previous.source === entry.source))
     for (const entry of state.entries) {
       if (!mounted(entry.source) || !sameFile(entry.source, entry.destination)) throw new Error(`Recorded deployment mount is missing: ${entry.source}`)
@@ -282,6 +285,30 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
       installDependencies()
       const report = status(); save('/var/lib/ts-cloud/compute-storage-status.json', report)
       console.log(JSON.stringify(report)); return report
+    }
+    if (command !== 'reclaim') {
+      // A required placement may wait for a long-running backup. Do not keep
+      // healthy tenants behind the coordinator while that exclusion is busy.
+      // Once exclusion is ours, reacquire the coordinator and distrust every
+      // placement decision made before releasing it.
+      const coordinator = descriptors.pop()!
+      libc.symbols.flock(coordinator, 8); fs.closeSync(coordinator)
+      console.log('Waiting for deployment storage maintenance exclusion')
+      for (const file of maintenanceLocks) lock(file)
+      lock('/run/lock/ts-cloud-compute-storage.lock')
+      reloadPlacementPolicy()
+      for (const volume of policy.volumes) if (!deviceMatches(volume)) throw new Error(`Required volume is not mounted: ${volume.name}`)
+      for (const entry of state.entries) {
+        if (!mounted(entry.source) || !sameFile(entry.source, entry.destination)) throw new Error(`Recorded deployment mount is missing: ${entry.source}`)
+      }
+      entries = discover(command === 'ensure-site' ? argv[1] : undefined, argv[2])
+        .filter(entry => !state.entries.some(previous => previous.source === entry.source))
+      if (!entries.length && command === 'ensure-site') return { inherited: true, volume: deploymentVolume.name }
+      if (!entries.length) {
+        installDependencies()
+        const report = status(); save('/var/lib/ts-cloud/compute-storage-status.json', report)
+        console.log(JSON.stringify(report)); return report
+      }
     }
     if (!placement.migrateExisting && entries.some(entry => fs.readdirSync(entry.source).length > 0))
       throw new Error('Existing deployments require deploymentStorage.migrateExisting: true')
@@ -307,9 +334,13 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
       console.log(`copy ${index + 1}/${entries.length}: ${entries[index].source}`)
       await sync(entries[index], false)
     }
-    if (command !== 'reclaim') for (const file of maintenanceLocks) lock(file)
-    for (const site of fs.readdirSync(policy.webRoot, { withFileTypes: true }).filter(site => site.isDirectory()).sort((a, b) => a.name.localeCompare(b.name)))
-      lock(path.join(policy.webRoot, site.name, '.ts-cloud/deploy.lock'))
+    for (const site of fs.readdirSync(policy.webRoot, { withFileTypes: true }).filter(site => site.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+      const file = path.join(policy.webRoot, site.name, '.ts-cloud/deploy.lock')
+      if (!lock(file, command !== 'reclaim')) {
+        console.log(`Deferring deployment storage reclamation; lock busy: ${file}`)
+        return { deferred: true, lock: file }
+      }
+    }
     for (const entry of command === 'reclaim' ? [] : discover(command === 'ensure-site' ? argv[1] : undefined, argv[2])) {
       if (!state.entries.some(previous => previous.source === entry.source) && !entries.some(previous => previous.source === entry.source)) entries.push(entry)
     }
