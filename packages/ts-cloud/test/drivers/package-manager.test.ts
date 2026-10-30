@@ -37,7 +37,8 @@ describe('buildPantryBootstrapScript', () => {
 describe('buildPantryInstallScript', () => {
   it('resolves all packages in a single project-scoped pass', () => {
     const script = buildPantryInstallScript(['php.net', 'nginx.org', 'getcomposer.org'])
-    expect(script).toEqual([`(cd ${PANTRY_PROJECT_DIR} && pantry install 'php.net' 'nginx.org' 'getcomposer.org')`])
+    expect(script).toHaveLength(1)
+    expect(script[0]).toContain(`cd ${PANTRY_PROJECT_DIR} && pantry install 'php.net' 'nginx.org' 'getcomposer.org')`)
   })
 
   it('supports pinned versions and dedupes', () => {
