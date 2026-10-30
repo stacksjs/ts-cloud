@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.86...v0.16.87)
+
+## 🐛 Bug Fixes
+
+- provision backups from the verified public release by default ([b2a5b5b](https://github.com/stacksjs/ts-cloud/commit/b2a5b5b)) _(by Chris <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.87 ([827c0f7](https://github.com/stacksjs/ts-cloud/commit/827c0f7)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.85...v0.16.86)
 
 ## 🐛 Bug Fixes
