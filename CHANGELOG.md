@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.90...v0.16.91)
+
+## ✨ Features
+
+- **core**: resolve profile credentials from config files, including credential_process ([d8e44ca](https://github.com/stacksjs/ts-cloud/commit/d8e44ca)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **aws**: honor credential_process profiles in AWSClient and resolveCredentials ([06785d1](https://github.com/stacksjs/ts-cloud/commit/06785d1)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.91 ([651977a](https://github.com/stacksjs/ts-cloud/commit/651977a)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.89...v0.16.90)
 
 ## 🐛 Bug Fixes
