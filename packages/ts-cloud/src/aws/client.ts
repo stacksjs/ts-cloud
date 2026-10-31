@@ -3,10 +3,16 @@
  * Implements AWS Signature Version 4 for authentication
  */
 import * as crypto from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import { XMLParser } from '@stacksjs/ts-xml'
+import {
+  loadProfileCredentials,
+  loadStaticProfileCredentials,
+  profileCredentialProcess,
+  resolveProfileName,
+  sharedConfigPath,
+  sharedCredentialsPath,
+} from '@ts-cloud/core'
 
 export interface AWSCredentials {
   accessKeyId: string
@@ -291,71 +297,18 @@ export class AWSClient {
   }
 
   /**
-   * Load credentials from ~/.aws/credentials file
+   * Load static keys for the profile from ~/.aws/credentials (or the profile's
+   * section of ~/.aws/config). Synchronous and never runs anything: a profile
+   * that uses `credential_process` is resolved by getCredentials().
    */
   private loadCredentialsFromFile(): AWSCredentials | null {
-    const profile = this.config?.profile || process.env.AWS_PROFILE || 'default'
-    const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
-
-    if (!existsSync(credentialsPath)) {
+    const profile = resolveProfileName(this.config?.profile)
+    const keys = loadStaticProfileCredentials({ profile })
+    if (!keys)
       return null
-    }
 
-    try {
-      const content = readFileSync(credentialsPath, 'utf-8')
-      const credentials = this.parseCredentialsFile(content, profile)
-      if (credentials.accessKeyId && credentials.secretAccessKey) {
-        this.credentialSource = `profile "${profile}" in ${credentialsPath}`
-        return credentials
-      }
-    } catch {
-      // Failed to read or parse credentials file
-    }
-
-    return null
-  }
-
-  /**
-   * Parse AWS credentials file (INI format)
-   */
-  private parseCredentialsFile(content: string, profile: string): AWSCredentials {
-    const lines = content.split('\n')
-    let currentProfile = ''
-    let accessKeyId = ''
-    let secretAccessKey = ''
-    let sessionToken: string | undefined
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-
-      // Skip empty lines and comments
-      if (!trimmed || trimmed.startsWith('#')) {
-        continue
-      }
-
-      // Check for profile header [profile-name]
-      const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
-      if (profileMatch) {
-        currentProfile = profileMatch[1]
-        continue
-      }
-
-      // Parse key=value pairs for the target profile
-      if (currentProfile === profile) {
-        const [key, ...valueParts] = trimmed.split('=')
-        const value = valueParts.join('=').trim()
-
-        if (key.trim() === 'aws_access_key_id') {
-          accessKeyId = value
-        } else if (key.trim() === 'aws_secret_access_key') {
-          secretAccessKey = value
-        } else if (key.trim() === 'aws_session_token') {
-          sessionToken = value
-        }
-      }
-    }
-
-    return { accessKeyId, secretAccessKey, sessionToken }
+    this.credentialSource = `profile "${profile}" in ${sharedCredentialsPath()}`
+    return { accessKeyId: keys.accessKeyId, secretAccessKey: keys.secretAccessKey, sessionToken: keys.sessionToken }
   }
 
   /**
@@ -388,7 +341,22 @@ export class AWSClient {
       return fileCredentials
     }
 
-    // 3. Check if we have cached EC2 credentials that haven't expired
+    // 3. The profile's credential_process (cached in memory, killed after 30s).
+    // A profile that names one and fails is an error, not a reason to try EC2.
+    const profile = resolveProfileName(this.config?.profile)
+    if (profileCredentialProcess({ profile })) {
+      const processCredentials = await loadProfileCredentials({ profile })
+      if (processCredentials) {
+        this.credentialSource = `credential_process of profile "${profile}" in ${sharedConfigPath()}`
+        return {
+          accessKeyId: processCredentials.accessKeyId,
+          secretAccessKey: processCredentials.secretAccessKey,
+          sessionToken: processCredentials.sessionToken,
+        }
+      }
+    }
+
+    // 4. Check if we have cached EC2 credentials that haven't expired
     if (this.ec2CredentialsCache) {
       const now = Date.now()
       // Refresh 5 minutes before expiration
@@ -933,6 +901,12 @@ export class AWSClient {
    * Determine if an error should be retried
    */
   private shouldRetry(error: any): boolean {
+    // A credential_process that failed or hung already spent its own budget;
+    // running it again three times would only multiply a 30 second wait.
+    if (error?.code === 'CredentialProcessError') {
+      return false
+    }
+
     // Network/fetch errors should be retried
     if (error.name === 'FetchError' || error.name === 'TypeError' || error.code === 'ECONNRESET') {
       return true
@@ -1090,16 +1064,18 @@ export function detectCredentialSource(): CredentialSourceInfo {
     }
   }
 
-  const profile = process.env.AWS_PROFILE || 'default'
-  const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
+  const profile = resolveProfileName()
+  const usesProcess = profileCredentialProcess({ profile }) !== null
 
-  if (existsSync(credentialsPath)) {
+  if (usesProcess || existsSync(sharedCredentialsPath())) {
     return {
       source: 'file',
       profile,
       emptyEnvKey,
       emptyEnvSecret,
-      description: `~/.aws/credentials (profile: ${profile})`,
+      description: usesProcess
+        ? `credential_process of ~/.aws/config (profile: ${profile})`
+        : `~/.aws/credentials (profile: ${profile})`,
     }
   }
 
