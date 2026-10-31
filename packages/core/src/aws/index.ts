@@ -23,6 +23,7 @@ export {
   // New credential providers
   fromEnvironment,
   fromSharedCredentials,
+  fromCredentialProcess,
   fromEC2Metadata,
   fromECSMetadata,
   fromWebIdentity,
@@ -35,6 +36,24 @@ export {
 } from './credentials'
 
 export type { AWSCredentials, AWSProfile, CredentialProviderOptions } from './credentials'
+
+// Shared config/credentials files and credential_process
+export {
+  CREDENTIAL_PROCESS_TIMEOUT_MS,
+  CredentialProcessError,
+  clearCredentialProcessCache,
+  loadProfileCredentials,
+  loadProfileCredentialsSync,
+  loadStaticProfileCredentials,
+  profileCredentialProcess,
+  readSharedProfile,
+  resolveProfileName,
+  sharedConfigPath,
+  sharedCredentialsPath,
+  splitCommandLine,
+} from './shared-config'
+
+export type { ProfileCredentials, SharedConfigOptions } from './shared-config'
 
 // CloudFormation Client
 export { CloudFormationClient } from './cloudformation'

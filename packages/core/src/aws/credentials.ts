@@ -3,14 +3,14 @@
  *
  * Automatically load AWS credentials from various sources:
  * - Environment variables
- * - Shared credentials file (~/.aws/credentials)
+ * - Shared credentials file (~/.aws/credentials) and config (~/.aws/config)
+ * - credential_process in a profile
  * - EC2 instance metadata
  * - ECS task metadata
  * - Web identity token (for Kubernetes/IRSA)
  */
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { loadProfileCredentials, loadStaticProfileCredentials, readSharedProfile } from './shared-config'
 
 export interface AWSCredentials {
   accessKeyId: string
@@ -21,11 +21,11 @@ export interface AWSCredentials {
 }
 
 export interface CredentialProviderOptions {
-  /** Profile name for shared credentials file (default: 'default' or AWS_PROFILE env var) */
+  /** Profile name (default: AWS_PROFILE, then AWS_DEFAULT_PROFILE, then 'default') */
   profile?: string
-  /** Path to credentials file (default: ~/.aws/credentials) */
+  /** Path to credentials file (default: AWS_SHARED_CREDENTIALS_FILE, then ~/.aws/credentials) */
   credentialsFile?: string
-  /** Path to config file (default: ~/.aws/config) */
+  /** Path to config file (default: AWS_CONFIG_FILE, then ~/.aws/config) */
   configFile?: string
   /** Timeout for metadata requests in ms (default: 1000) */
   timeout?: number
@@ -51,81 +51,30 @@ export function fromEnvironment(): AWSCredentials | null {
 }
 
 /**
- * Get credentials from shared credentials file (~/.aws/credentials)
+ * Get credentials from the shared files: static keys in `~/.aws/credentials`
+ * (or the profile's section of `~/.aws/config`). A `credential_process` is not
+ * run here, since this is synchronous; see `fromCredentialProcess`.
  */
 export function fromSharedCredentials(options?: CredentialProviderOptions): AWSCredentials | null {
-  const profile = options?.profile || process.env.AWS_PROFILE || 'default'
-  const credentialsPath = options?.credentialsFile || join(homedir(), '.aws', 'credentials')
-
-  if (!existsSync(credentialsPath)) {
-    return null
-  }
-
-  try {
-    const content = readFileSync(credentialsPath, 'utf-8')
-    return parseCredentialsFile(content, profile)
-  } catch {
-    return null
-  }
+  const creds = loadStaticProfileCredentials({
+    profile: options?.profile,
+    credentialsFile: options?.credentialsFile,
+    configFile: options?.configFile,
+  })
+  return creds ? { accessKeyId: creds.accessKeyId, secretAccessKey: creds.secretAccessKey, sessionToken: creds.sessionToken } : null
 }
 
 /**
- * Parse INI-style credentials file
+ * Get credentials from the profile's `credential_process` (in `~/.aws/config`
+ * or `~/.aws/credentials`), the way `aws --profile` does. `null` when the
+ * profile has none; a helper that fails, hangs or prints junk throws.
  */
-function parseCredentialsFile(content: string, profile: string): AWSCredentials | null {
-  const lines = content.split('\n')
-  let currentProfile: string | null = null
-  let accessKeyId: string | undefined
-  let secretAccessKey: string | undefined
-  let sessionToken: string | undefined
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    // Skip comments and empty lines
-    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) {
-      continue
-    }
-
-    // Check for profile header
-    const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
-    if (profileMatch) {
-      // If we were processing the target profile, we're done
-      if (currentProfile === profile && accessKeyId && secretAccessKey) {
-        return { accessKeyId, secretAccessKey, sessionToken }
-      }
-      currentProfile = profileMatch[1]
-      accessKeyId = undefined
-      secretAccessKey = undefined
-      sessionToken = undefined
-      continue
-    }
-
-    // Parse key-value pairs
-    if (currentProfile === profile) {
-      const [key, ...valueParts] = trimmed.split('=')
-      const value = valueParts.join('=').trim()
-
-      switch (key.trim().toLowerCase()) {
-        case 'aws_access_key_id':
-          accessKeyId = value
-          break
-        case 'aws_secret_access_key':
-          secretAccessKey = value
-          break
-        case 'aws_session_token':
-          sessionToken = value
-          break
-      }
-    }
-  }
-
-  // Check if we found credentials for the target profile
-  if (currentProfile === profile && accessKeyId && secretAccessKey) {
-    return { accessKeyId, secretAccessKey, sessionToken }
-  }
-
-  return null
+export async function fromCredentialProcess(options?: CredentialProviderOptions): Promise<AWSCredentials | null> {
+  return loadProfileCredentials({
+    profile: options?.profile,
+    credentialsFile: options?.credentialsFile,
+    configFile: options?.configFile,
+  })
 }
 
 /**
@@ -315,7 +264,7 @@ export async function fromWebIdentity(options?: CredentialProviderOptions): Prom
 
 /**
  * Get credentials using the default credential chain
- * Tries providers in order: Environment -> Shared Credentials -> Web Identity -> ECS -> EC2
+ * Tries providers in order: Environment -> Shared Credentials -> credential_process -> Web Identity -> ECS -> EC2
  */
 export async function getCredentials(options?: CredentialProviderOptions): Promise<AWSCredentials> {
   // 1. Environment variables (fastest, most common in containers)
@@ -330,19 +279,25 @@ export async function getCredentials(options?: CredentialProviderOptions): Promi
     return sharedCreds
   }
 
-  // 3. Web identity token (Kubernetes/IRSA)
+  // 3. The profile's credential_process, if it names one
+  const processCreds = await fromCredentialProcess(options)
+  if (processCreds) {
+    return processCreds
+  }
+
+  // 4. Web identity token (Kubernetes/IRSA)
   const webIdentityCreds = await fromWebIdentity(options)
   if (webIdentityCreds) {
     return webIdentityCreds
   }
 
-  // 4. ECS task metadata
+  // 5. ECS task metadata
   const ecsCreds = await fromECSMetadata(options)
   if (ecsCreds) {
     return ecsCreds
   }
 
-  // 5. EC2 instance metadata
+  // 6. EC2 instance metadata
   const ec2Creds = await fromEC2Metadata(options)
   if (ec2Creds) {
     return ec2Creds
@@ -450,35 +405,10 @@ export function resolveRegion(profile?: string): string {
     return envRegion
   }
 
-  // Try to read from config file
-  const configPath = join(homedir(), '.aws', 'config')
-  if (existsSync(configPath)) {
-    try {
-      const content = readFileSync(configPath, 'utf-8')
-      const targetProfile = profile || process.env.AWS_PROFILE || 'default'
-      const profileHeader = targetProfile === 'default' ? '[default]' : `[profile ${targetProfile}]`
-
-      const lines = content.split('\n')
-      let inProfile = false
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-
-        if (trimmed.startsWith('[')) {
-          inProfile = trimmed === profileHeader
-          continue
-        }
-
-        if (inProfile && trimmed.startsWith('region')) {
-          const [, value] = trimmed.split('=')
-          if (value) {
-            return value.trim()
-          }
-        }
-      }
-    } catch {
-      // Ignore errors
-    }
+  // Then the profile's region, from ~/.aws/config (or the credentials file)
+  const region = readSharedProfile({ profile })?.region
+  if (region) {
+    return region
   }
 
   // Default to us-east-1

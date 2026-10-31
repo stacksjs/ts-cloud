@@ -73,6 +73,7 @@ export * from './presets/extend'
 // AWS clients (Phase 5)
 export * from './aws/signature'
 export * from './aws/credentials'
+export * from './aws/shared-config'
 export * from './aws/cloudformation'
 export {
   S3Client,
