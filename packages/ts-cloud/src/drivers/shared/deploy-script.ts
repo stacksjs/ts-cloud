@@ -874,7 +874,10 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // After the drain succeeds, remove any newly half-built non-current release.
     buildStrandedReleaseTrap(paths),
     ...buildResetReleaseDir(paths),
-    `tar xzf ${tarball} -C "$TS_CLOUD_STAGED"`,
+    // A laptop's archived uid/gid has no ownership authority on this host.
+    // Root otherwise restores it (e.g. macOS uid 501), and Git refuses to
+    // serve restored repositories as dubiously owned. Keep the deploy owner.
+    `tar xzf ${tarball} --no-same-owner -C "$TS_CLOUD_STAGED"`,
     // Drop the staged tarball once extracted — don't leave a world-readable
     // copy of the release (or a stale one for a later deploy to trip over).
     `rm -f ${tarball}`,
@@ -1087,7 +1090,7 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
     // After the drain succeeds, remove any newly half-built non-current release.
     buildStrandedReleaseTrap(paths),
     ...buildResetReleaseDir(paths),
-    `tar xzf ${tarball} -C "$TS_CLOUD_STAGED"`,
+    `tar xzf ${tarball} --no-same-owner -C "$TS_CLOUD_STAGED"`,
     ...buildPromoteStagedRelease(paths),
     // Drop the staged tarball once extracted (see buildSiteDeployScript).
     `rm -f ${tarball}`,

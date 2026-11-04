@@ -62,7 +62,7 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     // Tarball goes into THIS release dir, never the live one.
     // Extraction goes to $TS_CLOUD_STAGED, which is the release dir itself
     // unless that dir is the one currently being served (see buildResetReleaseDir).
-    expect(joined).toContain('tar xzf /tmp/my-app-web-abc123-release.tar.gz -C "$TS_CLOUD_STAGED"')
+    expect(joined).toContain('tar xzf /tmp/my-app-web-abc123-release.tar.gz --no-same-owner -C "$TS_CLOUD_STAGED"')
     expect(joined).toContain('rm -rf /var/www/web/releases/abc123.incoming')
     // .env persists in shared/ and is symlinked into the release.
     expect(joined).toContain('/var/www/web/shared/.env')
@@ -505,7 +505,7 @@ describe('buildStaticSiteDeployScript (zero-downtime atomic release)', () => {
   it('unpacks into a release dir and swaps current atomically — no empty-docroot window, no restart', () => {
     const script = buildStaticSiteDeployScript(opts)
     const joined = script.join('\n')
-    expect(joined).toContain('tar xzf /tmp/docs-rel9-release.tar.gz -C "$TS_CLOUD_STAGED"')
+    expect(joined).toContain('tar xzf /tmp/docs-rel9-release.tar.gz --no-same-owner -C "$TS_CLOUD_STAGED"')
     expect(joined).toContain('rm -rf /var/www/docs/releases/rel9.incoming')
     expect(joined).toContain('mv -Tf /var/www/docs/current.tmp /var/www/docs/current')
     // No destructive wipe of the live docroot, and no systemd (static).
