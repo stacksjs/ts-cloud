@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.91...v0.16.92)
+
+## 🐛 Bug Fixes
+
+- **deploy**: keep extracted artifacts owned by the host ([d0bf8d6](https://github.com/stacksjs/ts-cloud/commit/d0bf8d6)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.92 ([4953084](https://github.com/stacksjs/ts-cloud/commit/4953084)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.90...v0.16.91)
 
 ## ✨ Features
