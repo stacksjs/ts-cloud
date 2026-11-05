@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.93...v0.16.94)
+
+## ✨ Features
+
+- **cloud**: upgrade gateway runtimes without reprovisioning hosts ([4595a68](https://github.com/stacksjs/ts-cloud/commit/4595a68)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.94 ([38d359b](https://github.com/stacksjs/ts-cloud/commit/38d359b)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.92...v0.16.93)
 
 ## 🐛 Bug Fixes
