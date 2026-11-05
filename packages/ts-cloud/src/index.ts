@@ -426,6 +426,7 @@ export {
   // lands: a brand-new subdomain has no A record when the gateway is first
   // reloaded, so ACME cannot have issued a certificate for it yet.
   reloadRpxGateway,
+  buildRpxUpgradeScript,
   renewRpxCertificates,
   // The hostnames the gateway will answer. A DNS reconciler has to publish
   // exactly this set — anything it misses resolves without a certificate of

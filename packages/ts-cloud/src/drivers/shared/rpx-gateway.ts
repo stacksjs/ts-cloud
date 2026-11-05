@@ -1161,6 +1161,69 @@ writeFileSync(candidatePath, JSON.stringify(candidate, null, 2) + '\\n', { mode:
   ]
 }
 
+/** Upgrade the published gateway runtime without regenerating any host configuration. */
+export interface BuildRpxUpgradeOptions {
+  /** Exact published package version. Floating tags cannot produce a reproducible upgrade. */
+  version: string
+  /** Absolute path to the host's Bun runtime. */
+  bunBin?: string
+}
+
+/**
+ * Stage and compile an exact published gateway version before touching the live
+ * install. Keep the existing assembler, route fragments, certificates and service
+ * unit byte-for-byte, including operator environment settings. Restore the old
+ * install and executable if the upgraded service cannot start.
+ */
+export function buildRpxUpgradeScript(options: BuildRpxUpgradeOptions): string[] {
+  if (!/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/i.test(options.version))
+    throw new Error('A gateway upgrade requires an exact published version')
+  const bun = shellSingleQuote(options.bunBin ?? '/usr/local/bin/bun')
+  return [
+    'set -euo pipefail',
+    `test -f ${RPX_LAUNCHER_PATH}`,
+    `test -x ${RPX_BINARY_PATH}`,
+    `test -d ${RPX_INSTALL_DIR}/node_modules/@stacksjs/rpx`,
+    `exec 9>${RPX_DIR}/upgrade.lock`,
+    'flock -n 9',
+    `__rpx_stage=$(mktemp -d ${RPX_INSTALL_DIR}.upgrade.XXXXXX)`,
+    `__rpx_binary_next=$(mktemp ${RPX_BINARY_PATH}.upgrade.XXXXXX)`,
+    '__rpx_restore=false',
+    '__rpx_finish() {',
+    '  __rpx_status=$?',
+    '  trap - EXIT',
+    '  if [ "$__rpx_restore" = true ]; then',
+    `    rm -rf ${RPX_INSTALL_DIR}`,
+    `    mv "$__rpx_stage/previous-install" ${RPX_INSTALL_DIR}`,
+    '    cp -p "$__rpx_stage/previous-gateway" "$__rpx_binary_next"',
+    `    mv -f "$__rpx_binary_next" ${RPX_BINARY_PATH}`,
+    `    systemctl restart ${RPX_SERVICE_NAME} || true`,
+    '    echo "ts-cloud: gateway upgrade failed; restored the previous runtime" >&2',
+    '  fi',
+    '  rm -rf "$__rpx_stage"',
+    '  rm -f "$__rpx_binary_next"',
+    '  exit "$__rpx_status"',
+    '}',
+    'trap __rpx_finish EXIT',
+    `trap 'exit 130' INT TERM`,
+    'mkdir "$__rpx_stage/replacement"',
+    `(cd "$__rpx_stage/replacement" && ${bun} add @stacksjs/rpx@${options.version})`,
+    `cp ${RPX_LAUNCHER_PATH} "$__rpx_stage/replacement/gateway.ts"`,
+    `${bun} build --production --compile --outfile "$__rpx_stage/gateway" "$__rpx_stage/replacement/gateway.ts"`,
+    'chmod 0755 "$__rpx_stage/gateway"',
+    `cp -p ${RPX_BINARY_PATH} "$__rpx_stage/previous-gateway"`,
+    `mv ${RPX_INSTALL_DIR} "$__rpx_stage/previous-install"`,
+    '__rpx_restore=true',
+    `mv "$__rpx_stage/replacement" ${RPX_INSTALL_DIR}`,
+    'cp -p "$__rpx_stage/gateway" "$__rpx_binary_next"',
+    `mv -f "$__rpx_binary_next" ${RPX_BINARY_PATH}`,
+    `systemctl restart ${RPX_SERVICE_NAME}`,
+    'sleep 2',
+    `systemctl is-active --quiet ${RPX_SERVICE_NAME}`,
+    '__rpx_restore=false',
+  ]
+}
+
 export interface BuildRpxProvisionOptions {
   config: RpxGatewayConfig
   proxy: ComputeProxyConfig

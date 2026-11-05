@@ -668,3 +668,7 @@ Made with 💙
 
 <!-- [codecov-src]: https://img.shields.io/codecov/c/gh/stacksjs/ts-cloud/main?style=flat-square
 [codecov-href]: https://codecov.io/gh/stacksjs/ts-cloud -->
+
+### Upgrade a shared gateway runtime
+
+`buildRpxUpgradeScript({ version: '0.11.61' })` from `@stacksjs/ts-cloud/drivers` produces the owner operation for installing an exact published gateway version. It stages and compiles before replacing the runtime, preserves the existing assembler, fragments, certificates and systemd configuration, and restores the previous install if the service cannot start. Run it through the box owner's remote deployment driver.

@@ -6,6 +6,7 @@ import {
   buildRpxFragmentRefreshScript,
   buildRpxLbConfig,
   buildRpxProvisionScript,
+  buildRpxUpgradeScript,
   certDomainsForConfig,
   DEFAULT_ACME_WEBROOT,
   deriveRouteId,
@@ -1193,5 +1194,28 @@ describe('site aliases', () => {
     const plainScript = buildCertManagementCommands({ config: plain, proxy: tlsProxy }).join('\n')
     expect(plainScript).not.toContain('wildcard')
     expect(plainScript).toContain('Description=Issue/renew rpx gateway TLS certs for app (tlsx http-01)')
+  })
+})
+
+
+describe('gateway package-only upgrades', () => {
+  it('requires a pinned version before constructing a remote operation', () => {
+    for (const version of ['latest', '^0.11.61', '0.11.61; reboot', ''])
+      expect(() => buildRpxUpgradeScript({ version })).toThrow('exact published version')
+  })
+
+  it('compiles before swapping, preserves host configuration and restores a failed start', () => {
+    const commands = buildRpxUpgradeScript({ version: '0.11.61' })
+    const script = commands.join('\n')
+    expect(script).toContain('add @stacksjs/rpx@0.11.61')
+    expect(script.indexOf('build --production --compile')).toBeLessThan(script.indexOf('mv /opt/rpx-gateway'))
+    expect(script.indexOf('build --production --compile')).toBeLessThan(script.lastIndexOf('systemctl restart'))
+    expect(script).not.toContain('sites.d')
+    expect(script).not.toContain('/etc/systemd/system')
+    expect(script).not.toContain('daemon-reload')
+    expect(script).not.toContain('acme:')
+    expect(script).toContain('previous-install')
+    expect(script).toContain('previous-gateway')
+    expect(script).toContain('restored the previous runtime')
   })
 })
