@@ -79,7 +79,7 @@ export async function persistentStorageAgent(policy: ComputeStoragePolicy, comma
   const restore = (): void => {
     if (state.fstab !== undefined) fs.writeFileSync('/etc/fstab', state.fstab)
     for (const [file, content] of Object.entries(state.dropins ?? {})) { if (content === null) fs.rmSync(file, { force: true }); else fs.writeFileSync(file, content) }
-    run('systemctl', ['daemon-reload'])
+    try { run('systemctl', ['daemon-reload']) } catch { console.error('Rollback restored configuration; systemd reload needs retry') }
   }
   try {
     lock('/run/lock/ts-cloud-persistent-storage.lock')
