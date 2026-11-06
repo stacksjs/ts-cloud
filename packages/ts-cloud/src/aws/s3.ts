@@ -530,6 +530,55 @@ export class S3Client {
     return result
   }
 
+  /** Binary download with backpressure; only 404 means absent to callers. */
+  async getObjectStream(bucket: string, key: string): Promise<{ body: ReadableStream<Uint8Array>, contentLength?: number, contentType?: string }> {
+    const response: Response = await this.client.request({ service: 's3', region: this.region, method: 'GET',
+      path: '/' + key.split('/').map(segment => encodeURIComponent(segment)).join('/'), bucket, streamResponse: true })
+    if (!response.body) throw new Error('Object response has no body')
+    return { body: response.body, contentLength: response.headers.has('content-length') ? Number(response.headers.get('content-length')) : undefined,
+      contentType: response.headers.get('content-type') ?? undefined }
+  }
+
+  /** Upload an unknown-length stream using bounded, sequential multipart parts. */
+  async putObjectStream(options: { bucket: string, key: string, body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>, contentType?: string, metadata?: Record<string, string> }): Promise<{ bytes: number }> {
+    const partSize = 16 * 1024 * 1024
+    const parts: Array<{ PartNumber: number, ETag: string }> = []
+    let uploadId: string | undefined
+    let bytes = 0
+    let used = 0
+    const buffer = new Uint8Array(partSize)
+    const send = async (): Promise<void> => {
+      if (!used) return
+      if (!uploadId) {
+        const upload = await this.createMultipartUpload(options.bucket, options.key, options)
+        if (!upload.UploadId) throw new Error('Multipart initiation returned no upload id')
+        uploadId = upload.UploadId
+      }
+      if (parts.length >= 10_000) throw new Error('Object exceeds the multipart part limit')
+      const part = await this.uploadPart(options.bucket, options.key, uploadId, parts.length + 1, buffer.subarray(0, used))
+      if (!part.ETag) throw new Error('Multipart part returned no ETag')
+      parts.push({ PartNumber: parts.length + 1, ETag: part.ETag }); used = 0
+    }
+    try {
+      for await (const chunk of options.body) {
+        bytes += chunk.byteLength
+        let offset = 0
+        while (offset < chunk.byteLength) {
+          const count = Math.min(partSize - used, chunk.byteLength - offset)
+          buffer.set(chunk.subarray(offset, offset + count), used); used += count; offset += count
+          if (used === partSize) await send()
+        }
+      }
+      await send()
+      if (uploadId) await this.completeMultipartUpload(options.bucket, options.key, uploadId, parts)
+      else await this.putObject({ ...options, body: new Uint8Array() })
+      return { bytes }
+    } catch (error) {
+      if (uploadId) await this.abortMultipartUpload(options.bucket, options.key, uploadId).catch(() => undefined)
+      throw error
+    }
+  }
+
   /**
    * Get object as raw bytes (binary-safe).
    *
