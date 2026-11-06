@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.94...v0.16.95)
+
+## 🐛 Bug Fixes
+
+- place persistent application data on managed compute volumes ([b4dab8d](https://github.com/stacksjs/ts-cloud/commit/b4dab8d)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.95 ([29c6061](https://github.com/stacksjs/ts-cloud/commit/29c6061)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.93...v0.16.94)
 
 ## ✨ Features
