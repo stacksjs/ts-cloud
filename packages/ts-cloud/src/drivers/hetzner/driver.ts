@@ -112,7 +112,7 @@ export class HetznerDriver implements CloudDriver {
     if (!outputs.appInstanceId) throw new Error('No existing compute server found; provision the server first')
     const server = await this.client.getServer(Number(outputs.appInstanceId))
     const volumes = await planHetznerVolumes(this.client, server, declarations)
-    const resize = compute?.resize && compute.size
+    const resize = !options.storageOnly && compute?.resize && compute.size
       ? await planHetznerServerResize(this.client, server.id, resolveHetznerServerType(compute.size), compute.resize.upgradeDisk !== false)
       : undefined
     const plan: ComputeChangePlan = {
@@ -121,6 +121,7 @@ export class HetznerDriver implements CloudDriver {
     }
     if (compute?.deploymentStorage) plan.changes.push({ resource: compute.deploymentStorage.volume, action: 'place-deployments',
       detail: `Reconcile release directories${compute.deploymentStorage.includeBackups !== false ? ' and deployment backups' : ''} on the volume; ${compute.deploymentStorage.migrateExisting ? 'verify and migrate existing files' : 'refuse nonempty directories'}` })
+    if (compute?.persistentStorage) plan.changes.push({ resource: compute.persistentStorage.volume, action: 'place-persistent-data', detail: `Verify and migrate ${compute.persistentStorage.paths.length} persistent directories with declared writers stopped during cutover` })
     if (resize && !resize.alreadyComplete) {
       if (!resize.capacityAvailable) {
         if (compute?.resize?.whenUnavailable !== 'keep-current') throw new Error(`${resize.targetType.name} is unavailable in ${resize.location}`)
@@ -134,7 +135,7 @@ export class HetznerDriver implements CloudDriver {
     const targets: ComputeTarget[] = [{ id: String(server.id), name: server.name, publicIp: server.public_net.ipv4?.ip }]
     const commands = [
       ...buildNotifierScript(config.notifications),
-      ...(compute?.volumes || compute?.deploymentStorage ? buildComputeStorageInstallScript({ volumes: mounted, deploymentStorage: compute?.deploymentStorage, webRoot: '/var/www' }) : []),
+      ...(compute?.volumes || compute?.deploymentStorage ? buildComputeStorageInstallScript({ volumes: mounted, deploymentStorage: compute?.deploymentStorage, persistentStorage: compute?.persistentStorage, webRoot: '/var/www' }) : []),
       ...(compute?.monitoring !== false ? buildMonitoringScript(compute?.monitoring) : []),
     ]
     if (commands.length) {

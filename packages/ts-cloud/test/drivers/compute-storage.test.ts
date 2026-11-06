@@ -43,6 +43,27 @@ describe('configured compute volumes', () => {
     expect(() => resolveComputeVolumes(invalid, 'production')).toThrow('unit')
   })
 
+  it('validates persistent data placement, writer patterns and backup exclusion', () => {
+    const candidate = structuredClone(config)
+    candidate.infrastructure!.compute!.persistentStorage = { volume: 'deployments', migrateExisting: true,
+      paths: [{ path: '/var/www/example-shared/blobs', units: ['example-*.service'], healthChecks: ['https://example.com/api/health'] }],
+      locks: ['/run/lock/backup.lock'] }
+    expect(resolveComputeVolumes(candidate, 'production')).toHaveLength(1)
+    const placement = candidate.infrastructure!.compute!.persistentStorage!
+    for (const bad of ['/var/www', '/etc/passwd', '/var/../etc', '/var/lib/test-deployments/data']) {
+      placement.paths[0].path = bad
+      expect(() => resolveComputeVolumes(candidate, 'production')).toThrow()
+    }
+    placement.paths[0].path = '/var/www/example-shared/blobs'
+    for (const bad of ['*.service', 'example*other.service', '../../bad.service']) {
+      placement.paths[0].units = [bad]
+      expect(() => resolveComputeVolumes(candidate, 'production')).toThrow()
+    }
+    placement.paths[0].units = ['example-*.service']
+    placement.paths.push({ path: '/var/www/example-shared/blobs/nested', units: [] })
+    expect(() => resolveComputeVolumes(candidate, 'production')).toThrow('overlap')
+  })
+
   it('adopts the exact existing volume without creating or authorizing a format', async () => {
     const declarations = resolveComputeVolumes(config, 'production')
     const plan = await planHetznerVolumes({ listVolumes: async () => [volume] }, server, declarations)

@@ -69,6 +69,11 @@ export async function computeStorageAgent(policy: ComputeStoragePolicy, argv: st
     }
     for (const entry of state.entries)
       if (!mounted(entry.source) || !sameFile(entry.source, entry.destination)) problems.push(`missing deployment mount: ${entry.source}`)
+    const persistentVolume = policy.volumes.find(volume => volume.key === policy.persistentStorage?.volume)
+    for (const entry of policy.persistentStorage?.paths ?? []) {
+      const destination = path.join(persistentVolume!.mountPath, 'persistent', entry.path.slice(1))
+      if (!mounted(entry.path) || !sameFile(entry.path, destination)) problems.push(`missing persistent mount: ${entry.path}`)
+    }
     const known = new Set(state.entries.map(entry => entry.source))
     for (const entry of discover()) if (!known.has(entry.source)) problems.push(`deployment needs volume placement: ${entry.source}`)
     return { timestamp: new Date().toISOString(), volumes: policy.volumes.map(volume => ({ key: volume.key, name: volume.name, id: volume.id, size: volume.size, mountPath: volume.mountPath })),

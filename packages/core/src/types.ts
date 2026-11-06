@@ -3435,6 +3435,21 @@ export interface ComputeConfig {
     dependentUnits?: string[]
   }
 
+  /** Move declared mutable data to a volume, preserving the application's paths. */
+  persistentStorage?: {
+    volume: string
+    migrateExisting?: boolean
+    /** Serialize cutover with backup and other maintenance writers. */
+    locks?: string[]
+    paths: Array<{
+      path: string
+      /** Exact units, instance templates (@*.service), or dash-prefix patterns. */
+      units: string[]
+      /** Public, unauthenticated health endpoints checked after restarting writers. */
+      healthChecks?: string[]
+    }>
+  }
+
   /**
    * Compute mode: 'server' for EC2, 'serverless' for Fargate/Lambda
    */

@@ -81,6 +81,8 @@ export interface ComputeChangePlan {
 }
 
 export interface ApplyComputeChangesOptions extends ProvisionComputeOptions {
+  /** Reconcile storage without changing the instance type or restarting the host. */
+  storageOnly?: boolean
   /** Plan without provider writes, remote commands, or local state writes. */
   dryRun?: boolean
 }

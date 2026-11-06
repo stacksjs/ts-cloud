@@ -1,4 +1,5 @@
 import type { CloudConfig, ComputeConfig, ComputeVolumeConfig, EnvironmentType } from '@ts-cloud/core'
+import { persistentStorageAgent } from './persistent-storage-agent'
 import { computeStorageAgent } from './compute-storage-agent'
 
 export interface ResolvedComputeVolume extends ComputeVolumeConfig {
@@ -15,6 +16,7 @@ export interface MountedComputeVolume extends ResolvedComputeVolume {
 export interface ComputeStoragePolicy {
   volumes: MountedComputeVolume[]
   deploymentStorage?: ComputeConfig['deploymentStorage']
+  persistentStorage?: ComputeConfig['persistentStorage']
   webRoot: string
 }
 
@@ -49,6 +51,29 @@ export function resolveComputeVolumes(config: CloudConfig, environment: Environm
   }
   if (placement && !volumes.some(volume => volume.key === placement.volume))
     throw new Error(`deploymentStorage.volume references an undeclared compute volume: ${placement.volume}`)
+  const persistent = config.infrastructure?.compute?.persistentStorage
+  if (persistent) {
+    if (!volumes.some(volume => volume.key === persistent.volume)) throw new Error('persistentStorage references an undeclared volume')
+    for (const file of persistent.locks ?? []) {
+      if (!/^\/run\/lock\/[\w.-]+$/.test(file) || file.includes('..') || file.includes('ts-cloud-')) throw new Error('Invalid persistent storage lock')
+    }
+    if (!persistent.paths.length) throw new Error('Persistent storage paths must not be empty')
+    for (const item of persistent.paths) {
+      if (!item.path.startsWith('/') || !['var', 'srv', 'home', 'root'].includes(item.path.split('/')[1]) || item.path.split('/').length < 3 || !item.path.slice(1).split('/').every(part => /^[\w.-]+$/.test(part))
+        || item.path.split('/').some(part => part === '.' || part === '..')
+        || ['/var/lib', '/var/www', '/var/cache', '/var/log'].includes(item.path)
+        || volumes.some(volume => item.path === volume.mountPath || item.path.startsWith(volume.mountPath + '/')))
+        throw new Error(`Unsafe persistent storage path: ${item.path}`)
+      if (persistent.paths.some(other => other !== item && (other.path === item.path || other.path.startsWith(item.path + '/')))) throw new Error('Persistent storage paths overlap')
+      for (const unit of item.units) {
+        if (!/^[\w@.-]+(?:\*)?\.(?:service|timer)$/.test(unit) || (unit.includes('*') && !/[-@]\*\.(?:service|timer)$/.test(unit))) throw new Error('Invalid persistent storage unit')
+      }
+      for (const check of item.healthChecks ?? []) {
+        const url = new URL(check)
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid persistent storage health URL')
+      }
+    }
+  }
   return volumes
 }
 
@@ -61,7 +86,7 @@ export function buildComputeStorageInstallScript(policy: ComputeStoragePolicy): 
   // ships one Bun program, without runtime Python, package installs or eval of
   // configuration strings. Both source and published bundles use the same body.
   const candidate = `${COMPUTE_STORAGE_CONFIG}.candidate`
-  const agent = `#!/usr/bin/env bun\nawait (${computeStorageAgent.toString()})(JSON.parse(await Bun.file(process.env.TS_CLOUD_STORAGE_POLICY || ${JSON.stringify(COMPUTE_STORAGE_CONFIG)}).text()), process.argv.slice(2));\n`
+  const agent = `#!/usr/bin/env bun\nconst policy = JSON.parse(await Bun.file(process.env.TS_CLOUD_STORAGE_POLICY || ${JSON.stringify(COMPUTE_STORAGE_CONFIG)}).text());\nawait (${computeStorageAgent.toString()})(policy, process.argv.slice(2));\nif (['apply', 'check', 'status'].includes(process.argv[2])) await (${persistentStorageAgent.toString()})(policy, process.argv[2] === 'apply' ? 'apply' : 'check');\n`
   return [
     'command -v bun >/dev/null 2>&1 || { echo "Configured compute storage requires Bun on the host" >&2; exit 1; }',
     'install -d -m 0755 /etc/ts-cloud /usr/local/lib/ts-cloud /var/lib/ts-cloud',
