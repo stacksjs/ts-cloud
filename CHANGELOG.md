@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.98...v0.16.99)
+
+## 🐛 Bug Fixes
+
+- serialize persistent cutovers and reject restarted writers ([9de6be1](https://github.com/stacksjs/ts-cloud/commit/9de6be1)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.99 ([ec62449](https://github.com/stacksjs/ts-cloud/commit/ec62449)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.97...v0.16.98)
 
 ## 🐛 Bug Fixes
