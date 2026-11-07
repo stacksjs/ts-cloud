@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.99...v0.16.100)
+
+## 🐛 Bug Fixes
+
+- **s3**: retry binary multipart parts through the signed transport ([c2a77c4](https://github.com/stacksjs/ts-cloud/commit/c2a77c4)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.100 ([8309eba](https://github.com/stacksjs/ts-cloud/commit/8309eba)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.98...v0.16.99)
 
 ## 🐛 Bug Fixes
