@@ -1,3 +1,25 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.100...v0.16.101)
+
+## 🐛 Bug Fixes
+
+- **s3**: verify ambiguous completion and avoid multipart for small streams ([b860699](https://github.com/stacksjs/ts-cloud/commit/b860699)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## ⚡ Performance Improvements
+
+- **s3**: overlap two bounded stream parts with safe failure drainage ([9356843](https://github.com/stacksjs/ts-cloud/commit/9356843)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## ✅ Tests
+
+- synchronize runner work with the observed drain signal ([df0fabc](https://github.com/stacksjs/ts-cloud/commit/df0fabc)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.101 ([367a7cc](https://github.com/stacksjs/ts-cloud/commit/367a7cc)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.99...v0.16.100)
 
 ## 🐛 Bug Fixes
