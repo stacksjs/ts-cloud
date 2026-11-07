@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.103...v0.16.104)
+
+## ✨ Features
+
+- provision authenticated managed Typesense ([a84d098](https://github.com/stacksjs/ts-cloud/commit/a84d098)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🐛 Bug Fixes
+
+- keep managed search credentials on the private host ([fe64452](https://github.com/stacksjs/ts-cloud/commit/fe64452)) _(by Chris Breuer <chris@stacksjs.com>)_
+- recover interrupted Typesense credential activation ([66726e2](https://github.com/stacksjs/ts-cloud/commit/66726e2)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.104 ([922397f](https://github.com/stacksjs/ts-cloud/commit/922397f)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.102...v0.16.103)
 
 ## 🐛 Bug Fixes
