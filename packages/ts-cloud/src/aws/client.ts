@@ -524,8 +524,8 @@ export class AWSClient {
 
     // Parse XML or JSON response
     let body: any
-    if (responseText.startsWith('<')) {
-      body = this.parseXmlResponse(responseText)
+    if (responseText.trimStart().startsWith('<')) {
+      body = this.parseXmlResponse(responseText.trimStart())
     } else {
       try {
         body = JSON.parse(responseText)
@@ -776,8 +776,10 @@ export class AWSClient {
       const parsed = coerceXmlValues(this.xmlParser.parse(xml))
 
       // Extract the main result from common AWS response wrappers
-      if (parsed.ErrorResponse) {
-        throw this.createErrorFromXml(parsed.ErrorResponse.Error)
+      // CompleteMultipartUpload may return an Error inside HTTP 200.
+      // https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
+      if (parsed.ErrorResponse || parsed.Error) {
+        throw this.createErrorFromXml(parsed.ErrorResponse?.Error ?? parsed.Error)
       }
 
       // Remove XML wrapper nodes to get to actual data

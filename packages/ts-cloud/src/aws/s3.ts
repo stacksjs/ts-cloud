@@ -417,87 +417,6 @@ export class S3Client {
       .map((seg) => encodeURIComponent(seg))
       .join('/')
 
-    // Normalize body to Buffer for binary data
-    // Uint8Array needs to be converted to Buffer for proper handling
-    const normalizedBody =
-      options.body instanceof Uint8Array && !Buffer.isBuffer(options.body) ? Buffer.from(options.body) : options.body
-
-    // For binary data (Buffer/Uint8Array), use direct binary upload
-    if (Buffer.isBuffer(normalizedBody) || (normalizedBody as any) instanceof Uint8Array) {
-      const binaryBody = Buffer.isBuffer(normalizedBody) ? normalizedBody : Buffer.from(normalizedBody)
-      // Actually, for S3 we need to send raw binary, not base64
-      // Let's use Bun's fetch which handles Buffer natively
-      const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
-      const host = this.s3VirtualHost(options.bucket)
-      const canonicalUri = this.objectPath(options.bucket, encodedKey)
-      const url = this.objectUrl(options.bucket, encodedKey)
-
-      const now = new Date()
-      const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
-      const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
-
-      const payloadHash = crypto.createHash('sha256').update(binaryBody).digest('hex')
-
-      const requestHeaders: Record<string, string> = {
-        host: host,
-        'x-amz-date': amzDate,
-        'x-amz-content-sha256': payloadHash,
-        ...headers,
-      }
-
-      if (sessionToken) {
-        requestHeaders['x-amz-security-token'] = sessionToken
-      }
-
-      // Create canonical request
-      const canonicalHeaders = Object.keys(requestHeaders)
-        .sort()
-        .map((key) => `${key.toLowerCase()}:${requestHeaders[key].trim()}\n`)
-        .join('')
-
-      const signedHeaders = Object.keys(requestHeaders)
-        .sort()
-        .map((key) => key.toLowerCase())
-        .join(';')
-
-      const canonicalRequest = ['PUT', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n')
-
-      // Create string to sign
-      const algorithm = 'AWS4-HMAC-SHA256'
-      const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
-      const stringToSign = [
-        algorithm,
-        amzDate,
-        credentialScope,
-        crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
-      ].join('\n')
-
-      // Calculate signature
-      const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
-      const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
-      const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
-      const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
-      const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
-
-      const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
-
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          ...requestHeaders,
-          Authorization: authorizationHeader,
-        },
-        body: toFetchBody(binaryBody),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`S3 PUT failed: ${response.status} ${errorText}`)
-      }
-
-      return
-    }
-
     await this.client.request({
       service: 's3',
       region: this.region,
@@ -505,7 +424,8 @@ export class S3Client {
       path: `/${encodedKey}`,
       bucket: options.bucket, // Use virtual-hosted style
       headers,
-      body: options.body as string,
+      body: options.body,
+      timeoutMs: 60_000,
     })
   }
 
@@ -546,11 +466,12 @@ export class S3Client {
     let uploadId: string | undefined
     let bytes = 0
     let used = 0
+    const streamToken = crypto.randomUUID()
     const buffer = new Uint8Array(partSize)
     const send = async (): Promise<void> => {
       if (!used) return
       if (!uploadId) {
-        const upload = await this.createMultipartUpload(options.bucket, options.key, options)
+        const upload = await this.createMultipartUpload(options.bucket, options.key, { ...options, metadata: { ...options.metadata, 'ts-cloud-stream-token': streamToken } })
         if (!upload.UploadId) throw new Error('Multipart initiation returned no upload id')
         uploadId = upload.UploadId
       }
@@ -569,14 +490,36 @@ export class S3Client {
           if (used === partSize) await send()
         }
       }
-      await send()
-      if (uploadId) await this.completeMultipartUpload(options.bucket, options.key, uploadId, parts)
-      else await this.putObject({ ...options, body: new Uint8Array() })
+      // Small streams fit the existing bounded buffer and need one PUT, not
+      // a multipart transaction whose completion can still be processing.
+      if (!uploadId) await this.putObject({ ...options, body: buffer.subarray(0, used) })
+      else {
+        await send()
+        try { await this.completeMultipartUpload(options.bucket, options.key, uploadId, parts) }
+        catch (error) {
+          if (!await this.committedStream(options.bucket, options.key, streamToken, bytes, error)) throw error
+        }
+      }
       return { bytes }
     } catch (error) {
       if (uploadId) await this.abortMultipartUpload(options.bucket, options.key, uploadId).catch(() => undefined)
       throw error
     }
+  }
+
+  private sleep(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)) }
+
+  /** A lost completion response is success only for this exact upload attempt. */
+  private async committedStream(bucket: string, key: string, token: string, bytes: number, error: unknown): Promise<boolean> {
+    const failure = error as { code?: string, statusCode?: number, name?: string }
+    if (!(Number(failure.statusCode) >= 500 || ['InternalError', 'NoSuchUpload', 'RequestTimeout'].includes(failure.code || '') || ['TimeoutError', 'AbortError', 'TypeError'].includes(failure.name || ''))) return false
+    const deadline = Date.now() + 120_000
+    for (let attempt = 0; attempt < 60 && Date.now() < deadline; attempt++) {
+      const object = await this.headObject(bucket, key)
+      if (object?.Metadata?.['ts-cloud-stream-token'] === token && object.ContentLength === bytes) return true
+      await this.sleep(2000)
+    }
+    return false
   }
 
   /**
@@ -1107,12 +1050,14 @@ export class S3Client {
         method: 'HEAD',
         path: `/${bucket}/${key.split('/').map(segment => encodeURIComponent(segment)).join('/')}`,
         returnHeaders: true,
+        timeoutMs: 30_000,
       })
       return {
         ContentLength: result?.headers?.['content-length'] ? parseInt(result.headers['content-length']) : undefined,
         ContentType: result?.headers?.['content-type'],
         ETag: result?.headers?.['etag'],
         LastModified: result?.headers?.['last-modified'],
+        Metadata: Object.fromEntries(Object.entries(result?.headers ?? {}).filter(([key]) => key.startsWith('x-amz-meta-')).map(([key, value]) => [key.slice(11), String(value)])),
       }
     } catch (e: any) {
       if (e.statusCode === 404) {
@@ -2157,6 +2102,7 @@ export class S3Client {
       queryParams: { uploadId },
       headers: { 'Content-Type': 'application/xml' },
       body,
+      timeoutMs: 120_000,
     })
   }
 
