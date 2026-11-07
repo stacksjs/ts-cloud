@@ -18,7 +18,7 @@ describe('CloudFront protected media delivery', () => {
 
     expect(requests[0].body).toContain('release&lt;1&gt;')
     expect(requests[0].body).toContain('media &amp; keys')
-    expect(requests[1].body?.match(/<Item>PK123<\/Item>/g)).toHaveLength(1)
+    expect(String(requests[1].body ?? '').match(/<Item>PK123<\/Item>/g)).toHaveLength(1)
     expect(group).toMatchObject({ Id: 'KG123', Items: ['PK123'] })
   })
 

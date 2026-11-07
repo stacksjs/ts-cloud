@@ -27,9 +27,11 @@ export interface AWSRequestOptions {
   path: string
   queryParams?: Record<string, string>
   headers?: Record<string, string>
-  body?: string
+  body?: string | Uint8Array
   credentials?: AWSCredentials
   retries?: number
+  /** Per-attempt network deadline, including request upload. */
+  timeoutMs?: number
   cacheKey?: string
   cacheTTL?: number
   returnHeaders?: boolean
@@ -126,6 +128,7 @@ export interface AWSError extends Error {
   code?: string
   statusCode?: number
   requestId?: string
+  retryAfterMs?: number
   type?: string
 }
 
@@ -460,7 +463,7 @@ export class AWSClient {
         }
 
         // Wait before retrying with exponential backoff
-        const delay = this.calculateRetryDelay(attempt)
+        const delay = Math.max(this.calculateRetryDelay(attempt), Number(error.retryAfterMs) || 0)
         await this.sleep(delay)
       }
     }
@@ -484,7 +487,8 @@ export class AWSClient {
     const response = await fetch(url, {
       method: options.method,
       headers,
-      body: options.body,
+      body: options.body instanceof Uint8Array ? new Uint8Array(options.body) : options.body,
+      ...(options.timeoutMs ? { signal: AbortSignal.timeout(options.timeoutMs) } : {}),
     })
 
     if (options.streamResponse && response.ok)
@@ -741,8 +745,9 @@ export class AWSClient {
   /**
    * SHA256 hash
    */
-  private sha256(data: string): string {
-    return crypto.createHash('sha256').update(data, 'utf8').digest('hex')
+  private sha256(data: string | Uint8Array): string {
+    const hash = crypto.createHash('sha256')
+    return (typeof data === 'string' ? hash.update(data, 'utf8') : hash.update(data)).digest('hex')
   }
 
   /**
@@ -797,6 +802,12 @@ export class AWSClient {
   private parseError(responseText: string, statusCode: number, headers: Headers): AWSError {
     const error: AWSError = new Error() as AWSError
     error.statusCode = statusCode
+    const retryAfter = headers.get('retry-after')
+    if (retryAfter) {
+      const seconds = Number(retryAfter)
+      const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now()
+      if (Number.isFinite(delay) && delay >= 0) error.retryAfterMs = delay
+    }
     error.requestId = headers.get('x-amzn-requestid') || headers.get('x-amz-request-id') || undefined
 
     // Try to parse XML error
@@ -908,7 +919,7 @@ export class AWSClient {
     }
 
     // Network/fetch errors should be retried
-    if (error.name === 'FetchError' || error.name === 'TypeError' || error.code === 'ECONNRESET') {
+    if (error.name === 'FetchError' || error.name === 'TypeError' || error.name === 'TimeoutError' || error.code === 'ECONNRESET') {
       return true
     }
 

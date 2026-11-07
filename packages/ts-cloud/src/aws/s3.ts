@@ -2114,82 +2114,17 @@ export class S3Client {
     partNumber: number,
     body: Uint8Array | Buffer,
   ): Promise<{ ETag: string }> {
-    const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
-    const host = this.s3VirtualHost(bucket)
-    const encodedKey = key
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/')
-    const canonicalUri = this.objectPath(bucket, encodedKey)
-    const url = `${this.objectUrl(bucket, encodedKey)}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
-
-    const now = new Date()
-    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
-    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
-
-    const payloadHash = crypto.createHash('sha256').update(body).digest('hex')
-
-    const requestHeaders: Record<string, string> = {
-      host: host,
-      'x-amz-date': amzDate,
-      'x-amz-content-sha256': payloadHash,
-    }
-
-    if (sessionToken) {
-      requestHeaders['x-amz-security-token'] = sessionToken
-    }
-
-    const canonicalHeaders = Object.keys(requestHeaders)
-      .sort()
-      .map((k) => `${k.toLowerCase()}:${requestHeaders[k].trim()}\n`)
-      .join('')
-
-    const signedHeaders = Object.keys(requestHeaders)
-      .sort()
-      .map((k) => k.toLowerCase())
-      .join(';')
-
-    const canonicalRequest = [
-      'PUT',
-      canonicalUri,
-      `partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`,
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash,
-    ].join('\n')
-
-    const algorithm = 'AWS4-HMAC-SHA256'
-    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
-    const stringToSign = [
-      algorithm,
-      amzDate,
-      credentialScope,
-      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
-    ].join('\n')
-
-    const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
-    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
-    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
-    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
-    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
-
-    const authHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
-
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        ...requestHeaders,
-        Authorization: authHeader,
-      },
-      body: toFetchBody(body),
+    const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/')
+    // A part is replayable. Use the same signer, parsed errors, retry policy and
+    // provider Retry-After handling as every other request in this client.
+    const result = await this.client.request({
+      service: 's3', region: this.region, method: 'PUT', bucket,
+      path: `/${encodedKey}`,
+      queryParams: { partNumber: String(partNumber), uploadId },
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body, returnHeaders: true, timeoutMs: 60_000,
     })
-
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`Upload part failed: ${response.status} ${text}`)
-    }
-
-    return { ETag: response.headers.get('etag') || '' }
+    return { ETag: result?.headers?.etag || '' }
   }
 
   /**
