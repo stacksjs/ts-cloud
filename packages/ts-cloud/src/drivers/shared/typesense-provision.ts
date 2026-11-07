@@ -92,7 +92,7 @@ export function buildTypesenseProvisionScript(config: false | TypesenseServiceCo
     'TS_CLOUD_TYPESENSE_READY=0',
     'TS_CLOUD_TYPESENSE_KEY=$(sed -n \'s/^TYPESENSE_API_KEY=//p\' /etc/ts-cloud/typesense.env)',
     'for TS_CLOUD_TYPESENSE_ATTEMPT in $(seq 1 60); do',
-    `  if systemctl is-active --quiet ts-cloud-typesense.service && curl -fsS --max-time 2 '${origin}/health' | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' && printf 'header = "X-TYPESENSE-API-KEY: %s"\\n' "$TS_CLOUD_TYPESENSE_KEY" | curl --config - -fsS --max-time 2 '${origin}/collections' >/dev/null; then TS_CLOUD_TYPESENSE_READY=1; break; fi`,
+    `  if systemctl is-active --quiet ts-cloud-typesense.service && curl --noproxy '*' -fsS --max-time 2 '${origin}/health' | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' && printf 'header = "X-TYPESENSE-API-KEY: %s"\\n' "$TS_CLOUD_TYPESENSE_KEY" | curl --noproxy '*' --config - -fsS --max-time 2 '${origin}/collections' >/dev/null; then TS_CLOUD_TYPESENSE_READY=1; break; fi`,
     '  sleep 1', 'done',
     '[ "$TS_CLOUD_TYPESENSE_READY" = 1 ] || { echo \'Authenticated Typesense readiness failed\' >&2; exit 1; }',
     'if ! cmp -s "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.applied; then install -m 600 "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.applied; fi',

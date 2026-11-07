@@ -43,3 +43,17 @@ The application receives matching `TYPESENSE_HOST`, `TYPESENSE_PORT`,
 the key, and generic golden images exclude the authenticated instance. Attach
 mode checks that the owner provides the declared engine and does not install it
 on somebody else's server.
+
+The optional real-host regression uses a Pantry-equipped Linux host reached as
+root over SSH. It creates randomly named fixture resources, verifies real
+authentication, data retention, private credentials and interrupted-update
+recovery, then removes those resources:
+
+```sh
+TS_CLOUD_TYPESENSE_TEST_HOST=root@your-test-host \
+TS_CLOUD_TYPESENSE_TEST_SSH_KEY=/path/to/existing/key \
+bun test ./packages/ts-cloud/test/integration/typesense-host-e2e.test.ts
+```
+
+Existing application units and databases are never adopted. The Typesense
+package remains installed through Pantry for subsequent deployments.
