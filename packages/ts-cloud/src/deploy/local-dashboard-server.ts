@@ -743,6 +743,7 @@ export function sanitizeCloudConfig(config: CloudConfig): Record<string, any> {
     ? JSON.parse(JSON.stringify(config.infrastructure.compute.managedServices))
     : undefined
   if (managedServices?.vitess?.password) managedServices.vitess.password = ''
+  if (managedServices?.typesense?.apiKey) managedServices.typesense.apiKey = ''
   return {
     project: {
       name: config.project?.name,

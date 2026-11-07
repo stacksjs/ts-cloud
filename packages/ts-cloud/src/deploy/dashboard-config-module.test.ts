@@ -21,7 +21,7 @@ function config(): CloudConfig {
         provider: 'hetzner',
         runtime: 'bun',
         database: { engine: 'mysql', password: 'legacy-db-secret' },
-        managedServices: { vitess: { username: 'stacks', password: 'vtgate-secret' } },
+        managedServices: { vitess: { username: 'stacks', password: 'vtgate-secret' }, typesense: { apiKey: 'private-typesense-administrator-key' } },
       },
       databases: { main: { engine: 'postgres', password: 'db-super-secret' } },
     },
@@ -51,6 +51,8 @@ describe('redactForDashboard', () => {
     expect(text).not.toContain('hcloud-super-secret')
     expect(text).not.toContain('aws-super-secret')
     expect(text).not.toContain('AKIAEXAMPLE')
+    expect(text).not.toContain('private-typesense-administrator-key')
+    expect(safe.infrastructure.compute.managedServices.typesense.apiKey).toBe('')
   })
 
   it('keeps the non-secret hetzner settings', () => {

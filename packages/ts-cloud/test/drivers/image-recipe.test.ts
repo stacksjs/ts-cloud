@@ -54,6 +54,15 @@ describe('buildImageRecipe', () => {
     expect(full).toContain('ssh-ed25519 AAAA')
   })
 
+  it('keeps the Typesense administrator credential and authenticated service out of generic images', () => {
+    const key = 'fixture-image-typesense-administrator-key-012345'
+    const application: CloudConfig = { ...config, infrastructure: { ...config.infrastructure, compute: { ...config.infrastructure?.compute, managedServices: { typesense: { apiKey: key } } } } }
+    const generic = buildImageRecipe(application)
+    expect(generic).not.toContain(key)
+    expect(generic).not.toContain('ts-cloud-typesense.service')
+    expect(buildImageRecipe(application, { generic: false })).toContain('EnvironmentFile=/etc/ts-cloud/typesense.env')
+  })
+
   it('appends a size-optimization pass by default', () => {
     expect(recipe).toContain('apt-get clean')
     expect(recipe).toContain('rm -rf /var/lib/apt/lists/*')

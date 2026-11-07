@@ -31,6 +31,7 @@ describe('local dashboard server helpers', () => {
       infrastructure: {
         compute: {
           runtime: 'bun',
+          managedServices: { typesense: { apiKey: 'private-typesense-administrator-key-012345' } },
           webServer: 'rpx',
           proxy: {
             engine: 'rpx',
@@ -54,6 +55,8 @@ describe('local dashboard server helpers', () => {
     expect(sanitized.compute.sshKeys[0].name).toBe('chris@macbook')
     expect(sanitized.compute.sshKeys[0].fingerprint.startsWith('SHA256:')).toBe(true)
     expect(JSON.stringify(sanitized)).not.toContain('do-not-leak')
+    expect(JSON.stringify(sanitized)).not.toContain('private-typesense-administrator-key-012345')
+    expect(sanitized.compute.managedServices.typesense.apiKey).toBe('')
     expect(JSON.stringify(sanitized)).not.toContain('AAAAC3Nza')
     expect(sanitized.sites.app.domain).toBe('example.com')
   })

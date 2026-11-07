@@ -57,6 +57,29 @@ function createMockDriver(overrides: Partial<CloudDriver> = {}): CloudDriver {
 }
 
 describe('deploySiteRelease', () => {
+  it('ships the managed Typesense connection to local and fleet application releases', async () => {
+    const key = 'fixture-managed-typesense-administrator-key-012345'
+    const directory = mkdtempSync(join(tmpdir(), 'typesense-release-'))
+    const tarball = join(directory, 'release.tar.gz')
+    writeFileSync(tarball, 'fixture release')
+    try {
+      for (const servicesPrivateIp of [undefined, '10.0.0.4']) {
+        const driver = createMockDriver({ getComputeOutputs: mock(async () => ({ deployBucketName: 'fixture-bucket', servicesPrivateIp })) })
+        const application: CloudConfig = { ...config, infrastructure: { compute: { managedServices: { typesense: { apiKey: key, port: 8208 } } } } }
+        const result = await deploySiteRelease(driver, {
+          config: application, environment: 'production', siteName: 'web', site: application.sites!.web,
+          slug: 'my-app', sha: 'abc123', runtime: 'bun', localTarballPath: tarball,
+        })
+        expect(result.success).toBe(true)
+        const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+        expect(commands).toContain(`TYPESENSE_HOST="${servicesPrivateIp || '127.0.0.1'}"`)
+        expect(commands).toContain('TYPESENSE_PORT="8208"')
+        expect(commands).toContain(`TYPESENSE_API_KEY="${key}"`)
+      }
+    }
+    finally { rmSync(directory, { recursive: true, force: true }) }
+  })
+
   it('uploads artifact and runs remote deploy script on targets', async () => {
     const driver = createMockDriver()
     const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))

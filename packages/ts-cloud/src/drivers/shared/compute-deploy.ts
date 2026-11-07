@@ -23,6 +23,7 @@ import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, resolveGatewayLan, resolveGatewayProfile, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
 import { inferSqliteSharedPath } from './sqlite-shared-path'
+import { buildTypesenseEnv } from './typesense-provision'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -90,6 +91,7 @@ export async function deploySiteRelease(
   // either changes — and a wrong `MAIL_PORT` raises nothing, it stops sending.
   const mailEnv = buildMailEnv(resolveMailService(config, { environment }))
   const compute = config.infrastructure?.compute
+  const typesenseEnv = buildTypesenseEnv(compute?.managedServices?.typesense, outputs.servicesPrivateIp)
   // Resolved up front so an invalid `compute.hostCleanup` fails the deploy
   // before anything is uploaded, rather than after.
   const hostCleanup = buildHostCleanupDeployScript(compute?.hostCleanup)
@@ -104,6 +106,7 @@ export async function deploySiteRelease(
   const envWithServices: Record<string, string> = {
     ...dbEnv,
     ...mailEnv,
+    ...typesenseEnv,
     ...proxyEnv,
     ...(site.env || {}),
     // Production is a deployment invariant, not an app-level suggestion.
@@ -633,7 +636,7 @@ async function preflightAttachedHostServices(
 
   const result = await driver.runRemoteDeploy({
     targets,
-    commands: buildManagedServicesProbeScript(declared),
+    commands: buildManagedServicesProbeScript(declared, config.infrastructure?.compute?.managedServices),
     comment: `ts-cloud preflight managed services ${slug}`,
     tags: { Project: slug, Environment: environment, Role: 'app' },
   })

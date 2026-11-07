@@ -30,6 +30,7 @@ const SERVICE_PROBES: Record<string, { port: number; binaries: string[] }> = {
   redis: { port: 6379, binaries: ['redis-server', 'redis-cli'] },
   memcached: { port: 11211, binaries: ['memcached'] },
   meilisearch: { port: 7700, binaries: ['meilisearch'] },
+  typesense: { port: 8108, binaries: ['typesense-server'] },
   // Apps reach Vitess through vtgate, never the tablet's mysqld.
   vitess: { port: 15306, binaries: ['vtgate'] },
 }
@@ -56,7 +57,7 @@ export function declaredManagedServices(services: ComputeServicesConfig | undefi
  * line each. Always exits 0 — a missing service is a finding to report, not a
  * remote command failure to guess at.
  */
-export function buildManagedServicesProbeScript(names: readonly string[]): string[] {
+export function buildManagedServicesProbeScript(names: readonly string[], services?: ComputeServicesConfig): string[] {
   if (names.length === 0) return []
   return [
     // Engines installed by ts-cloud live in the pantry project, not on the
@@ -80,7 +81,7 @@ export function buildManagedServicesProbeScript(names: readonly string[]): strin
     '}',
     ...names
       .filter(name => SERVICE_PROBES[name])
-      .map(name => `ts_cloud_probe ${name} ${SERVICE_PROBES[name].port} ${SERVICE_PROBES[name].binaries.join(' ')}`),
+      .map(name => `ts_cloud_probe ${name} ${name === 'typesense' && services?.typesense ? services.typesense.port ?? 8108 : SERVICE_PROBES[name].port} ${SERVICE_PROBES[name].binaries.join(' ')}`),
     'exit 0',
   ]
 }

@@ -26,6 +26,7 @@ const PROBED_SERVICES = [
   'redis',
   'redis-server',
   'meilisearch',
+  'ts-cloud-typesense',
 ]
 const UNKNOWN = '-'
 
@@ -328,6 +329,7 @@ function configuredServices(config: CloudConfig): Array<{ name: string; status: 
     ['redis', 'redis'],
     ['memcached', 'memcached'],
     ['meilisearch', 'meilisearch'],
+    ['typesense', 'ts-cloud-typesense'],
   ]
   for (const [key, name] of serviceNames) {
     if (managed[key]) services.push({ name, status: 'configured' })

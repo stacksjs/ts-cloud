@@ -15,6 +15,7 @@ import type { PantrySpec } from './package-manager'
 import { buildMailProvisionScript } from './mail-provision'
 import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
 import { buildVitessProvisionScript } from './vitess-provision'
+import { buildTypesenseProvisionScript } from './typesense-provision'
 
 /**
  * Engines whose APP DATABASE is always administered off-box.
@@ -144,12 +145,14 @@ export function buildServicesProvisionScript(
   // in already resolved, because `services.mail: true` means different things
   // in production and in a preview — see `resolveMailService`.
   const mail = options.mail ? buildMailProvisionScript(options.mail) : []
-  if (plan.packages.length === 0) return [...vitess, ...mail]
+  const typesense = buildTypesenseProvisionScript(services.typesense, options)
+  if (plan.packages.length === 0) return [...vitess, ...mail, ...typesense]
   return [
     ...buildPantryInstallScript(plan.packages),
     ...buildPantryServiceScript(plan.services),
     ...vitess,
     ...mail,
+    ...typesense,
   ]
 }
 

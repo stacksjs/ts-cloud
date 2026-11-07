@@ -81,7 +81,8 @@ export function buildImageRecipe(config: CloudConfig, options: ImageRecipeOption
   // into a shared image is a key every box cloned from it signs with. Anybody
   // who can boot the image can then sign mail as the domains it was baked for.
   // It is also useless state — the hostname, accounts and local domains all
-  // belong to one project.
+  // belong to one project. Typesense's administrator key and authenticated
+  // instance likewise belong to the project, never a reusable golden image.
   const recipeConfig: CloudConfig = generic
     ? {
         ...config,
@@ -95,7 +96,7 @@ export function buildImageRecipe(config: CloudConfig, options: ImageRecipeOption
             sshKeys: undefined,
             backups: undefined,
             managedServices: config.infrastructure?.compute?.managedServices
-              ? { ...config.infrastructure.compute.managedServices, mail: undefined }
+              ? { ...config.infrastructure.compute.managedServices, mail: undefined, typesense: undefined }
               : undefined,
           },
         },

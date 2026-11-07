@@ -4351,6 +4351,17 @@ export interface VitessServiceConfig {
   mysqlPort?: number
 }
 
+export interface TypesenseServiceConfig {
+  /** Official Pantry package release. Defaults to 30.2. */
+  version?: string
+  /** Stable private administrator key: 32-256 URL-safe characters. */
+  apiKey: string
+  /** Loopback by default; a services fleet must explicitly name its private address. */
+  bindAddress?: string
+  /** HTTP port; the adjacent lower port is reserved for peering. Defaults to 8108. */
+  port?: number
+}
+
 export interface ComputeServicesConfig {
   /**
    * Provision Vitess on this box.
@@ -4372,6 +4383,8 @@ export interface ComputeServicesConfig {
   redis?: boolean | { version?: string }
   memcached?: boolean | { version?: string }
   meilisearch?: boolean | { version?: string }
+  /** Persistent authenticated search, with no development/default administrator key. */
+  typesense?: false | TypesenseServiceConfig
 
   /**
    * Provision the **mail server** on this box - `mail`, the Zig SMTP/IMAP

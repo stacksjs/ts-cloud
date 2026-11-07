@@ -72,6 +72,8 @@ export function redactForDashboard(config: CloudConfig): Record<string, any> {
   if (safe.infrastructure?.compute?.database?.password) safe.infrastructure.compute.database.password = ''
   if (safe.infrastructure?.compute?.managedServices?.vitess?.password)
     safe.infrastructure.compute.managedServices.vitess.password = ''
+  if (safe.infrastructure?.compute?.managedServices?.typesense?.apiKey)
+    safe.infrastructure.compute.managedServices.typesense.apiKey = ''
 
   return safe
 }
