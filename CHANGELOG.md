@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.108...v0.16.109)
+
+## 🐛 Bug Fixes
+
+- select active release for liveness probes ([149b484](https://github.com/stacksjs/ts-cloud/commit/149b484)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.109 ([21cf617](https://github.com/stacksjs/ts-cloud/commit/21cf617)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.107...v0.16.108)
 
 ## ✨ Features
