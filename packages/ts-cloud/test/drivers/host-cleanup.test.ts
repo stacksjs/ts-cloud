@@ -37,7 +37,7 @@ afterEach(() => {
 
 /**
  * A fake host under a temp root: every absolute path the cleanup touches is
- * rewritten into it, and `df`, `journalctl`, `docker`, `apt-get`, `systemctl`
+ * rewritten into it, and `df`, `journalctl`, `docker`, `podman`, `apt-get`, `systemctl`
  * and the notifier are stubs that log their arguments. The script text is
  * otherwise run exactly as generated.
  */
@@ -52,7 +52,7 @@ function fakeHost() {
     writeFileSync(join(bin, name), `#!/usr/bin/env bash\necho "${name} $*" >> ${log}\n${body}\n`)
     chmodSync(join(bin, name), 0o755)
   }
-  for (const name of ['journalctl', 'docker', 'apt-get', 'systemctl', 'ts-cloud-notify']) stub(name)
+  for (const name of ['journalctl', 'docker', 'podman', 'apt-get', 'systemctl', 'ts-cloud-notify']) stub(name)
   const setDisk = (percent: number | string) =>
     stub('df', `printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n/dev/sda1 100 ${percent} 0 ${percent}% /\\n'`)
   setDisk(60)
@@ -126,6 +126,9 @@ describe('host cleanup covers the release artifact cache (#194)', () => {
     expect(existsSync(freshArtifact)).toBe(true)
     expect(existsSync(inFlight)).toBe(true)
     expect(existsSync(unrelated)).toBe(true)
+    // Both container backends must remain inside this fixture, even when the
+    // CI host has Podman installed beside Docker.
+    expect(host.calls()).toContain('podman image prune --all --force')
   })
 
   it('expires completed artifacts after the configured two days without an extra rounded day', () => {
