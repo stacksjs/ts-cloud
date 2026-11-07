@@ -175,6 +175,12 @@ export function remoteScriptRunner(options: { sudo?: boolean, timeoutSeconds?: n
     'ts_cloud_script=$(mktemp /tmp/ts-cloud-deploy.XXXXXXXX)',
     'trap \'rm -f "$ts_cloud_script"\' EXIT',
     'cat > "$ts_cloud_script"',
+    ...(options.timeoutSeconds === undefined ? [] : [
+      `if ! ${options.sudo ? 'sudo -n -H ' : ''}timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then`,
+      '  printf \'%s\\n\' \'Remote deployment deadlines require GNU coreutils timeout on the host\' >&2',
+      '  exit 125',
+      'fi',
+    ]),
     run,
   ].join('\n')
 }

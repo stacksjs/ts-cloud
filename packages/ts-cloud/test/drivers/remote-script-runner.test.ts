@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { REMOTE_SCRIPT_RUNNER, remoteScriptRunner } from '../../src/drivers/shared/remote-exec'
 import { describeScriptSyntaxError } from '../../src/drivers/hetzner/driver'
 
@@ -76,6 +78,26 @@ describe('remote script runner', () => {
     expect(status).toBe(124)
   })
 
+  it('refuses an unsupported timeout implementation before executing the script', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-unsupported-timeout-'))
+    const marker = join(directory, 'executed')
+    writeFileSync(join(directory, 'timeout'), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "timeout (uutils)"; exit 0; fi\necho unsafe > "$DEADLINE_UNSUPPORTED_MARKER"\n', { mode: 0o755 })
+    let status = 0
+    try {
+      execFileSync('bash', ['-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
+        input: 'echo never\n', stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, DEADLINE_UNSUPPORTED_MARKER: marker },
+      })
+    } catch (error) {
+      status = (error as { status: number }).status
+    } finally {
+      const executed = existsSync(marker)
+      rmSync(directory, { recursive: true, force: true })
+      expect(status).toBe(125)
+      expect(executed).toBe(false)
+    }
+  })
+
   it('preserves successful bounded output and exit status', () => {
     const stdout = execFileSync('bash', ['-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
       input: 'echo bounded-success\n', encoding: 'utf8',
@@ -90,31 +112,9 @@ describe('remote script runner', () => {
     const child = Bun.spawn(['bash', '-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
       stdin: Buffer.from("trap '' TERM\nsleep 30\n"), stdout: 'pipe', stderr: 'pipe',
     })
-    let hostExitMilliseconds: number | null = null
-    const ownedPids = new Set([child.pid])
-    const observeOwned = () => {
-      const observations: Record<string, unknown>[] = []
-      for (const pid of ownedPids) {
-        const status = `/proc/${pid}/status`
-        if (!existsSync(status)) continue
-        try {
-          const children = readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim()
-          for (const item of children.split(/\s+/).filter(Boolean)) ownedPids.add(Number(item))
-          observations.push({ pid, status: readFileSync(status, 'utf8').split('\n').filter(line => /^(?:Name|State|PPid|NSpgid|SigBlk|SigIgn):/.test(line)) })
-        } catch { /* the owned process can exit between metadata reads */ }
-      }
-      return observations
-    }
-    const capture = setTimeout(observeOwned, 200)
-    const diagnostic = setTimeout(() => {
-      // [DEBUG-deadline-214] No argv, environment or unrelated process data.
-      console.error('[DEBUG-deadline-214]', JSON.stringify({ timeoutBinary: Bun.which('timeout'), hostExitMilliseconds, owned: observeOwned() }))
-    }, 8000)
     const [status] = await Promise.all([
-      child.exited.then(code => { hostExitMilliseconds = Date.now() - start; return code }), new Response(child.stdout).text(), new Response(child.stderr).text(),
+      child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
     ])
-    clearTimeout(capture)
-    clearTimeout(diagnostic)
     expect(status).toBe(137)
     expect(Date.now() - start).toBeLessThan(8500)
   }, 10_000)

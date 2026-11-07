@@ -80,6 +80,19 @@ jobs:
       - name: Install Dependencies
         run: bun install
 
+      - name: Record the host timeout implementation
+        run: timeout --version
+
+      - name: Install the required GNU process deadline tool
+        uses: pantry-pm/pantry/packages/action@40edb8cd30b4e58a2be08352c6961722af58b47c
+        with:
+          version: '0.11.185'
+          install: 'false'
+          packages: 'gnu.org/coreutils@9.10.0'
+
+      - name: Verify the managed deadline tool
+        run: timeout --version
+
       - name: Build
         run: bun run build
 
