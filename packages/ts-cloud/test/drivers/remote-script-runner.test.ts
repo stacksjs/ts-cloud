@@ -82,16 +82,16 @@ describe('remote script runner', () => {
     expect(stdout).toBe('bounded-success\n')
   })
 
-  it('escalates when the script and child ignore TERM', () => {
-    let status = 0
+  it('escalates when the script and child ignore TERM', async () => {
     const start = Date.now()
-    try {
-      execFileSync('bash', ['-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
-        input: "trap '' TERM\nsleep 30\n", stdio: ['pipe', 'pipe', 'pipe'],
-      })
-    } catch (error) {
-      status = (error as { status: number }).status
-    }
+    // Use the asynchronous transport seam so the test runner can service its
+    // own timers while the host's TERM/KILL deadline runs independently.
+    const child = Bun.spawn(['bash', '-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
+      stdin: Buffer.from("trap '' TERM\nsleep 30\n"), stdout: 'pipe', stderr: 'pipe',
+    })
+    const [status] = await Promise.all([
+      child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+    ])
     expect(status).toBe(137)
     expect(Date.now() - start).toBeLessThan(8500)
   }, 10_000)
