@@ -36,6 +36,7 @@ afterEach(() => {
 })
 
 const UNIT = 'acme-web@abc123.service'
+const RETIRED_UNIT = 'acme-web@000000.service'
 /**
  * The probe runs as `#!/bin/sh`, which is dash on the Ubuntu boxes it lands
  * on. dash is stricter than bash's POSIX mode, so run under it when it exists.
@@ -52,6 +53,8 @@ interface Box {
   now: number
   /** Exit code the curl shim returns; `null` uses the real curl. */
   curl: number | null
+  /** A failed retired instance sorts before the current active instance. */
+  retiredFirst: boolean
 }
 
 function extractScript(lines: string[]): string {
@@ -81,20 +84,22 @@ function sandbox(options: LivenessOptions & { port?: number } = {}): { box: Box,
     `date() { read -r ts_cloud_test_now < '${dir}/now'; printf '%s\\n' "$ts_cloud_test_now"; }`,
     'systemctl() {',
     '  case "$1" in',
-    `    list-units) echo "${UNIT} loaded active running Acme" ;;`,
-    '    is-active) return 0 ;;',
+    `    list-units) if [ -f '${dir}/retired-first' ]; then case " $* " in *' --state=active '*) ;; *) echo "${RETIRED_UNIT} loaded failed failed Retired" ;; esac; fi; echo "${UNIT} loaded active running Acme" ;;`,
+    `    is-active) case "$*" in *${RETIRED_UNIT}*) return 3 ;; *) return 0 ;; esac ;;`,
     `    show) case "$*" in *ActiveEnterTimestampMonotonic*) read -r ts_cloud_test_since < '${dir}/since'; printf '%s\\n' "$ts_cloud_test_since" ;; *MainPID*) echo 0 ;; esac ;;`,
     `    restart) echo "$2" >> '${dir}/restarts' ;;`,
     '  esac',
     '}',
   ]
 
-  const box: Box = { dir, uptime: 1000, activeSince: 1, now: 1_700_000_000, curl: 28 }
+  const box: Box = { dir, uptime: 1000, activeSince: 1, now: 1_700_000_000, curl: 28, retiredFirst: false }
 
   const run = async (): Promise<void> => {
     writeFileSync(join(dir, 'uptime'), `${box.uptime}.42 9999.00\n`)
     writeFileSync(join(dir, 'since'), `${box.activeSince * 1_000_000}\n`)
     writeFileSync(join(dir, 'now'), `${box.now}\n`)
+    if (box.retiredFirst)
+      writeFileSync(join(dir, 'retired-first'), '')
     const curl = box.curl === null ? [] : [`curl() { return ${box.curl}; }`]
     writeFileSync(join(dir, 'liveness.sh'), [shebang, ...shims, ...curl, ...body].join('\n'))
 
@@ -175,6 +180,20 @@ describe('the generated liveness script parses', () => {
       expect(exact).toBeGreaterThanOrEqual(0)
       expect(exact).toBe(loose)
     })
+  })
+})
+
+describe('active instance selection', () => {
+  it('probes and restarts the active instance when a retired failed instance sorts first', async () => {
+    const sb = sandbox()
+    sb.box.retiredFirst = true
+    await sb.run()
+    expect(sb.state('fail')?.trim()).toBe('1')
+    await tick(sb)
+    await tick(sb)
+    expect(sb.restarts()).toBe(1)
+    expect(readFileSync(join(sb.box.dir, 'restarts'), 'utf8').trim()).toBe(UNIT)
+    expect(sb.log().at(-1)).toContain(`restarting ${UNIT}`)
   })
 })
 

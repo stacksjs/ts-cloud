@@ -341,8 +341,10 @@ export function buildLivenessUnits(options: {
   const target = `127.0.0.1:${port}${path}`
   const templated = unitPattern.includes('@*')
 
+  // Retired failed instances remain listed by systemd and can sort before the
+  // current release. Select active instances before choosing one to probe.
   const resolveUnit = templated
-    ? `TS_CLOUD_UNIT=$(systemctl list-units --plain --no-legend --type=service '${unitPattern}' 2>/dev/null | awk '{print $1}' | head -1)`
+    ? `TS_CLOUD_UNIT=$(systemctl list-units --plain --no-legend --type=service --state=active '${unitPattern}' 2>/dev/null | awk '{print $1}' | head -1)`
     : `TS_CLOUD_UNIT=${unitPattern}`
 
   // Every line below is emitted at column 0 or with a literal indent that is

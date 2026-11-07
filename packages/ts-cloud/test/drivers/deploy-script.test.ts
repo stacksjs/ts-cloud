@@ -689,7 +689,7 @@ describe('liveness watchdog', () => {
     // would leave it probing a unit that no longer exists after one deploy.
     const joined = buildSiteDeployScript(base).join('\n')
 
-    expect(joined).toContain(`list-units --plain --no-legend --type=service 'my-app-web@*.service'`)
+    expect(joined).toContain(`list-units --plain --no-legend --type=service --state=active 'my-app-web@*.service'`)
     expect(joined).not.toContain('systemctl restart my-app-web@abc123.service"')
   })
 
