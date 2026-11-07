@@ -86,7 +86,7 @@ export function buildComputeStorageInstallScript(policy: ComputeStoragePolicy): 
   // ships one Bun program, without runtime Python, package installs or eval of
   // configuration strings. Both source and published bundles use the same body.
   const candidate = `${COMPUTE_STORAGE_CONFIG}.candidate`
-  const agent = `#!/usr/bin/env bun\nconst policy = JSON.parse(await Bun.file(process.env.TS_CLOUD_STORAGE_POLICY || ${JSON.stringify(COMPUTE_STORAGE_CONFIG)}).text());\nawait (${computeStorageAgent.toString()})(policy, process.argv.slice(2));\nif (['apply', 'check', 'status'].includes(process.argv[2])) await (${persistentStorageAgent.toString()})(policy, process.argv[2] === 'apply' ? 'apply' : 'check');\n`
+  const agent = `#!/usr/bin/env bun\nconst policy = JSON.parse(await Bun.file(process.env.TS_CLOUD_STORAGE_POLICY || ${JSON.stringify(COMPUTE_STORAGE_CONFIG)}).text());\nawait (${computeStorageAgent.toString()})(policy, process.argv.slice(2));\n`
   return [
     'command -v bun >/dev/null 2>&1 || { echo "Configured compute storage requires Bun on the host" >&2; exit 1; }',
     'install -d -m 0755 /etc/ts-cloud /usr/local/lib/ts-cloud /var/lib/ts-cloud',
@@ -94,7 +94,8 @@ export function buildComputeStorageInstallScript(policy: ComputeStoragePolicy): 
     `chmod 0755 ${COMPUTE_STORAGE_AGENT}.new && mv ${COMPUTE_STORAGE_AGENT}.new ${COMPUTE_STORAGE_AGENT}`,
     `printf %s ${quote(JSON.stringify(policy))} > ${candidate}`,
     `chmod 0644 ${candidate}`,
-    `TS_CLOUD_STORAGE_POLICY=${candidate} bun ${COMPUTE_STORAGE_AGENT} apply 2>&1 | tee /var/log/ts-cloud-compute-storage.log`,
+    `if TS_CLOUD_STORAGE_POLICY=${candidate} bun ${COMPUTE_STORAGE_AGENT} apply > /var/log/ts-cloud-compute-storage.log 2>&1; then cat /var/log/ts-cloud-compute-storage.log; else cat /var/log/ts-cloud-compute-storage.log >&2; exit 1; fi`,
+    ...buildPersistentStorageInstallScript(policy),
     `rm -f ${candidate}`,
     `cat > /etc/systemd/system/ts-cloud-storage-check.service <<'TS_CLOUD_STORAGE_SERVICE'`,
     '[Unit]',
@@ -141,4 +142,35 @@ export function buildComputeStorageInstallScript(policy: ComputeStoragePolicy): 
 /** Every tenant inherits the owner's policy; omission never overwrites it. */
 export function buildComputeStorageSiteScript(appBase: string, slug: string): string[] {
   return [`if [ -f ${COMPUTE_STORAGE_CONFIG} ]; then bun ${COMPUTE_STORAGE_AGENT} ensure-site ${quote(appBase)} ${quote(slug)}; fi`]
+}
+
+/** Independent files survive an older release-storage reconciler on a shared host. */
+export function buildPersistentStorageInstallScript(policy: ComputeStoragePolicy): string[] {
+  if (!policy.persistentStorage) return []
+  const config = '/etc/ts-cloud/persistent-storage.json'
+  const program = '/usr/local/lib/ts-cloud/persistent-storage.mjs'
+  const script = `#!/usr/bin/env bun\nawait (${persistentStorageAgent.toString()})(JSON.parse(await Bun.file(${JSON.stringify(config)}).text()), process.argv[2] || 'status');\n`
+  return [
+    `printf %s ${quote(Buffer.from(script).toString('base64'))} | base64 -d > ${program}.new`,
+    `chmod 0755 ${program}.new && mv ${program}.new ${program}`,
+    `printf %s ${quote(JSON.stringify(policy))} > ${config}.new`,
+    `chmod 0600 ${config}.new && mv ${config}.new ${config}`,
+    `if bun ${program} apply > /var/log/ts-cloud-persistent-storage.log 2>&1; then cat /var/log/ts-cloud-persistent-storage.log; else cat /var/log/ts-cloud-persistent-storage.log >&2; exit 1; fi`,
+    "cat > /etc/systemd/system/ts-cloud-persistent-storage-check.service <<'PERSISTENT_STORAGE_SERVICE'",
+    '[Unit]',
+    'Description=Verify declared persistent application mounts independently of release tooling',
+    '[Service]',
+    'Type=oneshot',
+    `ExecStart=/usr/local/bin/bun ${program} check`,
+    'PERSISTENT_STORAGE_SERVICE',
+    "cat > /etc/systemd/system/ts-cloud-persistent-storage-check.timer <<'PERSISTENT_STORAGE_TIMER'",
+    '[Timer]',
+    'OnBootSec=2min',
+    'OnUnitActiveSec=1min',
+    '[Install]',
+    'WantedBy=timers.target',
+    'PERSISTENT_STORAGE_TIMER',
+    'systemctl daemon-reload',
+    'systemctl enable --now ts-cloud-persistent-storage-check.timer',
+  ]
 }

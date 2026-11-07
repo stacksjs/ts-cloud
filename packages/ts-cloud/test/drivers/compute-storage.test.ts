@@ -8,7 +8,7 @@ import { HetznerClient } from '../../src/drivers/hetzner/client'
 import { HetznerDriver } from '../../src/drivers/hetzner/driver'
 import { applyHetznerVolumes, planHetznerVolumes } from '../../src/drivers/hetzner/volumes'
 import { computeStorageAgent } from '../../src/drivers/shared/compute-storage-agent'
-import { buildComputeStorageInstallScript, buildComputeStorageSiteScript, resolveComputeVolumes } from '../../src/drivers/shared/compute-storage'
+import { buildComputeStorageInstallScript, buildComputeStorageSiteScript, buildPersistentStorageInstallScript, resolveComputeVolumes } from '../../src/drivers/shared/compute-storage'
 
 const config: CloudConfig = {
   project: { name: 'Test', slug: 'test', region: 'fsn1' },
@@ -126,6 +126,20 @@ describe('compute apply', () => {
     await driver.applyComputeChanges({ config, environment: 'production' })
     expect(driver.runRemoteDeploy).toHaveBeenCalledTimes(1)
     await expect(driver.applyComputeChanges({ config: { ...config, cloud: { attachTo: 'owner' } }, environment: 'production' })).rejects.toThrow('owner')
+  })
+})
+
+describe('independent persistent policy ownership', () => {
+  it('never overwrites a persistent policy when a release-only deployment omits it', () => {
+    const policy = { volumes: [], webRoot: '/var/www' }
+    expect(buildPersistentStorageInstallScript(policy)).toEqual([])
+    const declared = { ...policy, persistentStorage: { volume: 'data', paths: [{ path: '/var/www/example-shared/blobs', units: ['example-*.service'] }] } }
+    const script = buildPersistentStorageInstallScript(declared).join('\n')
+    expect(script).toContain('/etc/ts-cloud/persistent-storage.json')
+    expect(script).toContain('/usr/local/lib/ts-cloud/persistent-storage.mjs')
+    expect(script).toContain('ts-cloud-persistent-storage-check.timer')
+    expect(script).not.toContain('compute-storage.json')
+    expect(script).not.toContain(' | tee ')
   })
 })
 
