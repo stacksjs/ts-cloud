@@ -52,6 +52,8 @@ export interface SshExecOptions {
    * the preflight, which must run as the user to find out whether sudo works.
    */
   sudo?: boolean
+  /** Host-enforced deadline; requires the shared runner and GNU timeout. */
+  timeoutSeconds?: number
 }
 
 export interface SshHostKeyResult {
@@ -283,7 +285,10 @@ export class SystemSshTransport implements SshTransport {
 
   /** The runner a script is fed to; see {@link SshExecOptions.sudo}. */
   runnerFor(options: SshExecOptions = {}): string {
-    if (options.sudo !== undefined) return remoteScriptRunner({ sudo: options.sudo })
+    if (options.timeoutSeconds !== undefined && options.sudo === undefined && this.options.runner !== undefined) {
+      throw new Error('A remote deployment deadline cannot be enforced with a custom SSH runner')
+    }
+    if (options.sudo !== undefined || options.timeoutSeconds !== undefined) return remoteScriptRunner(options)
     return this.options.runner ?? remoteScriptRunner()
   }
 

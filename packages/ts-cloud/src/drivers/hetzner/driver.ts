@@ -16,7 +16,7 @@ import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
 import { buildNotifierScript } from '../shared/notifications'
 import { buildPhpProvisionScript } from '../shared/php-provision'
-import { REMOTE_SCRIPT_RUNNER, SCP_SSH_TRANSPORT_ARGS } from '../shared/remote-exec'
+import { remoteScriptRunner, SCP_SSH_TRANSPORT_ARGS } from '../shared/remote-exec'
 import { describeScriptSyntaxError, formatSshFailure, summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { sftpFirewallPorts } from '../shared/sftp-provision'
@@ -1346,7 +1346,7 @@ export class HetznerDriver implements CloudDriver {
       }
 
       try {
-        const output = this.sshExec(target.publicIp, script)
+        const output = this.sshExec(target.publicIp, script, options.timeoutSeconds)
         surfaceRemoteNotices(output)
         perInstance.push({
           instanceId: target.id,
@@ -1707,7 +1707,8 @@ export class HetznerDriver implements CloudDriver {
     }
   }
 
-  private sshExec(host: string, script: string): string {
+  private sshExec(host: string, script: string, timeoutSeconds?: number): string {
+    const runner = remoteScriptRunner({ timeoutSeconds })
     // A release deploy extracts the full app tarball (often tens of thousands
     // of files), and `tar` happily emits a warning line per oddity. With the
     // default 1MB maxBuffer, the child process dies mid-deploy with
@@ -1715,7 +1716,7 @@ export class HetznerDriver implements CloudDriver {
     // stdin so runtime environment and database credentials never appear in
     // the local process table as SSH command-line arguments.
     try {
-      return execFileSync('ssh', [...this.sshBaseArgs(host), REMOTE_SCRIPT_RUNNER], {
+      return execFileSync('ssh', [...this.sshBaseArgs(host), runner], {
         encoding: 'utf8',
         input: script,
         stdio: ['pipe', 'pipe', 'pipe'],

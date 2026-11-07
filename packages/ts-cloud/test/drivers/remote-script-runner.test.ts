@@ -62,6 +62,46 @@ describe('remote script runner', () => {
     expect(runStaged('set -e\nfalse\necho unreachable\n').status).toBe(1)
   })
 
+  it('enforces the caller deadline on the host', () => {
+    let status = 0
+    try {
+      execFileSync('bash', ['-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
+        input: 'sleep 2\necho deadline-was-ignored\n',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      status = (error as { status: number }).status
+    }
+    expect(status).toBe(124)
+  })
+
+  it('preserves successful bounded output and exit status', () => {
+    const stdout = execFileSync('bash', ['-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
+      input: 'echo bounded-success\n', encoding: 'utf8',
+    })
+    expect(stdout).toBe('bounded-success\n')
+  })
+
+  it('escalates when the script and child ignore TERM', () => {
+    let status = 0
+    const start = Date.now()
+    try {
+      execFileSync('bash', ['-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
+        input: "trap '' TERM\nsleep 30\n", stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      status = (error as { status: number }).status
+    }
+    expect(status).toBe(137)
+    expect(Date.now() - start).toBeLessThan(8500)
+  }, 10_000)
+
+  it('rejects invalid deadlines before any script can run', () => {
+    for (const timeoutSeconds of [0, -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => remoteScriptRunner({ timeoutSeconds })).toThrow('positive safe integer')
+    }
+  })
+
   it('is the sudo-less variant of remoteScriptRunner', () => {
     expect(remoteScriptRunner()).toBe(REMOTE_SCRIPT_RUNNER)
     expect(REMOTE_SCRIPT_RUNNER.endsWith('bash "$ts_cloud_script" < /dev/null')).toBe(true)

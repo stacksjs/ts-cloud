@@ -1,4 +1,5 @@
 import type { CloudDriver, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, RemoteDeployResult, RunRemoteDeployOptions, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
+import { remoteScriptRunner } from '../shared/remote-exec'
 
 /**
  * A {@link CloudDriver} that runs every "remote" command on the LOCAL machine.
@@ -38,7 +39,9 @@ export class LocalBoxDriver implements CloudDriver {
   async runRemoteDeploy(options: RunRemoteDeployOptions): Promise<RemoteDeployResult> {
     const script = options.commands.join('\n')
     try {
-      const proc = Bun.spawn(['bash', '-c', script], { stdout: 'pipe', stderr: 'pipe', env: process.env })
+      const proc = Bun.spawn(['bash', '-c', remoteScriptRunner({ timeoutSeconds: options.timeoutSeconds })], {
+        stdin: Buffer.from(script), stdout: 'pipe', stderr: 'pipe', env: process.env,
+      })
       const [output, error, exitCode] = await Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),

@@ -182,8 +182,8 @@ export class SshDriver implements CloudDriver {
   }
 
   /** Run a script on the host as root (through sudo when the user is not root). */
-  private exec(host: string, script: string): Promise<string> {
-    return this.transport.exec(host, script, { sudo: this.settings.sudo })
+  private exec(host: string, script: string, timeoutSeconds?: number): Promise<string> {
+    return this.transport.exec(host, script, { sudo: this.settings.sudo, timeoutSeconds })
   }
 
   async findComputeTargets(options: FindComputeTargetsOptions): Promise<ComputeTarget[]> {
@@ -279,7 +279,7 @@ export class SshDriver implements CloudDriver {
         continue
       }
       try {
-        const output = await this.exec(target.publicIp, script)
+        const output = await this.exec(target.publicIp, script, options.timeoutSeconds)
         surfaceRemoteNotices(output)
         perInstance.push({ instanceId: target.id, status: 'Success', output })
       } catch (error) {

@@ -161,6 +161,24 @@ describe('SystemSshTransport.ensureHostKey', () => {
 })
 
 describe('SystemSshTransport.exec', () => {
+  it('enforces the host deadline inside sudo while keeping the script off argv', async () => {
+    const { calls, run } = recorder()
+    const transport = new SystemSshTransport(pinned, { run })
+    await transport.exec('pi.local', 'PRIVATE_FIXTURE_VALUE=not-in-argv', { sudo: true, timeoutSeconds: 7 })
+    expect(calls[0].command.at(-1)).toContain('sudo -n -H timeout --kill-after=5s 7s bash')
+    expect(calls[0].command.join(' ')).not.toContain('not-in-argv')
+    expect(calls[0].input).toBe('PRIVATE_FIXTURE_VALUE=not-in-argv')
+  })
+
+  it('rejects deadlines a custom runner cannot enforce before starting SSH', async () => {
+    const { calls, run } = recorder()
+    const transport = new SystemSshTransport({ ...pinned, runner: 'custom-runner' }, { run })
+    await expect(transport.exec('pi.local', 'echo never', { timeoutSeconds: 1 })).rejects.toThrow('custom SSH runner')
+    expect(calls).toHaveLength(0)
+    await expect(transport.exec('pi.local', 'echo never', { sudo: false, timeoutSeconds: 0 })).rejects.toThrow('positive safe integer')
+    expect(calls).toHaveLength(0)
+  })
+
   it('feeds the script over stdin to the staged runner, sudo variant on request', async () => {
     const { calls, run } = recorder([ok('done\n'), ok('done\n')])
     const transport = new SystemSshTransport(pinned, { run })

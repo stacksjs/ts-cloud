@@ -38,7 +38,7 @@ const facts: SshPreflightFacts = {
 }
 
 type Call =
-  | { kind: 'exec'; host: string; script: string; sudo?: boolean }
+  | { kind: 'exec'; host: string; script: string; sudo?: boolean; timeoutSeconds?: number }
   | { kind: 'scp'; host: string; localPath: string; remotePath: string }
   | { kind: 'probe'; host: string }
   | { kind: 'ensureHostKey'; host: string }
@@ -52,7 +52,7 @@ class FakeTransport implements SshTransport {
   failing: RegExp | null = null
 
   async exec(host: string, script: string, options: SshExecOptions = {}): Promise<string> {
-    this.calls.push({ kind: 'exec', host, script, sudo: options.sudo })
+    this.calls.push({ kind: 'exec', host, script, sudo: options.sudo, timeoutSeconds: options.timeoutSeconds })
     if (this.failing?.test(script)) throw new Error('Remote SSH command failed (exit 1)\nno psql on this box')
     if (script === SSH_PREFLIGHT_SCRIPT) return `motd\n${JSON.stringify(this.facts)}\n`
     if (script.includes('cloud-init status --long')) return this.cloudInitPolls.shift() ?? 'status: done'
@@ -207,6 +207,11 @@ describe('SshDriver.uploadRelease', () => {
 })
 
 describe('SshDriver.runRemoteDeploy', () => {
+  it('passes the caller deadline through to the host transport', async () => {
+    await driver().runRemoteDeploy({ targets: [{ id: 'pi.local', publicIp: 'pi.local' }], commands: ['echo bounded'], timeoutSeconds: 17 })
+    expect(transport.execs()[0].timeoutSeconds).toBe(17)
+  })
+
   it('runs the joined script on each target and reports success', async () => {
     const result = await driver().runRemoteDeploy({ targets: [{ id: 'pi.local', publicIp: 'pi.local' }], commands: ['echo a', 'echo b'] })
     expect(result.success).toBe(true)

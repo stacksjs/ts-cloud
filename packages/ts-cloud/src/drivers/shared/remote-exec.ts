@@ -155,13 +155,21 @@ export async function waitForCloudInit(host: string, options: WaitOptions = {}):
  * `-s` in the first place), and `mktemp` creates the file 0600, so the window
  * where they touch disk is both short and unreadable to other users.
  */
-export function remoteScriptRunner(options: { sudo?: boolean } = {}): string {
+export function remoteScriptRunner(options: { sudo?: boolean, timeoutSeconds?: number } = {}): string {
+  if (options.timeoutSeconds !== undefined && (!Number.isSafeInteger(options.timeoutSeconds) || options.timeoutSeconds <= 0)) {
+    throw new Error('Remote deployment timeoutSeconds must be a positive safe integer')
+  }
   // A non-root deploy user stages the script as itself and hands only the
   // execution to root: the temp file is created 0600 by the user, `sudo -n`
   // refuses to prompt (a password prompt over a piped stdin would hang the
   // deploy), and `-H` gives the script root's HOME so installers that
   // dereference $HOME (bun's, for one) land in /root as they do on a cloud box.
-  const run = options.sudo ? 'sudo -n -H bash "$ts_cloud_script" < /dev/null' : 'bash "$ts_cloud_script" < /dev/null'
+  // Enforce the deadline on the host rather than timing out just SSH. GNU timeout
+  // creates a process group for the script and ordinary descendants; foreground
+  // mode would leave those descendants running. Run it inside sudo so it can
+  // signal root children, with a bounded grace for scripts that ignore TERM.
+  const deadline = options.timeoutSeconds === undefined ? '' : `timeout --kill-after=5s ${options.timeoutSeconds}s `
+  const run = `${options.sudo ? 'sudo -n -H ' : ''}${deadline}bash "$ts_cloud_script" < /dev/null`
   return [
     'set -e',
     'ts_cloud_script=$(mktemp /tmp/ts-cloud-deploy.XXXXXXXX)',

@@ -1,5 +1,8 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createCloudDriver } from '../../src/drivers/factory'
 import { isBoxMode, LocalBoxDriver } from '../../src/drivers/local-box/driver'
 
@@ -60,6 +63,29 @@ describe('LocalBoxDriver', () => {
     expect(result.perInstance[0].status).toBe('Failed')
     expect(result.perInstance[0].error).toContain('to-stderr')
   })
+
+  it('stops its script and ordinary descendants at the deadline without stopping other work', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-deadline-'))
+    const marker = join(directory, 'child-completed')
+    const unrelated = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore' })
+    const start = Date.now()
+    try {
+      const result = await driver.runRemoteDeploy({
+        targets: [],
+        commands: [`(sleep 3; touch '${marker}') &`, 'wait'],
+        timeoutSeconds: 1,
+      })
+      expect(result.success).toBe(false)
+      expect(Date.now() - start).toBeLessThan(2500)
+      await Bun.sleep(Math.max(0, 3500 - (Date.now() - start)))
+      expect(existsSync(marker)).toBe(false)
+      expect(unrelated.exitCode).toBeNull()
+    } finally {
+      unrelated.kill()
+      await unrelated.exited
+      rmSync(directory, { recursive: true, force: true })
+    }
+  }, 10_000)
 })
 
 describe('box mode gate', () => {

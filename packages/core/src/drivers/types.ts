@@ -124,6 +124,7 @@ export interface RunRemoteDeployOptions {
   targets: ComputeTarget[]
   commands: string[]
   comment?: string
+  /** Positive integer deadline on the host. SSH/Hetzner/LocalBox require GNU timeout. */
   timeoutSeconds?: number
   tags?: Record<string, string>
 }
