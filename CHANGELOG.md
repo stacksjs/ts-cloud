@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.105...v0.16.106)
+
+## 🐛 Bug Fixes
+
+- **cli**: reject unsupported runtime dry runs ([e5f9593](https://github.com/stacksjs/ts-cloud/commit/e5f9593)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.106 ([bacbb63](https://github.com/stacksjs/ts-cloud/commit/bacbb63)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.104...v0.16.105)
 
 ## 🐛 Bug Fixes
