@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.101...v0.16.102)
+
+## 🐛 Bug Fixes
+
+- **storage**: verify completed placements before backup exclusion ([04d109f](https://github.com/stacksjs/ts-cloud/commit/04d109f)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## ✅ Tests
+
+- **storage**: retain the selected Bun through privileged fixtures ([7eb9749](https://github.com/stacksjs/ts-cloud/commit/7eb9749)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.102 ([47fa1ae](https://github.com/stacksjs/ts-cloud/commit/47fa1ae)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.100...v0.16.101)
 
 ## 🐛 Bug Fixes
