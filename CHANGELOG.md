@@ -1,3 +1,23 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.111...v0.16.112)
+
+## 🐛 Bug Fixes
+
+- verify the host process deadline implementation ([497dd02](https://github.com/stacksjs/ts-cloud/commit/497dd02)) _(by Chris Breuer <chris@stacksjs.com>)_
+- enforce explicit host deployment deadlines ([a78991d](https://github.com/stacksjs/ts-cloud/commit/a78991d)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## ✅ Tests
+
+- capture owned process state for Linux deadline failure ([564d1d9](https://github.com/stacksjs/ts-cloud/commit/564d1d9)) _(by Chris Breuer <chris@stacksjs.com>)_
+- await host deadline escalation asynchronously ([81d8caa](https://github.com/stacksjs/ts-cloud/commit/81d8caa)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.112 ([3fdde30](https://github.com/stacksjs/ts-cloud/commit/3fdde30)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.110...v0.16.111)
 
 ## 🐛 Bug Fixes
