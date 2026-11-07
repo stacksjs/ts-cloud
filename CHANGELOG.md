@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.110...v0.16.111)
+
+## 🐛 Bug Fixes
+
+- cancel rejected immediate dashboard actions ([eeee61c](https://github.com/stacksjs/ts-cloud/commit/eeee61c)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.111 ([c7f0aff](https://github.com/stacksjs/ts-cloud/commit/c7f0aff)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.109...v0.16.110)
 
 ## 🐛 Bug Fixes
