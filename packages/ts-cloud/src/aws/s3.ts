@@ -1046,11 +1046,13 @@ export class S3Client {
   }
 
   /**
-   * Head object - get object metadata without downloading
+   * Head object - get object metadata without downloading.
+   * Bulk transfers may select a longer bounded budget for slow cold-object lookups.
    */
   async headObject(
     bucket: string,
     key: string,
+    options: { timeoutMs?: number } = {},
   ): Promise<{
     ContentLength?: number
     ContentType?: string
@@ -1058,6 +1060,9 @@ export class S3Client {
     LastModified?: string
     Metadata?: Record<string, string>
   } | null> {
+    const timeoutMs = options.timeoutMs ?? 30_000
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 0xFFFF_FFFF)
+      throw new Error('S3 metadata timeout must be a positive finite millisecond budget')
     try {
       const result = await this.client.request({
         service: 's3',
@@ -1065,7 +1070,7 @@ export class S3Client {
         method: 'HEAD',
         path: `/${bucket}/${key.split('/').map(segment => encodeURIComponent(segment)).join('/')}`,
         returnHeaders: true,
-        timeoutMs: 30_000,
+        timeoutMs,
       })
       return {
         ContentLength: result?.headers?.['content-length'] ? parseInt(result.headers['content-length']) : undefined,
