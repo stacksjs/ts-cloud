@@ -272,8 +272,13 @@ export async function trackDashboardOperation<T extends { ok: boolean }>(
     cancellationMode: 'provider_non_cancellable',
     retentionDays: 90,
   }).operation
-  const running = queue.claim(operation.id)?.operation
-  if (!running) throw new Error(`Could not claim control-plane operation ${operation.id}`)
+  const running = queue.claim(operation.id, { cancelIfBlocked: true })?.operation
+  if (!running) {
+    const blocked = queue.view(operation.id)
+    const reason = blocked?.job.blockedReason ?? 'operation is not claimable'
+    const cancelled = blocked?.operation.state === 'cancelled' ? ' Cancelled before execution.' : ''
+    throw new Error(`Could not start control-plane operation ${operation.id} (${reason}).${cancelled}`)
+  }
 
   try {
     const result = await input.execute()

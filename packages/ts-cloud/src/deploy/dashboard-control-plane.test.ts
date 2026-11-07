@@ -21,6 +21,48 @@ function config(): CloudConfig {
 }
 
 describe('dashboard control plane', () => {
+  for (const conflict of ['resource_lock', 'environment_concurrency'] as const) {
+    it(`retires a rejected immediate action under ${conflict} without executing it later`, async () => {
+      root = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-control-'))
+      const configured = config()
+      configured.sites!.api = { root: '.', start: 'bun api.ts', port: 3001 }
+      const controlPlane = initializeDashboardControlPlane(root, configured)
+      const actor = { username: 'chris', passwordHash: 'not-persisted', role: 'admin' as const, sites: {} }
+      const started = Promise.withResolvers<void>()
+      const complete = Promise.withResolvers<{ ok: boolean }>()
+      let rejectedExecutions = 0
+      const first = trackDashboardOperation({
+        controlPlane, environment: 'production', actor,
+        kind: 'dashboard.first', resourceSlug: 'web',
+        execute: async () => { started.resolve(); return complete.promise },
+      })
+      try {
+        await started.promise
+        const error = await trackDashboardOperation({
+          controlPlane, environment: 'production', actor,
+          kind: 'dashboard.rejected', resourceSlug: conflict === 'resource_lock' ? 'web' : 'api',
+          execute: async () => { rejectedExecutions++; return { ok: true } },
+        }).catch((error: Error) => error)
+        expect(rejectedExecutions).toBe(0)
+        const operations = controlPlane.store.listOperations({ projectId: controlPlane.project.id })
+        expect(operations.find(operation => operation.kind === 'dashboard.first')?.state).toBe('running')
+        const rejected = operations.find(operation => operation.kind === 'dashboard.rejected')!
+        expect(rejected).toMatchObject({ state: 'cancelled', attempt: 0 })
+        expect(error).toBeInstanceOf(Error)
+        expect((error as Error).message).toContain(conflict)
+        expect((error as Error).message).toContain(rejected.id)
+      }
+      finally {
+        complete.resolve({ ok: true })
+        try {
+          await first
+          expect(controlPlane.store.listOperations({ projectId: controlPlane.project.id, state: 'queued' })).toEqual([])
+        }
+        finally { controlPlane.store.close() }
+      }
+    })
+  }
+
   it('synchronizes the project, environment, and application hierarchy idempotently', () => {
     root = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-control-'))
     const first = initializeDashboardControlPlane(root, config())
