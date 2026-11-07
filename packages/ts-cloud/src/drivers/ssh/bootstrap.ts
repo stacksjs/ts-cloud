@@ -9,8 +9,8 @@
  * - It may run MORE than once. cloud-init on a Pi has an upstream bug that
  *   reruns modules on every boot, an operator may `cloud ssh:bootstrap` twice,
  *   and a deploy calls the adopt on every run. So the whole script is guarded
- *   by a version marker: once `/var/lib/ts-cloud/bootstrap.v<N>` exists, only
- *   the gateway fragment is refreshed. Bumping {@link SSH_BOOTSTRAP_VERSION}
+ *   by a version marker: once `/var/lib/ts-cloud/bootstrap.v<N>` exists, the
+ *   gateway and explicitly declared operational services are reconciled. Bumping {@link SSH_BOOTSTRAP_VERSION}
  *   is how a changed recipe gets applied to hosts bootstrapped by an older one.
  * - It may run before the clock is right. A Pi 5 has no battery-backed RTC,
  *   and apt refuses Release files "from the future" while ACME refuses a
@@ -28,7 +28,7 @@ import type { SshLanConfig, SshProfile } from './config'
 import type { SshPreflightFacts } from './preflight'
 import { isIP } from 'node:net'
 import { resolveMailProxy, resolveMailService } from '@ts-cloud/core'
-import { buildComputeProvisionScripts } from '../shared/compute-provision'
+import { buildComputeProvisionScripts, buildOwnedServicesReconcileScript } from '../shared/compute-provision'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxProvisionScript, localCaCertPath, RPX_SITES_DIR } from '../shared/rpx-gateway'
 import { buildUbuntuBootstrapScript } from '../shared/ubuntu-bootstrap'
 import { enabled as vitessEnabled } from '../shared/vitess-provision'
@@ -248,12 +248,13 @@ set -euo pipefail
 # ts-cloud ssh bootstrap v${SSH_BOOTSTRAP_VERSION} profile=${profile}${lanHeader}
 
 # Idempotence guard. This script may run again (a cloud-init rerun, a repeated
-# adopt, a deploy): once this version has been applied, only the gateway's
-# route fragment is refreshed, so a rerun cannot re-download the runtime or
+# adopt, a deploy): once this version has been applied, reconcile operational
+# services and the gateway fragment. A rerun cannot re-download the runtime or
 # re-create swap on every boot.
 if [ -e ${shellSingleQuote(marker)} ]; then
-  echo "[ts-cloud] bootstrap v${SSH_BOOTSTRAP_VERSION} already applied; refreshing the gateway fragment only"
+  echo "[ts-cloud] bootstrap v${SSH_BOOTSTRAP_VERSION} already applied; reconciling declared services and gateway fragment"
 `
+  script += `${buildOwnedServicesReconcileScript(config, environment).join('\n')}\n`
   if (rpxRefresh) {
     const refreshBody = rpxRefresh[0] === 'set -euo pipefail' ? rpxRefresh.slice(1) : rpxRefresh
     script += `${refreshBody.join('\n')}\n`

@@ -36,6 +36,7 @@ import { createReadStream } from 'node:fs'
 import { isIP } from 'node:net'
 import { resolveProjectStackName } from '@ts-cloud/core'
 import { buildDiscardUploadScript, buildPublishUploadScript, HOST_ARTIFACT_CACHE_DIR } from '../shared/deploy-script'
+import { buildOwnedServicesReconcileScript } from '../shared/compute-provision'
 import { readDriverState, writeDriverState } from '../shared/driver-state'
 import { lanTlsMode, localCaCertPath, usesRpxProxy } from '../shared/rpx-gateway'
 import { summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
@@ -380,6 +381,9 @@ export class SshDriver implements CloudDriver {
       })
       surfaceRemoteNotices(await this.exec(target.host, script))
       bootstrappedAt = new Date().toISOString()
+    } else {
+      const services = buildOwnedServicesReconcileScript(config, environment)
+      if (services.length) surfaceRemoteNotices(await this.exec(target.host, ['set -e', ...services].join('\n')))
     }
 
     const state: SshDriverState = {

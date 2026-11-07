@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { randomBytes, randomInt } from 'node:crypto'
-import { buildServicesProvisionScript } from '../../src/drivers/shared/db-provision'
+import { buildOwnedServicesReconcileScript } from '../../src/drivers/shared/compute-provision'
 
 // Explicit opt-in: a root SSH account on a Linux host with Pantry installed.
 // The test creates only randomly named fixture resources. No application,
@@ -32,7 +32,7 @@ test.skipIf(!host || !identity)('managed Typesense authenticates, replays and re
     if (result.code !== 0) throw new Error(`Owned Typesense fixture failed (${result.code}): ${result.stderr.slice(-2000)}`)
     return result.stdout
   }
-  const provision = (key: string, instance = name): string => buildServicesProvisionScript({ typesense: { version: '30.2', apiKey: key, port } }).join('\n')
+  const provision = (key: string, instance = name): string => buildOwnedServicesReconcileScript({ project: { name: 'fixture', slug: 'fixture', region: 'fsn1' }, environments: {}, infrastructure: { compute: { managedServices: { typesense: { version: '30.2', apiKey: key, port } } } } }, 'production').join('\n')
     .replaceAll('ts-cloud-typesense', instance)
     .replaceAll('/etc/ts-cloud/typesense.env', `/etc/ts-cloud/${instance}.env`)
     .replaceAll('/etc/ts-cloud/typesense.applied', `/etc/ts-cloud/${instance}.applied`)

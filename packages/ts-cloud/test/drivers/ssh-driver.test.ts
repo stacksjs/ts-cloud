@@ -322,6 +322,16 @@ describe('SshDriver.provisionComputeInfrastructure (adopt)', () => {
     expect(second && 'bootstrappedAt' in second ? second.bootstrappedAt : null).toBe(first && 'bootstrappedAt' in first ? first.bootstrappedAt! : null)
   })
 
+  it('reconciles declared search when the unchanged machine bootstrap is explicitly skipped', async () => {
+    await driver().provisionComputeInfrastructure({ config, environment: 'production' })
+    transport = new FakeTransport()
+    process.env.TS_CLOUD_SSH_SKIP_BOOTSTRAP = '1'
+    const managed: CloudConfig = { ...config, infrastructure: { compute: { runtime: 'bun', managedServices: { typesense: { apiKey: 'fixture-private-search-key-0123456789' } } } } }
+    await driver().provisionComputeInfrastructure({ config: managed, environment: 'production' })
+    expect(transport.execs().some(call => call.script.includes('EnvironmentFile=/etc/ts-cloud/typesense.env'))).toBe(true)
+    expect(transport.execs().some(call => call.script.includes('fallocate'))).toBe(false)
+  })
+
   it('rejects attachTo and multi-host configs before contact', async () => {
     await expect(driver().provisionComputeInfrastructure({ config: { ...config, cloud: { provider: 'ssh', attachTo: 'stacks' } }, environment: 'production' })).rejects.toThrow('cloud.attachTo is not supported')
     await expect(driver({ hosts: [{ host: 'a' }, { host: 'b' }] }).provisionComputeInfrastructure({ config, environment: 'production' })).rejects.toThrow('multi-host')

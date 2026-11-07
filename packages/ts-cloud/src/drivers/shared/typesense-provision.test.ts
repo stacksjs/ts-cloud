@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildServicesProvisionScript } from './db-provision'
+import { buildOwnedServicesReconcileScript } from './compute-provision'
 import { buildManagedServicesProbeScript, declaredManagedServices } from './managed-services-probe'
 import { buildTypesenseEnv, buildTypesenseProvisionScript } from './typesense-provision'
 
@@ -13,6 +14,13 @@ it('provisions the declared Typesense engine instead of silently ignoring it', (
   expect(script).toContain('typesense.org@30.2')
   expect(script).toContain('EnvironmentFile=/etc/ts-cloud/typesense.env')
   expect(script).toContain('--api-address 127.0.0.1')
+})
+
+it('reconciles declared search on reused owned hosts and leaves attached hosts alone', () => {
+  const config = { environments: {}, project: { name: 'owned', slug: 'owned', region: 'fsn1' }, cloud: { provider: 'hetzner' as const }, infrastructure: { compute: { managedServices: { typesense: { apiKey: key, version: '30.2' } } } } }
+  expect(buildOwnedServicesReconcileScript(config, 'production').join('\n')).toContain('EnvironmentFile=/etc/ts-cloud/typesense.env')
+  expect(buildOwnedServicesReconcileScript({ ...config, cloud: { ...config.cloud, attachTo: 'another-owner' } }, 'production')).toEqual([])
+  expect(buildOwnedServicesReconcileScript({ ...config, infrastructure: {} }, 'production')).toEqual([])
 })
 
 it('leaves undeclared search alone and rejects unsafe or unauthenticated declarations', () => {

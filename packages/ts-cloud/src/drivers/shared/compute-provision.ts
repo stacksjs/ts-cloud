@@ -26,6 +26,7 @@ import { buildAuthorizedKeysScript } from './ssh-keys'
 import { buildProtectionScript } from './protection'
 import { assertSftpSupported, buildSftpProvisionScript } from './sftp-provision'
 import { buildUfwScript } from './ufw'
+import { buildTypesenseProvisionScript } from './typesense-provision'
 
 export interface ComputeProvisionScripts {
   /** Effective runtime to install (bun/node/deno/php). */
@@ -168,6 +169,7 @@ export function buildOwnedServicesReconcileScript(config: CloudConfig, environme
   const compute = config.infrastructure?.compute
   const mail = resolveMailService(config, { environment })
   return [
+    ...buildTypesenseProvisionScript(compute?.managedServices?.typesense),
     ...(compute?.backups?.enabled ? buildBackupProvisionScript({ database: resolveAppDatabase(config), backups: compute.backups }) : []),
     ...(mail.enabled ? buildMailProvisionScript(mail) : []),
   ]

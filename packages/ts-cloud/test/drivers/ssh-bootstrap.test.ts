@@ -52,7 +52,7 @@ describe('buildSshBootstrapScript', () => {
     expect(script).toContain('systemctl start systemd-time-wait-sync')
   })
 
-  it('is guarded by a version marker and refreshes only the gateway fragment on a rerun', () => {
+  it('is guarded by a version marker and refreshes the gateway without repeating machine bootstrap', () => {
     const script = pi()
     const marker = sshBootstrapMarkerPath()
     expect(marker).toBe(`/var/lib/ts-cloud/bootstrap.v${SSH_BOOTSTRAP_VERSION}`)
@@ -63,6 +63,15 @@ describe('buildSshBootstrapScript', () => {
     expect(branch).not.toContain('apt-get')
     // The marker is written last.
     expect(script.lastIndexOf(`> '${marker}'`)).toBeGreaterThan(script.lastIndexOf('bun.sh/install'))
+  })
+
+  it('reconciles declared search even after the machine bootstrap marker exists', () => {
+    const managed: CloudConfig = { ...config, infrastructure: { compute: { ...config.infrastructure!.compute, managedServices: { typesense: { apiKey: 'fixture-private-search-key-0123456789' } } } } }
+    const script = pi({ config: managed })
+    const branch = script.slice(script.indexOf(`if [ -e '${sshBootstrapMarkerPath()}' ]`), script.indexOf('  exit 0\nfi'))
+    expect(branch).toContain('EnvironmentFile=/etc/ts-cloud/typesense.env')
+    expect(branch).not.toContain('fallocate')
+    expect(branch).not.toContain('apt-get')
   })
 
   it('raspberry-pi: 1 GB swap and a bounded journal', () => {

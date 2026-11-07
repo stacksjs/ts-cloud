@@ -38,6 +38,10 @@ authenticated collection request.
 Provisioning is serialized, and an applied-configuration record is saved only
 after authentication succeeds, so a retry also repairs an interrupted key update.
 
+Existing owned hosts reconcile the declared service on each deployment too.
+An SSH bootstrap marker, or `TS_CLOUD_SSH_SKIP_BOOTSTRAP=1`, skips machine
+bootstrap work while still applying service configuration and readiness checks.
+
 The application receives matching `TYPESENSE_HOST`, `TYPESENSE_PORT`,
 `TYPESENSE_PROTOCOL` and `TYPESENSE_API_KEY` settings. Dashboard responses redact
 the key, and generic golden images exclude the authenticated instance. Attach
