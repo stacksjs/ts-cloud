@@ -105,3 +105,19 @@ test('HTTP 200 multipart responses containing XML errors, including leading whit
     expect(calls).toBe(4)
   } finally { globalThis.fetch = previous }
 })
+
+test('multipart latency overlaps only two parts and drains failures before aborting', async () => {
+  const client = new S3Client('hel1', undefined, { credentials: { accessKeyId: 'test', secretAccessKey: 'test' } })
+  let active = 0; let maximum = 0; let finished = 0
+  client.createMultipartUpload = async () => ({ UploadId: 'fixture' })
+  client.uploadPart = async (_bucket, _key, _id, number) => {
+    active++; maximum = Math.max(maximum, active)
+    try { await Bun.sleep(number === 1 ? 10 : 2); if (number === 2) throw new Error('part refused'); return { ETag: String(number) } }
+    finally { active--; finished++ }
+  }
+  client.abortMultipartUpload = async () => { expect(active).toBe(0) }
+  client.completeMultipartUpload = async () => { throw new Error('failed parts must never complete') }
+  async function* input() { for (let index = 0; index < 80; index++) yield new Uint8Array(1024 * 1024) }
+  await expect(client.putObjectStream({ bucket: 'fixture', key: 'large', body: input() })).rejects.toThrow('part refused')
+  expect(maximum).toBe(2); expect(active).toBe(0); expect(finished).toBeGreaterThanOrEqual(2)
+})

@@ -459,10 +459,18 @@ export class S3Client {
       contentType: response.headers.get('content-type') ?? undefined }
   }
 
-  /** Upload an unknown-length stream using bounded, sequential multipart parts. */
+  /** Upload an unknown-length stream with at most two bounded multipart parts in flight. */
   async putObjectStream(options: { bucket: string, key: string, body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>, contentType?: string, metadata?: Record<string, string> }): Promise<{ bytes: number }> {
     const partSize = 16 * 1024 * 1024
     const parts: Array<{ PartNumber: number, ETag: string }> = []
+    const inFlight = new Map<number, Promise<{ number: number, etag?: string, error?: unknown }>>()
+    let nextPart = 1
+    const drainOne = async (): Promise<void> => {
+      const result = await Promise.race(inFlight.values())
+      inFlight.delete(result.number)
+      if ('error' in result) throw result.error
+      parts.push({ PartNumber: result.number, ETag: result.etag! })
+    }
     let uploadId: string | undefined
     let bytes = 0
     let used = 0
@@ -475,10 +483,15 @@ export class S3Client {
         if (!upload.UploadId) throw new Error('Multipart initiation returned no upload id')
         uploadId = upload.UploadId
       }
-      if (parts.length >= 10_000) throw new Error('Object exceeds the multipart part limit')
-      const part = await this.uploadPart(options.bucket, options.key, uploadId, parts.length + 1, buffer.subarray(0, used))
-      if (!part.ETag) throw new Error('Multipart part returned no ETag')
-      parts.push({ PartNumber: parts.length + 1, ETag: part.ETag }); used = 0
+      if (nextPart > 10_000) throw new Error('Object exceeds the multipart part limit')
+      if (inFlight.size >= 2) await drainOne()
+      const number = nextPart++
+      const payload = buffer.slice(0, used); used = 0
+      // Retain settled failures until drained; no rejection may escape while
+      // the source iterator or another part is still making progress.
+      inFlight.set(number, this.uploadPart(options.bucket, options.key, uploadId, number, payload)
+        .then(part => { if (!part.ETag) throw new Error('Multipart part returned no ETag'); return { number, etag: part.ETag } })
+        .catch(error => ({ number, error })))
     }
     try {
       for await (const chunk of options.body) {
@@ -495,6 +508,7 @@ export class S3Client {
       if (!uploadId) await this.putObject({ ...options, body: buffer.subarray(0, used) })
       else {
         await send()
+        while (inFlight.size) await drainOne()
         try { await this.completeMultipartUpload(options.bucket, options.key, uploadId, parts) }
         catch (error) {
           if (!await this.committedStream(options.bucket, options.key, streamToken, bytes, error)) throw error
@@ -502,6 +516,7 @@ export class S3Client {
       }
       return { bytes }
     } catch (error) {
+      await Promise.allSettled(inFlight.values())
       if (uploadId) await this.abortMultipartUpload(options.bucket, options.key, uploadId).catch(() => undefined)
       throw error
     }
