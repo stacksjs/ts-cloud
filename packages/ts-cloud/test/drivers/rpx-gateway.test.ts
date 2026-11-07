@@ -635,6 +635,21 @@ describe('buildRpxProvisionScript', () => {
     expect(script.indexOf('RPX_MAX_UPSTREAM_CONNS')).toBeLessThan(script.indexOf('Restart=always'))
   })
 
+  it.each([
+    { enabled: undefined, expected: '0' },
+    { enabled: false, expected: '0' },
+    { enabled: true, expected: '1' },
+  ])('declares the owner HTTP/2 policy in the managed unit ($enabled)', ({ enabled, expected }) => {
+    const proxy: ComputeProxyConfig = { engine: 'rpx', ...(enabled === undefined ? {} : { http2: enabled }) }
+    const config = buildRpxConfig(sites, { proxy })
+    const script = buildRpxProvisionScript({ proxy, config }).join('\n')
+    // Explicit 0 on omission/false also disables a previously enabled gateway
+    // on normal redeploy. The setting belongs in [Service], not a route file.
+    expect(script.match(/^Environment=RPX_HTTP2=.*$/gm)).toEqual([`Environment=RPX_HTTP2=${expected}`])
+    expect(script.indexOf('Environment=RPX_HTTP2=')).toBeGreaterThan(script.indexOf('[Service]'))
+    expect(script.indexOf('Environment=RPX_HTTP2=')).toBeLessThan(script.indexOf('Restart=always'))
+  })
+
   it('outranks the work it serves when the box is contended', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
@@ -706,6 +721,13 @@ describe('buildRpxProvisionScript for an attached tenant', () => {
     expect(script).not.toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
     expect(script).not.toContain('systemctl daemon-reload')
     expect(script).not.toContain(`mv ${'/opt/rpx-gateway'} /opt/rpx-gateway.prev`)
+  })
+
+  it.each([true, false])('cannot change the shared HTTP/2 policy ($enabled)', (http2) => {
+    const script = tenantScript({ engine: 'rpx', http2 })
+    expect(script).not.toContain('RPX_HTTP2')
+    expect(script).not.toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
+    expect(script).not.toContain('systemctl daemon-reload')
   })
 
   it('writes its own fragment and restarts the gateway so its routes go live', () => {

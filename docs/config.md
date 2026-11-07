@@ -612,6 +612,7 @@ const config: CloudConfig = {
         // certsDir: '/etc/rpx/certs',  // real per-domain PEMs (SNI)
         // onDemandTls: true,           // lazily issue Let's Encrypt certs
         // onDemandTlsEmail: 'ops@example.com',
+        // http2: true,                 // opt in to TLS HTTP/2 with HTTP/1.1 fallback
       },
     },
   },
@@ -633,6 +634,13 @@ How it maps:
   (with `cleanUrls` from `pathRewriteStyle`, `spa` from the site's `spa`);
 - TLS is served from `certsDir` per SNI server name; `onDemandTls` lazily
   issues real certs for the configured domains.
+
+The box owner can set `proxy.http2: true` to offer HTTP/2 over ALPN alongside
+HTTP/1.1 on the existing TLS listener. This uses RPX's `RPX_HTTP2` option and
+keeps TLS termination on the same host; it does not enable a CDN or change
+residency. It defaults to off while Bun marks HTTP/2 serving experimental.
+Setting `false` or removing the option disables it on the next normal owner
+deployment. An attached tenant cannot change this shared gateway policy.
 
 The example above produces three routes under `stacksjs.com`: `/api/*` proxied
 to the app on `:3000`, `/docs*` served from `/var/www/docs`, and `/` served

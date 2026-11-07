@@ -4695,6 +4695,16 @@ export interface ComputeProxyConfig {
    */
   tlsxVersion?: string
   /**
+   * Offer HTTP/2 over ALPN on the gateway's TLS listeners, with HTTP/1.1
+   * fallback on the same port. Opt-in while Bun marks HTTP/2 serving
+   * experimental; plain HTTP listeners and TLS termination location do not
+   * change. The box owner's policy: attached tenants cannot change it.
+   * Omission or `false` explicitly sets `RPX_HTTP2=0` on normal provisioning,
+   * so redeploying can also turn a previously enabled gateway off.
+   * @default false
+   */
+  http2?: boolean
+  /**
    * Directory on the box holding real TLS certs (PEM `<domain>.crt`/`.key`),
    * served per-SNI by rpx. @default '/etc/rpx/certs'
    */

@@ -1629,6 +1629,9 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
         `Environment=BUN_INSTALL=/root/.bun`,
         `Environment=APP_ENV=production`,
         `Environment=NODE_ENV=production`,
+        // The owner controls the shared listener. Emit false as well so an
+        // ordinary redeploy can undo a previous opt-in without a unit override.
+        `Environment=RPX_HTTP2=${proxy.http2 === true ? '1' : '0'}`,
         ...poolEnv,
         'MemoryAccounting=true',
         `MemoryHigh=${memoryHigh}`,
