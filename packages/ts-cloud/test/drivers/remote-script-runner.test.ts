@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import { REMOTE_SCRIPT_RUNNER, remoteScriptRunner } from '../../src/drivers/shared/remote-exec'
 import { describeScriptSyntaxError } from '../../src/drivers/hetzner/driver'
 
@@ -89,9 +90,31 @@ describe('remote script runner', () => {
     const child = Bun.spawn(['bash', '-c', remoteScriptRunner({ timeoutSeconds: 1 })], {
       stdin: Buffer.from("trap '' TERM\nsleep 30\n"), stdout: 'pipe', stderr: 'pipe',
     })
+    let hostExitMilliseconds: number | null = null
+    const ownedPids = new Set([child.pid])
+    const observeOwned = () => {
+      const observations: Record<string, unknown>[] = []
+      for (const pid of ownedPids) {
+        const status = `/proc/${pid}/status`
+        if (!existsSync(status)) continue
+        try {
+          const children = readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim()
+          for (const item of children.split(/\s+/).filter(Boolean)) ownedPids.add(Number(item))
+          observations.push({ pid, status: readFileSync(status, 'utf8').split('\n').filter(line => /^(?:Name|State|PPid|NSpgid|SigBlk|SigIgn):/.test(line)) })
+        } catch { /* the owned process can exit between metadata reads */ }
+      }
+      return observations
+    }
+    const capture = setTimeout(observeOwned, 200)
+    const diagnostic = setTimeout(() => {
+      // [DEBUG-deadline-214] No argv, environment or unrelated process data.
+      console.error('[DEBUG-deadline-214]', JSON.stringify({ timeoutBinary: Bun.which('timeout'), hostExitMilliseconds, owned: observeOwned() }))
+    }, 8000)
     const [status] = await Promise.all([
-      child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+      child.exited.then(code => { hostExitMilliseconds = Date.now() - start; return code }), new Response(child.stdout).text(), new Response(child.stderr).text(),
     ])
+    clearTimeout(capture)
+    clearTimeout(diagnostic)
     expect(status).toBe(137)
     expect(Date.now() - start).toBeLessThan(8500)
   }, 10_000)
