@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.104...v0.16.105)
+
+## 🐛 Bug Fixes
+
+- reconcile managed search on existing owned hosts ([17f67ef](https://github.com/stacksjs/ts-cloud/commit/17f67ef)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.105 ([532be6d](https://github.com/stacksjs/ts-cloud/commit/532be6d)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.103...v0.16.104)
 
 ## ✨ Features
