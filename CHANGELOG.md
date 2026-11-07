@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.97...v0.16.98)
+
+## 🐛 Bug Fixes
+
+- preserve persistent storage policy across release-only deployments ([af01a35](https://github.com/stacksjs/ts-cloud/commit/af01a35)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.98 ([1a78d5b](https://github.com/stacksjs/ts-cloud/commit/1a78d5b)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.96...v0.16.97)
 
 ## ✨ Features
