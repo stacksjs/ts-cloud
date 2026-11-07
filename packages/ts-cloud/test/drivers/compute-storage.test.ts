@@ -48,6 +48,7 @@ describe('configured compute volumes', () => {
     candidate.infrastructure!.compute!.persistentStorage = { volume: 'deployments', migrateExisting: true,
       paths: [{ path: '/var/www/example-shared/blobs', units: ['example-*.service'], healthChecks: ['https://example.com/api/health'] }],
       locks: ['/run/lock/backup.lock'] }
+    candidate.infrastructure!.compute!.persistentStorage!.deploymentLocks = ['/var/www/example-api/.ts-cloud/deploy.lock']
     expect(resolveComputeVolumes(candidate, 'production')).toHaveLength(1)
     const placement = candidate.infrastructure!.compute!.persistentStorage!
     for (const bad of ['/var/www', '/etc/passwd', '/var/../etc', '/var/lib/test-deployments/data']) {

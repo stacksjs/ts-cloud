@@ -76,8 +76,19 @@ export async function persistentStorageAgent(policy: ComputeStoragePolicy, comma
     }
   }
   let activated = false
+  let changing = false
   const restore = (): void => {
-    if (state.fstab !== undefined) fs.writeFileSync('/etc/fstab', state.fstab)
+    if (state.fstab !== undefined) {
+      const begin = '# BEGIN ts-cloud persistent storage'; const end = '# END ts-cloud persistent storage'
+      const current = fs.readFileSync('/etc/fstab', 'utf8')
+      const start = current.indexOf(begin); const finish = current.indexOf(end, start)
+      const oldStart = state.fstab.indexOf(begin); const oldFinish = state.fstab.indexOf(end, oldStart)
+      if (start >= 0) {
+        if (finish < 0) throw new Error('Incomplete persistent fstab block during rollback')
+        const originalBlock = oldStart >= 0 && oldFinish >= 0 ? state.fstab.slice(oldStart, oldFinish + end.length) : ''
+        fs.writeFileSync('/etc/fstab', current.slice(0, start) + originalBlock + current.slice(finish + end.length))
+      }
+    }
     for (const [file, content] of Object.entries(state.dropins ?? {})) { if (content === null) fs.rmSync(file, { force: true }); else fs.writeFileSync(file, content) }
     try { run('systemctl', ['daemon-reload']) } catch { console.error('Rollback restored configuration; systemd reload needs retry') }
   }
@@ -95,14 +106,32 @@ export async function persistentStorageAgent(policy: ComputeStoragePolicy, comma
     if (!Number.isFinite(bytes) || bytes + 1024 ** 3 > disk.bavail * disk.bsize) throw new Error('Insufficient volume capacity for persistent data')
     if (!activated) {
     state.fstab ??= fs.readFileSync('/etc/fstab', 'utf8'); state.dropins ??= {}
+    changing = true
     state.entries = entries.map(item => state.entries.find(old => old.source === item.source) ?? item); state.phase = 'copying'; save(stateFile, state)
     for (const item of pending.filter(item => !mounted(item.source))) { console.log(`Online persistent copy: ${item.source}`); await rsync(item) }
+    for (const file of [...new Set(declaration.deploymentLocks ?? [])].sort()) lock(file)
     const units = run('systemctl', ['list-units', '--all', '--plain', '--no-legend', '--no-pager']).split('\n').map(line => line.trim().split(/\s+/)).filter(parts => patterns.some(pattern => matches(parts[0], pattern)))
-    state.stopped = [...new Set([...state.stopped, ...units.filter(parts => parts[2] === 'active' || parts[2] === 'activating').map(parts => parts[0])])]
+    const stillCurrent = (unit: string): boolean => {
+      const instance = /^(.+)@([^/]+)\.service$/.exec(unit)
+      if (instance && fs.existsSync(path.join(policy.webRoot, instance[1], 'releases'))) {
+        const current = fs.realpathSync(path.join(policy.webRoot, instance[1], 'current'))
+        return path.basename(current) === instance[2]
+      }
+      return units.some(parts => parts[0] === unit)
+    }
+    state.stopped = [...new Set([...state.stopped.filter(stillCurrent), ...units.filter(parts => parts[2] === 'active' || parts[2] === 'activating').map(parts => parts[0])])]
     state.phase = 'quiescing'; save(stateFile, state)
     if (state.stopped.length) run('systemctl', ['stop', ...state.stopped])
-    if (openFiles().length) throw new Error('Persistent files remain open after stopping declared writers')
-    for (const item of pending.filter(item => !mounted(item.source))) { console.log(`Final checksum verification: ${item.source}`); await rsync(item, true); await rsync(item, true, true); const saved = state.entries.find(old => old.source === item.source)!; saved.checksummedAt = new Date().toISOString(); saved.bytes = Number(run('du', ['-sx', '--block-size=1', item.source]).split(/\s+/)[0]); save(stateFile, state) }
+    const epoch = (unit: string): string => run('systemctl', ['show', unit, '--property=InvocationID,ExecMainStartTimestampMonotonic,ActiveEnterTimestampMonotonic'])
+    const epochs = new Map(state.stopped.map(unit => [unit, epoch(unit)]))
+    const assertQuiesced = (): void => {
+      for (const [unit, before] of epochs) if (epoch(unit) !== before) throw new Error(`Persistent writer invocation changed during verification: ${unit}`)
+      for (const unit of state.stopped) if (cp.spawnSync('systemctl', ['is-active', '--quiet', unit]).status === 0) throw new Error(`Persistent writer restarted during verification: ${unit}`)
+      if (openFiles().length) throw new Error('Persistent files remain open after stopping declared writers')
+    }
+    assertQuiesced()
+    for (const item of pending.filter(item => !mounted(item.source))) { console.log(`Final checksum verification: ${item.source}`); await rsync(item, true); assertQuiesced(); await rsync(item, true, true); assertQuiesced(); const saved = state.entries.find(old => old.source === item.source)!; saved.checksummedAt = new Date().toISOString(); saved.bytes = Number(run('du', ['-sx', '--block-size=1', item.source]).split(/\s+/)[0]); save(stateFile, state) }
+    assertQuiesced()
     run('sync', [])
     fs.mkdirSync(alias, { recursive: true })
     if (!mounted(alias)) run('mount', ['--bind', '/', alias])
@@ -155,7 +184,7 @@ export async function persistentStorageAgent(policy: ComputeStoragePolicy, comma
     return { healthy: true }
   } catch (error) {
     // Never revert onto a stale root copy once writers have restarted.
-    if (!activated) {
+    if (!activated && changing) {
       for (const item of [...pending].reverse()) if (mounted(item.source) && same(item.source, item.destination)) run('umount', [item.source])
       restore(); state.phase = 'copying'; save(stateFile, state)
       if (state.stopped.length) run('systemctl', ['start', ...state.stopped])

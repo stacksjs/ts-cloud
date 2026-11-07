@@ -14,7 +14,7 @@ test.skipIf(!enabled)('persistent cutover preserves files, rejects unknown write
   const source = path.join(fixture, 'data')
   const destination = path.join(volume!, 'persistent', source.slice(1))
   const policy = { webRoot: fixture, volumes: [{ key: 'data', name: 'fixture', size: 320, id: 1, device: device!, mountPath: volume!, allowFormat: false }],
-    persistentStorage: { volume: 'data', migrateExisting: true, locks: ['/run/lock/fixture-backup.lock'], paths: [{ path: source, units: ['fixture-*.service'] }] } }
+    persistentStorage: { volume: 'data', migrateExisting: true, locks: ['/run/lock/fixture-backup.lock'], deploymentLocks: [path.join(fixture, 'deploy.lock')], paths: [{ path: source, units: ['fixture-*.service'] }] } }
   try {
     for (const folder of ['data', 'etc/ts-cloud', 'etc/systemd/system', 'state', 'locks', 'bin']) fs.mkdirSync(path.join(fixture, folder), { recursive: true })
     fs.writeFileSync(path.join(source, 'proof'), 'all user bytes preserved\n')
@@ -26,8 +26,16 @@ test.skipIf(!enabled)('persistent cutover preserves files, rejects unknown write
     fs.writeFileSync(path.join(fixture, 'bin/systemctl'), `#!/bin/sh
 printf '%s\\n' "$*" >> ${fixture}/calls
 if [ "$1" = list-units ]; then echo 'fixture-api.service loaded active running Fixture'; fi
+if [ "$1" = stop ]; then touch ${fixture}/stopped; fi
+if [ "$1" = start ]; then rm -f ${fixture}/stopped; fi
+if [ "$1" = is-active ] && [ -f ${fixture}/restarted ]; then exit 0; fi
+if [ "$1" = is-active ] && [ -f ${fixture}/stopped ]; then exit 3; fi
 if [ "$1" = daemon-reload ] && [ -f ${fixture}/fail-reload ]; then exit 1; fi
 exit 0
+`, { mode: 0o755 })
+    fs.writeFileSync(path.join(fixture, 'bin/rsync'), `#!/bin/sh
+/usr/bin/rsync "$@" || exit $?
+case " $* " in *" --checksum "*) if [ -f ${fixture}/inject-restart ]; then touch ${fixture}/restarted; fi ;; esac
 `, { mode: 0o755 })
     for (const command of ['apply', 'check']) fs.writeFileSync(path.join(fixture, `${command}.mjs`), `await (${persistentStorageAgent.toString()})(${JSON.stringify(policy)}, '${command}');`)
     const q = (value: string): string => `'${value.replaceAll("'", `'"'"'`)}'`
@@ -44,6 +52,11 @@ exit 0
       `test -f ${q(path.join(source, 'proof'))}`,
       `! mountpoint -q ${q(source)}`,
       'exec 8<&-',
+      `touch ${q(path.join(fixture, 'inject-restart'))}`,
+      `if ${apply}; then exit 24; fi`,
+      `! mountpoint -q ${q(source)}`,
+      `test -f ${q(path.join(source, 'proof'))}`,
+      `rm ${q(path.join(fixture, 'inject-restart'))} ${q(path.join(fixture, 'restarted'))}`,
       `touch ${q(path.join(fixture, 'fail-reload'))}`,
       // Fail after mounting: restore fstab and original data before restarting.
       `if ${apply}; then exit 22; fi`,
@@ -53,7 +66,16 @@ exit 0
       `rm ${q(path.join(fixture, 'fail-reload'))}`,
       // Reuse our owned staging destination and repair changed bytes.
       `printf 'corrupt same staged data' > ${q(path.join(destination, 'proof'))}`,
-      apply,
+      `flock --no-fork ${q(path.join(fixture, 'deploy.lock'))} sleep 20 &`,
+      'deployment=$!; trap "kill $deployment 2>/dev/null || true" EXIT',
+      `for attempt in $(seq 1 50); do if ! flock -n ${q(path.join(fixture, 'deploy.lock'))} true; then break; fi; sleep 0.02; done`,
+      `${apply} > ${q(path.join(fixture, 'apply.log'))} 2>&1 &`,
+      'migration=$!; trap "kill $migration $deployment 2>/dev/null || true" EXIT',
+      'for attempt in $(seq 1 100); do if grep -q locks_lock_inode_wait /proc/$migration/wchan; then break; fi; sleep 0.02; done',
+      'grep -q locks_lock_inode_wait /proc/$migration/wchan',
+      `! mountpoint -q ${q(source)}`,
+      'kill $deployment; wait $deployment 2>/dev/null || true',
+      'wait $migration',
       `mountpoint -q ${q(source)}`,
       `test "$(cat ${q(path.join(source, 'proof'))})" = 'all user bytes preserved'`,
       `test "$(cat ${q(path.join(source, 'backup'))})" = 'all backup bytes preserved'`,

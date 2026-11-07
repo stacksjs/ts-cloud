@@ -3441,6 +3441,8 @@ export interface ComputeConfig {
     migrateExisting?: boolean
     /** Serialize cutover with backup and other maintenance writers. */
     locks?: string[]
+    /** Per-site deploy locks held from writer quiescence through activation. */
+    deploymentLocks?: string[]
     paths: Array<{
       path: string
       /** Exact units, instance templates (@*.service), or dash-prefix patterns. */

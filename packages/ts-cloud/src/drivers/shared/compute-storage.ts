@@ -57,6 +57,9 @@ export function resolveComputeVolumes(config: CloudConfig, environment: Environm
     for (const file of persistent.locks ?? []) {
       if (!/^\/run\/lock\/[\w.-]+$/.test(file) || file.includes('..') || file.includes('ts-cloud-')) throw new Error('Invalid persistent storage lock')
     }
+    for (const file of persistent.deploymentLocks ?? []) {
+      if (!/^\/var\/www\/[\w-]+\/\.ts-cloud\/deploy\.lock$/.test(file)) throw new Error('Invalid persistent deployment lock')
+    }
     if (!persistent.paths.length) throw new Error('Persistent storage paths must not be empty')
     for (const item of persistent.paths) {
       if (!item.path.startsWith('/') || !['var', 'srv', 'home', 'root'].includes(item.path.split('/')[1]) || item.path.split('/').length < 3 || !item.path.slice(1).split('/').every(part => /^[\w.-]+$/.test(part))

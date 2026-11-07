@@ -31,12 +31,12 @@ test('streaming GET keeps bytes unread and preserves provider failures', async (
   const client = new S3Client({ region: 'fsn1', endpoint: 'fsn1.your-objectstorage.com', credentials: { accessKeyId: 'test', secretAccessKey: 'test' } })
   let cancelled = false
   try {
-    globalThis.fetch = (async () => new Response(new ReadableStream({ cancel() { cancelled = true } }), { headers: { 'Content-Length': '999999999' } })) as typeof fetch
+    globalThis.fetch = Object.assign(async () => new Response(new ReadableStream({ cancel() { cancelled = true } }), { headers: { 'Content-Length': '999999999' } }), { preconnect: previous.preconnect })
     const result = await client.getObjectStream('fixture', 'data.bundle')
     expect(result.contentLength).toBe(999999999)
     expect(result.body.locked).toBe(false)
     await result.body.cancel(); expect(cancelled).toBe(true)
-    globalThis.fetch = (async () => new Response('<Error><Code>AccessDenied</Code></Error>', { status: 403 })) as typeof fetch
+    globalThis.fetch = Object.assign(async () => new Response('<Error><Code>AccessDenied</Code></Error>', { status: 403 }), { preconnect: previous.preconnect })
     await expect(client.getObjectStream('fixture', 'denied')).rejects.toMatchObject({ statusCode: 403 })
   } finally { globalThis.fetch = previous }
 })
