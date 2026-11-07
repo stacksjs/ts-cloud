@@ -48,6 +48,8 @@ export function buildTypesenseProvisionScript(config: false | TypesenseServiceCo
   return [
     ...buildPantryInstallScript([`typesense.org@${version}`]),
     '(', 'set -eu', 'umask 077',
+    'exec 9>/var/lock/ts-cloud-typesense.lock',
+    'flock -w 360 9',
     'TS_CLOUD_TYPESENSE_UNIT=/etc/systemd/system/ts-cloud-typesense.service',
     'if [ -f "$TS_CLOUD_TYPESENSE_UNIT" ] && ! grep -qFx \'# Managed by ts-cloud Typesense\' "$TS_CLOUD_TYPESENSE_UNIT"; then echo \'Typesense unit belongs to another service\' >&2; exit 1; fi',
     'TS_CLOUD_TYPESENSE_LISTENERS=$(ss -ltnpH)',
@@ -77,18 +79,23 @@ export function buildTypesenseProvisionScript(config: false | TypesenseServiceCo
     'Restart=on-failure', 'RestartSec=2', 'LimitNOFILE=65536',
     'NoNewPrivileges=true', 'PrivateTmp=true', 'ProtectHome=true', 'ProtectSystem=strict',
     '[Install]', 'WantedBy=multi-user.target', 'TS_CLOUD_TYPESENSE_UNIT_EOF',
-    'TS_CLOUD_TYPESENSE_CHANGED=0',
-    'if ! cmp -s "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.env; then install -m 600 "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.env; TS_CLOUD_TYPESENSE_CHANGED=1; fi',
+    'if ! cmp -s "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.env; then install -m 600 "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.env; fi',
     'chmod 600 /etc/ts-cloud/typesense.env',
-    'if ! cmp -s "$TS_CLOUD_TYPESENSE_NEW_UNIT" "$TS_CLOUD_TYPESENSE_UNIT"; then install -m 644 "$TS_CLOUD_TYPESENSE_NEW_UNIT" "$TS_CLOUD_TYPESENSE_UNIT"; TS_CLOUD_TYPESENSE_CHANGED=1; fi',
+    'if ! cmp -s "$TS_CLOUD_TYPESENSE_NEW_UNIT" "$TS_CLOUD_TYPESENSE_UNIT"; then install -m 644 "$TS_CLOUD_TYPESENSE_NEW_UNIT" "$TS_CLOUD_TYPESENSE_UNIT"; fi',
     'systemctl daemon-reload', 'systemctl enable ts-cloud-typesense.service',
-    'if [ "$TS_CLOUD_TYPESENSE_CHANGED" = 1 ] || ! systemctl is-active --quiet ts-cloud-typesense.service; then systemctl restart ts-cloud-typesense.service; fi',
+    // A previous process can die after installing the new key but before its
+    // restart. File equality alone does not prove that the live engine adopted
+    // it; only record the applied configuration after authenticated readiness.
+    'TS_CLOUD_TYPESENSE_DIGEST=$(sha256sum /etc/ts-cloud/typesense.env "$TS_CLOUD_TYPESENSE_UNIT")',
+    'printf \'%s\\n\' "$TS_CLOUD_TYPESENSE_DIGEST" > "$TS_CLOUD_TYPESENSE_ENV"',
+    'if ! cmp -s "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.applied || ! systemctl is-active --quiet ts-cloud-typesense.service; then systemctl restart ts-cloud-typesense.service; fi',
     'TS_CLOUD_TYPESENSE_READY=0',
     'TS_CLOUD_TYPESENSE_KEY=$(sed -n \'s/^TYPESENSE_API_KEY=//p\' /etc/ts-cloud/typesense.env)',
     'for TS_CLOUD_TYPESENSE_ATTEMPT in $(seq 1 60); do',
     `  if systemctl is-active --quiet ts-cloud-typesense.service && curl -fsS --max-time 2 '${origin}/health' | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' && printf 'header = "X-TYPESENSE-API-KEY: %s"\\n' "$TS_CLOUD_TYPESENSE_KEY" | curl --config - -fsS --max-time 2 '${origin}/collections' >/dev/null; then TS_CLOUD_TYPESENSE_READY=1; break; fi`,
     '  sleep 1', 'done',
     '[ "$TS_CLOUD_TYPESENSE_READY" = 1 ] || { echo \'Authenticated Typesense readiness failed\' >&2; exit 1; }',
+    'if ! cmp -s "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.applied; then install -m 600 "$TS_CLOUD_TYPESENSE_ENV" /etc/ts-cloud/typesense.applied; fi',
     ')',
   ]
 }

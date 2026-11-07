@@ -35,6 +35,8 @@ nor the public unit environment. Replaying the same configuration preserves the
 key and leaves an active service running. Changes to the binary, key or unit
 restart this service only. Admission requires both a healthy engine and an
 authenticated collection request.
+Provisioning is serialized, and an applied-configuration record is saved only
+after authentication succeeds, so a retry also repairs an interrupted key update.
 
 The application receives matching `TYPESENSE_HOST`, `TYPESENSE_PORT`,
 `TYPESENSE_PROTOCOL` and `TYPESENSE_API_KEY` settings. Dashboard responses redact

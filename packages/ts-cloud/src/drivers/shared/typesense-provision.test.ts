@@ -48,6 +48,7 @@ function withProvisionFixture(run: (fixture: { root: string, execute: (config?: 
     mkdirSync(bin)
     mkdirSync(join(root, 'etc/systemd/system'), { recursive: true })
     mkdirSync(join(root, 'opt/pantry'), { recursive: true })
+    mkdirSync(join(root, 'var/lock'), { recursive: true })
     writeCommand('pantry', 'if [ "$1" = env ]; then printf \'export LD_LIBRARY_PATH=/fixture/libs\\n\'; fi')
     writeCommand('typesense-server', 'exit 0')
     // The fixture binary is already a regular file; the Linux resolver's
@@ -56,20 +57,23 @@ function withProvisionFixture(run: (fixture: { root: string, execute: (config?: 
     writeCommand('ss', 'cat "$FIXTURE_ROOT/listeners" 2>/dev/null || true')
     writeCommand('id', 'exit 0')
     writeCommand('sleep', 'exit 0')
+    writeCommand('flock', 'exit 0')
+    writeCommand('sha256sum', process.platform === 'darwin' ? 'exec /usr/bin/shasum -a 256 "$@"' : 'exec /usr/bin/sha256sum "$@"')
     writeCommand('systemctl', `printf '%s\\n' "$*" >> "$FIXTURE_ROOT/calls"
 case "$1" in
   is-active) test -f "$FIXTURE_ROOT/active" ;;
   show) if [ -f "$FIXTURE_ROOT/active" ]; then echo 111; else echo 0; fi ;;
-  restart) touch "$FIXTURE_ROOT/active" ;;
+  restart) sed -n 's/^TYPESENSE_API_KEY=//p' "$FIXTURE_ROOT/etc/ts-cloud/typesense.env" > "$FIXTURE_ROOT/active-key"; touch "$FIXTURE_ROOT/active" ;;
 esac`)
     writeCommand('curl', `case "$*" in
   */health) printf '{"ok":true}'; exit 0 ;;
-  *) input=$(cat); test ! -f "$FIXTURE_ROOT/auth-failure"; test "$input" = 'header = "X-TYPESENSE-API-KEY: ${key}"' ;;
+  *) input=$(cat); test ! -f "$FIXTURE_ROOT/auth-failure"; expected=$(cat "$FIXTURE_ROOT/active-key"); test "$input" = "header = \\"X-TYPESENSE-API-KEY: $expected\\"" ;;
 esac`)
     const calls = (): string => existsSync(join(root, 'calls')) ? readFileSync(join(root, 'calls'), 'utf8') : ''
     const execute = (config = { apiKey: key }): Bun.SyncSubprocess<'pipe', 'pipe'> => {
       const script = buildTypesenseProvisionScript(config).join('\n')
         .replaceAll('/etc/', `${root}/etc/`).replaceAll('/opt/pantry', `${root}/opt/pantry`)
+        .replaceAll('/var/lock/', `${root}/var/lock/`)
       return Bun.spawnSync(['sh', '-c', script], { env: { PATH: `${bin}:/usr/bin:/bin`, FIXTURE_ROOT: root }, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
     }
     run({ root, execute, calls })
@@ -83,6 +87,7 @@ it('installs private credentials once, preserves them on replay and keeps them o
     expect(first.exitCode).toBe(0)
     const environment = join(root, 'etc/ts-cloud/typesense.env')
     expect(statSync(environment).mode & 0o777).toBe(0o600)
+    expect(statSync(join(root, 'etc/ts-cloud/typesense.applied')).mode & 0o777).toBe(0o600)
     const before = statSync(environment).ino
     expect(readFileSync(environment, 'utf8')).toContain(`TYPESENSE_API_KEY=${key}`)
     const unit = readFileSync(join(root, 'etc/systemd/system/ts-cloud-typesense.service'), 'utf8')
@@ -116,5 +121,20 @@ it('rejects a healthy listener that refuses the configured administrator key', (
     expect(result.exitCode).not.toBe(0)
     expect(Buffer.from(result.stderr).toString()).toContain('Authenticated Typesense readiness failed')
     expect(Buffer.from(result.stderr).toString()).not.toContain(key)
+  })
+})
+
+it('recovers a credential update interrupted before the service restarted', () => {
+  withProvisionFixture(({ root, execute, calls }) => {
+    expect(execute().exitCode).toBe(0)
+    const nextKey = 'fixture-next-typesense-administrator-key-0123456789'
+    const environment = join(root, 'etc/ts-cloud/typesense.env')
+    // The first attempt installed its new file, then lost its process before
+    // restarting. The old process still authenticates with its old key.
+    writeFileSync(environment, readFileSync(environment, 'utf8').replace(key, nextKey))
+    const result = execute({ apiKey: nextKey })
+    expect(result.exitCode).toBe(0)
+    expect(readFileSync(join(root, 'active-key'), 'utf8').trim()).toBe(nextKey)
+    expect(calls().match(/restart ts-cloud-typesense.service/g)).toHaveLength(2)
   })
 })
