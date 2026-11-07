@@ -86,8 +86,40 @@ jobs:
       - name: Unit Test
         run: bun run test
 
+  persistent-storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: '1.4.4'
+      - name: Verify migration and no-op exclusion on an owned filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=$(mktemp -d)
+          volume="$fixture/volume"
+          image="$fixture/volume.img"
+          device=''
+          cleanup() {
+            sudo umount "$volume" 2>/dev/null || true
+            if [ -n "$device" ]; then sudo losetup -d "$device"; fi
+            rm -rf "$fixture"
+          }
+          trap cleanup EXIT
+          mkdir "$volume"
+          truncate -s 4G "$image"
+          device=$(sudo losetup --find --show "$image")
+          case "$device" in /dev/loop[0-9]*) ;; *) exit 1 ;; esac
+          sudo mkfs.ext4 -q "$device"
+          sudo mount "$device" "$volume"
+          sudo mkdir -p /var/lib/ts-cloud
+          sudo env TS_CLOUD_TEST_VOLUME_PATH="$volume" TS_CLOUD_TEST_VOLUME_DEVICE="$device" \
+            "$(command -v bun)" test ./packages/ts-cloud/test/integration/persistent-storage-mounts.test.ts
+
   publish-commit:
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, persistent-storage]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PANTRY_PUBLISH_COMMITS == 'true'
 

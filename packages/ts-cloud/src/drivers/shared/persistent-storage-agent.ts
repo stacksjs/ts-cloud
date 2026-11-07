@@ -94,11 +94,13 @@ export async function persistentStorageAgent(policy: ComputeStoragePolicy, comma
   }
   try {
     lock('/run/lock/ts-cloud-persistent-storage.lock')
-    for (const file of [...new Set(declaration.locks ?? [])].sort()) lock(file)
     state = read(stateFile, { entries: [], stopped: [] })
     for (const old of state.entries) if (!entries.some(item => item.source === old.source && item.destination === old.destination)) throw new Error(`Refusing to remove active persistent placement: ${old.source}`)
     pending = entries.filter(item => !state.entries.some(old => old.source === item.source && old.verified))
     if (state.phase === 'complete' && !pending.length) { if (problems().length) throw new Error(problems().join('; ')); return { healthy: true } }
+    // A verified placement only checks mount identities. Backup exclusion is
+    // needed for migration, not for every deployment during a long backup.
+    for (const file of [...new Set(declaration.locks ?? [])].sort()) lock(file)
     activated = state.phase === 'active'
     validateSources()
     const bytes = Number(run('du', ['-scx', '--block-size=1', ...pending.map(item => item.source)]).trim().split('\n').at(-1)?.split(/\s+/)[0])

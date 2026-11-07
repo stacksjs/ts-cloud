@@ -46,6 +46,13 @@ case " $* " in *" --checksum "*) if [ -f ${fixture}/inject-restart ]; then touch
       `mount --bind ${q(path.join(fixture, 'etc'))} /etc`,
       `mount --bind ${q(path.join(fixture, 'state'))} /var/lib/ts-cloud`,
       `mount --bind ${q(path.join(fixture, 'locks'))} /run/lock`,
+      // Pending migrations still wait for backup exclusion before any cutover.
+      `flock --no-fork /run/lock/fixture-backup.lock sleep 20 &`,
+      'backup=$!; trap "kill $backup 2>/dev/null || true" EXIT',
+      'for attempt in $(seq 1 50); do if ! flock -n /run/lock/fixture-backup.lock true; then break; fi; sleep 0.02; done',
+      `if timeout --kill-after=1 1 env PATH=${q(path.join(fixture, 'bin'))}:$PATH bun ${q(path.join(fixture, 'apply.mjs'))}; then exit 25; else test "$?" -eq 124; fi`,
+      `! mountpoint -q ${q(source)}`,
+      'kill $backup; wait $backup 2>/dev/null || true',
       `exec 8<${q(path.join(source, 'proof'))}`,
       // Even a reader outside the declared units prevents hiding a root file.
       `if ${apply}; then exit 21; fi`,
@@ -84,14 +91,24 @@ case " $* " in *" --checksum "*) if [ -f ${fixture}/inject-restart ]; then touch
       `test -L ${q(path.join(source, 'symlink'))}`,
       // Idempotent applies must preserve writes made after activation.
       `echo 'new user data' > ${q(path.join(source, 'after'))}`,
-      apply,
+      // A completed migration must not wait for an unrelated long backup.
+      'flock --no-fork /run/lock/fixture-backup.lock sleep 20 &',
+      'backup=$!; trap "kill $backup 2>/dev/null || true" EXIT',
+      'for attempt in $(seq 1 50); do if ! flock -n /run/lock/fixture-backup.lock true; then break; fi; sleep 0.02; done',
+      `timeout --kill-after=1 5 env PATH=${q(path.join(fixture, 'bin'))}:$PATH bun ${q(path.join(fixture, 'apply.mjs'))}`,
+      'kill -0 $backup',
       `test -f ${q(path.join(destination, 'after'))}`,
       `PATH=${q(path.join(fixture, 'bin'))}:$PATH bun ${q(path.join(fixture, 'check.mjs'))}`,
       `umount ${q(source)}`,
       `test -z "$(ls -A ${q(source)})"`,
+      // A missing mount fails even when the complete journal can be read and
+      // backup exclusion is held; never accept the empty root stub as healthy.
+      `if timeout --kill-after=1 5 env PATH=${q(path.join(fixture, 'bin'))}:$PATH bun ${q(path.join(fixture, 'apply.mjs'))}; then exit 26; else test "$?" -ne 124; fi`,
+      `! mountpoint -q ${q(source)}`,
       // Missing persistent mounts fail health, never write to the root stub.
       `if PATH=${q(path.join(fixture, 'bin'))}:$PATH bun ${q(path.join(fixture, 'check.mjs'))}; then exit 23; fi`,
       `test -f ${q(path.join(destination, 'proof'))}`,
+      'kill $backup; wait $backup 2>/dev/null || true',
     ]
     const child = Bun.spawn(['unshare', '--mount', '--propagation', 'private', 'bash', '-c', commands.join('\n')], { stdout: 'pipe', stderr: 'pipe' })
     const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited])
