@@ -38,6 +38,8 @@ The persisted default limits are:
 
 Blocked jobs remain queued and show `resource_lock`, `project_concurrency`, `environment_concurrency`, `provider_concurrency`, or `build_concurrency` as their reason. Limits may be changed from the dashboard, API, or CLI. Changing production limits requires organization-level automation management, an exact confirmation phrase, and emits an audit event.
 
+An immediate runtime CLI command that cannot start cancels its own unclaimed operation and reports the blocking reason and operation ID. It does not leave that command queued for later execution. Inspect the cancelled operation with `cloud ops:show`, then explicitly retry the intended command when capacity is available. The running operation and its lease remain intact.
+
 The dashboard process has eight polling lanes by default. Set `TS_CLOUD_QUEUE_PARALLELISM` to change this process-level ceiling; persisted scope limits still apply within it.
 
 ## Logs and progress

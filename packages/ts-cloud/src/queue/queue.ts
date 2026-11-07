@@ -267,7 +267,8 @@ export class DurableOperationQueue {
     return undefined
   }
 
-  claim(operationId: string): QueueOperationView | undefined {
+  /** Immediate callers can retire their unclaimed job instead of leaving work for a later worker. */
+  claim(operationId: string, options: { cancelIfBlocked?: boolean } = {}): QueueOperationView | undefined {
     return this.controlPlane.transaction(() => {
       const now = this.now()
       this.controlPlane.database.run('DELETE FROM operation_locks WHERE lease_expires_at<=?', [now])
@@ -289,6 +290,9 @@ export class DurableOperationQueue {
           'UPDATE operation_jobs SET blocked_reason=?, updated_at=? WHERE operation_id=?',
           [blocked, now, operation.id],
         )
+        // Under the same transaction as the failed claim: never cancel a job
+        // another worker managed to claim between inspection and retirement.
+        if (options.cancelIfBlocked) this.requestCancellation(operation.id)
         return undefined
       }
       const claimed = this.controlPlane.claimOperation(operation.id, this.workerId, this.leaseMs)

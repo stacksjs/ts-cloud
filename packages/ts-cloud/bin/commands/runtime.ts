@@ -139,8 +139,12 @@ async function durableRuntimeTask<
       cancellationMode: 'provider_non_cancellable',
       retentionDays: 90,
     }).operation
-    if (!queue.claim(queued.id))
-      throw new Error(`Workload is locked by another operation. Inspect ${queued.id} with cloud ops:show.`)
+    if (!queue.claim(queued.id, { cancelIfBlocked: true })) {
+      const blocked = queue.view(queued.id)
+      const reason = blocked?.job.blockedReason ?? 'operation is not claimable'
+      const cancelled = blocked?.operation.state === 'cancelled' ? ' Cancelled before execution.' : ''
+      throw new Error(`Runtime operation could not start (${reason}).${cancelled} Inspect ${queued.id} with cloud ops:show.`)
+    }
     try {
       const result = await execute()
       if (result.stdout) queue.appendLog(queued.id, result.stdout, { stream: 'stdout' })

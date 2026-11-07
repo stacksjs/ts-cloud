@@ -38,6 +38,67 @@ function scope(store: ControlPlaneStore) {
 }
 
 describe('durable operation queue', () => {
+  it('cancels only a blocked immediate claim while background work keeps waiting', () => {
+    const store = new ControlPlaneStore({ path: ':memory:' })
+    try {
+      const target = scope(store)
+      const queue = new DurableOperationQueue(store, { workerId: 'inline-cli', limits: { environment: 1 } })
+      const enqueue = (resourceId: string) => queue.enqueue({
+        projectId: target.project.id,
+        environmentId: target.environment.id,
+        resourceId,
+        kind: 'runtime.start',
+        lockKey: `resource:${resourceId}`,
+      }).operation
+      const running = enqueue(target.first.id)
+      expect(queue.claim(running.id)?.operation.state).toBe('running')
+      const immediate = enqueue(target.second.id)
+      expect(queue.claim(immediate.id, { cancelIfBlocked: true })).toBeUndefined()
+      expect(queue.view(immediate.id)).toMatchObject({
+        operation: { state: 'cancelled', attempt: 0 },
+        job: { blockedReason: 'environment_concurrency' },
+      })
+      expect(queue.view(running.id)?.operation.state).toBe('running')
+      const background = enqueue(target.second.id)
+      expect(queue.claim(background.id)).toBeUndefined()
+      expect(queue.view(background.id)?.operation.state).toBe('queued')
+      queue.complete(running.id)
+      expect(queue.claimNext()?.operation.id).toBe(background.id)
+      expect(queue.view(immediate.id)?.operation.state).toBe('cancelled')
+    }
+    finally { store.close() }
+  })
+
+  it('keeps a running owner intact when an immediate claim conflicts with its resource', () => {
+    const store = new ControlPlaneStore({ path: ':memory:' })
+    try {
+      const target = scope(store)
+      const queue = new DurableOperationQueue(store, { workerId: 'inline-cli', limits: { environment: 4 } })
+      const input = {
+        projectId: target.project.id,
+        environmentId: target.environment.id,
+        resourceId: target.first.id,
+        kind: 'runtime.start',
+        lockKey: `resource:${target.first.id}`,
+      }
+      const running = queue.enqueue(input).operation
+      const claimed = queue.claim(running.id, { cancelIfBlocked: true })!
+      expect(claimed.operation.state).toBe('running')
+      const blocked = queue.enqueue(input).operation
+      expect(queue.claim(blocked.id, { cancelIfBlocked: true })).toBeUndefined()
+      expect(queue.view(blocked.id)).toMatchObject({
+        operation: { state: 'cancelled', attempt: 0 },
+        job: { blockedReason: `resource_lock:${input.lockKey}` },
+      })
+      expect(queue.view(running.id)?.operation).toEqual(claimed.operation)
+      expect(queue.claim(running.id, { cancelIfBlocked: true })).toBeUndefined()
+      expect(queue.view(running.id)?.operation).toEqual(claimed.operation)
+      queue.complete(running.id)
+      expect(queue.claimNext()).toBeUndefined()
+    }
+    finally { store.close() }
+  })
+
   it('survives restart, claims once, and prevents conflicting target work', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ts-cloud-queue-'))
     roots.push(root)
