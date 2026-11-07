@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.106...v0.16.107)
+
+## 🐛 Bug Fixes
+
+- **deploy**: reconcile complete dashboard service families ([7062d1a](https://github.com/stacksjs/ts-cloud/commit/7062d1a)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.107 ([9873329](https://github.com/stacksjs/ts-cloud/commit/9873329)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.105...v0.16.106)
 
 ## 🐛 Bug Fixes
