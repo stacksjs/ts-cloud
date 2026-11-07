@@ -226,14 +226,17 @@ describe('resizing a declared box', () => {
     const directory = mkdtempSync(join(tmpdir(), 'box-drain-job-'))
     const ready = join(directory, 'ready.json')
     const done = join(directory, 'job-finished')
+    const signalled = join(directory, 'draining')
     const fixture = join(directory, 'runner.ts')
     const systemctl = join(directory, 'systemctl')
     writeFileSync(fixture, `
-      const job = Bun.spawn([process.execPath, '-e', 'setTimeout(() => { require("node:fs").writeFileSync(process.env.DRAIN_DONE, "finished"); process.exit(0) }, 800)'], { stdout: 'ignore', stderr: 'inherit' })
-      process.on('SIGUSR2', () => {})
+      const job = Bun.spawn([process.execPath, '-e', 'const fs = require("node:fs"); const deadline = Date.now() + 5000; const wait = setInterval(() => { if (fs.existsSync(process.env.DRAIN_SIGNALLED)) { clearInterval(wait); setTimeout(() => { fs.writeFileSync(process.env.DRAIN_DONE, "finished"); process.exit(0) }, 800) } else if (Date.now() > deadline) process.exit(4) }, 5)'], { stdout: 'ignore', stderr: 'inherit' })
+      process.on('SIGUSR2', () => require('node:fs').writeFileSync(process.env.DRAIN_SIGNALLED, 'draining'))
       await Bun.write(process.env.DRAIN_READY, JSON.stringify({ runner: process.pid, job: job.pid }))
       process.exit(await job.exited)
     `)
+    // The child stays active until the drain is observed; startup speed must
+    // not decide whether systemctl races a runner that already exited.
     // Model systemctl's documented target selection. The signal delivery and
     // job completion are real child processes, never the host's service manager.
     writeFileSync(systemctl, `#!${process.execPath}
@@ -245,7 +248,7 @@ describe('resizing a declared box', () => {
         if (!args.includes('--kill-who=main')) process.kill(ids.job, 'SIGUSR2')
       }
     `, { mode: 0o755 })
-    const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, DRAIN_READY: ready, DRAIN_DONE: done }
+    const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, DRAIN_READY: ready, DRAIN_DONE: done, DRAIN_SIGNALLED: signalled }
     const child = Bun.spawn([process.execPath, fixture], { env, stdout: 'ignore', stderr: 'pipe' })
     let shell: ReturnType<typeof Bun.spawn> | undefined
     try {
@@ -254,7 +257,8 @@ describe('resizing a declared box', () => {
       expect(existsSync(ready)).toBe(true)
       const script = buildBoxDrainScript({ ...draining, user: undefined })
       shell = Bun.spawn(['bash'], { env, stdin: Buffer.from(script), stdout: 'pipe', stderr: 'pipe' })
-      expect(await shell.exited).toBe(0)
+      const [code, stderr] = await Promise.all([shell.exited, new Response(shell.stderr as ReadableStream<Uint8Array>).text()])
+      expect(code, stderr).toBe(0)
       expect(await child.exited).toBe(0)
       expect(existsSync(done)).toBe(true)
     }
