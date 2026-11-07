@@ -49,6 +49,12 @@ cloud cost estimate
 cloud status
 ```
 
+Runtime lifecycle, exec and file-transfer commands require normal execution:
+`runtime:action`, `runtime:exec`, `runtime:download` and `runtime:upload` reject
+`--dry-run` before loading project configuration or creating operation state.
+They do not provide a preview. Use read-only runtime inventory to inspect the
+target, then use the exact workload name with `--confirm` for the operation.
+
 ## Features
 
 - TypeScript-first infrastructure as code

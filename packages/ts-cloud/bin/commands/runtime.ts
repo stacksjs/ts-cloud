@@ -17,6 +17,12 @@ interface RuntimeOptions {
   json?: boolean
 }
 
+interface RuntimeExecutionOptions {
+  env?: string
+  confirm?: string
+  dryRun?: boolean
+}
+
 function age(seconds?: number): string {
   if (seconds == null) return '—'
   if (seconds < 60) return `${seconds}s`
@@ -70,6 +76,10 @@ async function context(environment?: string) {
 async function confirmedName(workload: RuntimeWorkload, supplied?: string): Promise<string> {
   if (supplied !== undefined) return supplied
   return output.prompt(`Type ${workload.name} to confirm`, '')
+}
+
+function requireRuntimeExecution(dryRun?: boolean): void {
+  if (dryRun) throw new Error('Runtime commands do not support --dry-run; no command was executed.')
 }
 
 async function durableOperation(
@@ -214,8 +224,9 @@ export function registerRuntimeCommands(app: CLI): void {
     .option('--env <environment>', 'Target environment')
     .option('--replicas <count>', 'Desired replicas for scale')
     .option('--confirm <name>', 'Exact workload name confirmation')
-    .action(async (id: string, rawAction: string, options: { env?: string; replicas?: string; confirm?: string }) => {
+    .action(async (id: string, rawAction: string, options: RuntimeExecutionOptions & { replicas?: string }) => {
       try {
+        requireRuntimeExecution(options.dryRun)
         const action = rawAction as LifecycleAction
         if (!['start', 'stop', 'restart', 'redeploy', 'scale'].includes(action))
           throw new Error('Action must be start, stop, restart, redeploy, or scale')
@@ -253,8 +264,9 @@ export function registerRuntimeCommands(app: CLI): void {
     .option('--preset <preset>', 'Read-only preset: process, sockets, or filesystem')
     .option('--command <command>', 'Free-form command (Docker containers only)')
     .option('--confirm <name>', 'Exact workload name confirmation')
-    .action(async (id: string, options: { env?: string; preset?: string; command?: string; confirm?: string }) => {
+    .action(async (id: string, options: RuntimeExecutionOptions & { preset?: string; command?: string }) => {
       try {
+        requireRuntimeExecution(options.dryRun)
         const { env, service } = await context(options.env)
         const inventory = await service.inventory()
         const workload = inventory.workloads.find((item) => item.id === id)
@@ -286,8 +298,9 @@ export function registerRuntimeCommands(app: CLI): void {
     .command('runtime:download <workload> <remote> <local>', 'Download a bounded file from a service-owned path')
     .option('--env <environment>', 'Target environment')
     .option('--confirm <name>', 'Exact workload name confirmation')
-    .action(async (id: string, remote: string, local: string, options: { env?: string; confirm?: string }) => {
+    .action(async (id: string, remote: string, local: string, options: RuntimeExecutionOptions) => {
       try {
+        requireRuntimeExecution(options.dryRun)
         const { env, service } = await context(options.env)
         const inventory = await service.inventory()
         const workload = inventory.workloads.find((item) => item.id === id)
@@ -319,8 +332,9 @@ export function registerRuntimeCommands(app: CLI): void {
     )
     .option('--env <environment>', 'Target environment')
     .option('--confirm <name>', 'Exact workload name confirmation')
-    .action(async (id: string, local: string, remote: string, options: { env?: string; confirm?: string }) => {
+    .action(async (id: string, local: string, remote: string, options: RuntimeExecutionOptions) => {
       try {
+        requireRuntimeExecution(options.dryRun)
         const { env, service } = await context(options.env)
         const inventory = await service.inventory()
         const workload = inventory.workloads.find((item) => item.id === id)
