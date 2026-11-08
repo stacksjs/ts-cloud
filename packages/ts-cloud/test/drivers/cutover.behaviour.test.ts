@@ -36,7 +36,7 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true })
 })
 
-type Behaviour = 'ok' | 'crash' | 'reuseport-less' | 'reuseport-less-then-crash' | 'errors' | 'no-bind'
+type Behaviour = 'ok' | 'crash' | 'reuseport-less' | 'reuseport-less-then-crash' | 'errors' | 'no-bind' | 'child-listener' | 'foreign-listener'
 
 const UNIT_BASE = 'acme-web'
 const PORT = 3000
@@ -93,7 +93,7 @@ case "$cmd" in
   is-active) [ "$1" = --quiet ] && shift; [ "$(cat "$U/$1" 2>/dev/null)" = active ] ;;
   restart|start) start "$1" ;;
   stop) [ -e "$U/$1" ] && echo inactive > "$U/$1"; echo "$1" >> "$DIR/stopped" ;;
-  show) unit="\${@: -1}"; if [ "$(cat "$U/$unit" 2>/dev/null)" = active ]; then echo $(( $(printf '%s' "$unit" | cksum | cut -d' ' -f1) % 30000 + 1000 )); else echo 0; fi ;;
+  show) unit="\${@: -1}"; if [ "$(cat "$U/$unit" 2>/dev/null)" = active ]; then case "$*" in *ControlGroup*) echo "/system.slice/$unit" ;; *) echo $(( $(printf '%s' "$unit" | cksum | cut -d' ' -f1) % 30000 + 1000 )) ;; esac; else echo 0; fi ;;
   list-units) for f in "$U"/*; do [ -e "$f" ] || continue; [ "$(cat "$f")" = active ] && echo "$(basename "$f") loaded active running"; done; true ;;
   *) true ;;
 esac
@@ -104,8 +104,25 @@ U="$DIR/units"; B="$DIR/behaviour"; withpid=0; case "$1" in *p*) withpid=1 ;; es
 for f in "$U"/*; do [ -e "$f" ] || continue; n=$(basename "$f")
   [ "$(cat "$f")" = active ] || continue; [ "$(cat "$B/$n" 2>/dev/null)" = no-bind ] && continue
   pid=$(( $(printf '%s' "$n" | cksum | cut -d' ' -f1) % 30000 + 1000 ))
+  case "$(cat "$B/$n")" in child-listener|foreign-listener) pid=$((pid + 50000)) ;; esac
   if [ $withpid = 1 ]; then echo "LISTEN 0 512 *:${PORT} *:* users:((\\"bun\\",pid=$pid,fd=12))"; else echo "LISTEN 0 512 *:${PORT} *:*"; fi
 done; true
+`)
+  shim(bin, 'cat', `
+case "$1" in /proc/*/cgroup)
+  requested="\${1#/proc/}"; requested="\${requested%/cgroup}"
+  for f in "$DIR/units"/*; do
+    [ -e "$f" ] || continue; n=$(basename "$f")
+    pid=$(( $(printf '%s' "$n" | cksum | cut -d' ' -f1) % 30000 + 51000 ))
+    [ "$pid" = "$requested" ] || continue
+    case "$(/bin/cat "$DIR/behaviour/$n")" in
+      child-listener) echo "0::/system.slice/$n" ;;
+      foreign-listener) echo '0::/system.slice/unrelated-app@new222.service' ;;
+    esac
+  done
+  exit 0 ;;
+esac
+exec /bin/cat "$@"
 `)
   // During an overlap a request can land on either release, so it succeeds if
   // any listener is healthy: that is the hole gate 4 exists for.
@@ -169,6 +186,24 @@ describe('zero-downtime cutover, executed', () => {
     expect(b.state(NEW)).toBe('active')
     expect(b.state(OLD)).toBe('inactive')
     expect(b.current()).toBe('new222')
+  })
+
+  it('accepts a script runner whose child listener belongs to the new release', () => {
+    const b = box([{ releaseId: 'old111', behaviour: 'ok' }], { releaseId: 'new222', behaviour: 'child-listener' })
+    expect(b.run('new222', '/health').code).toBe(0)
+    expect(b.current()).toBe('new222')
+    expect(b.state(NEW)).toBe('active')
+    expect(b.state(OLD)).toBe('inactive')
+  })
+
+  it('refuses a listener in another service even when the old release answers health checks', () => {
+    const b = box([{ releaseId: 'old111', behaviour: 'ok' }], { releaseId: 'new222', behaviour: 'foreign-listener' })
+    const result = b.run('new222', '/health')
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('never took :3000')
+    expect(b.current()).toBe('old111')
+    expect(b.state(OLD)).toBe('active')
+    expect(b.state(NEW)).toBe('inactive')
   })
 
   it('never stops the old release for a release that crashes on start', () => {

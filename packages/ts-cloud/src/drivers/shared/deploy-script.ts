@@ -592,6 +592,17 @@ export function buildZeroDowntimeCutover(options: ZeroDowntimeCutoverOptions): s
     `  for TS_CLOUD_I in $(seq 1 ${HEALTH_GATE_BIND_ATTEMPTS}); do`,
     `    TS_CLOUD_NEW_PID="$(systemctl show -p MainPID --value ${instance} 2>/dev/null || true)"`,
     `    if [ -n "$TS_CLOUD_NEW_PID" ] && [ "$TS_CLOUD_NEW_PID" != "0" ] && ss -ltnpH "sport = :${port}" 2>/dev/null | grep "pid=$TS_CLOUD_NEW_PID," >/dev/null; then TS_CLOUD_BOUND=1; break; fi`,
+    // Script runners (bun run, npm start) keep a parent process while a child
+    // owns the socket. Prove membership in this release's systemd cgroup;
+    // accepting any listener would let the old release answer for a broken one.
+    `    TS_CLOUD_NEW_CGROUP="$(systemctl show -p ControlGroup --value ${instance} 2>/dev/null || true)"`,
+    `    case "$TS_CLOUD_NEW_CGROUP" in /*)`,
+    `      TS_CLOUD_LISTENER_PIDS="$(ss -ltnpH "sport = :${port}" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"`,
+    '      for TS_CLOUD_LISTENER_PID in $TS_CLOUD_LISTENER_PIDS; do',
+    '        if cat "/proc/$TS_CLOUD_LISTENER_PID/cgroup" 2>/dev/null | cut -d: -f3- | grep -Fx -- "$TS_CLOUD_NEW_CGROUP" >/dev/null; then TS_CLOUD_BOUND=1; break; fi',
+    '      done',
+    '    ;; esac',
+    '    [ "$TS_CLOUD_BOUND" -eq 1 ] && break',
     `    systemctl is-active --quiet ${instance} || break`,
     `    sleep ${HEALTH_GATE_ATTEMPT_INTERVAL}`,
     '  done',
