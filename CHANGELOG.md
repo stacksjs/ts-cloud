@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.112...v0.16.113)
+
+## 🐛 Bug Fixes
+
+- retain deployment group ownership until cleanup completes ([579ab61](https://github.com/stacksjs/ts-cloud/commit/579ab61)) _(by Chris Breuer <chris@stacksjs.com>)_
+- own remote deployment processes through controller leases ([f430145](https://github.com/stacksjs/ts-cloud/commit/f430145)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.113 ([c243cc1](https://github.com/stacksjs/ts-cloud/commit/c243cc1)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.111...v0.16.112)
 
 ## 🐛 Bug Fixes
