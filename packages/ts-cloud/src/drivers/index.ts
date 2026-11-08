@@ -7,6 +7,7 @@ export { AwsDriver } from './aws/driver'
 export {
   applyWorkerGroupPlan,
   awsWorkerGroupApi,
+  onEc2,
   AwsWorkerGroupApi,
   buildWorkerUserData,
   convergeAwsWorkerGroup,

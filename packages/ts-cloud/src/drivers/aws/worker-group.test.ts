@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { AwsWorkerGroupConfig } from './worker-group'
-import { AwsWorkerGroupApi, buildWorkerUserData, convergeAwsWorkerGroup, flattenQuery, planWorkerGroup, queryList, queryResult, subnetCidr } from './worker-group'
+import { AwsWorkerGroupApi, awsWorkerGroupApi, buildWorkerUserData, convergeAwsWorkerGroup, flattenQuery, onEc2, planWorkerGroup, queryList, queryResult, subnetCidr } from './worker-group'
 
 const config: AwsWorkerGroupConfig = {
   name: 'ci-workers',
@@ -252,5 +252,47 @@ describe('a dedicated network', () => {
   test('refuses to guess when the default VPC is gone', async () => {
     const { api } = fake()
     await expect(convergeAwsWorkerGroup(api, config, { userData: '#!/bin/bash\n', sleep: async () => {} })).rejects.toThrow("network: 'dedicated'")
+  })
+})
+
+describe('credentials for the scaler', () => {
+  function withEnv(env: Record<string, string | undefined>, run: () => void): void {
+    const saved = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]))
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined)
+        delete process.env[key]
+      else process.env[key] = value
+    }
+    try {
+      run()
+    }
+    finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined)
+          delete process.env[key]
+        else process.env[key] = value
+      }
+    }
+  }
+
+  const none = { AWS_ACCESS_KEY_ID: '', AWS_SECRET_ACCESS_KEY: '', AWS_PROFILE: 'ts-cloud-test-missing', AWS_SHARED_CREDENTIALS_FILE: '/nonexistent/credentials', AWS_CONFIG_FILE: '/nonexistent/config' }
+
+  test('are none off EC2 without keys, so a tick can skip quietly', () => {
+    withEnv(none, () => expect(awsWorkerGroupApi('us-east-1', { onEc2: () => false })).toBeNull())
+  })
+
+  test('come from the instance role on EC2', () => {
+    withEnv(none, () => expect(awsWorkerGroupApi('us-east-1', { onEc2: () => true })).not.toBeNull())
+  })
+
+  test('come from keys in the environment anywhere', () => {
+    withEnv({ ...none, AWS_ACCESS_KEY_ID: 'AKIAEXAMPLEEXAMPLE00', AWS_SECRET_ACCESS_KEY: 'x'.repeat(40) }, () => expect(awsWorkerGroupApi('us-east-1', { onEc2: () => false })).not.toBeNull())
+  })
+
+  test('an EC2 host is recognised by its firmware', () => {
+    expect(onEc2(path => path.endsWith('board_asset_tag') ? 'i-0abc123def4567890\n' : null)).toBe(true)
+    expect(onEc2(path => path.endsWith('uuid') ? 'EC2E1916-9099-7CAF-FD21-012345ABCDEF' : null)).toBe(true)
+    expect(onEc2(path => path.endsWith('board_asset_tag') ? 'Not Specified' : null)).toBe(false)
+    expect(onEc2(() => null)).toBe(false)
   })
 })

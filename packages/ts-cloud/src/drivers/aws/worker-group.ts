@@ -22,6 +22,7 @@
  */
 
 import type { BoxConfig } from '@ts-cloud/core'
+import { readFileSync } from 'node:fs'
 import { AWSClient, detectCredentialSource } from '../../aws/client'
 import { buildBoxConvergeScript } from '../shared/box-converge'
 
@@ -199,9 +200,41 @@ export class AwsWorkerGroupApi {
  * are none, so a scheduled job on a machine that has not configured AWS stays
  * quiet rather than failing every minute.
  */
-export function awsWorkerGroupApi(region: string, options: { profile?: string } = {}): AwsWorkerGroupApi | null {
-  if (!options.profile && detectCredentialSource().source === 'none')
+/**
+ * Whether this machine is an EC2 instance, read from the firmware rather than
+ * the metadata service so it costs nothing and never hangs. Nitro instances
+ * carry their instance id as the board asset tag; Xen ones a hypervisor uuid
+ * that starts with "ec2".
+ */
+export function onEc2(read: (path: string) => string | null = readQuietly): boolean {
+  const tag = read('/sys/devices/virtual/dmi/id/board_asset_tag')?.trim() ?? ''
+  if (/^i-[0-9a-f]{8,}$/.test(tag))
+    return true
+  const uuid = read('/sys/hypervisor/uuid')?.trim().toLowerCase() ?? ''
+  return uuid.startsWith('ec2')
+}
+
+function readQuietly(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8')
+  }
+  catch {
     return null
+  }
+}
+
+/**
+ * An API for the group's region, or null when there is nothing to sign with.
+ * The credential chain ends at the instance metadata service, which only an
+ * EC2 instance has; anywhere else that would fail on every call, so a host
+ * with no keys gets null and the caller can skip quietly.
+ */
+export function awsWorkerGroupApi(region: string, options: { profile?: string, onEc2?: () => boolean } = {}): AwsWorkerGroupApi | null {
+  if (!options.profile) {
+    const { source } = detectCredentialSource()
+    if (source === 'none' || (source === 'ec2' && !(options.onEc2 ?? onEc2)()))
+      return null
+  }
   const client = new AWSClient(undefined, { profile: options.profile, maxRetries: 3 })
   return new AwsWorkerGroupApi({ request: request => client.request(request) }, region)
 }
