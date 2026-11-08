@@ -29,26 +29,30 @@ function commandOutput(result: Awaited<ReturnType<CloudDriver['runRemoteDeploy']
 }
 
 function systemdDiscoveryScript(): string[] {
+  // Read one coherent snapshot. Per-unit, per-property commands can exhaust the
+  // inventory deadline on an otherwise healthy host with many system services.
+  const properties = 'Id,LoadState,ActiveState,SubState,Description,UnitFileState,MainPID,MemoryCurrent,NRestarts,ActiveEnterTimestamp,FragmentPath,WorkingDirectory,User'
   return [
     'set -uo pipefail',
     'command -v systemctl >/dev/null 2>&1 || { echo "systemctl is unavailable" >&2; exit 127; }',
-    "systemctl list-units --type=service --all --plain --no-legend 2>/dev/null | awk '{print $1}' | while IFS= read -r unit; do",
-    '  [ -n "$unit" ] || continue',
-    '  clean() { printf "%s" "$1" | tr "\\t\\r\\n" "   "; }',
-    '  load=$(systemctl show "$unit" -p LoadState --value 2>/dev/null || true)',
-    '  active=$(systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)',
-    '  sub=$(systemctl show "$unit" -p SubState --value 2>/dev/null || true)',
-    '  description=$(systemctl show "$unit" -p Description --value 2>/dev/null || true)',
-    '  enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)',
-    '  pid=$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)',
-    '  memory=$(systemctl show "$unit" -p MemoryCurrent --value 2>/dev/null || true)',
-    '  restarts=$(systemctl show "$unit" -p NRestarts --value 2>/dev/null || true)',
-    '  since=$(systemctl show "$unit" -p ActiveEnterTimestamp --value 2>/dev/null || true)',
-    '  fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)',
-    '  working=$(systemctl show "$unit" -p WorkingDirectory --value 2>/dev/null || true)',
-    '  user=$(systemctl show "$unit" -p User --value 2>/dev/null || true)',
-    '  printf "TSCLOUD_SYSTEMD\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n" "$(clean "$unit")" "$(clean "$load")" "$(clean "$active")" "$(clean "$sub")" "$(clean "$description")" "$(clean "$enabled")" "$(clean "$pid")" "$(clean "$memory")" "$(clean "$restarts")" "$(clean "$since")" "$(clean "$fragment")" "$(clean "$working")" "$(clean "$user")"',
-    'done',
+    `systemctl show --no-pager --all --property=${properties} -- '*.service' | awk '`,
+    'BEGIN { RS = ""; FS = "\\n"; count = split("Id LoadState ActiveState SubState Description UnitFileState MainPID MemoryCurrent NRestarts ActiveEnterTimestamp FragmentPath WorkingDirectory User", keys, " ") }',
+    '{',
+    '  for (key in values) delete values[key]',
+    '  for (line = 1; line <= NF; line++) {',
+    '    separator = index($line, "=")',
+    '    if (separator == 0) continue',
+    '    key = substr($line, 1, separator - 1)',
+    '    value = substr($line, separator + 1)',
+    '    gsub(/[\\t\\r]/, " ", value)',
+    '    values[key] = value',
+    '  }',
+    '  if (values["Id"] == "") next',
+    '  printf "TSCLOUD_SYSTEMD"',
+    '  for (field = 1; field <= count; field++) printf "\\t%s", values[keys[field]]',
+    '  printf "\\n"',
+    '}',
+    "'",
   ]
 }
 
