@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.113...v0.16.114)
+
+## 🐛 Bug Fixes
+
+- **deploy**: accept child listeners owned by the new service ([3a43c9a](https://github.com/stacksjs/ts-cloud/commit/3a43c9a)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.114 ([ab302eb](https://github.com/stacksjs/ts-cloud/commit/ab302eb)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.112...v0.16.113)
 
 ## 🐛 Bug Fixes
