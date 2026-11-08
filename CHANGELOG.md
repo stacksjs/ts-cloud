@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.117...v0.16.118)
+
+## ✨ Features
+
+- **aws**: worker groups on a network they own ([375795e](https://github.com/stacksjs/ts-cloud/commit/375795e)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.118 ([71f514b](https://github.com/stacksjs/ts-cloud/commit/71f514b)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.116...v0.16.117)
 
 ## ✨ Features
