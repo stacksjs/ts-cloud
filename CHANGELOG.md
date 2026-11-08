@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.118...v0.16.119)
+
+## 🐛 Bug Fixes
+
+- **aws**: report what a worker group apply did, not what it would do ([926f0b8](https://github.com/stacksjs/ts-cloud/commit/926f0b8)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.119 ([721ee0f](https://github.com/stacksjs/ts-cloud/commit/721ee0f)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.117...v0.16.118)
 
 ## ✨ Features
