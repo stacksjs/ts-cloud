@@ -257,6 +257,7 @@ export function buildDatabaseSetupScript(
         'mv -f "$TS_CLOUD_PG_AUTH" "$TS_CLOUD_PG_HBA"',
         `${pgAdminCommand(database)} -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'`,
       ] : []),
+      ...buildPostgresSettingsScript(database, services),
       ...pgConnectionCapacityWarning(database),
     ]
   }
@@ -312,6 +313,68 @@ export function buildDatabaseSetupScript(
  * database. Merge into a site's `env` so `DB_*` is set without hand-copying
  * credentials. Returns `{}` when there's nothing to wire.
  */
+const PG_SETTING_NAME = /^[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)?$/
+
+/** A setting's value as Postgres reads it from a string literal; milliseconds when a bare number. */
+function pgSettingValue(value: string | number | boolean): string {
+  if (typeof value === 'boolean') return value ? 'on' : 'off'
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error(`Invalid PostgreSQL setting value: ${value}`)
+    return String(value)
+  }
+  return value
+}
+
+/**
+ * Write the box engine's declared server parameters (`managedServices.postgres.settings`)
+ * and reload. See {@link PostgresServiceConfig}: `idle_session_timeout` also
+ * ends sessions already idle past it, and restart-only parameters are reported
+ * as pending, never applied by restarting the engine under a running release.
+ * Returns `[]` with nothing declared, or for a managed/external database.
+ */
+export function buildPostgresSettingsScript(
+  database: DatabaseConfig | undefined,
+  services: ComputeServicesConfig = {},
+): string[] {
+  const spec = services.postgres
+  const settings = typeof spec === 'object' && spec ? spec.settings : undefined
+  if (!settings || Object.keys(settings).length === 0) return []
+  if (!isLocalDatabase(database))
+    throw new Error('PostgreSQL server settings can only be declared for the box\'s own engine')
+  const lit = (v: string): string => `'${v.replace(/'/g, "''")}'`
+  const lines: string[] = []
+  for (const [name, raw] of Object.entries(settings)) {
+    if (!PG_SETTING_NAME.test(name)) throw new Error(`Invalid PostgreSQL setting name: ${name}`)
+    const value = pgSettingValue(raw)
+    lines.push(`ALTER SYSTEM SET ${name} = ${lit(value)};`)
+  }
+  lines.push('\\o /dev/null', 'SELECT pg_reload_conf();', '\\o')
+  const idle = settings.idle_session_timeout
+  if (idle !== undefined && idle !== 0 && idle !== '0') {
+    const interval = typeof idle === 'number' ? `${idle} milliseconds` : String(idle)
+    lines.push(
+      `SELECT '[ts-cloud] ended ' || count(*) || ' PostgreSQL session(s) idle longer than ' || ${lit(String(idle))}`,
+      'FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity',
+      `      WHERE state = 'idle' AND backend_type = 'client backend' AND pid <> pg_backend_pid()`,
+      `        AND now() - state_change > ${lit(interval)}::interval) ended`,
+      'HAVING count(*) > 0;',
+    )
+  }
+  return [
+    `${pgAdminCommand(database)} -tA -v ON_ERROR_STOP=1 <<'TS_CLOUD_PG_SETTINGS_EOF'`,
+    '\\set QUIET on',
+    ...lines,
+    'TS_CLOUD_PG_SETTINGS_EOF',
+    // A new session reads the reloaded configuration; the one that sent the
+    // reload may not have processed it yet.
+    `${pgAdminCommand(database)} -tA <<'TS_CLOUD_PG_PENDING_EOF' || true`,
+    '\\set QUIET on',
+    `SELECT '[ts-cloud] PostgreSQL settings waiting for a restart: ' || string_agg(name, ', ')`,
+    'FROM pg_settings WHERE pending_restart HAVING count(*) > 0;',
+    'TS_CLOUD_PG_PENDING_EOF',
+  ]
+}
+
 /**
  * Say so, before the migration, when the server is nearly out of connections.
  *

@@ -4351,6 +4351,28 @@ export interface VitessServiceConfig {
   mysqlPort?: number
 }
 
+/**
+ * The box's own PostgreSQL engine.
+ *
+ * `settings` are server parameters, written with `ALTER SYSTEM` and reloaded
+ * on every deploy that sets up the app database, so the engine converges on
+ * what the config says rather than on whatever someone last typed into psql.
+ *
+ * `idle_session_timeout` is the one most boxes want. Every co-located process
+ * holds a pool, pools idle rather than close, and a release that never shut
+ * its connections fills `max_connections` until the next deploy cannot get a
+ * slot to migrate. Setting it also ends sessions that have already idled past
+ * it, so the deploy that sets it is not itself the one left without a slot.
+ *
+ * Parameters that only take effect on a restart (`max_connections`,
+ * `shared_buffers`, ...) are written but not applied: the deploy says which are
+ * pending rather than restarting the database under the running release.
+ */
+export interface PostgresServiceConfig {
+  version?: string
+  settings?: Record<string, string | number | boolean>
+}
+
 export interface TypesenseServiceConfig {
   /** Official Pantry package release. Defaults to 30.2. */
   version?: string
@@ -4379,7 +4401,7 @@ export interface ComputeServicesConfig {
   vitess?: boolean | VitessServiceConfig
   mysql?: boolean | { version?: string }
   mariadb?: boolean | { version?: string }
-  postgres?: boolean | { version?: string }
+  postgres?: boolean | PostgresServiceConfig
   redis?: boolean | { version?: string }
   memcached?: boolean | { version?: string }
   meilisearch?: boolean | { version?: string }

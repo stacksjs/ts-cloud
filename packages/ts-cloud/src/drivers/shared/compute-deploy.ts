@@ -706,6 +706,9 @@ async function ensureComputeDatabase(
   const database = resolveAppDatabase(config)
   if (config.cloud?.attachTo && database?.requireLocalPasswordAuth)
     throw new Error('PostgreSQL host authentication can only be managed by an owned compute installation')
+  const postgres = compute?.managedServices?.postgres
+  if (config.cloud?.attachTo && typeof postgres === 'object' && postgres?.settings && Object.keys(postgres.settings).length > 0)
+    throw new Error('PostgreSQL server settings can only be managed by an owned compute installation')
   if (!config.cloud?.attachTo && !database?.requireLocalPasswordAuth) return true
   const commands = buildDatabaseSetupScript(database, compute?.managedServices ?? {})
   if (commands.length === 0) return true
