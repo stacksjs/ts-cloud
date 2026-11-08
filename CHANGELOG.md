@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.119...v0.16.120)
+
+## 🐛 Bug Fixes
+
+- **aws**: give a worker group no API off EC2 without keys ([0105b7f](https://github.com/stacksjs/ts-cloud/commit/0105b7f)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.120 ([09a786c](https://github.com/stacksjs/ts-cloud/commit/09a786c)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.118...v0.16.119)
 
 ## 🐛 Bug Fixes
