@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.114...v0.16.115)
+
+## 🐛 Bug Fixes
+
+- **runtime**: batch systemd inventory property discovery ([7434777](https://github.com/stacksjs/ts-cloud/commit/7434777)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.115 ([e843868](https://github.com/stacksjs/ts-cloud/commit/e843868)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.113...v0.16.114)
 
 ## 🐛 Bug Fixes
