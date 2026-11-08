@@ -21,6 +21,7 @@ import { dirname } from 'node:path'
 import { resolveStatePath } from '@ts-cloud/core'
 import { describeScriptSyntaxError, formatSshFailure } from './remote-failure'
 import { remoteScriptRunner, SCP_SSH_TRANSPORT_ARGS } from './remote-exec'
+import { ownedScriptRunner, runLeasedCommand } from './owned-script'
 
 export type SshHostKeyPolicy = 'pin' | 'accept-new' | 'insecure'
 
@@ -46,6 +47,8 @@ export interface SshTransportOptions {
 }
 
 export interface SshExecOptions {
+  /** Own this attempt through a renewable controller lease and process group. */
+  controllerLease?: boolean
   /**
    * Run the script through `sudo -n`. Unset: the transport's configured
    * runner. A deploy user that is not root needs it for everything except
@@ -81,13 +84,21 @@ export interface CommandResult {
   stderr: string
 }
 
-/** Runs a command; `input`, when given, is piped to stdin. Injectable for tests. */
-export type CommandRunner = (command: string[], input?: string) => Promise<CommandResult>
+/**
+ * Runs a command; `input`, when given, is piped to stdin. A controller lease
+ * requires framing and renewal through runLeasedCommand, not a finite input
+ * buffer. Injected implementations must honor that contract for real hosts.
+ */
+export type CommandRunner = (command: string[], input?: string, options?: { controllerLease?: boolean }) => Promise<CommandResult>
 
 /** Output cap for ssh/scp children: large enough for verbose tar extraction. */
 const OUTPUT_LIMIT = 1024 * 1024 * 256
 
-export const runCommand: CommandRunner = async (command, input) => {
+export const runCommand: CommandRunner = async (command, input, options) => {
+  if (options?.controllerLease) {
+    if (input === undefined) throw new Error('A controller-owned command requires its script payload')
+    return runLeasedCommand(command, input)
+  }
   const child = Bun.spawn(command, {
     stdin: input === undefined ? 'ignore' : Buffer.from(input),
     stdout: 'pipe',
@@ -285,6 +296,11 @@ export class SystemSshTransport implements SshTransport {
 
   /** The runner a script is fed to; see {@link SshExecOptions.sudo}. */
   runnerFor(options: SshExecOptions = {}): string {
+    if (options.controllerLease) {
+      if (this.options.runner !== undefined && options.sudo === undefined)
+        throw new Error('A remote controller lease cannot be enforced with a custom SSH runner')
+      return ownedScriptRunner(options)
+    }
     if (options.timeoutSeconds !== undefined && options.sudo === undefined && this.options.runner !== undefined) {
       throw new Error('A remote deployment deadline cannot be enforced with a custom SSH runner')
     }
@@ -293,7 +309,7 @@ export class SystemSshTransport implements SshTransport {
   }
 
   async exec(host: string, script: string, options: SshExecOptions = {}): Promise<string> {
-    const result = await this.run(['ssh', ...buildSshArgsFor(this.options, host), this.runnerFor(options)], script)
+    const result = await this.run(['ssh', ...buildSshArgsFor(this.options, host), this.runnerFor(options)], script, { controllerLease: options.controllerLease })
     if (result.code !== 0) {
       const failure = { status: result.code, signal: result.signal, stdout: result.stdout, stderr: result.stderr }
       // Never forward the command line: it is the deploy script, secrets and all.

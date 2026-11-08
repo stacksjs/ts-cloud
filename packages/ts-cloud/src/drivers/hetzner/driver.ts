@@ -17,6 +17,7 @@ import { buildMonitoringScript } from '../shared/monitoring'
 import { buildNotifierScript } from '../shared/notifications'
 import { buildPhpProvisionScript } from '../shared/php-provision'
 import { remoteScriptRunner, SCP_SSH_TRANSPORT_ARGS } from '../shared/remote-exec'
+import { ownedScriptRunner, runLeasedCommand } from '../shared/owned-script'
 import { describeScriptSyntaxError, formatSshFailure, summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { sftpFirewallPorts } from '../shared/sftp-provision'
@@ -1346,7 +1347,7 @@ export class HetznerDriver implements CloudDriver {
       }
 
       try {
-        const output = this.sshExec(target.publicIp, script, options.timeoutSeconds)
+        const output = await this.sshExecOwned(target.publicIp, script, options.timeoutSeconds)
         surfaceRemoteNotices(output)
         perInstance.push({
           instanceId: target.id,
@@ -1705,6 +1706,15 @@ export class HetznerDriver implements CloudDriver {
       const action = await this.client.changeServerReverseDns(server.id, change.ip, change.hostname)
       await this.client.waitForAction(action.id)
     }
+  }
+
+  private async sshExecOwned(host: string, script: string, timeoutSeconds?: number): Promise<string> {
+    const result = await runLeasedCommand(['ssh', ...this.sshBaseArgs(host), ownedScriptRunner({ timeoutSeconds })], script)
+    if (result.code !== 0) {
+      const failure = { status: result.code, signal: result.signal, stdout: result.stdout, stderr: result.stderr }
+      throw new Error(`${formatSshFailure(failure)}${describeScriptSyntaxError(failure, script)}`)
+    }
+    return result.stdout
   }
 
   private sshExec(host: string, script: string, timeoutSeconds?: number): string {
