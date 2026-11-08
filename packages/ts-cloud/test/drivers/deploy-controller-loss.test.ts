@@ -14,7 +14,7 @@ function identity(pid: number): string {
   } catch { return '' }
 }
 
-it('ends only the cancelled deployment and its descendants after abrupt controller loss', async () => {
+it.each([undefined, 60])('ends only the cancelled deployment and its descendants after abrupt controller loss (deadline %s)', async (timeoutSeconds) => {
   const root = mkdtempSync(join(tmpdir(), 'ts-cloud-controller-loss-'))
   const driver = resolve(import.meta.dir, '../../src/drivers/local-box/driver.ts')
   const workerFile = join(root, 'worker.pid')
@@ -24,6 +24,7 @@ it('ends only the cancelled deployment and its descendants after abrupt controll
   writeFileSync(controllerFile, `
     import { LocalBoxDriver } from ${JSON.stringify(driver)}
     const result = await new LocalBoxDriver().runRemoteDeploy({
+      timeoutSeconds: ${JSON.stringify(timeoutSeconds) ?? 'undefined'},
       targets: [{ id: 'synthetic', publicIp: '127.0.0.1', status: 'running' }],
       commands: [${JSON.stringify([
         "trap '' TERM",
@@ -145,3 +146,11 @@ it('refuses to execute the payload when process ownership cannot be verified', a
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+it('enforces the host deadline on TERM-ignoring descendants in the owned group', async () => {
+  const started = Date.now()
+  const result = await runLeasedCommand(['bash', '-c', ownedScriptRunner({ timeoutSeconds: 1 })], "trap '' TERM\nsleep 30\n")
+  expect(result.code).toBe(124)
+  expect(result.stderr).toContain('deadline exceeded')
+  expect(Date.now() - started).toBeLessThan(8500)
+}, 10_000)
