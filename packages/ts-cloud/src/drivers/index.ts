@@ -4,6 +4,20 @@ export type { ResolvedComputeVolume, MountedComputeVolume, ComputeStoragePolicy 
 export { planHetznerVolumes, applyHetznerVolumes } from './hetzner/volumes'
 export type { HetznerVolumePlan } from './hetzner/volumes'
 export { AwsDriver } from './aws/driver'
+export {
+  applyWorkerGroupPlan,
+  awsWorkerGroupApi,
+  AwsWorkerGroupApi,
+  buildWorkerUserData,
+  convergeAwsWorkerGroup,
+  EC2_USER_DATA_LIMIT,
+  flattenQuery,
+  planWorkerGroup,
+  queryList,
+  queryResult,
+  UBUNTU_2404_X86_IMAGE,
+} from './aws/worker-group'
+export type { AwsTransport, AwsWorkerGroupConfig, Worker, WorkerGroupPlan, WorkerInstance } from './aws/worker-group'
 export { HetznerDriver } from './hetzner/driver'
 export { isBoxMode, LocalBoxDriver } from './local-box/driver'
 export { assertSshComputeConfig, SSH_DEPLOY_STORAGE_PATH, SSH_SKIP_BOOTSTRAP_ENV, SshDriver } from './ssh/driver'
