@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.115...v0.16.116)
+
+## ✨ Features
+
+- **postgres**: converge declared server settings on every database setup ([949532e](https://github.com/stacksjs/ts-cloud/commit/949532e)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.116 ([b998f1f](https://github.com/stacksjs/ts-cloud/commit/b998f1f)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.114...v0.16.115)
 
 ## 🐛 Bug Fixes
