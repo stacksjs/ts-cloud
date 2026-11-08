@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.116...v0.16.117)
+
+## ✨ Features
+
+- **aws**: worker groups that grow with a queue and shrink to zero ([087e3a7](https://github.com/stacksjs/ts-cloud/commit/087e3a7)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.117 ([19a55dc](https://github.com/stacksjs/ts-cloud/commit/19a55dc)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.115...v0.16.116)
 
 ## ✨ Features
