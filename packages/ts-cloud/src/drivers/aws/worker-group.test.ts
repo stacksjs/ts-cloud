@@ -213,7 +213,10 @@ describe('a dedicated network', () => {
 
   test('creates a VPC, gateway, public route and one public subnet per zone', async () => {
     const { api, calls } = fake()
-    await convergeAwsWorkerGroup(api, dedicated, { userData: '#!/bin/bash\n', sleep: async () => {} })
+    const report = await convergeAwsWorkerGroup(api, dedicated, { userData: '#!/bin/bash\n', sleep: async () => {} })
+    // A real run reports what it did, not what it would do.
+    expect(report.some(line => line.startsWith('created network ci-workers'))).toBe(true)
+    expect(report.some(line => line.startsWith('would '))).toBe(false)
     const of = (action: string) => calls.filter(call => call.action === action).map(call => call.params)
     expect(of('CreateVpc')[0]!.get('CidrBlock')).toBe('10.88.0.0/16')
     expect(of('CreateVpc')[0]!.get('TagSpecification.1.Tag.2.Value')).toBe('ci-workers')

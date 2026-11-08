@@ -382,7 +382,7 @@ async function resolveNetwork(api: AwsWorkerGroupApi, config: AwsWorkerGroupConf
 
   let vpcId = String(queryList((await api.query('ec2', 'DescribeVpcs', { Filter: owned }))?.vpcSet)[0]?.vpcId ?? '')
   if (!vpcId) {
-    report.push(`would create network ${config.name} (${cidr}, ${zones.length} public subnets)`)
+    report.push(`${dry ? 'would create' : 'created'} network ${config.name} (${cidr}, ${zones.length} public subnets)`)
     if (dry)
       return { vpcId: '', subnets: zones.map(zone => `(new subnet in ${zone})`) }
     vpcId = String((await api.query('ec2', 'CreateVpc', { CidrBlock: cidr, ...ownedTags(config, 'vpc', `${config.name}-vpc`) }))?.vpc?.vpcId ?? '')
@@ -414,7 +414,7 @@ async function resolveNetwork(api: AwsWorkerGroupApi, config: AwsWorkerGroupConf
       subnets.push(String(found.subnetId))
       continue
     }
-    report.push(`would create subnet ${subnetCidr(cidr, index)} in ${zone}`)
+    report.push(`${dry ? 'would create' : 'created'} subnet ${subnetCidr(cidr, index)} in ${zone}`)
     if (dry)
       continue
     const subnet = String((await api.query('ec2', 'CreateSubnet', { VpcId: vpcId, AvailabilityZone: zone, CidrBlock: subnetCidr(cidr, index), ...ownedTags(config, 'subnet', `${config.name}-${zone}`) }))?.subnet?.subnetId ?? '')
@@ -456,7 +456,7 @@ export async function convergeAwsWorkerGroup(api: AwsWorkerGroupApi, config: Aws
     report.push(`security group ${securityGroup}`)
   }
   else {
-    report.push(`would create security group ${config.name}`)
+    report.push(`${dry ? 'would create' : 'created'} security group ${config.name}`)
     if (!dry)
       securityGroup = String((await api.query('ec2', 'CreateSecurityGroup', { GroupName: config.name, GroupDescription: 'ts-cloud worker group: outbound only', VpcId: vpcId }))?.groupId ?? '')
   }
@@ -470,7 +470,7 @@ export async function convergeAwsWorkerGroup(api: AwsWorkerGroupApi, config: Aws
   catch (error) {
     if (!missing(error, 'NoSuchEntity'))
       throw error
-    report.push(`would create role ${role}`)
+    report.push(`${dry ? 'would create' : 'created'} role ${role}`)
     if (!dry) {
       await api.query('iam', 'CreateRole', {
         RoleName: role,
@@ -495,7 +495,7 @@ export async function convergeAwsWorkerGroup(api: AwsWorkerGroupApi, config: Aws
   catch (error) {
     if (!missing(error, 'NoSuchEntity'))
       throw error
-    report.push(`would create instance profile ${role}`)
+    report.push(`${dry ? 'would create' : 'created'} instance profile ${role}`)
     if (!dry) {
       await api.query('iam', 'CreateInstanceProfile', { InstanceProfileName: role })
       await api.query('iam', 'AddRoleToInstanceProfile', { InstanceProfileName: role, RoleName: role })
@@ -541,7 +541,7 @@ export async function convergeAwsWorkerGroup(api: AwsWorkerGroupApi, config: Aws
       await api.query('ec2', 'CreateLaunchTemplateVersion', { LaunchTemplateName: config.name, VersionDescription: 'ts-cloud worker group', ...data })
   }
   else {
-    report.push(`would create launch template ${config.name} on ${image}`)
+    report.push(`${dry ? 'would create' : 'created'} launch template ${config.name} on ${image}`)
     if (!dry)
       await api.query('ec2', 'CreateLaunchTemplate', { LaunchTemplateName: config.name, VersionDescription: 'ts-cloud worker group', ...data })
   }
@@ -572,7 +572,7 @@ export async function convergeAwsWorkerGroup(api: AwsWorkerGroupApi, config: Aws
       await api.query('autoscaling', 'UpdateAutoScalingGroup', sizes)
   }
   else {
-    report.push(`would create group ${config.name}: ${config.instanceTypes.join(', ')}, ${config.market.spot ? 'spot' : 'on-demand'}, min ${config.min}, max ${config.max}`)
+    report.push(`${dry ? 'would create' : 'created'} group ${config.name}: ${config.instanceTypes.join(', ')}, ${config.market.spot ? 'spot' : 'on-demand'}, min ${config.min}, max ${config.max}`)
     if (!dry)
       await api.query('autoscaling', 'CreateAutoScalingGroup', { ...sizes, DesiredCapacity: 0, Tags: [{ Key: 'ts-cloud:worker-group', Value: config.name, PropagateAtLaunch: true }] })
   }
