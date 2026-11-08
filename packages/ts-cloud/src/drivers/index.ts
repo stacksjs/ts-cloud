@@ -15,6 +15,7 @@ export {
   planWorkerGroup,
   queryList,
   queryResult,
+  subnetCidr,
   UBUNTU_2404_X86_IMAGE,
 } from './aws/worker-group'
 export type { AwsTransport, AwsWorkerGroupConfig, Worker, WorkerGroupPlan, WorkerInstance } from './aws/worker-group'

@@ -47,6 +47,20 @@ export interface AwsWorkerGroupConfig {
   imageParameter?: string
   /** Extra tags on every instance. */
   tags?: Record<string, string>
+  /**
+   * Where the instances run.
+   *
+   * - `'default'` (the default): every default subnet of the region's default VPC.
+   * - `'dedicated'`: a network the group owns - a VPC, an internet gateway and
+   *   one public subnet per availability zone, found by tag and created once.
+   *   For an account whose default VPC is gone, and for keeping workers out of
+   *   a network that also holds production.
+   * - `{ subnetIds }`: subnets you already have, which must give instances a
+   *   route out.
+   */
+  network?: 'default' | 'dedicated' | { subnetIds: string[] }
+  /** The dedicated network's address range. Defaults to 10.88.0.0/16, split into /20s. */
+  networkCidr?: string
 }
 
 export const UBUNTU_2404_X86_IMAGE = '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id'
@@ -313,6 +327,105 @@ function missing(error: unknown, ...codes: string[]): boolean {
   return codes.some(code => text.includes(code))
 }
 
+/** Tags for a resource the group owns, in EC2's `TagSpecification` shape. */
+function ownedTags(config: AwsWorkerGroupConfig, resourceType: string, name: string): Record<string, unknown> {
+  return { TagSpecification: [{ ResourceType: resourceType, Tag: [{ Key: 'Name', Value: name }, { Key: 'ts-cloud:worker-group', Value: config.name }] }] }
+}
+
+/** The `index`th /20 of a /16, for one subnet per availability zone. */
+export function subnetCidr(networkCidr: string, index: number): string {
+  const [base] = networkCidr.split('/')
+  const [a, b] = String(base).split('.')
+  if (index < 0 || index > 15)
+    throw new Error(`A /16 holds sixteen /20 subnets, not ${index + 1}`)
+  return `${a}.${b}.${index * 16}.0/20`
+}
+
+/**
+ * Where the group's instances run: the default VPC, subnets given, or a
+ * network the group owns, created on first use and found by tag after.
+ * Returns an empty VPC id only on a dry run that would create one.
+ */
+async function resolveNetwork(api: AwsWorkerGroupApi, config: AwsWorkerGroupConfig, dry: boolean, report: string[]): Promise<{ vpcId: string, subnets: string[] }> {
+  const network = config.network ?? 'default'
+
+  if (typeof network === 'object') {
+    const found = queryList((await api.query('ec2', 'DescribeSubnets', { SubnetId: network.subnetIds }))?.subnetSet)
+    if (found.length !== network.subnetIds.length)
+      throw new Error(`Not every subnet exists: ${network.subnetIds.join(', ')}`)
+    const vpcs = [...new Set(found.map((subnet: any) => String(subnet.vpcId)))]
+    if (vpcs.length !== 1)
+      throw new Error(`The subnets span ${vpcs.length} VPCs; a group's subnets share one`)
+    report.push(`vpc ${vpcs[0]}, ${found.length} given subnets`)
+    return { vpcId: vpcs[0]!, subnets: network.subnetIds }
+  }
+
+  if (network === 'default') {
+    const vpc = queryList((await api.query('ec2', 'DescribeVpcs', { Filter: [{ Name: 'isDefault', Value: ['true'] }] }))?.vpcSet)[0]
+    if (!vpc?.vpcId)
+      throw new Error(`No default VPC in ${api.region}; set network: 'dedicated' for a network the group owns`)
+    const subnets = queryList((await api.query('ec2', 'DescribeSubnets', { Filter: [{ Name: 'vpc-id', Value: [vpc.vpcId] }, { Name: 'default-for-az', Value: ['true'] }] }))?.subnetSet).map((subnet: any) => String(subnet.subnetId))
+    if (subnets.length === 0)
+      throw new Error(`The default VPC ${vpc.vpcId} has no default subnets`)
+    report.push(`vpc ${vpc.vpcId}, ${subnets.length} subnets`)
+    return { vpcId: String(vpc.vpcId), subnets }
+  }
+
+  // Dedicated: a VPC, an internet gateway, a public route table, and one
+  // public subnet per zone - each found by the group's tag before it is made.
+  const cidr = config.networkCidr ?? '10.88.0.0/16'
+  const owned = [{ Name: 'tag:ts-cloud:worker-group', Value: [config.name] }]
+  const zones = queryList((await api.query('ec2', 'DescribeAvailabilityZones', { Filter: [{ Name: 'state', Value: ['available'] }, { Name: 'zone-type', Value: ['availability-zone'] }] }))?.availabilityZoneInfo)
+    .map((zone: any) => String(zone.zoneName))
+    .sort()
+    .slice(0, 16)
+
+  let vpcId = String(queryList((await api.query('ec2', 'DescribeVpcs', { Filter: owned }))?.vpcSet)[0]?.vpcId ?? '')
+  if (!vpcId) {
+    report.push(`would create network ${config.name} (${cidr}, ${zones.length} public subnets)`)
+    if (dry)
+      return { vpcId: '', subnets: zones.map(zone => `(new subnet in ${zone})`) }
+    vpcId = String((await api.query('ec2', 'CreateVpc', { CidrBlock: cidr, ...ownedTags(config, 'vpc', `${config.name}-vpc`) }))?.vpc?.vpcId ?? '')
+    await api.query('ec2', 'ModifyVpcAttribute', { VpcId: vpcId, 'EnableDnsHostnames.Value': true })
+  }
+  else {
+    report.push(`network ${vpcId}`)
+  }
+
+  let gateway = String(queryList((await api.query('ec2', 'DescribeInternetGateways', { Filter: [{ Name: 'attachment.vpc-id', Value: [vpcId] }] }))?.internetGatewaySet)[0]?.internetGatewayId ?? '')
+  if (!gateway && !dry) {
+    gateway = String((await api.query('ec2', 'CreateInternetGateway', ownedTags(config, 'internet-gateway', `${config.name}-igw`)))?.internetGateway?.internetGatewayId ?? '')
+    await api.query('ec2', 'AttachInternetGateway', { InternetGatewayId: gateway, VpcId: vpcId })
+    report.push(`attached internet gateway ${gateway}`)
+  }
+
+  let routeTable = String(queryList((await api.query('ec2', 'DescribeRouteTables', { Filter: [{ Name: 'vpc-id', Value: [vpcId] }, ...owned] }))?.routeTableSet)[0]?.routeTableId ?? '')
+  if (!routeTable && !dry) {
+    routeTable = String((await api.query('ec2', 'CreateRouteTable', { VpcId: vpcId, ...ownedTags(config, 'route-table', `${config.name}-public`) }))?.routeTable?.routeTableId ?? '')
+    await api.query('ec2', 'CreateRoute', { RouteTableId: routeTable, DestinationCidrBlock: '0.0.0.0/0', GatewayId: gateway })
+    report.push(`public route table ${routeTable}`)
+  }
+
+  const existing = queryList((await api.query('ec2', 'DescribeSubnets', { Filter: [{ Name: 'vpc-id', Value: [vpcId] }] }))?.subnetSet)
+  const subnets: string[] = []
+  for (const [index, zone] of zones.entries()) {
+    const found = existing.find((subnet: any) => String(subnet.availabilityZone) === zone)
+    if (found) {
+      subnets.push(String(found.subnetId))
+      continue
+    }
+    report.push(`would create subnet ${subnetCidr(cidr, index)} in ${zone}`)
+    if (dry)
+      continue
+    const subnet = String((await api.query('ec2', 'CreateSubnet', { VpcId: vpcId, AvailabilityZone: zone, CidrBlock: subnetCidr(cidr, index), ...ownedTags(config, 'subnet', `${config.name}-${zone}`) }))?.subnet?.subnetId ?? '')
+    await api.query('ec2', 'ModifySubnetAttribute', { SubnetId: subnet, 'MapPublicIpOnLaunch.Value': true })
+    await api.query('ec2', 'AssociateRouteTable', { RouteTableId: routeTable, SubnetId: subnet })
+    subnets.push(subnet)
+  }
+  report.push(`${subnets.length} public subnets`)
+  return { vpcId, subnets }
+}
+
 /**
  * Bring a worker group's AWS resources to its declaration. Idempotent: found
  * by name, created when missing; a rerun writes a new launch template version
@@ -334,22 +447,18 @@ export async function convergeAwsWorkerGroup(api: AwsWorkerGroupApi, config: Aws
   const account = await api.accountId()
   report.push(`account ${account}, region ${api.region}`)
 
-  const vpc = queryList((await api.query('ec2', 'DescribeVpcs', { Filter: [{ Name: 'isDefault', Value: ['true'] }] }))?.vpcSet)[0]
-  if (!vpc?.vpcId)
-    throw new Error(`No default VPC in ${api.region}`)
-  const subnets = queryList((await api.query('ec2', 'DescribeSubnets', { Filter: [{ Name: 'vpc-id', Value: [vpc.vpcId] }, { Name: 'default-for-az', Value: ['true'] }] }))?.subnetSet).map((subnet: any) => String(subnet.subnetId))
-  if (subnets.length === 0)
-    throw new Error(`The default VPC ${vpc.vpcId} has no default subnets`)
-  report.push(`vpc ${vpc.vpcId}, ${subnets.length} subnets`)
+  const { vpcId, subnets } = await resolveNetwork(api, config, dry, report)
 
-  let securityGroup = String(queryList((await api.query('ec2', 'DescribeSecurityGroups', { Filter: [{ Name: 'group-name', Value: [config.name] }, { Name: 'vpc-id', Value: [vpc.vpcId] }] }))?.securityGroupInfo)[0]?.groupId ?? '')
+  let securityGroup = vpcId
+    ? String(queryList((await api.query('ec2', 'DescribeSecurityGroups', { Filter: [{ Name: 'group-name', Value: [config.name] }, { Name: 'vpc-id', Value: [vpcId] }] }))?.securityGroupInfo)[0]?.groupId ?? '')
+    : ''
   if (securityGroup) {
     report.push(`security group ${securityGroup}`)
   }
   else {
     report.push(`would create security group ${config.name}`)
     if (!dry)
-      securityGroup = String((await api.query('ec2', 'CreateSecurityGroup', { GroupName: config.name, GroupDescription: 'ts-cloud worker group: outbound only', VpcId: vpc.vpcId }))?.groupId ?? '')
+      securityGroup = String((await api.query('ec2', 'CreateSecurityGroup', { GroupName: config.name, GroupDescription: 'ts-cloud worker group: outbound only', VpcId: vpcId }))?.groupId ?? '')
   }
 
   const role = `${config.name}-instance`

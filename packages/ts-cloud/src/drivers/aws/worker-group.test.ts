@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { AwsWorkerGroupConfig } from './worker-group'
-import { AwsWorkerGroupApi, buildWorkerUserData, convergeAwsWorkerGroup, flattenQuery, planWorkerGroup, queryList, queryResult } from './worker-group'
+import { AwsWorkerGroupApi, buildWorkerUserData, convergeAwsWorkerGroup, flattenQuery, planWorkerGroup, queryList, queryResult, subnetCidr } from './worker-group'
 
 const config: AwsWorkerGroupConfig = {
   name: 'ci-workers',
@@ -172,5 +172,82 @@ describe('convergeAwsWorkerGroup', () => {
   test('refuses user data EC2 would reject', async () => {
     const { api } = fake()
     await expect(convergeAwsWorkerGroup(api, config, { userData: 'x'.repeat(20_000) })).rejects.toThrow('16384')
+  })
+})
+
+describe('a dedicated network', () => {
+  const dedicated: AwsWorkerGroupConfig = { ...config, network: 'dedicated' }
+
+  function fake(existing: { network?: boolean } = {}) {
+    const calls: { action: string, params: URLSearchParams }[] = []
+    const api = new AwsWorkerGroupApi({
+      request: async (options: any) => {
+        if (options.service === 'ssm')
+          return { Parameter: { Value: 'ami-0123456789abcdef0' } }
+        const params = new URLSearchParams(options.body)
+        const action = String(params.get('Action'))
+        calls.push({ action, params })
+        if (action === 'GetRole' || action === 'GetInstanceProfile')
+          return {}
+        const owned = params.get('Filter.1.Name') === 'tag:ts-cloud:worker-group' || params.get('Filter.2.Name') === 'tag:ts-cloud:worker-group'
+        const answers: Record<string, any> = {
+          GetCallerIdentity: { Account: '111122223333' },
+          DescribeAvailabilityZones: { availabilityZoneInfo: { item: [{ zoneName: 'us-east-1b' }, { zoneName: 'us-east-1a' }] } },
+          DescribeVpcs: { vpcSet: existing.network && owned ? { item: { vpcId: 'vpc-own' } } : '' },
+          CreateVpc: { vpc: { vpcId: 'vpc-new' } },
+          DescribeInternetGateways: { internetGatewaySet: existing.network ? { item: { internetGatewayId: 'igw-own' } } : '' },
+          CreateInternetGateway: { internetGateway: { internetGatewayId: 'igw-new' } },
+          DescribeRouteTables: { routeTableSet: existing.network ? { item: { routeTableId: 'rtb-own' } } : '' },
+          CreateRouteTable: { routeTable: { routeTableId: 'rtb-new' } },
+          DescribeSubnets: { subnetSet: existing.network ? { item: [{ subnetId: 'subnet-a', availabilityZone: 'us-east-1a' }, { subnetId: 'subnet-b', availabilityZone: 'us-east-1b' }] } : '' },
+          CreateSubnet: { subnet: { subnetId: `subnet-${calls.filter(call => call.action === 'CreateSubnet').length}` } },
+          DescribeSecurityGroups: { securityGroupInfo: { item: { groupId: 'sg-own' } } },
+          DescribeLaunchTemplates: { launchTemplates: '' },
+          DescribeAutoScalingGroups: { AutoScalingGroups: '' },
+        }
+        return { [`${action}Response`]: { [`${action}Result`]: answers[action] ?? {} } }
+      },
+    }, 'us-east-1')
+    return { api, calls }
+  }
+
+  test('creates a VPC, gateway, public route and one public subnet per zone', async () => {
+    const { api, calls } = fake()
+    await convergeAwsWorkerGroup(api, dedicated, { userData: '#!/bin/bash\n', sleep: async () => {} })
+    const of = (action: string) => calls.filter(call => call.action === action).map(call => call.params)
+    expect(of('CreateVpc')[0]!.get('CidrBlock')).toBe('10.88.0.0/16')
+    expect(of('CreateVpc')[0]!.get('TagSpecification.1.Tag.2.Value')).toBe('ci-workers')
+    expect(of('AttachInternetGateway')[0]!.get('VpcId')).toBe('vpc-new')
+    expect(of('CreateRoute')[0]!.get('DestinationCidrBlock')).toBe('0.0.0.0/0')
+    expect(of('CreateRoute')[0]!.get('GatewayId')).toBe('igw-new')
+    expect(of('CreateSubnet').map(params => `${params.get('AvailabilityZone')} ${params.get('CidrBlock')}`)).toEqual(['us-east-1a 10.88.0.0/20', 'us-east-1b 10.88.16.0/20'])
+    expect(of('ModifySubnetAttribute').every(params => params.get('MapPublicIpOnLaunch.Value') === 'true')).toBe(true)
+    expect(of('AssociateRouteTable')).toHaveLength(2)
+    expect(of('CreateAutoScalingGroup')[0]!.get('VPCZoneIdentifier')).toBe('subnet-1,subnet-2')
+  })
+
+  test('finds the network it made instead of making another', async () => {
+    const { api, calls } = fake({ network: true })
+    await convergeAwsWorkerGroup(api, dedicated, { userData: '#!/bin/bash\n', sleep: async () => {} })
+    expect(calls.some(call => /^Create(Vpc|InternetGateway|RouteTable|Subnet|Route)$/.test(call.action))).toBe(false)
+    expect(calls.find(call => call.action === 'CreateAutoScalingGroup')!.params.get('VPCZoneIdentifier')).toBe('subnet-a,subnet-b')
+  })
+
+  test('says what it would create on a dry run, and creates nothing', async () => {
+    const { api, calls } = fake()
+    const report = await convergeAwsWorkerGroup(api, dedicated, { userData: '#!/bin/bash\n', dryRun: true, sleep: async () => {} })
+    expect(report.some(line => line.startsWith('would create network ci-workers (10.88.0.0/16, 2 public subnets)'))).toBe(true)
+    expect(calls.some(call => /^(Create|Put|Add|Update|Set|Attach|Associate|Modify)/.test(call.action))).toBe(false)
+  })
+
+  test('splits the range into /20s, one per zone, and refuses a seventeenth', () => {
+    expect(subnetCidr('10.88.0.0/16', 0)).toBe('10.88.0.0/20')
+    expect(subnetCidr('10.88.0.0/16', 5)).toBe('10.88.80.0/20')
+    expect(() => subnetCidr('10.88.0.0/16', 16)).toThrow('sixteen')
+  })
+
+  test('refuses to guess when the default VPC is gone', async () => {
+    const { api } = fake()
+    await expect(convergeAwsWorkerGroup(api, config, { userData: '#!/bin/bash\n', sleep: async () => {} })).rejects.toThrow("network: 'dedicated'")
   })
 })
