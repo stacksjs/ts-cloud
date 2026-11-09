@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.121...v0.16.122)
+
+## 🐛 Bug Fixes
+
+- **boxes**: converge with umask 022, whatever the caller's ([501d756](https://github.com/stacksjs/ts-cloud/commit/501d756)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.122 ([7661eba](https://github.com/stacksjs/ts-cloud/commit/7661eba)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.120...v0.16.121)
 
 ## 🐛 Bug Fixes
