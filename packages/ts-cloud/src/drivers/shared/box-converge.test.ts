@@ -60,6 +60,18 @@ describe('a declared box', () => {
     expect(script).toContain('usermod -aG docker runner')
   })
 
+  test('installs shared tooling readable by every user, whatever umask its caller had', () => {
+    const script = buildBoxConvergeScript(runner)
+    const umask = script.indexOf('umask 022')
+    expect(umask).toBeGreaterThan(-1)
+    expect(umask).toBeLessThan(script.indexOf('PANTRY='))
+    expect(umask).toBeLessThan(script.indexOf('pantry install'))
+    // EC2 user data runs under 077; what the script sets is what it installs with.
+    const head = script.slice(0, script.indexOf('\n', umask))
+    const probe = Bun.spawnSync(['bash', '-c', `umask 077\n${head}\numask`])
+    expect(probe.stdout.toString().trim()).toBe('0022')
+  })
+
   test('starts a stopped service, and leaves a running one for the operator unless it asked for a restart', () => {
     const patient = buildBoxConvergeScript(runner)
     expect(patient).toContain('svc start ci-runner.service')

@@ -251,6 +251,11 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
   const pin = box.pantryVersion
   const lines: string[] = [
     'set -euo pipefail',
+    // What this installs is shared tooling every service user runs, so it must
+    // not inherit a caller's private umask: EC2 user data runs under 077, and
+    // a pantry tree made there is root-only, so the worker's `bun` answered
+    // "Permission denied". Files that must be private say so with a mode.
+    'umask 022',
     'export DEBIAN_FRONTEND=noninteractive',
     `say() { echo "${BOX_REPORT_PREFIX} $*"; }`,
     // Write a file only when its content differs; returns 0 when it wrote.
