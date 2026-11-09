@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.120...v0.16.121)
+
+## 🐛 Bug Fixes
+
+- **aws**: put worker output on the serial console as well ([fa81163](https://github.com/stacksjs/ts-cloud/commit/fa81163)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.121 ([d89a8b8](https://github.com/stacksjs/ts-cloud/commit/d89a8b8)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.119...v0.16.120)
 
 ## 🐛 Bug Fixes
