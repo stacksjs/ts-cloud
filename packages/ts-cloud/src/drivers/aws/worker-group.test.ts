@@ -82,6 +82,18 @@ describe('buildWorkerUserData', () => {
     expect(script).toContain(`sudo -u runner -H env WORKER_URL='https://example.test' WORKER_TOKEN='it'"'"'s secret' /home/runner/worker --name "$INSTANCE_ID"`)
   })
 
+  test('says why it quit on the serial console, which outlives the instance', () => {
+    expect(script).toContain('tee -a /var/log/ts-cloud-worker.log')
+    expect(script).toContain('>/dev/console) 2>&1')
+    expect(script.indexOf('/dev/console')).toBeLessThan(script.indexOf('trap finish EXIT'))
+  })
+
+  test('is a script bash can parse', () => {
+    const parsed = Bun.spawnSync(['bash', '-n'], { stdin: new TextEncoder().encode(script) })
+    expect(parsed.stderr.toString()).toBe('')
+    expect(parsed.exitCode).toBe(0)
+  })
+
   test('converges the box before anything runs', () => {
     const converge = Buffer.from(/echo '([A-Za-z0-9+/=]+)' \| base64 -d/.exec(script)![1]!, 'base64').toString()
     expect(converge).toContain('bun.sh@1.4.4')

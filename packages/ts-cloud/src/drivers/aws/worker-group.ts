@@ -253,6 +253,11 @@ function sh(value: string): string {
  * worker is told what it needs on its command line (`$INSTANCE_ID` and
  * `$REGION` are set), so it has no reason to ask; a task it runs has none
  * either. If the self-termination call fails the instance powers off instead.
+ *
+ * Everything it prints goes to `/var/log/ts-cloud-worker.log` and to the
+ * serial console, each line prefixed `ts-cloud-worker:`. An instance that
+ * fails and terminates itself takes the file with it; the console output is
+ * what is left to read.
  */
 export function buildWorkerUserData(options: { box: BoxConfig, user: string, command: string, env?: Record<string, string> }): string {
   if (!/^[a-z_][a-z0-9_-]*$/.test(options.user))
@@ -269,7 +274,9 @@ export function buildWorkerUserData(options: { box: BoxConfig, user: string, com
     '# Written by ts-cloud buildWorkerUserData. Do not edit on the instance.',
     'set -uo pipefail',
     'umask 077',
-    'exec >>/var/log/ts-cloud-worker.log 2>&1',
+    // The log file dies with the instance, which terminates itself; the serial
+    // console outlives it, so `GetConsoleOutput` can still say why it quit.
+    'exec > >(tee -a /var/log/ts-cloud-worker.log | sed -u "s/^/ts-cloud-worker: /" >/dev/console) 2>&1',
     'IMDS=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")',
     'meta() { curl -fsS -H "X-aws-ec2-metadata-token: $IMDS" "http://169.254.169.254/latest/meta-data/$1"; }',
     'INSTANCE_ID=$(meta instance-id)',
