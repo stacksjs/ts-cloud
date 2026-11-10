@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.122...v0.16.123)
+
+## ✨ Features
+
+- **aws**: run a spot worker group on-demand while Spot runs dry ([ccbe060](https://github.com/stacksjs/ts-cloud/commit/ccbe060)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.123 ([e095c86](https://github.com/stacksjs/ts-cloud/commit/e095c86)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.121...v0.16.122)
 
 ## 🐛 Bug Fixes
