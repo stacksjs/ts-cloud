@@ -44,6 +44,12 @@ export interface AwsWorkerGroupConfig {
   diskGb: number
   /** An instance that has not become a worker after this long is reaped. */
   registrationGraceSeconds: number
+  /**
+   * How long a spot group runs on-demand after Spot last let it down - a
+   * launch AWS could not fill, or an instance it took back. Defaults to 1800;
+   * 0 keeps the group on its declared market whatever happens. See `planMarket`.
+   */
+  spotFallbackSeconds?: number
   /** SSM public parameter naming the image. Defaults to Ubuntu 24.04 LTS, x86. */
   imageParameter?: string
   /** Extra tags on every instance. */
@@ -156,17 +162,20 @@ export class AwsWorkerGroupApi {
     return image
   }
 
-  async describeGroup(name: string): Promise<{ desired: number, min: number, max: number, instances: WorkerInstance[] } | null> {
+  async describeGroup(name: string): Promise<{ desired: number, min: number, max: number, instances: WorkerInstance[], onDemandPercentage: number | null } | null> {
     const group = queryList((await this.query('autoscaling', 'DescribeAutoScalingGroups', { AutoScalingGroupNames: [name] }))?.AutoScalingGroups)[0]
     if (!group)
       return null
     const instances: WorkerInstance[] = queryList(group.Instances).map((instance: any) => ({ id: String(instance.InstanceId), lifecycle: String(instance.LifecycleState), launchedAt: null }))
     const times = await this.launchTimes(instances.map(instance => instance.id))
+    const share = group.MixedInstancesPolicy?.InstancesDistribution?.OnDemandPercentageAboveBaseCapacity
     return {
       desired: Number(group.DesiredCapacity ?? 0),
       min: Number(group.MinSize ?? 0),
       max: Number(group.MaxSize ?? 0),
       instances: instances.map(instance => ({ ...instance, launchedAt: times.get(instance.id) ?? null })),
+      // Null for a group with no mixed instances policy, which has no share to move.
+      onDemandPercentage: share === undefined || share === null || share === '' ? null : Number(share),
     }
   }
 
@@ -192,6 +201,147 @@ export class AwsWorkerGroupApi {
   async terminate(instanceId: string): Promise<void> {
     await this.query('autoscaling', 'TerminateInstanceInAutoScalingGroup', { InstanceId: instanceId, ShouldDecrementDesiredCapacity: true })
   }
+
+  /**
+   * Of the capacity above the on-demand base, the share AWS launches on-demand.
+   *
+   * Only the distribution is sent: the launch template and its instance types
+   * stay exactly as `convergeAwsWorkerGroup` wrote them. Running instances keep
+   * their market; the share decides what the next launch is.
+   */
+  async setOnDemandShare(name: string, percent: number): Promise<void> {
+    const share = Math.min(100, Math.max(0, Math.round(percent)))
+    await this.query('autoscaling', 'UpdateAutoScalingGroup', { AutoScalingGroupName: name, MixedInstancesPolicy: { InstancesDistribution: { OnDemandPercentageAboveBaseCapacity: share } } })
+  }
+
+  /**
+   * What the Spot market has done to a group since `since`: the launches AWS
+   * refused for want of capacity, and the instances it took back.
+   *
+   * Both come from AWS's own record rather than from anything the workers
+   * report, because an interrupted worker gets two minutes' notice at best and
+   * a refused launch never had a worker at all. Terminated instances stay
+   * visible to DescribeInstances for about an hour, which is longer than any
+   * window this is asked about.
+   */
+  async spotTrouble(name: string, since: Date): Promise<SpotTrouble> {
+    const refused: Date[] = []
+    const activities = queryList((await this.query('autoscaling', 'DescribeScalingActivities', { AutoScalingGroupName: name, MaxRecords: 100 }))?.Activities)
+    for (const activity of activities) {
+      const at = Date.parse(String(activity.StartTime ?? ''))
+      if (Number.isFinite(at) && at >= since.getTime() && spotLaunchRefused(activity))
+        refused.push(new Date(at))
+    }
+
+    const interrupted = new Map<string, Date>()
+    const filters = [
+      { Name: 'tag:ts-cloud:worker-group', Value: [name] },
+      { Name: 'instance-state-name', Value: ['shutting-down', 'terminated', 'stopping', 'stopped'] },
+    ]
+    for (const [id, at] of await this.interruptions(filters)) {
+      if (at === null || at.getTime() >= since.getTime())
+        interrupted.set(id, at ?? since)
+    }
+    return { refused, interrupted }
+  }
+
+  /**
+   * Which of these instances the Spot market took back. Ids that are not EC2
+   * instances, or that AWS no longer lists, are simply not in the answer - a
+   * worker named after something else was never a spot instance.
+   */
+  async interrupted(ids: string[]): Promise<Set<string>> {
+    const instances = ids.filter(id => /^i-[0-9a-f]{8,}$/.test(id))
+    if (instances.length === 0)
+      return new Set()
+    // A filter rather than InstanceId, which fails the whole call on one id AWS has forgotten.
+    return new Set((await this.interruptions([{ Name: 'instance-id', Value: instances }])).keys())
+  }
+
+  private async interruptions(filters: Array<{ Name: string, Value: string[] }>): Promise<Map<string, Date | null>> {
+    const found = new Map<string, Date | null>()
+    for (const reservation of queryList((await this.query('ec2', 'DescribeInstances', { Filter: filters }))?.reservationSet)) {
+      for (const instance of queryList(reservation?.instancesSet)) {
+        if (spotReclaimed(instance))
+          found.set(String(instance.instanceId), transitionTime(String(instance.reason ?? '')))
+      }
+    }
+    return found
+  }
+}
+
+/** What the Spot market did to a group: launches refused, instances reclaimed (id → when). */
+export interface SpotTrouble {
+  refused: Date[]
+  interrupted: Map<string, Date>
+}
+
+/** A failed launch AWS blamed on Spot capacity, not on the request being wrong. */
+export function spotLaunchRefused(activity: { StatusCode?: unknown, StatusMessage?: unknown, Description?: unknown }): boolean {
+  if (String(activity.StatusCode ?? '') !== 'Failed')
+    return false
+  const text = `${activity.StatusMessage ?? ''} ${activity.Description ?? ''}`
+  return /spot/i.test(text) && /InsufficientInstanceCapacity|UnfulfillableCapacity|capacity-not-available|MaxSpotInstanceCountExceeded|SpotMaxPriceTooLow/i.test(text)
+}
+
+/** An instance EC2 stopped or terminated because Spot wanted it back. */
+export function spotReclaimed(instance: any): boolean {
+  const code = String(instance?.stateReason?.code ?? '')
+  return code === 'Server.SpotInstanceTermination' || code === 'Server.SpotInstanceShutdown'
+}
+
+/** EC2's `reason` carries the time as "Service initiated (2026-11-10 19:49:07 GMT)". */
+export function transitionTime(reason: string): Date | null {
+  const match = reason.match(/\((\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) GMT\)/)
+  if (!match)
+    return null
+  const at = Date.parse(`${match[1]}T${match[2]}Z`)
+  return Number.isFinite(at) ? new Date(at) : null
+}
+
+export const DEFAULT_SPOT_FALLBACK_SECONDS = 1800
+
+/**
+ * Which market a spot group should launch into next.
+ *
+ * A spot group is cheaper until Spot runs dry, and then it is worse than
+ * useless: launches fail with InsufficientInstanceCapacity, and the instances
+ * that do start are taken back minutes into their work, so a queue can wait
+ * behind a group that keeps asking for machines it never keeps. Once Spot has
+ * let the group down - a refused launch or a reclaimed instance - its next
+ * launches are on-demand, and it goes back to its declared share when Spot has
+ * been quiet for `spotFallbackSeconds`. Quiet is easy to read: an on-demand
+ * group makes no spot launches, so the window starts at the last trouble.
+ *
+ * `percent` is null when nothing should change.
+ */
+export function planMarket(input: {
+  config: Pick<AwsWorkerGroupConfig, 'market' | 'spotFallbackSeconds'>
+  current: number | null
+  trouble: SpotTrouble
+  now?: Date
+}): { percent: number | null, reason: string | null } {
+  const { config, current } = input
+  const hold = config.spotFallbackSeconds ?? DEFAULT_SPOT_FALLBACK_SECONDS
+  if (!config.market.spot || current === null || hold <= 0)
+    return { percent: null, reason: null }
+
+  const now = input.now ?? new Date()
+  const times = [...input.trouble.refused, ...input.trouble.interrupted.values()].map(at => at.getTime())
+  const last = times.length > 0 ? Math.max(...times) : null
+  const troubled = last !== null && now.getTime() - last < hold * 1000
+  const declared = Math.min(100, Math.max(0, config.market.onDemandPercentageAboveBase))
+  const wanted = troubled ? 100 : declared
+  if (wanted === current)
+    return { percent: null, reason: null }
+
+  if (troubled) {
+    const refused = input.trouble.refused.length
+    const taken = input.trouble.interrupted.size
+    const what = [refused ? `${refused} spot launch(es) refused` : '', taken ? `${taken} instance(s) reclaimed` : ''].filter(Boolean).join(', ')
+    return { percent: 100, reason: `${what}: launching on-demand for ${Math.round(hold / 60)} min after the last` }
+  }
+  return { percent: declared, reason: `spot quiet for ${Math.round(hold / 60)} min: back to ${declared}% on-demand` }
 }
 
 /**

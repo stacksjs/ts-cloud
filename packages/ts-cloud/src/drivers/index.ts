@@ -11,15 +11,20 @@ export {
   AwsWorkerGroupApi,
   buildWorkerUserData,
   convergeAwsWorkerGroup,
+  DEFAULT_SPOT_FALLBACK_SECONDS,
   EC2_USER_DATA_LIMIT,
   flattenQuery,
+  planMarket,
   planWorkerGroup,
   queryList,
   queryResult,
+  spotLaunchRefused,
+  spotReclaimed,
   subnetCidr,
+  transitionTime,
   UBUNTU_2404_X86_IMAGE,
 } from './aws/worker-group'
-export type { AwsTransport, AwsWorkerGroupConfig, Worker, WorkerGroupPlan, WorkerInstance } from './aws/worker-group'
+export type { AwsTransport, AwsWorkerGroupConfig, SpotTrouble, Worker, WorkerGroupPlan, WorkerInstance } from './aws/worker-group'
 export { HetznerDriver } from './hetzner/driver'
 export { isBoxMode, LocalBoxDriver } from './local-box/driver'
 export { assertSshComputeConfig, SSH_DEPLOY_STORAGE_PATH, SSH_SKIP_BOOTSTRAP_ENV, SshDriver } from './ssh/driver'

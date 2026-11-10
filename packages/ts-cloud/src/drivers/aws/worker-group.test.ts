@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { AwsWorkerGroupConfig } from './worker-group'
-import { AwsWorkerGroupApi, awsWorkerGroupApi, buildWorkerUserData, convergeAwsWorkerGroup, flattenQuery, onEc2, planWorkerGroup, queryList, queryResult, subnetCidr } from './worker-group'
+import { AwsWorkerGroupApi, awsWorkerGroupApi, buildWorkerUserData, convergeAwsWorkerGroup, flattenQuery, onEc2, planMarket, planWorkerGroup, queryList, queryResult, spotLaunchRefused, spotReclaimed, subnetCidr, transitionTime } from './worker-group'
 
 const config: AwsWorkerGroupConfig = {
   name: 'ci-workers',
@@ -306,5 +306,103 @@ describe('credentials for the scaler', () => {
     expect(onEc2(path => path.endsWith('uuid') ? 'EC2E1916-9099-7CAF-FD21-012345ABCDEF' : null)).toBe(true)
     expect(onEc2(path => path.endsWith('board_asset_tag') ? 'Not Specified' : null)).toBe(false)
     expect(onEc2(() => null)).toBe(false)
+  })
+})
+
+describe('when Spot runs dry', () => {
+  const quiet = { refused: [], interrupted: new Map<string, Date>() }
+
+  test('launches on-demand after a refused spot launch, and says why', () => {
+    const plan = planMarket({ config, current: 0, trouble: { refused: [ago(120)], interrupted: new Map() }, now })
+    expect(plan.percent).toBe(100)
+    expect(plan.reason).toContain('1 spot launch(es) refused')
+  })
+
+  test('launches on-demand after an instance is reclaimed', () => {
+    expect(planMarket({ config, current: 0, trouble: { refused: [], interrupted: new Map([['i-a', ago(60)]]) }, now }).percent).toBe(100)
+  })
+
+  test('stays on-demand while the trouble is recent, without asking again', () => {
+    expect(planMarket({ config, current: 100, trouble: { refused: [ago(600)], interrupted: new Map() }, now }).percent).toBeNull()
+  })
+
+  test('goes back to the declared share once spot has been quiet for the window', () => {
+    const plan = planMarket({ config, current: 100, trouble: { refused: [ago(1801)], interrupted: new Map() }, now })
+    expect(plan.percent).toBe(0)
+    expect(plan.reason).toContain('back to 0% on-demand')
+    expect(planMarket({ config, current: 100, trouble: quiet, now }).percent).toBe(0)
+  })
+
+  test('changes nothing for a quiet spot group, an on-demand group, or one with fallback off', () => {
+    expect(planMarket({ config, current: 0, trouble: quiet, now }).percent).toBeNull()
+    const troubled = { refused: [ago(60)], interrupted: new Map() }
+    expect(planMarket({ config: { ...config, market: { ...config.market, spot: false } }, current: 100, trouble: troubled, now }).percent).toBeNull()
+    expect(planMarket({ config: { ...config, spotFallbackSeconds: 0 }, current: 0, trouble: troubled, now }).percent).toBeNull()
+    expect(planMarket({ config, current: null, trouble: troubled, now }).percent).toBeNull()
+  })
+
+  test('tells capacity refusals from requests that are simply wrong', () => {
+    expect(spotLaunchRefused({ StatusCode: 'Failed', StatusMessage: 'Could not launch Spot Instances. InsufficientInstanceCapacity - There is no Spot capacity available that matches your request.' })).toBe(true)
+    expect(spotLaunchRefused({ StatusCode: 'Failed', StatusMessage: 'Could not launch Spot Instances. UnfulfillableCapacity - Unable to fulfill capacity due to your request configuration.' })).toBe(true)
+    expect(spotLaunchRefused({ StatusCode: 'Successful', Description: 'Launching a new EC2 instance: i-1' })).toBe(false)
+    expect(spotLaunchRefused({ StatusCode: 'Failed', StatusMessage: 'The security group sg-1 does not exist' })).toBe(false)
+  })
+
+  test('reads a reclamation and its time from EC2', () => {
+    expect(spotReclaimed({ stateReason: { code: 'Server.SpotInstanceTermination' } })).toBe(true)
+    expect(spotReclaimed({ stateReason: { code: 'Client.InstanceInitiatedShutdown' } })).toBe(false)
+    expect(transitionTime('Service initiated (2026-11-10 19:49:07 GMT)')?.toISOString()).toBe('2026-11-10T19:49:07.000Z')
+    expect(transitionTime('')).toBeNull()
+  })
+
+  function fake(answers: Record<string, any>) {
+    const calls: { action: string, params: URLSearchParams }[] = []
+    const api = new AwsWorkerGroupApi({
+      request: async (options: any) => {
+        const params = new URLSearchParams(options.body)
+        const action = String(params.get('Action'))
+        calls.push({ action, params })
+        return { [`${action}Response`]: { [`${action}Result`]: answers[action] ?? {} } }
+      },
+    }, 'us-east-1')
+    return { api, calls }
+  }
+
+  test('collects refused launches and reclaimed instances since a time', async () => {
+    const { api, calls } = fake({
+      DescribeScalingActivities: { Activities: { member: [
+        { StatusCode: 'Failed', StatusMessage: 'Could not launch Spot Instances. InsufficientInstanceCapacity', StartTime: ago(300).toISOString() },
+        { StatusCode: 'Failed', StatusMessage: 'Could not launch Spot Instances. InsufficientInstanceCapacity', StartTime: ago(7200).toISOString() },
+        { StatusCode: 'Successful', Description: 'Launching a new EC2 instance: i-b', StartTime: ago(200).toISOString() },
+      ] } },
+      DescribeInstances: { reservationSet: { item: { instancesSet: { item: [
+        { instanceId: 'i-a', stateReason: { code: 'Server.SpotInstanceTermination' }, reason: `Service initiated (${ago(240).toISOString().slice(0, 19).replace('T', ' ')} GMT)` },
+        { instanceId: 'i-c', stateReason: { code: 'Client.UserInitiatedShutdown' }, reason: '' },
+      ] } } } },
+    })
+    const trouble = await api.spotTrouble('ci-workers', ago(1800))
+    expect(trouble.refused).toHaveLength(1)
+    expect([...trouble.interrupted.keys()]).toEqual(['i-a'])
+    const describe = calls.find(call => call.action === 'DescribeInstances')!.params
+    expect(describe.get('Filter.1.Name')).toBe('tag:ts-cloud:worker-group')
+    expect(describe.get('Filter.1.Value.1')).toBe('ci-workers')
+  })
+
+  test('answers which runners were reclaimed by filter, so a forgotten id cannot fail the call', async () => {
+    const { api, calls } = fake({ DescribeInstances: { reservationSet: { item: { instancesSet: { item: { instanceId: 'i-0abc12345', stateReason: { code: 'Server.SpotInstanceTermination' }, reason: '' } } } } } })
+    expect([...await api.interrupted(['i-0abc12345', 'hq-runner-01'])]).toEqual(['i-0abc12345'])
+    expect(calls[0]!.params.get('Filter.1.Name')).toBe('instance-id')
+    expect(calls[0]!.params.get('Filter.1.Value.2')).toBeNull()
+    expect(await api.interrupted(['hq-runner-01'])).toEqual(new Set())
+    expect(calls).toHaveLength(1)
+  })
+
+  test('moves only the on-demand share, and reads it back', async () => {
+    const { api, calls } = fake({ DescribeAutoScalingGroups: { AutoScalingGroups: { member: { DesiredCapacity: 1, MinSize: 0, MaxSize: 6, Instances: '', MixedInstancesPolicy: { InstancesDistribution: { OnDemandPercentageAboveBaseCapacity: '100' } } } } } })
+    await api.setOnDemandShare('ci-workers', 100)
+    const update = calls.find(call => call.action === 'UpdateAutoScalingGroup')!.params
+    expect(update.get('MixedInstancesPolicy.InstancesDistribution.OnDemandPercentageAboveBaseCapacity')).toBe('100')
+    expect([...update.keys()].some(key => key.includes('LaunchTemplate'))).toBe(false)
+    expect((await api.describeGroup('ci-workers'))?.onDemandPercentage).toBe(100)
   })
 })
