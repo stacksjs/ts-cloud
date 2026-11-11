@@ -3,6 +3,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { expect, test } from 'bun:test'
+import { packageCandidateRegistry } from './candidate-registry'
 
 // Build the workspace explicitly first. A supplied published archive never builds.
 test('the installed core SDK delivers its canonical JSON schema and precise public types', async () => {
@@ -14,6 +15,8 @@ test('the installed core SDK delivers its canonical JSON schema and precise publ
   const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
   const commands: Array<Record<string, unknown>> = []
   const receipt: Record<string, unknown> = { directory, commands, completed: false }
+  let registry: Awaited<ReturnType<typeof packageCandidateRegistry>> | undefined
+  const candidateArchives: Array<{ name: string, archive: string }> = []
   async function run(phase: string, args: string[], cwd: string) {
     const env = { ...process.env }
     for (const key of Object.keys(env)) {
@@ -56,9 +59,14 @@ test('the installed core SDK delivers its canonical JSON schema and precise publ
       // belongs to core's manifest; published checks resolve AWS from npm.
       expect(awsManifest.name).toBe('@ts-cloud/aws-types')
       expect(manifest.dependencies['@ts-cloud/aws-types']).toBe(awsManifest.version)
-      dependencies['@ts-cloud/aws-types'] = `file:${awsArchive}`
+      candidateArchives.push({ name: '@ts-cloud/core', archive }, { name: '@ts-cloud/aws-types', archive: awsArchive })
+      registry = await packageCandidateRegistry(candidateArchives)
+      dependencies['@ts-cloud/core'] = manifest.version
+      receipt.registryProvider = { kind: 'prepublication-original-archives', url: registry.url, requests: registry.requests }
     }
     await mkdir(consumer)
+    const registryURL = registry?.url ?? 'https://registry.npmjs.org/'
+    await writeFile(join(consumer, '.npmrc'), `registry=${registryURL}\n@ts-cloud:registry=${registryURL}\nalways-auth=false\n`)
     await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module', dependencies, devDependencies: { typescript: '7.0.2', '@types/bun': '1.4.4' } }))
     const compilerOptions = { target: 'ESNext', module: 'ESNext', moduleResolution: 'Bundler', strict: true, skipLibCheck: false, paths: {}, types: ['bun'], noEmit: true }
     receipt.compilerOptions = compilerOptions
@@ -76,15 +84,18 @@ const safeMinimum: false = null as unknown as IsAny<typeof cloudConfigSchema.pro
     let lockSHA256: string | undefined
     for (const flags of [[], ['--frozen-lockfile']]) {
       const phase = flags.length ? 'frozen' : 'normal'
-      const installed = await run(`${phase}-install`, [process.execPath, '--no-env-file', 'install', '--registry=https://registry.npmjs.org', ...flags], consumer)
+      const installed = await run(`${phase}-install`, [process.execPath, '--no-env-file', 'install', `--registry=${registryURL}`, ...flags], consumer)
       expect(installed.code, installed.output).toBe(0)
       const lock = hash(await readFile(join(consumer, 'bun.lock')))
       if (lockSHA256) expect(lock).toBe(lockSHA256)
       else { lockSHA256 = lock; receipt.lockSHA256 = lock }
-      for (const [name, file] of files) {
-        expect(name.startsWith('package/') && !name.split('/').includes('..')).toBe(true)
-        const installedFile = await readFile(join(consumer, 'node_modules/@ts-cloud/core', name.slice('package/'.length)))
-        expect(hash(installedFile), name).toBe(hash(new Uint8Array(await file.arrayBuffer())))
+      for (const owner of candidateArchives.length ? candidateArchives : [{ name: manifest.name, archive }]) {
+        const original = await new Bun.Archive(await readFile(owner.archive)).files()
+        for (const [name, file] of original) {
+          expect(name.startsWith('package/') && !name.split('/').includes('..')).toBe(true)
+          const installedFile = await readFile(join(consumer, 'node_modules', owner.name, name.slice('package/'.length)))
+          expect(hash(installedFile), `${owner.name}/${name}`).toBe(hash(new Uint8Array(await file.arrayBuffer())))
+        }
       }
       const compiler = JSON.parse(await readFile(join(consumer, 'node_modules/typescript/package.json'), 'utf8'))
       expect(compiler.version).toBe('7.0.2')
@@ -103,6 +114,7 @@ const safeMinimum: false = null as unknown as IsAny<typeof cloudConfigSchema.pro
     receipt.completed = true
   }
   finally {
+    await registry?.stop()
     await writeFile(join(directory, 'receipt.json'), JSON.stringify(receipt, null, 2))
     await rm(consumer, { recursive: true, force: true })
     if (!process.env.TS_CLOUD_PACKAGE_EVIDENCE) await rm(directory, { recursive: true, force: true })
