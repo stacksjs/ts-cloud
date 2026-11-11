@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches:
       - main
@@ -131,8 +132,31 @@ jobs:
           sudo env TS_CLOUD_TEST_VOLUME_PATH="$volume" TS_CLOUD_TEST_VOLUME_DEVICE="$device" \
             "$(command -v bun)" test ./packages/ts-cloud/test/integration/persistent-storage-mounts.test.ts
 
+  public-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Provision qualified publication tools
+        uses: pantry-pm/pantry/packages/action@362da3ef0602f51232ab9431da8d05c84c5f49ba # v0.11.197
+        with:
+          version: '0.11.197'
+          install: 'false'
+          packages: bun.com@1.4.4 git-scm.org@2.53.0
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Qualify the installed public core SDK
+        run: bun run test:package
+        env:
+          TS_CLOUD_PACKAGE_EVIDENCE: ${{ runner.temp }}/ts-cloud-public-sdk
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: ts-cloud-public-sdk-${{ github.run_id }}
+          path: ${{ runner.temp }}/ts-cloud-public-sdk
+          if-no-files-found: error
+
   publish-commit:
-    needs: [lint, typecheck, test, persistent-storage]
+    needs: [lint, typecheck, test, persistent-storage, public-sdk]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PANTRY_PUBLISH_COMMITS == 'true'
 

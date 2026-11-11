@@ -7,7 +7,12 @@ on:
   workflow_dispatch:
 
 jobs:
+  gate:
+    if: ${{ !endsWith(github.ref_name, '.x') }}
+    uses: ./.github/workflows/ci.yml
+
   npm:
+    needs: [gate]
     runs-on: ubuntu-latest
     # Release commits push three tags at once (vX.Y.Z plus the rolling vX.Y.x
     # and vX.x.x aliases, all pointing at the same commit). Only run for the
@@ -25,13 +30,29 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Pantry
-        uses: home-lang/pantry/packages/action@main
+        uses: pantry-pm/pantry/packages/action@362da3ef0602f51232ab9431da8d05c84c5f49ba # v0.11.197
+        with:
+          version: '0.11.197'
+          install: 'false'
+          packages: bun.com@1.4.4 git-scm.org@2.53.0
 
       - name: Install Dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build Packages
         run: bun run build
+
+      - name: Qualify built artifacts before immutable upload
+        run: bun run test:package
+        env:
+          TS_CLOUD_PACKAGE_EVIDENCE: ${{ runner.temp }}/ts-cloud-public-sdk
+
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: ts-cloud-public-sdk-publication
+          path: ${{ runner.temp }}/ts-cloud-public-sdk
+          if-no-files-found: error
 
       # npm can take minutes to show an accepted upload. pantry then reports
       # it pending, holds back the packages that depend on it, and exits 1:
@@ -41,7 +62,7 @@ jobs:
       - name: Publish
         run: |
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if pantry publish --npm --access public; then exit 0; fi
+            if pantry publish --npm --access public --ignore-scripts; then exit 0; fi
             echo "Not everything is public yet; publishing again in 60s (attempt $attempt of 10)"
             sleep 60
           done
@@ -50,8 +71,9 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
-        uses: home-lang/pantry/packages/action@main
+        uses: pantry-pm/pantry/packages/action@362da3ef0602f51232ab9431da8d05c84c5f49ba # v0.11.197
         with:
+          version: '0.11.197'
           install: 'false'
           release: 'true'
           release-tag: ${{ github.ref_name }}

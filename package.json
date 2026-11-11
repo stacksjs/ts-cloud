@@ -61,7 +61,8 @@
     "build:docs": "bun --bun bunpress build docs",
     "preview:docs": "bun --bun bunpress preview docs",
     "deploy:docs": "bun x bunpress deploy --domain ts-cloud.stacksjs.com",
-    "typecheck": "bun --bun tsc --noEmit"
+    "typecheck": "bun --bun tsc --noEmit",
+    "test:package": "bun test ./packages/core/test/package.acceptance.ts"
   },
   "devDependencies": {
     "@stacksjs/bumpx": "0.2.25",

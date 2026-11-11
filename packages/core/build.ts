@@ -37,6 +37,10 @@ function copyRuntimeAssets(): void {
   const src = `${import.meta.dir}/src`
   const dist = `${import.meta.dir}/dist`
 
+  // The public schema declaration imports this canonical JSON asset.
+  mkdirSync(`${dist}/schema`, { recursive: true })
+  cpSync(`${src}/schema/cloud-config.schema.json`, `${dist}/schema/cloud-config.schema.json`)
+
   // Node/Bun runtime adapter (copied beside a generated bootstrap, then bundled).
   mkdirSync(`${dist}/runtime`, { recursive: true })
   cpSync(`${src}/serverless/runtime/adapter.ts`, `${dist}/runtime/adapter.ts`)
