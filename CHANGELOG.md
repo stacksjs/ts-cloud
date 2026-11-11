@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.123...v0.16.124)
+
+## 🐛 Bug Fixes
+
+- ship and qualify the public core JSON schema ([41b8d6d](https://github.com/stacksjs/ts-cloud/commit/41b8d6d)) _(by Chris <chris@stacksjs.com>)_ ([#216](https://github.com/stacksjs/ts-cloud/issues/216))
+
+## 🔧 Chores
+
+- release v0.16.124 ([743df3b](https://github.com/stacksjs/ts-cloud/commit/743df3b)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.122...v0.16.123)
 
 ## ✨ Features
