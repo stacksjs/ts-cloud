@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.124...v0.16.125)
+
+## 🐛 Bug Fixes
+
+- qualify unpublished transitive SDK archives through the package graph ([0250570](https://github.com/stacksjs/ts-cloud/commit/0250570)) _(by Chris <chris@stacksjs.com>)_ ([#216](https://github.com/stacksjs/ts-cloud/issues/216))
+
+## 🔧 Chores
+
+- release v0.16.125 ([17d3275](https://github.com/stacksjs/ts-cloud/commit/17d3275)) _(by Chris <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.123...v0.16.124)
 
 ## 🐛 Bug Fixes
