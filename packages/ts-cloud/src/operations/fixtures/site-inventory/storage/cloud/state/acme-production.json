@@ -1,0 +1,11 @@
+{
+  "provider": "hetzner",
+  "stackName": "acme-production",
+  "serverId": 4201,
+  "serverName": "acme-production-app",
+  "firewallId": 77,
+  "publicIp": "203.0.113.10",
+  "publicIpv6": "2001:db8:1234:5678::/64",
+  "deployStoragePath": "/var/ts-cloud/staging",
+  "sshUser": "deploy"
+}

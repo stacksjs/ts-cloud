@@ -257,6 +257,67 @@ export function sshKnownHostsPath(cwd: string = process.cwd()): string {
   return resolveStatePath(cwd, 'ssh', 'known_hosts')
 }
 
+/**
+ * The host-key policy for a person at a keyboard: trust on first use, refuse a
+ * changed key ever after.
+ *
+ * A deploy reaches a box the provider API just vouched for and so checks
+ * nothing ({@link SSH_INSECURE_HOST_KEY_OPTS}). An interactive tool has no
+ * such voucher at the moment it connects: it opens a shell on a production
+ * box from a laptop on whatever network the laptop is on, and pipes code into
+ * it. `accept-new` rather than `pin` because it needs no scan before the first
+ * command, which is what "one click" means; a caller that can afford the
+ * round-trip picks `pin` and calls `ensureHostKey` first.
+ */
+export const INTERACTIVE_SSH_HOST_KEY_POLICY: Exclude<SshHostKeyPolicy, 'insecure'> = 'accept-new'
+
+export interface ResolveSshHostKeyOptions {
+  /** known_hosts file the policy reads and writes. @default sshKnownHostsPath(cwd) */
+  knownHostsFile?: string
+  /** Project root the default known_hosts path is resolved against. */
+  cwd?: string
+}
+
+/**
+ * Turn a policy name into the `hostKey` a transport takes.
+ *
+ * The one place a name becomes options, so the ssh driver, the site inventory
+ * and the runtime adapters cannot disagree about which known_hosts file a
+ * policy means. `'insecure'` stays available because it has to be asked for by
+ * name: nothing here defaults to it.
+ */
+export function resolveSshHostKey(
+  policy: SshHostKeyPolicy = INTERACTIVE_SSH_HOST_KEY_POLICY,
+  options: ResolveSshHostKeyOptions = {},
+): SshTransportOptions['hostKey'] {
+  if (policy === 'insecure') return 'insecure'
+  if (policy !== 'pin' && policy !== 'accept-new')
+    throw new Error(`Invalid SSH host-key policy '${String(policy)}'. Use one of: pin, accept-new, insecure.`)
+  return { policy, knownHostsFile: options.knownHostsFile ?? sshKnownHostsPath(options.cwd) }
+}
+
+export interface InteractiveSshOptions extends ResolveSshHostKeyOptions {
+  user: string
+  identityFile: string
+  /** @default 22 */
+  port?: number
+  /** @default INTERACTIVE_SSH_HOST_KEY_POLICY */
+  hostKeyPolicy?: SshHostKeyPolicy
+  /** @default 30 */
+  connectTimeoutSec?: number
+}
+
+/** {@link SshTransportOptions} for an interactive session: checked host key unless told otherwise. */
+export function interactiveSshOptions(options: InteractiveSshOptions): SshTransportOptions {
+  return {
+    user: options.user,
+    identityFile: options.identityFile,
+    ...(options.port !== undefined ? { port: options.port } : {}),
+    hostKey: resolveSshHostKey(options.hostKeyPolicy, options),
+    ...(options.connectTimeoutSec !== undefined ? { connectTimeoutSec: options.connectTimeoutSec } : {}),
+  }
+}
+
 export interface SystemSshTransportDeps {
   run?: CommandRunner
   scan?: typeof scanHostKey

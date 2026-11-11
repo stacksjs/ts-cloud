@@ -40,7 +40,7 @@ import { buildOwnedServicesReconcileScript } from '../shared/compute-provision'
 import { readDriverState, writeDriverState } from '../shared/driver-state'
 import { lanTlsMode, localCaCertPath, usesRpxProxy } from '../shared/rpx-gateway'
 import { summarizeRemoteFailures, surfaceRemoteNotices } from '../shared/remote-failure'
-import { sshKnownHostsPath, SystemSshTransport } from '../shared/ssh-transport'
+import { resolveSshHostKey, SystemSshTransport } from '../shared/ssh-transport'
 import { enabled as vitessEnabled } from '../shared/vitess-provision'
 import { assertArchSupported, buildSshBootstrapScript, SSH_BOOTSTRAP_VERSION } from './bootstrap'
 import { resolveSshSettings } from './config'
@@ -172,10 +172,7 @@ export class SshDriver implements CloudDriver {
         user: host.user,
         port: host.port,
         identityFile: host.privateKeyPath,
-        hostKey:
-          this.settings.hostKey === 'insecure'
-            ? 'insecure'
-            : { policy: this.settings.hostKey, knownHostsFile: sshKnownHostsPath(this.cwd) },
+        hostKey: resolveSshHostKey(this.settings.hostKey, { cwd: this.cwd }),
       })
     }
     return this.transportInstance

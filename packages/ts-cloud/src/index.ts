@@ -446,6 +446,12 @@ export {
   // move those are still the source.
   buildRpxConfig,
   buildRpxFragmentRefreshScript,
+  // Host-key policy for interactive sessions: checked by default, unlike a deploy.
+  buildSshArgsFor,
+  INTERACTIVE_SSH_HOST_KEY_POLICY,
+  interactiveSshOptions,
+  resolveSshHostKey,
+  sshKnownHostsPath,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
 export type {
@@ -453,9 +459,12 @@ export type {
   FirstBootBundle,
   FirstBootIdentity,
   FirstBootOs,
+  InteractiveSshOptions,
   ResolvedSshSettings,
+  ResolveSshHostKeyOptions,
   SshDriverOptions,
   SshDriverState,
+  SshHostKeyPolicy,
   SshPreflightFacts,
   SshTransport,
   SshTransportOptions,

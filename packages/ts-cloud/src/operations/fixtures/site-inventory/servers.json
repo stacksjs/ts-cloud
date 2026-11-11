@@ -1,0 +1,22 @@
+[
+  {
+    "id": 4201,
+    "name": "acme-production-app",
+    "status": "running",
+    "labels": { "ts-cloud/project": "acme", "ts-cloud/environment": "production", "ts-cloud/role": "app" },
+    "public_net": { "ipv4": { "ip": "203.0.113.99" }, "ipv6": { "ip": "2001:db8:1234:5678::/64" } },
+    "server_type": { "name": "cx32" },
+    "location": { "name": "fsn1" },
+    "datacenter": null
+  },
+  {
+    "id": 4300,
+    "name": "other-production-app",
+    "status": "running",
+    "labels": { "ts-cloud/project": "other", "ts-cloud/environment": "production", "ts-cloud/role": "app" },
+    "public_net": { "ipv4": { "ip": "198.51.100.7" }, "ipv6": null },
+    "server_type": { "name": "cx22" },
+    "location": { "name": "nbg1" },
+    "datacenter": null
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "provider": "hetzner",
+  "stackName": "tenant-production",
+  "serverId": 4201,
+  "serverName": "acme-production-app",
+  "publicIp": "203.0.113.10",
+  "publicIpv6": "2001:db8:1234:5678::1",
+  "sshUser": "root"
+}

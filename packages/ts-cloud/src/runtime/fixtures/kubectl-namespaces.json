@@ -1,0 +1,9 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    { "metadata": { "name": "shop", "creationTimestamp": "2026-01-02T00:00:00Z" }, "status": { "phase": "Active" } },
+    { "metadata": { "name": "default", "creationTimestamp": "2026-01-01T00:00:00Z" }, "status": { "phase": "Active" } },
+    { "metadata": { "name": "old", "creationTimestamp": "2026-01-03T00:00:00Z" }, "status": { "phase": "Terminating" } }
+  ]
+}

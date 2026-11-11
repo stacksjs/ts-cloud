@@ -58,6 +58,7 @@ const config: BunPressConfig = {
         { text: 'Multi-Region', link: '/features/multi-region' },
         { text: 'Environments', link: '/features/environments' },
         { text: 'SFTP File Transfer', link: '/features/sftp' },
+        { text: 'Remote Run', link: '/features/remote-run' },
         { text: 'Mail Server', link: '/features/mail' },
         { text: 'Cost Analysis', link: '/features/cost' },
         { text: 'Security Scanning', link: '/features/security' },

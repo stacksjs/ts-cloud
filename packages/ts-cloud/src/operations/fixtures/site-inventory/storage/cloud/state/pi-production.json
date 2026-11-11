@@ -1,0 +1,10 @@
+{
+  "provider": "ssh",
+  "stackName": "pi-production",
+  "host": "pi.lan",
+  "sshUser": "chris",
+  "sshPort": 2222,
+  "hostKeyFingerprint": "SHA256:fixturefixturefixturefixturefixturefixture0",
+  "lanIp": "192.168.1.40",
+  "profile": "raspberry-pi"
+}

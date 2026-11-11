@@ -1,5 +1,5 @@
-export type WorkloadProvider = 'systemd' | 'docker' | 'oci' | 'ecs' | 'lambda'
-export type WorkloadKind = 'service' | 'container' | 'task' | 'function' | 'process'
+export type WorkloadProvider = 'systemd' | 'docker' | 'kubernetes' | 'oci' | 'ecs' | 'lambda'
+export type WorkloadKind = 'service' | 'container' | 'pod' | 'task' | 'function' | 'process'
 export type WorkloadStatus = 'starting' | 'running' | 'degraded' | 'stopping' | 'stopped' | 'failed' | 'unknown'
 export type LifecycleAction =
   'start' | 'stop' | 'restart' | 'redeploy' | 'scale' | 'logs' | 'exec' | 'inspect' | 'files'
