@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.125...v0.16.126)
+
+## ✨ Features
+
+- **runtime**: site inventory, kubectl adapter and checked host keys for remote runs ([0e44fb6](https://github.com/stacksjs/ts-cloud/commit/0e44fb6)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.126 ([ed702be](https://github.com/stacksjs/ts-cloud/commit/ed702be)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.124...v0.16.125)
 
 ## 🐛 Bug Fixes
