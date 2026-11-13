@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.126...v0.16.127)
+
+## 🐛 Bug Fixes
+
+- **rpx**: fail the renewal run when a served hostname's certificate will not renew ([685f38f](https://github.com/stacksjs/ts-cloud/commit/685f38f)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.127 ([032e04d](https://github.com/stacksjs/ts-cloud/commit/032e04d)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.125...v0.16.126)
 
 ## ✨ Features
