@@ -363,6 +363,31 @@ ignored, and `cloud deploy` warns if they are set, so a leftover `root` can neve
 turn the site back into a release that would overwrite the running service. A
 `redirect` on the same site wins over `proxyTo`.
 
+### Certificate coverage check
+
+The gateway serves every hostname in every `/etc/rpx/sites.d/<slug>.json`. A
+certificate is renewed only for the hostnames some project's
+`/etc/rpx/renew-certs-<slug>.sh` names. Each renewal run, on every deploy and
+every night, ends by comparing the two and fails its
+`rpx-cert-renew-<slug>.service` unit with one line per finding when
+
+- the gateway serves a hostname no renewal script covers, for example one
+  routed by a site file a renamed project left behind,
+- a certificate the project renews is within 14 days of expiry or already
+  expired (renewal starts 30 days out, so it has been failing), or
+- a hostname the project renews has no certificate on disk.
+
+```text
+rpx-cert-coverage: example.org is served by the gateway (old-name.json) but no
+renewal script covers it. Its certificate expires in 41 days and will not renew.
+```
+
+Read the findings with `journalctl -u rpx-cert-renew-<slug>.service`. An
+uncovered hostname is reported by every project on the box, because it has no
+owner left to report it. Fix it by declaring the hostname in the project that
+owns it, as a site `domain` or one of its `aliases`, and deploying, or by
+removing the stale site file.
+
 ### Scoping the pre-deployment secret scan
 
 The scan walks the project directory before every deploy and blocks on what it

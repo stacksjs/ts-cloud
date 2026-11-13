@@ -23,6 +23,7 @@ import type { CloudConfig, ComputeProxyConfig, ResolvedMailService, RpxLoadBalan
 import { isIP } from 'node:net'
 import { isManagementDashboardSiteName, mailWebmailSites } from '@ts-cloud/core'
 import { resolveProxyUpstreams, resolveSiteKind } from '../../deploy/site-target'
+import { renderCertCoverageCheck, RPX_CERT_COVERAGE_WARN_DAYS } from './cert-coverage'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
 export const DEFAULT_RPX_CERTS_DIR = '/etc/rpx/certs'
@@ -91,15 +92,19 @@ export function gatewayHostnames(
   }
 
   // Aliases are routed exactly like the domain (see buildRpxConfigInternal),
-  // so they need records exactly like it: a wildcard alias is published as
-  // the wildcard record. Added after the www pass, which only ever applies to
-  // a site's own apex.
-  const aliases = new Set<string>()
+  // so they need records exactly like it. A literal alias joins the set
+  // before the www pass, because the route builder gives an apex alias its
+  // own `www.` redirect and a renewed certificate for it: left out here, that
+  // name was routed and certified but never published. A wildcard alias is
+  // published as the wildcard record and takes no part in the www pass.
+  const wildcards = new Set<string>()
   for (const site of Object.values(sites)) {
     if (!site?.domain || resolveSiteKind(site) === 'bucket') continue
     for (const alias of site.aliases ?? []) {
       const host = String(alias).trim().toLowerCase()
-      if (host && host !== site.domain) aliases.add(host)
+      if (!host || host === site.domain) continue
+      if (isWildcardHost(host)) wildcards.add(host)
+      else hosts.add(host)
     }
   }
 
@@ -110,7 +115,7 @@ export function gatewayHostnames(
     }
   }
 
-  for (const alias of aliases) hosts.add(alias)
+  for (const wildcard of wildcards) hosts.add(wildcard)
 
   return [...hosts]
 }
@@ -1377,6 +1382,9 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
   // app's deploy never touches another app's renewal (Forge-style independence).
   const slug = (options.slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
   const renewScriptPath = `${RPX_DIR}/renew-certs-${slug}.sh`
+  // Per slug, like the script that runs it: two projects on different ts-cloud
+  // releases must not overwrite each other's copy.
+  const coverageCheckPath = `${RPX_DIR}/cert-coverage-${slug}.js`
   const renewServiceName = rpxCertRenewServiceName(slug)
   const renewTimerName = `rpx-cert-renew-${slug}.timer`
   // Named in the unit's Description and the script header, so `systemctl
@@ -1454,6 +1462,10 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
     'rm -f "$CERTS"/*.chain.crt',
     'after=$(cat "$CERTS"/*.crt 2>/dev/null | sha256sum)',
     `[ "$before" = "$after" ] || systemctl restart ${RPX_SERVICE_NAME}`,
+    // Last, and the script's exit status: a hostname the gateway serves that
+    // no renewal script covers, or a certificate inside the warning window,
+    // fails this unit instead of expiring unnoticed (see cert-coverage.ts).
+    `$BUN ${coverageCheckPath} '${RPX_SITES_DIR}' '${RPX_DIR}' "$CERTS" 'renew-certs-${slug}.sh' '${RPX_CERT_COVERAGE_WARN_DAYS}' || exit 1`,
   ].join('\n')
 
   const renewService = [
@@ -1485,6 +1497,7 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
     // The shared install is the owner's; a tenant renews its own certs with
     // the client already on the box.
     ...(options.tenant ? [] : [`(cd ${RPX_INSTALL_DIR} && ${bunBin} add @stacksjs/tlsx@${tlsxVersion}) || true`]),
+    ...writeFileHeredoc(coverageCheckPath, renderCertCoverageCheck(), 'TS_CLOUD_CERT_COVERAGE_EOF'),
     ...writeFileHeredoc(renewScriptPath, renewScript, 'TS_CLOUD_RENEW_EOF'),
     `chmod +x ${renewScriptPath}`,
     ...writeFileHeredoc(`/etc/systemd/system/${renewServiceName}`, renewService, 'TS_CLOUD_RENEW_SVC_EOF'),

@@ -234,6 +234,17 @@ export {
   RPX_LAUNCHER_PATH,
   RPX_SERVICE_NAME,
 } from './shared/rpx-gateway'
+export {
+  CERT_COVERAGE_SOURCE,
+  certCoverageReport,
+  renderCertCoverageCheck,
+  RPX_CERT_COVERAGE_WARN_DAYS,
+} from './shared/cert-coverage'
+export type {
+  CertCoverageFragment,
+  CertCoverageInput,
+  CertCoverageReport,
+} from './shared/cert-coverage'
 export type {
   BuildRpxConfigOptions,
   BuildRpxFragmentRefreshOptions,

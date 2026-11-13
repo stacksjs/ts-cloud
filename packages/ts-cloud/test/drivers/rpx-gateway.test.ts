@@ -1214,7 +1214,10 @@ describe('site aliases', () => {
     const plain = buildRpxConfig({ main: { domain: 'hq.training', root: '.', start: 'bun serve.js', port: 3032 } }, { proxy: tlsProxy })
     expect(plain.wildcardCerts).toBeUndefined()
     const plainScript = buildCertManagementCommands({ config: plain, proxy: tlsProxy }).join('\n')
-    expect(plainScript).not.toContain('wildcard')
+    // No wildcard renewal lines. (The coverage check shipped beside the script
+    // knows the word; the renewal script itself must not use it.)
+    expect(plainScript).not.toMatch(/^wildcard[ (]/m)
+    expect(plainScript).not.toContain('dns-01')
     expect(plainScript).toContain('Description=Issue/renew rpx gateway TLS certs for app (tlsx http-01)')
   })
 })
