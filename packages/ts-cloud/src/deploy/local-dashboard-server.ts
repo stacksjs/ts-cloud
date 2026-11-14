@@ -2056,6 +2056,13 @@ export async function startLocalDashboardServer(
       },
     },
     async fetch(req, runtimeServer) {
+      // Bun builds req.url from the request line and the Host header. A
+      // request with no usable host (a scanner sending an empty Host) arrives
+      // as a bare path, and `new URL(req.url)` below threw: a 500 and a
+      // stack in the journal for what is the client's malformed request.
+      if (!URL.canParse(req.url))
+        return new Response('Bad Request', { status: 400, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } })
+
       const auditStartedAt = Date.now()
       const auditRequest = req.clone()
       const auditCorrelationId = req.headers.get('x-request-id')?.slice(0, 128) || crypto.randomUUID()

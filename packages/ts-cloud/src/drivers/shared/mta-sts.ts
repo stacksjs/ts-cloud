@@ -145,6 +145,9 @@ export function buildMtaStsServer(policy: MtaStsPolicy, port: number = MTA_STS_P
     `  port: ${port},`,
     `  hostname: '127.0.0.1',`,
     `  fetch(req) {`,
+    // A request without a usable Host has a bare path for a URL; answering it
+    // 400 keeps `new URL` from throwing a 500 for the client's own mistake.
+    `    if (!URL.canParse(req.url)) return new Response('Bad Request', { status: 400 })`,
     `    const { pathname } = new URL(req.url)`,
     `    if (pathname !== '/.well-known/mta-sts.txt') return new Response('Not Found', { status: 404 })`,
     `    return new Response(policy, { headers: { 'content-type': 'text/plain; charset=utf-8' } })`,

@@ -70,6 +70,22 @@ describe('buildMtaStsServer', () => {
     expect(source).toContain('text/plain')
   })
 
+  it('answers a request it cannot parse with 400 before it reads the path', async () => {
+    // A scanner sending an empty Host gives Bun a bare path for a URL, and
+    // `new URL('/')` throws: a 500 for the client's own malformed request.
+    const source = buildMtaStsServer(buildMtaStsPolicy(MAIL, 'example.com'), 0)
+    const guard = source.indexOf('URL.canParse(req.url)')
+    expect(guard).toBeGreaterThan(-1)
+    expect(guard).toBeLessThan(source.indexOf('new URL(req.url)'))
+
+    // And the handler it describes really does: run it against both shapes.
+    const body = source.slice(source.indexOf('fetch(req) {') + 'fetch(req) {'.length, source.lastIndexOf('},'))
+    const handler = new Function('policy', 'req', body) as (policy: string, req: { url: string }) => Response
+    expect(handler('p', { url: '/' }).status).toBe(400)
+    expect(handler('p', { url: 'http://127.0.0.1/.well-known/mta-sts.txt' }).status).toBe(200)
+    expect(handler('p', { url: 'http://127.0.0.1/other' }).status).toBe(404)
+  })
+
   it('embeds the policy body verbatim, CRLF included', () => {
     const policy = buildMtaStsPolicy(MAIL, 'example.com')
     const source = buildMtaStsServer(policy)
