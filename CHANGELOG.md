@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.130...v0.16.131)
+
+## 🐛 Bug Fixes
+
+- **maintenance**: restart services one at a time after library updates ([57ca3af](https://github.com/stacksjs/ts-cloud/commit/57ca3af)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.131 ([de68549](https://github.com/stacksjs/ts-cloud/commit/de68549)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.129...v0.16.130)
 
 ## 🐛 Bug Fixes
