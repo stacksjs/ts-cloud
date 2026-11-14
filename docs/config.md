@@ -378,11 +378,12 @@ every night, ends by comparing the two and fails its
 - a hostname the project renews has no certificate on disk.
 
 ```text
-rpx-cert-coverage: example.org is served by the gateway (old-name.json) but no
+[ts-cloud] rpx-cert-coverage: example.org is served by the gateway (old-name.json) but no
 renewal script covers it. Its certificate expires in 41 days and will not renew.
 ```
 
-Read the findings with `journalctl -u rpx-cert-renew-<slug>.service`. An
+A deploy prints the findings in its own log. For the nightly run, read them
+with `journalctl -u rpx-cert-renew-<slug>.service`. An
 uncovered hostname is reported by every project on the box, because it has no
 owner left to report it. Fix it by declaring the hostname in the project that
 owns it, as a site `domain` or one of its `aliases`, and deploying, or by

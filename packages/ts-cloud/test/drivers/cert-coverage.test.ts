@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { certCoverageReport, renderCertCoverageCheck, RPX_CERT_COVERAGE_WARN_DAYS } from '../../src/drivers/shared/cert-coverage'
+import { surfaceRemoteNotices } from '../../src/drivers/shared/remote-failure'
 import { buildCertManagementCommands, buildRpxConfig, certDomainsForConfig, gatewayHostnames } from '../../src/drivers/shared/rpx-gateway'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -151,9 +152,9 @@ describe('the renewal script runs the coverage check', () => {
 
       const gap = run()
       expect(gap.exitCode).toBe(1)
-      const output = gap.stderr.toString()
+      const output = gap.stdout.toString()
       for (const host of ['statushq.org', 'www.statushq.org', 'dashboard.statushq.org'])
-        expect(output).toContain(`rpx-cert-coverage: ${host} is served by the gateway (uptime-status.json) but no renewal script covers it.`)
+        expect(output).toContain(`[ts-cloud] rpx-cert-coverage: ${host} is served by the gateway (uptime-status.json) but no renewal script covers it.`)
 
       // Declaring the hostnames is the fix: the next renewal script covers them.
       const fixed = renewScriptFor({
@@ -162,11 +163,28 @@ describe('the renewal script runs the coverage check', () => {
         panelAlias: { domain: 'dashboard.statushq.org', redirect: 'https://dashboard.uptime-status.org' },
       }, 'statushq')
       writeFileSync(join(root, fixed.file), fixed.content)
-      expect(run().stderr.toString()).not.toContain('no renewal script covers it')
+      expect(run().stdout.toString()).not.toContain('no renewal script covers it')
     }
     finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('a finding reaches the deploy log', () => {
+  it('prints every finding as a line surfaceRemoteNotices republishes', () => {
+    const report = certCoverageReport({ fragments: [current.fragment, stale], renewScripts: [current], certExpiry: healthy, ownScript: current.file, now })
+    const printed: string[] = []
+    const original = console.warn
+    console.warn = (line: string) => { printed.push(line) }
+    try {
+      surfaceRemoteNotices(['Skipping uptime-status.org.crt (not expiring within 30 days)', ...report.lines].join('\n'))
+    }
+    finally {
+      console.warn = original
+    }
+    expect(printed).toEqual(report.lines)
+    expect(printed).toHaveLength(3)
   })
 })
 
