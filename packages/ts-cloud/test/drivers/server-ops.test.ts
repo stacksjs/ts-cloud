@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { buildUfwScript, UFW_BASE_PORTS } from '../../src/drivers/shared/ufw'
-import { buildAutoUpdatesScript } from '../../src/drivers/shared/maintenance'
+import { buildAutoUpdatesScript, buildStaggeredRestartExecutable, buildStaggeredRestartInstallScript } from '../../src/drivers/shared/maintenance'
 import { buildMonitoringScript } from '../../src/drivers/shared/monitoring'
 import { buildBackupProvisionScript, buildBackupsConfigTs } from '../../src/drivers/shared/backups'
 import { readBackupConfig } from './backup-config-fixture'
@@ -33,6 +33,44 @@ describe('buildAutoUpdatesScript', () => {
   })
   it('is empty when disabled', () => {
     expect(buildAutoUpdatesScript(false)).toEqual([])
+  })
+
+  // needrestart restarts every service mapping an upgraded library in one
+  // command. On a box hosting many apps that takes them all down together.
+  it('stops the package run restarting services and staggers them instead', () => {
+    const script = buildAutoUpdatesScript(true).join('\n')
+    expect(script).toContain('/etc/needrestart/conf.d/50-ts-cloud-staggered.conf')
+    expect(script).toContain(`$nrconf{restart} = 'l';`)
+    expect(script).toContain('systemctl enable --now ts-cloud-staggered-restart.timer')
+    expect(script).toContain('OnCalendar=*-*-* 07:30:00')
+  })
+
+  it('restarts one service per command and waits for it to come up', () => {
+    const lines = buildStaggeredRestartExecutable()
+    const restarts = lines.filter(line => line.includes('systemctl restart'))
+    expect(restarts).toEqual(['  if ! systemctl restart "$svc"; then'])
+    expect(lines.join('\n')).toContain('systemctl is-active --quiet "$svc"')
+    expect(lines.join('\n')).toContain('flock -n 9')
+  })
+
+  it('never restarts what would cut the box or the operator off', () => {
+    const skip = buildStaggeredRestartExecutable().find(line => line.startsWith('SKIP='))!
+    const pattern = new RegExp(skip.slice(`SKIP='`.length, -1))
+    for (const unit of ['dbus.service', 'docker.service', 'containerd.service', 'systemd-logind.service', 'serial-getty@ttyS0.service', 'user@0.service', 'unattended-upgrades.service', 'networkd-dispatcher.service', 'ts-cloud-staggered-restart.service'])
+      expect(pattern.test(unit)).toBe(true)
+    for (const unit of ['cursio-main@e9cda38.service', 'rpx-gateway.service', 'postgresql@18-main.service', 'ssh.service'])
+      expect(pattern.test(unit)).toBe(false)
+  })
+
+  it('emits scripts bash accepts, with every here-document terminator at column 0', () => {
+    for (const lines of [buildStaggeredRestartExecutable(), buildStaggeredRestartInstallScript()]) {
+      const check = Bun.spawnSync(['bash', '-n'], { stdin: Buffer.from(`${lines.join('\n')}\n`) })
+      expect(check.stderr.toString()).toBe('')
+      expect(check.exitCode).toBe(0)
+    }
+    const install = buildStaggeredRestartInstallScript()
+    for (const delimiter of ['TS_CLOUD_NEEDRESTART_EOF', 'TS_CLOUD_STAGGERED_EOF', 'TS_CLOUD_STAGGERED_UNIT_EOF', 'TS_CLOUD_STAGGERED_TIMER_EOF'])
+      expect(install).toContain(delimiter)
   })
 })
 
