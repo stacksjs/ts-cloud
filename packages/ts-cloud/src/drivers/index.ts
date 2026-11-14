@@ -11,9 +11,14 @@ export {
   AwsWorkerGroupApi,
   buildWorkerUserData,
   convergeAwsWorkerGroup,
+  DEFAULT_LAUNCH_BACKOFF_SECONDS,
   DEFAULT_SPOT_FALLBACK_SECONDS,
   EC2_USER_DATA_LIMIT,
   flattenQuery,
+  LAUNCH_BACKOFF_AFTER,
+  LAUNCH_BACKOFF_BASE_SECONDS,
+  launchedInstance,
+  planLaunchBackoff,
   planMarket,
   planWorkerGroup,
   queryList,
@@ -24,7 +29,7 @@ export {
   transitionTime,
   UBUNTU_2404_X86_IMAGE,
 } from './aws/worker-group'
-export type { AwsTransport, AwsWorkerGroupConfig, SpotTrouble, Worker, WorkerGroupPlan, WorkerInstance } from './aws/worker-group'
+export type { AwsTransport, AwsWorkerGroupConfig, LaunchBackoff, SpotTrouble, Worker, WorkerGroupPlan, WorkerInstance, WorkerLaunch } from './aws/worker-group'
 export { HetznerDriver } from './hetzner/driver'
 export { isBoxMode, LocalBoxDriver } from './local-box/driver'
 export { assertSshComputeConfig, SSH_DEPLOY_STORAGE_PATH, SSH_SKIP_BOOTSTRAP_ENV, SshDriver } from './ssh/driver'

@@ -50,6 +50,12 @@ export interface AwsWorkerGroupConfig {
    * 0 keeps the group on its declared market whatever happens. See `planMarket`.
    */
   spotFallbackSeconds?: number
+  /**
+   * The longest the group waits between launches while its instances keep
+   * ending without ever becoming workers. Defaults to 1800; 0 never backs
+   * off. See `planLaunchBackoff`.
+   */
+  launchBackoffSeconds?: number
   /** SSM public parameter naming the image. Defaults to Ubuntu 24.04 LTS, x86. */
   imageParameter?: string
   /** Extra tags on every instance. */
@@ -85,6 +91,12 @@ export interface WorkerInstance {
   /** `Pending`, `InService`, `Terminating`, ... */
   lifecycle: string
   launchedAt: Date | null
+}
+
+/** One instance the group started, from the group's own record of what it did. */
+export interface WorkerLaunch {
+  id: string
+  at: Date
 }
 
 /** A worker the queue knows about, named after the instance it runs on. */
@@ -246,6 +258,29 @@ export class AwsWorkerGroupApi {
   }
 
   /**
+   * The instances the group started most recently, newest first.
+   *
+   * From the group's scaling activities, which AWS keeps for six weeks - long
+   * after the instances themselves are gone, and an instance that died two
+   * minutes into its boot is exactly the one nothing else remembers. One page
+   * (the latest hundred activities, a launch and a termination each for an
+   * instance that came and went) is enough to tell a group whose launches are
+   * all ending the same way from one that is working. A launch AWS could not
+   * make names no instance and is not in the answer.
+   */
+  async launches(name: string): Promise<WorkerLaunch[]> {
+    const launches: WorkerLaunch[] = []
+    const activities = queryList((await this.query('autoscaling', 'DescribeScalingActivities', { AutoScalingGroupName: name, MaxRecords: 100 }))?.Activities)
+    for (const activity of activities) {
+      const id = launchedInstance(activity)
+      const at = Date.parse(String(activity.StartTime ?? ''))
+      if (id && Number.isFinite(at) && !launches.some(launch => launch.id === id))
+        launches.push({ id, at: new Date(at) })
+    }
+    return launches.sort((a, b) => b.at.getTime() - a.at.getTime())
+  }
+
+  /**
    * Which of these instances the Spot market took back. Ids that are not EC2
    * instances, or that AWS no longer lists, are simply not in the answer - a
    * worker named after something else was never a spot instance.
@@ -299,7 +334,120 @@ export function transitionTime(reason: string): Date | null {
   return Number.isFinite(at) ? new Date(at) : null
 }
 
+/** The instance a scaling activity started, or null for any other activity. */
+export function launchedInstance(activity: { Description?: unknown }): string | null {
+  return String(activity.Description ?? '').match(/Launching a new EC2 instance[^:]*:\s*(i-[0-9a-f]{8,})/)?.[1] ?? null
+}
+
 export const DEFAULT_SPOT_FALLBACK_SECONDS = 1800
+export const DEFAULT_LAUNCH_BACKOFF_SECONDS = 1800
+/** This many launches in a row ending without a worker is a pattern, not bad luck. */
+export const LAUNCH_BACKOFF_AFTER = 3
+/** The first wait, doubled with every further launch that ends the same way. */
+export const LAUNCH_BACKOFF_BASE_SECONDS = 120
+
+/** What a group's recent launches say about whether launching again is worth it. */
+export interface LaunchBackoff {
+  /** Whether the group is holding its launches back. */
+  backingOff: boolean
+  /** How many launches in a row, newest first, ended without becoming a worker. */
+  died: number
+  /** When the oldest launch of that run started. */
+  since: Date | null
+  /** The newest instance of that run: the one whose console output is still there to read. */
+  example: string | null
+  /** A probe that has not yet registered or run out of time, if one is up. */
+  probing: string | null
+  /** When the next probe may launch. Null when not backing off. */
+  nextProbeAt: Date | null
+  /** How many instances may be asked for now: null for no limit, else 0 or 1. */
+  allow: number | null
+  reason: string | null
+}
+
+/**
+ * Whether a group should hold its launches back, and until when.
+ *
+ * A worker group whose instances cannot boot - a package that will not run on
+ * the image, a registration token that was rotated, a control plane the
+ * instances cannot reach - does not look broken from AWS: every launch
+ * succeeds. The instance dies minutes later, lowers the desired capacity on
+ * its way out, the queue is still waiting, and the scaler asks again. On
+ * 2026-11-13 a group did that once a minute for twenty-one hours.
+ *
+ * So the launches are judged by what became of them. A launch ended badly when
+ * its instance is gone, or older than the registration grace, and never became
+ * a worker. `LAUNCH_BACKOFF_AFTER` of those in a row, with none registering in
+ * between, and the group backs off: one probe instance at a time, with a gap
+ * after each launch that starts at `LAUNCH_BACKOFF_BASE_SECONDS` and doubles
+ * with every further death up to `launchBackoffSeconds`. The first launch that
+ * registers ends it, at once and completely - the run is counted from the
+ * newest launch back to the last one that worked.
+ *
+ * An instance Spot reclaimed before it registered is Spot's failure, not the
+ * boot's (`planMarket` answers that), and one still inside its grace period
+ * has not been decided; neither counts for or against.
+ *
+ * Derived from the launch record every time rather than kept in a counter, so
+ * a scheduler that restarts picks up exactly where it was.
+ */
+export function planLaunchBackoff(input: {
+  config: Pick<AwsWorkerGroupConfig, 'registrationGraceSeconds' | 'launchBackoffSeconds'>
+  launches: WorkerLaunch[]
+  /** The group's instances as it reports them now. */
+  instances: WorkerInstance[]
+  /** Every launch that ever became a worker, whether or not it still is one. */
+  registered: Iterable<string>
+  /** Launches the Spot market took back. */
+  reclaimed?: Iterable<string>
+  now?: Date
+}): LaunchBackoff {
+  const none: LaunchBackoff = { backingOff: false, died: 0, since: null, example: null, probing: null, nextProbeAt: null, allow: null, reason: null }
+  const cap = input.config.launchBackoffSeconds ?? DEFAULT_LAUNCH_BACKOFF_SECONDS
+  if (cap <= 0)
+    return none
+
+  const now = input.now ?? new Date()
+  const registered = new Set(input.registered)
+  const reclaimed = new Set(input.reclaimed ?? [])
+  const live = new Set(input.instances.filter(instance => LIVE.has(instance.lifecycle)).map(instance => instance.id))
+  const launches = [...input.launches].filter(launch => !reclaimed.has(launch.id)).sort((a, b) => b.at.getTime() - a.at.getTime())
+
+  let died = 0
+  let since: Date | null = null
+  let example: string | null = null
+  let probing: string | null = null
+  for (const launch of launches) {
+    if (registered.has(launch.id))
+      break
+    const age = (now.getTime() - launch.at.getTime()) / 1000
+    if (live.has(launch.id) && age <= input.config.registrationGraceSeconds) {
+      probing ??= launch.id
+      continue
+    }
+    died++
+    since = launch.at
+    example ??= launch.id
+  }
+  if (died < LAUNCH_BACKOFF_AFTER)
+    return { ...none, died, since, example, probing }
+
+  const gap = Math.min(cap, LAUNCH_BACKOFF_BASE_SECONDS * 2 ** Math.min(30, died - LAUNCH_BACKOFF_AFTER))
+  const nextProbeAt = new Date(launches[0]!.at.getTime() + gap * 1000)
+  const allow = probing === null && now.getTime() >= nextProbeAt.getTime() ? 1 : 0
+  const what = `${died} launch(es) in a row ended without a worker since ${stamp(since!)}`
+  const reason = probing !== null
+    ? `${what}: waiting to see whether probe ${probing} registers`
+    : allow === 1
+      ? `${what}: probing with one instance`
+      : `${what}: backing off, next probe at ${stamp(nextProbeAt)}`
+  return { backingOff: true, died, since, example, probing, nextProbeAt, allow, reason }
+}
+
+/** `2026-11-13T21:04:00Z`: to the second, in UTC, the way a log line is read. */
+function stamp(at: Date): string {
+  return `${at.toISOString().slice(0, 19)}Z`
+}
 
 /**
  * Which market a spot group should launch into next.
@@ -466,6 +614,9 @@ const LIVE = new Set(['Pending', 'Pending:Wait', 'Pending:Proceed', 'InService']
  * Instances already asked for but not yet workers are subtracted from the
  * waiting work before asking for more - otherwise every tick during a boot
  * asks again for the same tasks - and idle workers count as capacity.
+ *
+ * A group that is backing off (`planLaunchBackoff`) asks for no more than its
+ * backoff allows: nothing between probes, one instance when a probe is due.
  */
 export function planWorkerGroup(input: {
   config: Pick<AwsWorkerGroupConfig, 'min' | 'max' | 'registrationGraceSeconds'>
@@ -473,6 +624,7 @@ export function planWorkerGroup(input: {
   instances: WorkerInstance[]
   workers: Worker[]
   waiting: number
+  backoff?: Pick<LaunchBackoff, 'backingOff' | 'allow' | 'reason'>
   now?: Date
 }): WorkerGroupPlan {
   const now = input.now ?? new Date()
@@ -491,9 +643,15 @@ export function planWorkerGroup(input: {
   const workersUp = live.filter(instance => registered.has(instance.id)).length
   const arriving = Math.max(0, base - workersUp)
   const idle = input.workers.filter(worker => worker.idle).length
-  const uncovered = Math.max(0, input.waiting - arriving - idle)
+  const wanted = Math.max(0, input.waiting - arriving - idle)
+  const held = input.backoff?.backingOff === true
+  const uncovered = held ? Math.min(wanted, Math.max(0, input.backoff?.allow ?? 0)) : wanted
   const desired = Math.min(input.config.max, Math.max(input.config.min, base, base + uncovered))
 
+  // Said whenever work is waiting behind it, not only when a probe goes out:
+  // a held group that printed nothing is how one waited a day unnoticed.
+  if (held && wanted > 0 && input.backoff?.reason)
+    reasons.push(input.backoff.reason)
   if (uncovered > 0)
     reasons.push(`${input.waiting} waiting, ${arriving} arriving, ${idle} idle: asking for ${desired - base} more`)
   if (base + uncovered > input.config.max)
