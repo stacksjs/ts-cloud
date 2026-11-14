@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.129...v0.16.130)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: answer a request with an unparseable URL 400 instead of throwing ([52a6eaf](https://github.com/stacksjs/ts-cloud/commit/52a6eaf)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.130 ([4909ab7](https://github.com/stacksjs/ts-cloud/commit/4909ab7)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.128...v0.16.129)
 
 ## ✨ Features
