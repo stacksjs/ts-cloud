@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.128...v0.16.129)
+
+## ✨ Features
+
+- **aws**: back a worker group off when its launches never become workers ([7bc06e9](https://github.com/stacksjs/ts-cloud/commit/7bc06e9)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.129 ([f79863c](https://github.com/stacksjs/ts-cloud/commit/f79863c)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.127...v0.16.128)
 
 ## 🐛 Bug Fixes
