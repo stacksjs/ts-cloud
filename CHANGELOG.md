@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.127...v0.16.128)
+
+## 🐛 Bug Fixes
+
+- **rpx**: print certificate coverage findings in the deploy log ([ab5383d](https://github.com/stacksjs/ts-cloud/commit/ab5383d)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.128 ([07ceb3c](https://github.com/stacksjs/ts-cloud/commit/07ceb3c)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.126...v0.16.127)
 
 ## 🐛 Bug Fixes
