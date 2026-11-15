@@ -1,3 +1,14 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.135...v0.16.136)
+
+## ✨ Features
+
+- **dns**: a registrar can be pointed at a Route 53 hosted zone ([058483b](https://github.com/stacksjs/ts-cloud/commit/058483b)) _(by Chris Breuer)_
+- **cdn**: a deploy waits for a new Cloudflare zone's certificate and proxies in the same run ([4d86d66](https://github.com/stacksjs/ts-cloud/commit/4d86d66)) _(by Chris Breuer)_
+
+## Contributors
+
+- _Chris Breuer_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.134...v0.16.135)
 
 ## 🐛 Bug Fixes
