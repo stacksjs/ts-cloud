@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.131...v0.16.132)
+
+## 🐛 Bug Fixes
+
+- **deploy**: disable stale release instances so they do not start at boot ([b15ada1](https://github.com/stacksjs/ts-cloud/commit/b15ada1)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.132 ([3b621a0](https://github.com/stacksjs/ts-cloud/commit/3b621a0)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.130...v0.16.131)
 
 ## 🐛 Bug Fixes
