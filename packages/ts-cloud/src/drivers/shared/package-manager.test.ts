@@ -66,7 +66,9 @@ it('resolves the real binary behind a .bin entry, symlink or launcher script', (
     expect(resolve('launcher')).toBe(real)
     // A script that is not a pantry launcher is left as it is.
     expect(resolve('other-script')).toBe(join(bin, 'other-script'))
-    expect(resolve('missing')).toBe('')
+    // GNU `readlink -f` echoes a path whose last component is missing; BSD
+    // prints nothing. Either way it never names a real binary.
+    expect(['', join(bin, 'missing')]).toContain(resolve('missing'))
   }
   finally {
     rmSync(root, { recursive: true, force: true })
