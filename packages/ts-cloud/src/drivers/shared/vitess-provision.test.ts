@@ -383,6 +383,15 @@ describe('daemons find their libraries however they are launched', () => {
     expect(script).not.toContain('eval "$(pantry env 2>/dev/null)" || true')
   })
 
+  // Pantry's `.bin` entries became launcher scripts; `readlink -f` alone
+  // resolved the launcher and mysqld was "not found" at the next restart.
+  it('resolves the mysql and vitess roots through launcher scripts as well as symlinks', () => {
+    expect(script).toContain('ts_cloud_pantry_real() {')
+    expect(script).toContain('VT_MYSQL_ROOT="$(dirname "$(dirname "$(ts_cloud_pantry_real /opt/pantry/pantry/.bin/mysqld)")")"')
+    expect(script).not.toContain('readlink -f /opt/pantry/pantry/.bin/mysqld')
+    expect(script).toContain('no mysqld under VT_MYSQL_ROOT=')
+  })
+
   it('still exports a library path for the daemons themselves', () => {
     expect(script).toContain('LD_LIBRARY_PATH="$VT_MYSQL_ROOT/lib:$VTROOT/lib')
   })
