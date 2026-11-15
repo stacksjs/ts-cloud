@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.133...v0.16.134)
+
+## ✅ Tests
+
+- **pantry**: accept GNU and BSD readlink output for a missing .bin entry ([5813412](https://github.com/stacksjs/ts-cloud/commit/5813412)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.134 ([27ab81e](https://github.com/stacksjs/ts-cloud/commit/27ab81e)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.132...v0.16.133)
 
 ## 🐛 Bug Fixes
