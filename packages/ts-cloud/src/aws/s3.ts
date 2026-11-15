@@ -14,6 +14,26 @@ import { resolveCredentials } from './credentials'
  * Workaround for TypeScript 5.7+ generic ArrayBuffer types
  * where Buffer/Uint8Array are not directly assignable to BodyInit.
  */
+/** The slowest upload a deadline still waits for: 32 KiB a second, a poor mobile uplink. */
+const SLOWEST_UPLOAD_BYTES_PER_SECOND = 32 * 1024
+
+/**
+ * How long an upload of this many bytes may take.
+ *
+ * A fixed minute is a deadline for the request and says nothing about the
+ * body: a 7 MB object over a 150 KB/s uplink needs most of that minute to
+ * leave the machine, so an ordinary home connection to a distant region timed
+ * out on a healthy transfer. The body's own time, at the slowest rate worth
+ * waiting for, is added on top of the base, so a stalled upload still ends.
+ */
+export function uploadDeadlineMs(bytes: number, baseMs = 60_000): number {
+  return baseMs + Math.ceil(Math.max(0, bytes) / SLOWEST_UPLOAD_BYTES_PER_SECOND) * 1000
+}
+
+function bodyBytes(body: string | Buffer | Uint8Array): number {
+  return typeof body === 'string' ? Buffer.byteLength(body) : body.byteLength
+}
+
 function toFetchBody(data: Uint8Array | Buffer): ArrayBuffer {
   const { buffer, byteOffset, byteLength } = data
   if (buffer instanceof ArrayBuffer) {
@@ -425,7 +445,7 @@ export class S3Client {
       bucket: options.bucket, // Use virtual-hosted style
       headers,
       body: options.body,
-      timeoutMs: 60_000,
+      timeoutMs: uploadDeadlineMs(bodyBytes(options.body)),
     })
   }
 
@@ -2087,7 +2107,7 @@ export class S3Client {
       path: `/${encodedKey}`,
       queryParams: { partNumber: String(partNumber), uploadId },
       headers: { 'Content-Type': 'application/octet-stream' },
-      body, returnHeaders: true, timeoutMs: 60_000,
+      body, returnHeaders: true, timeoutMs: uploadDeadlineMs(body.byteLength),
     })
     return { ETag: result?.headers?.etag || '' }
   }
