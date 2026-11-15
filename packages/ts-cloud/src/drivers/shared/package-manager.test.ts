@@ -1,9 +1,9 @@
 import { expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildPantryInstallScript, PANTRY_PROJECT_DIR } from './package-manager'
+import { buildPantryInstallScript, PANTRY_PROJECT_DIR, PANTRY_REAL_BIN_FUNCTION } from './package-manager'
 
 it('repairs public package ancestors without changing private files or the caller umask', () => {
   const root = mkdtempSync(join(tmpdir(), 'pantry-service-permissions-'))
@@ -26,4 +26,49 @@ it('repairs public package ancestors without changing private files or the calle
     expect(statSync(secret).mode & 0o777).toBe(0o600)
   }
   finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+// Pantry replaced the `.bin` symlinks with launcher scripts. `readlink -f` on a
+// launcher returns the launcher, so a package root derived from it was
+// `/opt/pantry/pantry` and Vitess could not find mysqld after its next restart.
+it('resolves the real binary behind a .bin entry, symlink or launcher script', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pantry-real-bin-')))
+  try {
+    const bin = join(root, 'pantry/.bin')
+    const real = join(root, 'pantry/mysql.com/v8.0.43/bin/mysqld')
+    mkdirSync(bin, { recursive: true })
+    mkdirSync(join(root, 'pantry/mysql.com/v8.0.43/bin'), { recursive: true })
+    writeFileSync(real, '\x7fELF binary', { mode: 0o755 })
+    symlinkSync('../mysql.com/v8.0.43/bin/mysqld', join(bin, 'linked'))
+    // Byte for byte what pantry 0.11.145 writes.
+    writeFileSync(join(bin, 'launcher'), [
+      '#!/bin/sh',
+      's=$0',
+      'while [ -h "$s" ]; do',
+      '  l=$(readlink "$s")',
+      '  case $l in',
+      '    /*) s=$l ;;',
+      '    *) case $s in */*) s=${s%/*}/$l ;; *) s=$l ;; esac ;;',
+      '  esac',
+      'done',
+      'case $s in */*) d=${s%/*} ;; *) d=. ;; esac',
+      'exec "$d/../mysql.com/v8.0.43/bin/mysqld" "$@"',
+      '',
+    ].join('\n'), { mode: 0o755 })
+    writeFileSync(join(bin, 'other-script'), '#!/bin/sh\necho hello\n', { mode: 0o755 })
+
+    const resolve = (name: string) => {
+      const result = spawnSync('sh', ['-c', `set -e\n${PANTRY_REAL_BIN_FUNCTION.join('\n')}\nts_cloud_pantry_real "$1"`, 'sh', join(bin, name)], { encoding: 'utf8' })
+      expect(result.status).toBe(0)
+      return result.stdout.trim()
+    }
+    expect(resolve('linked')).toBe(real)
+    expect(resolve('launcher')).toBe(real)
+    // A script that is not a pantry launcher is left as it is.
+    expect(resolve('other-script')).toBe(join(bin, 'other-script'))
+    expect(resolve('missing')).toBe('')
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

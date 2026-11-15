@@ -172,3 +172,29 @@ export function buildPantryServiceScript(services: readonly string[]): string[] 
 export function pantryDomain(pkg: PantryPackageKey | PantryPackageDomain): PantryPackageDomain {
   return (PANTRY_PACKAGES as Record<string, PantryPackageDomain>)[pkg] ?? (pkg as PantryPackageDomain)
 }
+
+/**
+ * Shell function `ts_cloud_pantry_real <path>`: print the real, versioned
+ * binary behind an entry of pantry's `.bin` directory.
+ *
+ * A `.bin` entry used to be a symlink into the package tree
+ * (`.bin/mysqld -> ../mysql.com/v8.0.43/bin/mysqld`), so `readlink -f` gave the
+ * package root. Pantry now writes a small launcher script there instead, whose
+ * last line is `exec "$d/../mysql.com/v8.0.43/bin/mysqld" "$@"`. `readlink -f`
+ * on that returns the launcher itself, and anything deriving a package root
+ * from it lands on `/opt/pantry/pantry`.
+ *
+ * Handles both: follows symlinks, and when the result is a launcher script
+ * reads the target out of its `exec` line. POSIX sh; prints the input's
+ * resolved path unchanged when it is neither.
+ */
+export const PANTRY_REAL_BIN_FUNCTION: string[] = [
+  'ts_cloud_pantry_real() {',
+  '  ts_cloud_pr="$(readlink -f "$1" 2>/dev/null || true)"',
+  '  if [ -f "$ts_cloud_pr" ] && [ "$(head -c 2 "$ts_cloud_pr" 2>/dev/null)" = "#!" ]; then',
+  String.raw`    ts_cloud_pr_target="$(sed -n 's|^exec "\$d/\(.*\)" "\$@"$|\1|p' "$ts_cloud_pr" | tail -n 1)"`,
+  '    if [ -n "$ts_cloud_pr_target" ]; then ts_cloud_pr="$(readlink -f "$(dirname "$ts_cloud_pr")/$ts_cloud_pr_target" 2>/dev/null || true)"; fi',
+  '  fi',
+  String.raw`  printf '%s\n' "$ts_cloud_pr"`,
+  '}',
+]

@@ -38,7 +38,7 @@
 
 import type { VitessKeyspaceConfig, VitessServiceConfig } from '@ts-cloud/core'
 import type { PantrySpec } from './package-manager'
-import { buildPantryInstallScript, PANTRY_PROJECT_DIR } from './package-manager'
+import { buildPantryInstallScript, PANTRY_PROJECT_DIR, PANTRY_REAL_BIN_FUNCTION } from './package-manager'
 
 /** Where pantry exposes installed binaries. */
 export const PANTRY_BIN: string = `${PANTRY_PROJECT_DIR}/pantry/.bin`
@@ -207,8 +207,17 @@ function launcherScript(command: string[]): string {
     // be executed by this eval.
     'PANTRY_ENV="$(pantry env 2>/dev/null | grep -E \'^(export [A-Za-z_]|[A-Za-z_][A-Za-z0-9_]*=)\' || true)"',
     'if [ -n "$PANTRY_ENV" ]; then eval "$PANTRY_ENV"; fi',
-    `VT_MYSQL_ROOT="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqld 2>/dev/null)")")"`,
-    `VTROOT="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqlctld 2>/dev/null)")")"`,
+    // A `.bin` entry is a symlink on older pantry and a launcher script on
+    // newer pantry; `readlink -f` alone resolves only the first.
+    ...PANTRY_REAL_BIN_FUNCTION,
+    `VT_MYSQL_ROOT="$(dirname "$(dirname "$(ts_cloud_pantry_real ${PANTRY_BIN}/mysqld)")")"`,
+    `VTROOT="$(dirname "$(dirname "$(ts_cloud_pantry_real ${PANTRY_BIN}/mysqlctld)")")"`,
+    // Say so here. Left to mysqlctld this surfaces as a Go panic about
+    // version auto-detection, restarted every five seconds.
+    'if [ ! -x "$VT_MYSQL_ROOT/bin/mysqld" ] && [ ! -x "$VT_MYSQL_ROOT/sbin/mysqld" ] && [ ! -x "$VT_MYSQL_ROOT/libexec/mysqld" ]; then',
+    `  echo "ts-cloud: no mysqld under VT_MYSQL_ROOT=$VT_MYSQL_ROOT (resolved from ${PANTRY_BIN}/mysqld)" >&2`,
+    '  exit 1',
+    'fi',
     'export VT_MYSQL_ROOT VTROOT',
     // Derived from the roots resolved above rather than from `pantry env`,
     // which is exactly the thing that turned out not to be dependable here.
@@ -630,7 +639,8 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
     // library resolvable however mysqld is launched, including under an empty
     // environment. Written at provision time because the path carries the
     // package version and is only known once pantry has installed it.
-    `VT_MYSQL_LIB="$(dirname "$(dirname "$(readlink -f ${PANTRY_BIN}/mysqld)")")/lib"`,
+    ...PANTRY_REAL_BIN_FUNCTION,
+    `VT_MYSQL_LIB="$(dirname "$(dirname "$(ts_cloud_pantry_real ${PANTRY_BIN}/mysqld)")")/lib"`,
     'if [ -d "$VT_MYSQL_LIB" ]; then',
     '  printf \'%s\\n\' "$VT_MYSQL_LIB" > /etc/ld.so.conf.d/vitess-mysql.conf',
     '  ldconfig',
