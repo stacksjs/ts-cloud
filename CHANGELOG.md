@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.134...v0.16.135)
+
+## 🐛 Bug Fixes
+
+- **s3**: give an upload a deadline that grows with its body ([e66732d](https://github.com/stacksjs/ts-cloud/commit/e66732d)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.135 ([87cb165](https://github.com/stacksjs/ts-cloud/commit/87cb165)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.133...v0.16.134)
 
 ## ✅ Tests
