@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.132...v0.16.133)
+
+## 🐛 Bug Fixes
+
+- **vitess**: find mysqld when pantry's .bin entry is a launcher script ([ae8d635](https://github.com/stacksjs/ts-cloud/commit/ae8d635)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.133 ([e83019a](https://github.com/stacksjs/ts-cloud/commit/e83019a)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.131...v0.16.132)
 
 ## 🐛 Bug Fixes
