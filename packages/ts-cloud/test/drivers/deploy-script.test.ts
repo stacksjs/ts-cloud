@@ -328,8 +328,10 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     // the grep — without it, grep exits 1 on "nothing to prune" and kills the
     // script at the very last step, after the new release is already live.
     expect(joined).toContain(
-      '| { grep -v -e "^my-app-web@abc123.service$" -e "^my-app-web@\\.service$" || true; } | while read -r TS_CLOUD_U',
+      '| { grep -Fxv -- "my-app-web@abc123.service" || true; } | while read -r TS_CLOUD_U',
     )
+    // `find` on a tree with no enablement directory exits non-zero too.
+    expect(joined).toContain('-name "my-app-web@*.service" 2>/dev/null || true; }')
     // Every `grep -v` in the generated script is guarded against exit 1.
     for (const line of script) {
       if (line.includes('grep -v')) expect(line).toContain('|| true')
