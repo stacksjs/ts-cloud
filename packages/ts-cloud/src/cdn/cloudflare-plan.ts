@@ -28,7 +28,12 @@ export interface CloudflareCdnPlan {
   originGuard?: CloudflareOriginGuard
   purge: boolean
   skipOriginProbe: boolean
+  /** How long a deploy waits for the zone's edge certificate, in milliseconds. 0 does not wait. */
+  edgeWaitMs: number
 }
+
+/** A newly delegated zone is usually active and certified well inside this. */
+export const DEFAULT_EDGE_WAIT_MINUTES = 20
 
 export interface ResolveCloudflareCdnPlanResult {
   /** The plan, or `null` when this config does not ask for a Cloudflare CDN. */
@@ -136,6 +141,7 @@ export function resolveCloudflareCdnPlan(
       originGuard: guard,
       purge: cf.purgeOnDeploy !== false,
       skipOriginProbe: cf.skipOriginProbe === true,
+      edgeWaitMs: Math.max(0, cf.edgeWaitMinutes ?? DEFAULT_EDGE_WAIT_MINUTES) * 60_000,
     },
     errors,
   }

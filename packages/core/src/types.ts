@@ -4940,6 +4940,16 @@ export interface CloudflareCdnConfig {
    * origin certificate already exists.
    */
   skipOriginProbe?: boolean
+  /**
+   * How long a deploy waits for the zone's edge certificate before it gives up
+   * and publishes DNS-only, in minutes. @default 20
+   *
+   * A zone that was just delegated is activated and given its Universal SSL
+   * certificate by Cloudflare on its own, usually within minutes. Waiting lets
+   * the deploy that moved the nameservers also turn the proxy on, so the move
+   * is one deploy and not two. `0` does not wait: the next deploy proxies.
+   */
+  edgeWaitMinutes?: number
 }
 
 /** HSTS settings for a Cloudflare zone. */

@@ -81,6 +81,38 @@ export interface ReconcileCloudflareCdnOptions {
    * @default false
    */
   skipEdgeCertificateCheck?: boolean
+  /**
+   * Wait for the zone's edge certificate instead of deferring the proxy to the
+   * next deploy.
+   *
+   * A zone that has just been delegated has no certificate: Cloudflare first
+   * has to see the registrar pointing at it, then issue Universal SSL. Both
+   * finish on their own, usually within minutes, so a deploy that waits can
+   * turn the proxy on in the same run. Omit it, or give a `timeoutMs` of 0, to
+   * publish DNS-only and leave the proxy to a later deploy.
+   */
+  edgeWait?: EdgeWaitOptions
+}
+
+export interface EdgeWaitOptions {
+  /** The longest to wait, in milliseconds. */
+  timeoutMs: number
+  /** Time between looks. @default 20000 */
+  intervalMs?: number
+  /**
+   * Also wait while the zone is still `pending`, that is, while Cloudflare has
+   * not yet seen the registrar pointing at it. @default false
+   *
+   * Only a caller that knows the nameservers were moved should say so: a
+   * pending zone whose nameservers are still elsewhere never activates, and
+   * waiting on it spends the whole timeout to learn nothing.
+   */
+  whilePending?: boolean
+  /** Told what is being waited for, each time it changes. */
+  onProgress?: (message: string) => void
+  /** Injectable for tests. */
+  sleep?: (ms: number) => Promise<void>
+  now?: () => number
 }
 
 export interface CloudflareCdnReport {
@@ -136,6 +168,69 @@ export function edgeCertificateCovers(certificateHosts: string[], host: string):
   })
 }
 
+/**
+ * Can Universal SSL ever cover `host` in `zone`? The apex and names one label
+ * below it, and nothing deeper: waiting for a certificate that will never be
+ * issued would hold a deploy for its whole timeout to learn nothing.
+ */
+export function universalSslCovers(zone: string, host: string): boolean {
+  return edgeCertificateCovers([zone, `*.${zone}`], host)
+}
+
+/**
+ * Wait until the zone's active edge certificates cover every host Universal
+ * SSL can cover, or the time runs out.
+ *
+ * Returns what the certificates cover when it stops: `null` if that could not
+ * be read, which the caller treats as "no idea", exactly as it does without a
+ * wait. A zone still `pending` is waited on only with `whilePending`, and then
+ * Cloudflare is asked, once a minute at most, to check the nameservers again.
+ */
+export async function waitForEdgeCertificate(options: {
+  provider: Pick<CloudflareProvider, 'listEdgeCertificateHosts' | 'getZoneDetails' | 'requestActivationCheck'>
+  zone: string
+  hosts: string[]
+  wait: EdgeWaitOptions
+}): Promise<string[] | null> {
+  const { provider, zone, wait } = options
+  const sleep = wait.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
+  const now = wait.now ?? Date.now
+  const interval = wait.intervalMs ?? 20_000
+  const awaited = options.hosts.filter(host => universalSslCovers(zone, host))
+  const deadline = now() + wait.timeoutMs
+
+  let said = ''
+  const say = (message: string): void => {
+    if (message !== said) wait.onProgress?.(message)
+    said = message
+  }
+  let askedAt = Number.NEGATIVE_INFINITY
+
+  while (true) {
+    const covered = await provider.listEdgeCertificateHosts(zone)
+    if (covered === null || awaited.every(host => edgeCertificateCovers(covered, host))) return covered
+    if (now() >= deadline) return covered
+
+    const details = await provider.getZoneDetails(zone)
+    if (details && details.status !== 'active') {
+      if (!wait.whilePending) {
+        say(`${zone} is ${details.status} at Cloudflare, which has not seen its nameservers point there: not waiting for a certificate`)
+        return covered
+      }
+      say(`${zone} is ${details.status} at Cloudflare: waiting for it to see the nameservers (${details.nameServers.join(', ')})`)
+      if (now() - askedAt >= 60_000) {
+        askedAt = now()
+        await provider.requestActivationCheck(zone)
+      }
+    }
+    else {
+      say(`${zone} is active: waiting for its edge certificate to be issued`)
+    }
+
+    await sleep(Math.min(interval, Math.max(0, deadline - now())))
+  }
+}
+
 export async function reconcileCloudflareCdn(
   options: ReconcileCloudflareCdnOptions,
 ): Promise<CloudflareCdnReport> {
@@ -153,6 +248,7 @@ export async function reconcileCloudflareCdn(
     ttl = 300,
     skipOriginProbe = false,
     skipEdgeCertificateCheck = false,
+    edgeWait,
   } = options
 
   const report: CloudflareCdnReport = {
@@ -180,9 +276,17 @@ export async function reconcileCloudflareCdn(
   // treated as "nothing is covered" — a token missing SSL read would otherwise
   // silently stop proxying every site on every deploy. An empty array is a
   // definitive answer and is acted on.
-  const edgeHosts = proxied && !skipEdgeCertificateCheck
+  let edgeHosts = proxied && !skipEdgeCertificateCheck
     ? await provider.listEdgeCertificateHosts(zone)
     : null
+
+  // A certificate that is on its way is waited for, so one deploy takes a zone
+  // from delegated to proxied. Only for names it will actually cover.
+  const waitable = (covered: string[]): boolean =>
+    hosts.some(host => universalSslCovers(zone, host) && !edgeCertificateCovers(covered, host))
+  if (edgeHosts && edgeWait && edgeWait.timeoutMs > 0 && waitable(edgeHosts))
+    edgeHosts = await waitForEdgeCertificate({ provider, zone, hosts, wait: edgeWait })
+  const waited = !!edgeWait && edgeWait.timeoutMs > 0
 
   for (const host of hosts) {
     let hostProxied = proxied
@@ -200,7 +304,7 @@ export async function reconcileCloudflareCdn(
       report.warnings.push(
         `${host}: publishing DNS-only — ${reason}. Proxying it would make Cloudflare terminate TLS with no certificate for the name, ` +
           `which fails the handshake outright rather than degrading. Universal SSL covers the apex and ONE level of subdomain, so a deeper ` +
-          `name needs its own certificate; otherwise re-run the deploy once the certificate is active.`,
+          `name needs its own certificate; otherwise ${waited ? 'the certificate was not issued within the time this deploy waits, and the next deploy proxies it' : 're-run the deploy once the certificate is active'}.`,
       )
     }
 

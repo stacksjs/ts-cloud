@@ -2,7 +2,7 @@ import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
 import type { CloudflareRule } from '../dns/cloudflare'
 import { CloudflareProvider, hostsInExpression, mergeManagedRules } from '../dns/cloudflare'
-import { edgeCertificateCovers } from './cloudflare'
+import { edgeCertificateCovers, universalSslCovers, waitForEdgeCertificate } from './cloudflare'
 import { resolveCloudflareCdnPlan, resolveZoneApex } from './cloudflare-plan'
 import { buildOriginGuardRule, buildStaticSiteCacheRules, hostCondition } from './cloudflare-rules'
 import { STATIC_SITE_ZONE_SETTINGS, toCloudflareZoneSettings } from './cloudflare-settings'
@@ -569,5 +569,92 @@ describe('email obfuscation', () => {
 
   it('is left alone when not specified', () => {
     expect(toCloudflareZoneSettings({}).email_obfuscation).toBeUndefined()
+  })
+})
+
+describe('waiting for the edge certificate', () => {
+  /** A zone that activates, then is certified, as the clock moves. */
+  function zoneThat(steps: { activeAt: number, certifiedAt: number }) {
+    const clock = { at: 0 }
+    const asked: number[] = []
+    const provider = {
+      listEdgeCertificateHosts: async () => (clock.at >= steps.certifiedAt ? ['example.com', '*.example.com'] : []),
+      getZoneDetails: async () => ({ id: 'zone-1', name: 'example.com', status: clock.at >= steps.activeAt ? 'active' : 'pending', nameServers: ['a.ns.cloudflare.com', 'b.ns.cloudflare.com'], paused: false }),
+      requestActivationCheck: async () => {
+        asked.push(clock.at)
+        return true
+      },
+    }
+    const said: string[] = []
+    const wait = (timeoutMs: number, whilePending = true) => ({
+      timeoutMs,
+      whilePending,
+      intervalMs: 20_000,
+      onProgress: (message: string) => said.push(message),
+      sleep: async (ms: number) => { clock.at += ms },
+      now: () => clock.at,
+    })
+    return { provider, clock, asked, said, wait }
+  }
+
+  it('says which names Universal SSL can ever cover', () => {
+    expect(universalSslCovers('example.com', 'example.com')).toBe(true)
+    expect(universalSslCovers('example.com', 'www.example.com')).toBe(true)
+    expect(universalSslCovers('example.com', 'a.b.example.com')).toBe(false)
+    expect(universalSslCovers('example.com', 'other.org')).toBe(false)
+  })
+
+  it('waits through pending and issuance, then answers what is covered', async () => {
+    const z = zoneThat({ activeAt: 90_000, certifiedAt: 200_000 })
+    const covered = await waitForEdgeCertificate({ provider: z.provider, zone: 'example.com', hosts: ['example.com', 'www.example.com'], wait: z.wait(20 * 60_000) })
+    expect(covered).toEqual(['example.com', '*.example.com'])
+    expect(z.clock.at).toBe(200_000)
+    // Said once for each thing waited on, not once a look.
+    expect(z.said).toHaveLength(2)
+    expect(z.said[0]).toContain('is pending at Cloudflare')
+    expect(z.said[1]).toContain('waiting for its edge certificate')
+    // Asked to look at the nameservers again a minute apart, and only while pending.
+    expect(z.asked).toEqual([0, 60_000])
+  })
+
+  it('gives up at the deadline with what is covered then', async () => {
+    const z = zoneThat({ activeAt: 0, certifiedAt: Number.POSITIVE_INFINITY })
+    const covered = await waitForEdgeCertificate({ provider: z.provider, zone: 'example.com', hosts: ['example.com'], wait: z.wait(60_000) })
+    expect(covered).toEqual([])
+    expect(z.clock.at).toBe(60_000)
+  })
+
+  it('does not wait on a pending zone unless told its nameservers were moved', async () => {
+    const z = zoneThat({ activeAt: Number.POSITIVE_INFINITY, certifiedAt: Number.POSITIVE_INFINITY })
+    const covered = await waitForEdgeCertificate({ provider: z.provider, zone: 'example.com', hosts: ['example.com'], wait: z.wait(20 * 60_000, false) })
+    expect(covered).toEqual([])
+    expect(z.clock.at).toBe(0)
+    expect(z.asked).toEqual([])
+    expect(z.said[0]).toContain('not waiting for a certificate')
+  })
+
+  it('does not wait for a name no Universal SSL certificate will cover', async () => {
+    const z = zoneThat({ activeAt: 0, certifiedAt: 0 })
+    const covered = await waitForEdgeCertificate({ provider: z.provider, zone: 'example.com', hosts: ['a.b.example.com'], wait: z.wait(20 * 60_000) })
+    expect(covered).toEqual(['example.com', '*.example.com'])
+    expect(z.clock.at).toBe(0)
+  })
+
+  it('answers null at once when coverage cannot be read', async () => {
+    const z = zoneThat({ activeAt: 0, certifiedAt: 0 })
+    const provider = { ...z.provider, listEdgeCertificateHosts: async () => null }
+    expect(await waitForEdgeCertificate({ provider, zone: 'example.com', hosts: ['example.com'], wait: z.wait(60_000) })).toBeNull()
+    expect(z.clock.at).toBe(0)
+  })
+
+  it('a plan waits twenty minutes unless the config says otherwise', () => {
+    const config = (cloudflare: Record<string, unknown>): CloudConfig => ({
+      project: { name: 'x', slug: 'x', region: 'us-east-1' },
+      infrastructure: { dns: { domain: 'example.com' }, compute: { proxy: { cdn: { provider: 'cloudflare', frontedHosts: ['example.com'], cloudflare } } } },
+    } as unknown as CloudConfig)
+    const env = (key: string): string | undefined => (key === 'CLOUDFLARE_API_TOKEN' ? 'token' : undefined)
+    expect(resolveCloudflareCdnPlan(config({}), { env }).plan?.edgeWaitMs).toBe(20 * 60_000)
+    expect(resolveCloudflareCdnPlan(config({ edgeWaitMinutes: 0 }), { env }).plan?.edgeWaitMs).toBe(0)
+    expect(resolveCloudflareCdnPlan(config({ edgeWaitMinutes: 5 }), { env }).plan?.edgeWaitMs).toBe(5 * 60_000)
   })
 })

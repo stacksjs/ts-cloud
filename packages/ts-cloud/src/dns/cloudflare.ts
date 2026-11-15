@@ -628,6 +628,24 @@ export class CloudflareProvider implements DnsProvider {
   }
 
   /**
+   * Ask Cloudflare to check the zone's nameservers now.
+   *
+   * A zone stays `pending` until Cloudflare notices the registrar pointing at
+   * it, which it otherwise looks for on its own schedule. Asking is rate
+   * limited, so a refusal is the ordinary answer to asking twice: `false`
+   * means "not now", never an error worth stopping for.
+   */
+  async requestActivationCheck(domain: string): Promise<boolean> {
+    try {
+      const zoneId = await this.getZoneId(domain)
+      await this.request('PUT', `/zones/${zoneId}/activation_check`)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
    * Hostnames the zone's ACTIVE edge certificates cover.
    *
    * This is what decides whether a host can safely be proxied. Cloudflare

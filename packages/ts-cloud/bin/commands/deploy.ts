@@ -2589,6 +2589,9 @@ async function reconcileCloudflareCdnForDeploy(
       originGuard: plan.originGuard,
       purge: plan.purge,
       skipOriginProbe: plan.skipOriginProbe,
+      edgeWait: plan.edgeWaitMs > 0
+        ? { timeoutMs: plan.edgeWaitMs, onProgress: (message: string) => cli.info(`  … ${message}`) }
+        : undefined,
     })
 
     for (const record of report.records)

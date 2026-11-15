@@ -10,7 +10,7 @@ export type {
   CloudflareOriginGuard,
   ReconcileCloudflareCdnOptions,
 } from './cloudflare'
-export { reconcileCloudflareCdn } from './cloudflare'
+export { reconcileCloudflareCdn, universalSslCovers, waitForEdgeCertificate } from './cloudflare'
 export type {
   CloudflareCdnPlan,
   EnvLookup,
