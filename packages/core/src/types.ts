@@ -2284,6 +2284,11 @@ export interface DnsConfig {
    * it" — and lets a deploy perform that move instead of an operator doing it
    * by hand at two dashboards and hoping the record sets match.
    *
+   * `provider` may be `cloudflare` or `route53`: the two that host a zone for
+   * a domain registered elsewhere. On Route 53 the hosted zone is created, or
+   * the public one of that exact name reused, and `registrar.proxied` means
+   * nothing, as there is no edge.
+   *
    * On deploy, when the registrar's nameservers do not already point at
    * `provider`, ts-cloud creates the zone, copies the registrar's records
    * across, verifies record for record that they arrived, and only then

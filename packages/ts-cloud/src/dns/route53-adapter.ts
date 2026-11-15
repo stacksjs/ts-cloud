@@ -11,9 +11,55 @@ export class Route53Provider implements DnsProvider {
   private hostedZoneCache: Map<string, string> = new Map()
   private providedHostedZoneId?: string
 
-  constructor(region: string = 'us-east-1', hostedZoneId?: string) {
-    this.client = new Route53Client(region)
+  constructor(region: string = 'us-east-1', hostedZoneId?: string, client?: Route53Client) {
+    this.client = client ?? new Route53Client(region)
     this.providedHostedZoneId = hostedZoneId
+  }
+
+  /**
+   * Make sure a PUBLIC hosted zone exists for exactly `domain`, and report the
+   * nameservers Route 53 assigned it.
+   *
+   * This is what lets a registrar be pointed here (`delegateZone`). The zone is
+   * looked up by its own name and never by walking up to a parent: a deploy
+   * for `app.example.com` must not delegate into, or create records in, the
+   * zone of `example.com`. A private zone of the same name does not count, as
+   * no registrar can delegate to it. Route 53 will happily create a second
+   * zone of a name it already hosts, each billed and each with different
+   * nameservers, so an existing one is always reused.
+   */
+  async createZone(domain: string): Promise<{ id: string, name: string, status: string, nameServers: string[], created: boolean }> {
+    const name = domain.replace(/\.$/, '').toLowerCase()
+    const listed = await this.client.listHostedZonesByName({ DNSName: `${name}.` })
+    const existing = listed.HostedZones.find(zone => zone.Name.toLowerCase() === `${name}.` && !zone.Config?.PrivateZone)
+
+    const strip = (id: string): string => id.replace('/hostedzone/', '')
+    const hosts = (servers: string[]): string[] => servers.map(server => server.replace(/\.$/, '').toLowerCase())
+
+    if (existing) {
+      const details = await this.client.getHostedZone({ Id: existing.Id })
+      this.remember(name, strip(existing.Id))
+      return { id: strip(existing.Id), name, status: 'active', nameServers: hosts(details.DelegationSet?.NameServers ?? []), created: false }
+    }
+
+    const created = await this.client.createHostedZone({
+      Name: `${name}.`,
+      HostedZoneConfig: { Comment: `Hosted zone for ${name}, created by ts-cloud`, PrivateZone: false },
+    })
+    this.remember(name, strip(created.HostedZone.Id))
+    return { id: strip(created.HostedZone.Id), name, status: 'active', nameServers: hosts(created.DelegationSet?.NameServers ?? []), created: true }
+  }
+
+  /**
+   * Keep a zone's id for the record calls that follow. The cache is keyed by
+   * registrable domain, so a zone for a deeper name (`app.example.com`) is
+   * pinned instead: cached, it would answer for `example.com` too.
+   */
+  private remember(name: string, zoneId: string): void {
+    if (this.getRootDomain(name) === name)
+      this.hostedZoneCache.set(name, zoneId)
+    else
+      this.providedHostedZoneId ??= zoneId
   }
 
   /**

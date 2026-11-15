@@ -15,6 +15,7 @@ import type { DelegationReport } from './delegation'
 import { CloudflareProvider } from './cloudflare'
 import { GoDaddyProvider } from './godaddy'
 import { PorkbunProvider } from './porkbun'
+import { Route53Provider } from './route53-adapter'
 import { delegateZone, isNameserverRegistrar, isZoneHost } from './delegation'
 
 /** The slice of `infrastructure.dns` this needs. */
@@ -58,7 +59,17 @@ export interface DelegationCredentials {
   godaddyApiSecret?: string
   cloudflareApiToken?: string
   cloudflareAccountId?: string
+  /**
+   * Whether AWS credentials are to hand for a Route 53 destination. Read from
+   * the environment when left out; the AWS client resolves the keys itself.
+   */
+  aws?: boolean
+  /** The AWS region the Route 53 client signs for. @default 'us-east-1' */
+  awsRegion?: string
 }
+
+/** A destination a zone can be moved to, built for a config. */
+type DelegationHost = DnsProvider & { createZone: (domain: string, options?: { accountId?: string, jumpStart?: boolean }) => Promise<{ id: string, name: string, status: string, nameServers: string[], created: boolean }> }
 
 /** Why a delegation was not attempted. Never a failure — just not applicable. */
 export interface DelegationSkipped {
@@ -74,7 +85,48 @@ function credentialsFromEnv(env: Record<string, string | undefined>): Delegation
     godaddyApiSecret: env.GODADDY_API_SECRET,
     cloudflareApiToken: env.CLOUDFLARE_API_TOKEN,
     cloudflareAccountId: env.CLOUDFLARE_ACCOUNT_ID,
+    // Any of the ways the AWS client finds its keys: static, a profile, a role.
+    aws: Boolean(
+      (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY)
+      || env.AWS_PROFILE
+      || env.AWS_ROLE_ARN
+      || env.AWS_WEB_IDENTITY_TOKEN_FILE
+      || env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
+      || env.AWS_CONTAINER_CREDENTIALS_FULL_URI,
+    ),
+    awsRegion: env.AWS_REGION || env.AWS_DEFAULT_REGION,
   }
+}
+
+/**
+ * The provider a zone is moving to, or the reason it cannot be built.
+ *
+ * Every destination is the same thing to `delegateZone`: somewhere a zone can
+ * be created, written to and read back, that reports its nameservers.
+ */
+function buildHost(
+  provider: 'route53' | 'cloudflare' | 'porkbun' | 'godaddy',
+  credentials: DelegationCredentials,
+  hosts: { route53?: DelegationHost } = {},
+): DelegationHost | string {
+  if (provider === 'cloudflare') {
+    if (!credentials.cloudflareApiToken)
+      return 'CLOUDFLARE_API_TOKEN is not set'
+    const cloudflare = new CloudflareProvider(credentials.cloudflareApiToken, { accountId: credentials.cloudflareAccountId })
+    return isZoneHost(cloudflare) ? cloudflare as unknown as DelegationHost : 'the Cloudflare provider cannot create zones'
+  }
+
+  if (provider === 'route53') {
+    if (hosts.route53)
+      return hosts.route53
+    if (!credentials.aws)
+      return 'no AWS credentials are set (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or AWS_PROFILE)'
+    return new Route53Provider(credentials.awsRegion || 'us-east-1') as unknown as DelegationHost
+  }
+
+  // A registrar's own DNS is where a domain already is. Moving a zone from one
+  // registrar's nameservers to another's is a transfer of the domain itself.
+  return `delegation to ${provider} is not supported: it hosts zones only for domains registered with it`
 }
 
 function buildRegistrar(
@@ -106,7 +158,14 @@ function buildRegistrar(
  */
 export async function delegateZoneFromConfig(
   config: DelegationConfig,
-  options: { credentials?: DelegationCredentials, env?: Record<string, string | undefined> } = {},
+  options: {
+    credentials?: DelegationCredentials
+    env?: Record<string, string | undefined>
+    /** Destinations to use in place of the ones built from credentials. For tests. */
+    hosts?: { route53?: DelegationHost }
+    /** The registrar to use in place of the one built from credentials. For tests. */
+    registrar?: DnsProvider & { getNameServers: (d: string) => Promise<string[]>, updateNameServers: (d: string, ns: string[]) => Promise<boolean> }
+  } = {},
 ): Promise<DelegationReport | DelegationSkipped> {
   const registrarConfig = config.registrar
   if (!registrarConfig)
@@ -123,33 +182,32 @@ export async function delegateZoneFromConfig(
   if (!config.provider || config.provider === registrarConfig.provider)
     return { status: 'skipped', reason: `dns.provider is already ${registrarConfig.provider}` }
 
-  if (config.provider !== 'cloudflare')
-    return { status: 'skipped', reason: `delegation to ${config.provider} is not supported yet` }
-
   const credentials = options.credentials ?? credentialsFromEnv(options.env ?? process.env)
 
-  if (!credentials.cloudflareApiToken)
-    return { status: 'skipped', reason: 'CLOUDFLARE_API_TOKEN is not set' }
+  const host = buildHost(config.provider, credentials, options.hosts)
+  if (typeof host === 'string')
+    return { status: 'skipped', reason: host }
 
-  const registrar = buildRegistrar(registrarConfig.provider, credentials)
+  const registrar = options.registrar ?? buildRegistrar(registrarConfig.provider, credentials)
   if (typeof registrar === 'string')
     return { status: 'skipped', reason: registrar }
 
-  const host = new CloudflareProvider(credentials.cloudflareApiToken, {
-    accountId: credentials.cloudflareAccountId,
-  })
-
-  if (!isZoneHost(host))
-    return { status: 'skipped', reason: 'the Cloudflare provider cannot create zones' }
-
-  return delegateZone({
+  // Only Cloudflare has an edge to put a host behind. Elsewhere `proxied` is
+  // not passed on, and saying so beats a config that quietly means nothing.
+  const proxies = config.provider === 'cloudflare'
+  const report = await delegateZone({
     domain: config.domain,
     registrar,
     host: host as any,
-    proxiedHosts: registrarConfig.proxied,
-    accountId: credentials.cloudflareAccountId,
+    proxiedHosts: proxies ? registrarConfig.proxied : undefined,
+    accountId: proxies ? credentials.cloudflareAccountId : undefined,
     dryRun: registrarConfig.dryRun,
   })
+
+  if (!proxies && registrarConfig.proxied?.length)
+    report.warnings.push(`dns.registrar.proxied is ignored: ${config.provider} has no edge proxy, so every record is served as it is.`)
+
+  return report
 }
 
 /** One line per outcome, for a deploy log. */
