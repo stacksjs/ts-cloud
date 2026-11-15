@@ -573,6 +573,7 @@ export function buildRollbackScript(paths: ReleasePaths, options: { to?: string;
     ...flip.map(line => `  ${line}`),
     `  systemctl enable "${target}" 2>/dev/null || true`,
     `  systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl stop "$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "$TS_CLOUD_U" 2>/dev/null || true; done`,
+    `  ${buildDisableStaleInstances(unitBase, target)}`,
     `elif [ -f ${systemd}/${unitBase}.service ]; then`,
     ...flip.map(line => `  ${line}`),
     `  systemctl restart ${unitBase}.service`,
@@ -671,4 +672,25 @@ export function buildDeployHistoryHeader(base: string, options: DeployHistoryOpt
     // Keep only the most recent N per-deploy logs.
     `ls -1t ${meta}/deploys/*.log 2>/dev/null | tail -n +${keepLogs + 1} | while read -r TS_CLOUD_OLDLOG; do rm -f "$TS_CLOUD_OLDLOG"; done`,
   ]
+}
+
+/**
+ * One line that disables every enabled instance of `<unitBase>@.service`
+ * except `keep`, so only the live release starts at boot.
+ *
+ * An enabled instance is a symlink in a `*.wants` directory, not a unit file,
+ * so `systemctl list-unit-files "<base>@*.service"` never lists one: it prints
+ * the template alone. The sweep that used that listing disabled nothing, and
+ * an instance that was enabled but not running when a later deploy cut over
+ * (a failed or interrupted deploy leaves one) stayed enabled after its release
+ * directory was pruned. At the next boot systemd started it, it could not read
+ * its environment file, and `Restart=always` retried it every few seconds.
+ *
+ * Reads the symlinks instead. `keep` may contain a shell expansion. `find` and
+ * `grep` are each guarded: under `set -euo pipefail` a missing directory or an
+ * empty match would otherwise fail a deploy whose release is already live.
+ * `systemdDir` exists so a test can point the sweep at a scratch tree.
+ */
+export function buildDisableStaleInstances(unitBase: string, keep: string, systemdDir: string = '/etc/systemd/system'): string {
+  return `{ find ${systemdDir} -mindepth 2 -maxdepth 2 -path '*.wants/*' -name "${unitBase}@*.service" 2>/dev/null || true; } | sed 's|.*/||' | sort -u | { grep -Fxv -- "${keep}" || true; } | while read -r TS_CLOUD_U; do systemctl disable "$TS_CLOUD_U" 2>/dev/null || true; done`
 }

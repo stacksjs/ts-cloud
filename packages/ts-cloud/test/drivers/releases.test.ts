@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   buildActivateRelease,
+  buildDisableStaleInstances,
   buildDeployHistoryHeader,
   buildEnsureReleaseLayout,
   buildLinkSharedPaths,
@@ -222,5 +223,55 @@ describe('buildSiteOwnerGuard', () => {
 
   it('stamps the marker under the site meta dir', () => {
     expect(siteOwnerPath('/var/www/dashboard-acme-com')).toBe('/var/www/dashboard-acme-com/.ts-cloud/owner')
+  })
+})
+
+// An enabled instance is a symlink in a `*.wants` directory. `systemctl
+// list-unit-files "<base>@*.service"` prints only the template, so the sweep
+// built on it disabled nothing and a pruned release's unit crash-looped after
+// the next reboot.
+describe('buildDisableStaleInstances', () => {
+  const run = (keep: string, env: Record<string, string> = {}) => {
+    const root = mkdtempSync(join(tmpdir(), 'ts-cloud-stale-'))
+    const wants = join(root, 'systemd', 'multi-user.target.wants')
+    const bin = join(root, 'bin')
+    mkdirSync(wants, { recursive: true })
+    mkdirSync(bin)
+    for (const unit of ['app-main@aaa111.service', 'app-main@bbb222.service', 'app-main@ccc333.service', 'app-main-scheduler.service', 'other-main@ddd444.service'])
+      symlinkSync('/dev/null', join(wants, unit))
+    writeFileSync(join(root, 'systemd', 'app-main@.service'), '[Service]\n')
+    writeFileSync(join(bin, 'systemctl'), `#!/bin/sh\necho "$@" >> ${join(root, 'calls')}\n`, { mode: 0o755 })
+    const line = buildDisableStaleInstances('app-main', keep, join(root, 'systemd'))
+    const result = Bun.spawnSync(['bash', '-euo', 'pipefail', '-c', line], { env: { ...process.env, ...env, PATH: `${bin}:${process.env.PATH}` } })
+    const calls = existsSync(join(root, 'calls')) ? readFileSync(join(root, 'calls'), 'utf8').trim().split('\n').sort() : []
+    rmSync(root, { recursive: true, force: true })
+    return { exitCode: result.exitCode, calls }
+  }
+
+  it('disables every enabled instance of the family except the live one', () => {
+    const { exitCode, calls } = run('app-main@ccc333.service')
+    expect(exitCode).toBe(0)
+    expect(calls).toEqual(['disable app-main@aaa111.service', 'disable app-main@bbb222.service'])
+  })
+
+  it('keeps the instance named through a shell variable, as rollback does', () => {
+    const { calls } = run('app-main@${TS_CLOUD_RB_ID}.service', { TS_CLOUD_RB_ID: 'aaa111' })
+    expect(calls).toEqual(['disable app-main@bbb222.service', 'disable app-main@ccc333.service'])
+  })
+
+  it('never names the template, another family, or a sibling unit', () => {
+    const { calls } = run('app-main@none.service')
+    expect(calls.join('\n')).not.toContain('app-main@.service')
+    expect(calls.join('\n')).not.toContain('other-main')
+    expect(calls.join('\n')).not.toContain('scheduler')
+  })
+
+  it('succeeds under pipefail when the systemd directory does not exist', () => {
+    const line = buildDisableStaleInstances('app-main', 'app-main@x.service', '/nonexistent/ts-cloud-systemd')
+    expect(Bun.spawnSync(['bash', '-euo', 'pipefail', '-c', line]).exitCode).toBe(0)
+  })
+
+  it('does not rely on list-unit-files, which lists no instances', () => {
+    expect(buildDisableStaleInstances('app-main', 'app-main@x.service')).not.toContain('list-unit-files')
   })
 })

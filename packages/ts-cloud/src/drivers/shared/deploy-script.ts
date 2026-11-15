@@ -14,7 +14,7 @@ import { runtimeIsolationDirectives, runtimeIsolationSetup, runtimeIsolationUser
 import type { SharedPathEntry, SiteLivenessConfig } from '@ts-cloud/core'
 import type { ReleasePaths } from './releases'
 import { formatEnvFile } from './env-file'
-import { buildActivateRelease, buildDeployLock, buildRecordPreviousRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxBundleCacheDir, stxImageCacheDir } from './releases'
+import { buildActivateRelease, buildDeployLock, buildDisableStaleInstances, buildRecordPreviousRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, dedupeSharedPaths, DEFAULT_KEEP_RELEASES, releasePaths, stxBundleCacheDir, stxImageCacheDir } from './releases'
 import { sqliteSharedPaths } from './sqlite-shared-path'
 import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
 
@@ -639,11 +639,8 @@ export function buildZeroDowntimeCutover(options: ZeroDowntimeCutoverOptions): s
     // The release this one replaced, by name, for `deploy:rollback`.
     ...buildRecordPreviousRelease(paths),
     // Drop enabled-but-stopped instances from older deploys and the legacy
-    // non-templated unit so only the live release starts at boot. Never the
-    // TEMPLATE file (`<base>@.service`): disabling it removes every instance's
-    // enablement, including the one just enabled. Brace-group the grep so
-    // `|| true` guards only it (an empty match exits 1 under pipefail).
-    `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v -e "^${instance}\$" -e "^${unitBase}@\\.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl disable "$TS_CLOUD_U" 2>/dev/null || true; done`,
+    // non-templated unit so only the live release starts at boot.
+    buildDisableStaleInstances(unitBase, instance),
     `if [ -f /etc/systemd/system/${serviceName} ]; then systemctl disable ${serviceName} 2>/dev/null || true; rm -f /etc/systemd/system/${serviceName}; systemctl daemon-reload; fi`,
   ]
 }
