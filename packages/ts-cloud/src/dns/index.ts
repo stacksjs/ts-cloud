@@ -95,18 +95,82 @@ export function createDnsProvider(config: DnsProviderConfig): DnsProvider {
   }
 }
 
+/** Which provider a nameserver belongs to, by the name it is served under. */
+const NAMESERVER_OWNERS: Array<{ provider: DnsProvider['name'], pattern: RegExp }> = [
+  { provider: 'cloudflare', pattern: /\.ns\.cloudflare\.com$/ },
+  { provider: 'route53', pattern: /\.awsdns-\d+\./ },
+  { provider: 'porkbun', pattern: /\.porkbun\.com$/ },
+  { provider: 'godaddy', pattern: /\.domaincontrol\.com$/ },
+]
+
+/** The provider whose nameservers these are, or undefined when they are nobody's we know. */
+export function providerOfNameservers(nameservers: readonly string[]): string | undefined {
+  const names = nameservers.map(name => name.replace(/\.$/, '').toLowerCase())
+  return NAMESERVER_OWNERS.find(owner => names.some(name => owner.pattern.test(name)))?.provider
+}
+
+/** Looks a domain's nameservers up. Injectable, so a test needs no network. */
+export type NameserverLookup = (domain: string) => Promise<string[]>
+
+const lookupNameservers: NameserverLookup = async (domain) => {
+  const { resolveNs } = await import('node:dns/promises')
+  return resolveNs(domain)
+}
+
 /**
- * Auto-detect DNS provider for a domain
- * Tries each provider to see which one can manage the domain
+ * Find the provider that serves a domain's zone, among the configured ones.
+ *
+ * Two things this must not get wrong, and used to:
+ *
+ * - One provider that cannot answer is not the end of the search. Credentials
+ *   for a provider the project does not use (an AWS profile on the machine, a
+ *   revoked token) made the first probe throw, and the throw ended the lookup
+ *   with "no provider" although the next one in line held the zone.
+ * - More than one provider can say yes. A registrar still manages a domain
+ *   whose zone has moved elsewhere, and a record written to its copy is
+ *   written where nothing looks. So when several claim the domain, the one
+ *   its nameservers actually point at wins.
  */
-export async function detectDnsProvider(domain: string, configs: DnsProviderConfig[]): Promise<DnsProvider | null> {
+export async function detectDnsProvider(
+  domain: string,
+  configs: DnsProviderConfig[],
+  options: { nameservers?: NameserverLookup } = {},
+): Promise<DnsProvider | null> {
+  const candidates: DnsProvider[] = []
   for (const config of configs) {
-    const provider = createDnsProvider(config)
-    if (await provider.canManageDomain(domain)) {
-      return provider
+    try {
+      candidates.push(createDnsProvider(config))
+    } catch {
+      // Credentials that cannot even build a provider are not a candidate.
     }
   }
-  return null
+  return servingProvider(domain, candidates, options)
+}
+
+/** {@link detectDnsProvider}, over providers already built. */
+export async function servingProvider(
+  domain: string,
+  candidates: readonly DnsProvider[],
+  options: { nameservers?: NameserverLookup } = {},
+): Promise<DnsProvider | null> {
+  const claims: DnsProvider[] = []
+  for (const provider of candidates) {
+    try {
+      if (await provider.canManageDomain(domain)) claims.push(provider)
+    } catch {
+      // Cannot answer: not this one.
+    }
+  }
+
+  if (claims.length <= 1) return claims[0] ?? null
+
+  try {
+    const zone = domain.replace(/\.$/, '').split('.').slice(-2).join('.')
+    const serving = providerOfNameservers(await (options.nameservers ?? lookupNameservers)(zone))
+    return claims.find(provider => provider.name === serving) ?? claims[0]
+  } catch {
+    return claims[0]
+  }
 }
 
 /**
@@ -238,14 +302,8 @@ export class DnsProviderFactory {
   /**
    * Auto-detect provider for a domain
    */
-  async getProviderForDomain(domain: string): Promise<DnsProvider | null> {
-    for (const config of this.configs) {
-      const provider = createDnsProvider(config)
-      if (await provider.canManageDomain(domain)) {
-        return provider
-      }
-    }
-    return null
+  async getProviderForDomain(domain: string, options: { nameservers?: NameserverLookup } = {}): Promise<DnsProvider | null> {
+    return detectDnsProvider(domain, this.configs, options)
   }
 
   /**
