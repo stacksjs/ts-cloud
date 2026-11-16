@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.136...v0.16.137)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: preserve operator keys when rotating deployment identities ([1d995bd](https://github.com/stacksjs/ts-cloud/commit/1d995bd)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.137 ([43e1ecc](https://github.com/stacksjs/ts-cloud/commit/43e1ecc)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.135...v0.16.136)
 
 ## ✨ Features
