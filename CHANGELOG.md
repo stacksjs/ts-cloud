@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.138...v0.16.139)
+
+## 🐛 Bug Fixes
+
+- **dns**: export the provider search from the package root ([c97b2d9](https://github.com/stacksjs/ts-cloud/commit/c97b2d9)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.139 ([7ae207a](https://github.com/stacksjs/ts-cloud/commit/7ae207a)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.137...v0.16.138)
 
 ## 🐛 Bug Fixes
