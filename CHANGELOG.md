@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.137...v0.16.138)
+
+## 🐛 Bug Fixes
+
+- **dns**: a provider that cannot answer does not end the search, and the one serving the zone wins ([4e241b8](https://github.com/stacksjs/ts-cloud/commit/4e241b8)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.138 ([1efbbc2](https://github.com/stacksjs/ts-cloud/commit/1efbbc2)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.136...v0.16.137)
 
 ## 🐛 Bug Fixes
