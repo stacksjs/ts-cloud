@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { HetznerClient } from '../../src/drivers/hetzner/client'
+import { HetznerApiError, HetznerClient } from '../../src/drivers/hetzner/client'
 import { ensureFirewall, ensureServer, ensureSshKey, serverPublicIpv4 } from '../../src/drivers/hetzner/provision'
 import { buildSshArgs } from '../../src/drivers/shared/remote-exec'
 
@@ -57,6 +57,58 @@ describe('ensureSshKey', () => {
 
     const result = await ensureSshKey(client, { name: 'deploy-key', publicKey: ED25519_KEY })
     expect(result).toEqual({ id: 11, name: 'deploy-key', created: true })
+  })
+
+  it('rotates a deployment identity without replacing the existing operator key', async () => {
+    const original = { id: 7, name: 'deploy-key', fingerprint: 'old', public_key: 'ssh-ed25519 AAAAOLD operator@laptop' }
+    const keys = [original]
+    const createdNames: string[] = []
+    const client = fakeClient({
+      'GET /ssh_keys': () => ({ ssh_keys: keys }),
+      'POST /ssh_keys': (body) => {
+        if (keys.some(key => key.name === body.name)) throw new Error('Provider rejects duplicate key names')
+        createdNames.push(body.name)
+        const key = { id: 11, name: body.name, fingerprint: 'new', public_key: body.public_key }
+        keys.push(key)
+        return { ssh_key: key }
+      },
+    })
+    const first = await ensureSshKey(client, { name: 'deploy-key', publicKey: ED25519_KEY })
+    const again = await ensureSshKey(client, { name: 'deploy-key', publicKey: ED25519_KEY.replace('chris@laptop', 'ci@runner') })
+    expect(first.id).toBe(11)
+    expect(first.name).toMatch(/^deploy-key-[a-f0-9]{12}$/)
+    expect(first.created).toBe(true)
+    expect(again).toEqual({ ...first, created: false })
+    expect(createdNames).toEqual([first.name])
+    expect(keys[0]).toEqual(original)
+  })
+
+  it('reuses the same key registered concurrently without retrying a create', async () => {
+    let reads = 0
+    let writes = 0
+    const registered = { id: 17, name: 'another-job', public_key: ED25519_KEY, fingerprint: 'new' }
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl: async (_url, init) => {
+      if (init?.method === 'POST') {
+        writes++
+        return Response.json({ error: { code: 'uniqueness_error', message: 'SSH key not unique' } }, { status: 409 })
+      }
+      return Response.json({ ssh_keys: ++reads === 1 ? [] : [registered] })
+    } })
+    expect(await ensureSshKey(client, { name: 'deploy-key', publicKey: ED25519_KEY })).toEqual({ id: 17, name: 'another-job', created: false })
+    expect({ reads, writes }).toEqual({ reads: 2, writes: 1 })
+  })
+
+  it('keeps an unexplained uniqueness conflict as a provider failure', async () => {
+    let writes = 0
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl: async (_url, init) => {
+      if (init?.method === 'POST') {
+        writes++
+        return Response.json({ error: { code: 'uniqueness_error', message: 'SSH key not unique' } }, { status: 409 })
+      }
+      return Response.json({ ssh_keys: [] })
+    } })
+    await expect(ensureSshKey(client, { name: 'deploy-key', publicKey: ED25519_KEY })).rejects.toBeInstanceOf(HetznerApiError)
+    expect(writes).toBe(1)
   })
 })
 

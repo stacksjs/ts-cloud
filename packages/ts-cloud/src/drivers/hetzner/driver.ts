@@ -22,7 +22,8 @@ import { describeScriptSyntaxError, formatSshFailure, summarizeRemoteFailures, s
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { sftpFirewallPorts } from '../shared/sftp-provision'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
-import { HetznerClient, normalizeSshPublicKey } from './client'
+import { HetznerClient } from './client'
+import { ensureSshKey as registerSshKey } from './provision'
 import { planServerReverseDns } from './reverse-dns'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { resolveHetznerApiToken, resolveHetznerImage, resolveHetznerSettings } from './config'
@@ -1395,18 +1396,12 @@ export class HetznerDriver implements CloudDriver {
     }
 
     const publicKey = readFileSync(this.sshPublicKeyPath, 'utf8').trim()
-    const normalized = normalizeSshPublicKey(publicKey)
-
-    const existing = await this.client.listSshKeys()
-    const match = existing.find((key) => normalizeSshPublicKey(key.public_key) === normalized)
-    if (match) return match.id
-
-    const created = await this.client.createSshKey({
+    const registered = await registerSshKey(this.client, {
       name: `${slug}-${environment}-deploy`,
       publicKey,
       labels,
     })
-    return created.id
+    return registered.id
   }
 
   /** getServer that returns null instead of throwing when the server is gone. */

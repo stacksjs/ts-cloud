@@ -7,7 +7,8 @@
  * converges instead of failing on duplicates.
  */
 import type { CreateServerOptions, HetznerClient, HetznerFirewallRule, HetznerServer } from './client'
-import { normalizeSshPublicKey } from './client'
+import { createHash } from 'node:crypto'
+import { HetznerApiError, normalizeSshPublicKey } from './client'
 
 export interface EnsuredResource {
   id: number
@@ -29,14 +30,26 @@ export interface EnsureSshKeyOptions {
  */
 export async function ensureSshKey(client: HetznerClient, options: EnsureSshKeyOptions): Promise<EnsuredResource> {
   const body = normalizeSshPublicKey(options.publicKey)
-  const existing = (await client.listSshKeys()).find((k) => normalizeSshPublicKey(k.public_key) === body)
+  const keys = await client.listSshKeys()
+  const existing = keys.find((k) => normalizeSshPublicKey(k.public_key) === body)
   if (existing) return { id: existing.id, name: existing.name, created: false }
-  const created = await client.createSshKey({
-    name: options.name,
-    publicKey: options.publicKey.trim(),
-    labels: options.labels,
-  })
-  return { id: created.id, name: created.name, created: true }
+  // A new CI identity must coexist with the operator key already using the
+  // project's deployment name. Never replace or rename that existing key.
+  const name = keys.some(key => key.name === options.name)
+    ? `${Array.from(options.name).slice(0, 50).join('')}-${createHash('sha256').update(body).digest('hex').slice(0, 12)}`
+    : options.name
+  try {
+    const created = await client.createSshKey({ name, publicKey: options.publicKey.trim(), labels: options.labels })
+    return { id: created.id, name: created.name, created: true }
+  }
+  catch (error) {
+    // Another provisioner may have registered this exact key since the list.
+    // Reconcile that fact once; an unrelated conflict remains a real failure.
+    if (!(error instanceof HetznerApiError) || error.status !== 409 || error.code !== 'uniqueness_error') throw error
+    const registered = (await client.listSshKeys()).find(key => normalizeSshPublicKey(key.public_key) === body)
+    if (!registered) throw error
+    return { id: registered.id, name: registered.name, created: false }
+  }
 }
 
 export interface EnsureFirewallOptions {
