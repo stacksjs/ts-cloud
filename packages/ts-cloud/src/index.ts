@@ -485,6 +485,8 @@ export type {
 export {
   createDnsProvider,
   detectDnsProvider,
+  providerOfNameservers,
+  servingProvider,
   DnsProviderFactory,
   dnsProviders,
   PorkbunProvider,
