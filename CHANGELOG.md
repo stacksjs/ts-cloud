@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.140...v0.16.141)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: annotate the user_data limit for isolated declarations ([a4672db](https://github.com/stacksjs/ts-cloud/commit/a4672db)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.141 ([83da65c](https://github.com/stacksjs/ts-cloud/commit/83da65c)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.139...v0.16.140)
 
 ## 🐛 Bug Fixes
