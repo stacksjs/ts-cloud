@@ -282,6 +282,16 @@ describe('buildMailAccountScript', () => {
     expect(script[1]).toContain('SMTP_DB_PATH="$TS_CLOUD_MAIL_DB"')
   })
 
+  it('asks for the replacement with --force, which the mail server requires', () => {
+    const mail = resolveMailService(withMail({ mode: 'server', accounts: [{ address: 'app@example.com', password: 'secret', passwordPolicy: 'managed' }] }), { environment: 'production' })
+    const [forced, fallback] = (buildMailAccountScript(mail)[1] ?? '').split(' || ')
+    expect(forced).toContain('change-password')
+    expect(forced?.trimEnd().endsWith('--force')).toBe(true)
+    // The retry is for a server from before the flag, which rejects it.
+    expect(fallback).toContain('change-password')
+    expect(fallback).not.toContain('--force')
+  })
+
 })
 
 /**

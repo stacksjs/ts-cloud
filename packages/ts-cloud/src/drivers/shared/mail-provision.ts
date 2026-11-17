@@ -434,10 +434,15 @@ export function buildMailAccountScript(mail: ResolvedMailService): string[] {
   const cli = (args: string) =>
     `runuser -u ${MAIL_USER} -- env SMTP_DB_PATH="$TS_CLOUD_MAIL_DB" ${PANTRY_BIN}/mail user:local ${args}`
 
+  // The mail server refuses to replace a password without --force (a deploy
+  // that replaced people's passwords locked their mail clients out), so a
+  // managed credential says so. A server from before that flag rejects the
+  // unknown option; the retry without it keeps such a box working until it is
+  // upgraded, and on a current server the retry is refused, which is safe.
   return mail.accounts.flatMap(account => [
     cli(`create ${sh(account.address)} ${sh(account.password)} ${sh(account.address)}`),
     ...(account.passwordPolicy === 'managed'
-      ? [cli(`change-password ${sh(account.address)} ${sh(account.password)}`)]
+      ? [`${cli(`change-password ${sh(account.address)} ${sh(account.password)} --force`)} || ${cli(`change-password ${sh(account.address)} ${sh(account.password)}`)}`]
       : []),
   ])
 }
