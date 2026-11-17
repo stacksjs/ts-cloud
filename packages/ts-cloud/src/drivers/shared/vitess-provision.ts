@@ -419,8 +419,6 @@ function primaryGuardName(keyspace: string, shard: string): string {
 /** vttablet: manages one mysqld and serves its shard. */
 export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string, shard: string): string {
   const cell = config.cell ?? 'zone1'
-  const guard = primaryGuardName(keyspace, shard)
-  launchers.set(guard, buildPrimaryWritableScript(cell, keyspace, shard))
   return systemdUnit({
     description: `Vitess vttablet (${keyspace}/${shard})`,
     // Both dependencies are real: no topology means it cannot register, no
@@ -442,10 +440,66 @@ export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string,
       `--db-port ${config.mysqlPort ?? 3306}`,
       `--mycnf-mysql-port ${config.mysqlPort ?? 3306}`,
     ]),
-    // Backgrounded and non-fatal (`-`): the guard waits for the tablet to
-    // register, which must not hold the unit in "activating".
-    execStartPost: [`-/bin/sh -c '${launcherPath(guard)} &'`],
   })
+}
+
+function tabletUnitName(keyspace: string, shard: string): string {
+  return `vitess-vttablet-${keyspace}-${shard.replace(/-/g, 'x')}`
+}
+
+function tabletTargets(config: VitessServiceConfig): Array<{ keyspace: string, shard: string }> {
+  return (config.keyspaces ?? []).flatMap(keyspace =>
+    (keyspace.sharded ? ['-80', '80-'] : ['0']).map(shard => ({ keyspace: keyspace.name, shard })))
+}
+
+/**
+ * Install the primary-writable guard on every tablet unit, and run it.
+ *
+ * Delivered as a systemd drop-in beside the unit rather than inside it, so
+ * the same few lines both complete a fresh provision and retrofit a box that
+ * was provisioned before the guard existed: an owner deploy re-applies this
+ * on every run (see `buildOwnedServicesReconcileScript`), while the units
+ * themselves are only written at first boot. Idempotent; it rewrites the same
+ * files, and SetWritable on a writable primary is a no-op.
+ *
+ * The guard runs once here as well, in the foreground, so a primary that is
+ * already stuck read-only is healed by the deploy that installs the fix.
+ */
+export function buildVitessPrimaryGuardScript(value: boolean | VitessServiceConfig | undefined): string[] {
+  if (!enabled(value)) return []
+  const config = settings(value)
+  if (config.mode === 'combo') return []
+  return [...buildPrimaryGuardFiles(config), 'systemctl daemon-reload', ...buildPrimaryGuardRun(config)]
+}
+
+/** The guard scripts and the drop-ins that hook them onto each tablet unit. */
+function buildPrimaryGuardFiles(config: VitessServiceConfig): string[] {
+  const cell = config.cell ?? 'zone1'
+  const out: string[] = [`mkdir -p ${VITESS_LIB}`]
+  for (const { keyspace, shard } of tabletTargets(config)) {
+    const unit = tabletUnitName(keyspace, shard)
+    const guard = launcherPath(primaryGuardName(keyspace, shard))
+    out.push(
+      `cat > ${guard} <<'TS_CLOUD_VITESS_GUARD_EOF'`,
+      buildPrimaryWritableScript(cell, keyspace, shard),
+      'TS_CLOUD_VITESS_GUARD_EOF',
+      `chmod 0755 ${guard}`,
+      `mkdir -p /etc/systemd/system/${unit}.service.d`,
+      `cat > /etc/systemd/system/${unit}.service.d/ts-cloud-primary-writable.conf <<'TS_CLOUD_VITESS_GUARD_EOF'`,
+      '[Service]',
+      // Backgrounded and non-fatal (`-`): the guard waits for the tablet to
+      // register, which must not hold the unit in "activating".
+      `ExecStartPost=-/bin/sh -c '${guard} &'`,
+      'TS_CLOUD_VITESS_GUARD_EOF',
+    )
+  }
+  return out
+}
+
+/** Run each guard once, in the foreground, for tablets that are up. */
+function buildPrimaryGuardRun(config: VitessServiceConfig): string[] {
+  return tabletTargets(config).map(({ keyspace, shard }) =>
+    `if systemctl is-active --quiet ${tabletUnitName(keyspace, shard)}.service; then ${launcherPath(primaryGuardName(keyspace, shard))}; fi`)
 }
 
 /** mysqlctld: the managed mysqld a tablet owns. */
@@ -733,12 +787,12 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
 
   // One tablet per keyspace/shard. Single-box, so they share a host; see the
   // module header for why that is a deliberate limit rather than an oversight.
-  for (const keyspace of config.keyspaces ?? []) {
-    for (const shard of keyspace.sharded ? ['-80', '80-'] : ['0'])
-      units.push([`vitess-vttablet-${keyspace.name}-${shard.replace(/-/g, 'x')}`, buildVttabletUnit(config, keyspace.name, shard)])
-  }
+  for (const { keyspace, shard } of tabletTargets(config))
+    units.push([tabletUnitName(keyspace, shard), buildVttabletUnit(config, keyspace, shard)])
 
   for (const [name, body] of units) out.push(...writeUnit(name, body))
+  // Drop-ins are unit files too, so they are written before the one reload.
+  out.push(...buildPrimaryGuardFiles(config))
 
   // Written after the units, because building the units is what registers
   // the launchers, and before daemon-reload so nothing can start without one.
@@ -758,6 +812,7 @@ export function buildVitessProvisionScript(value: boolean | VitessServiceConfig 
     // desired credentials are unchanged.
     `if [ "$VTESS_VTGATE_AUTH_CHANGED" = 1 ]; then systemctl restart vitess-vtgate.service; printf '%s\\n' "$VTESS_VTGATE_AUTH_SHA" > ${VITESS_AUTH_APPLIED_FILE}; chown ${VITESS_USER}:${VITESS_USER} ${VITESS_AUTH_APPLIED_FILE}; chmod 0600 ${VITESS_AUTH_APPLIED_FILE}; fi`,
     ...buildVitessBootstrapScript(config),
+    ...buildPrimaryGuardRun(config),
     ...buildVitessHealthCheck(config),
   )
   return out

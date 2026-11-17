@@ -1,11 +1,13 @@
 import type { VitessServiceConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
+import { buildOwnedServicesReconcileScript } from './compute-provision'
 import { buildServicesProvisionScript } from './db-provision'
 import {
   buildLaunchers,
   buildEtcdUnit,
   buildMysqlctldUnit,
   buildPrimaryWritableScript,
+  buildVitessPrimaryGuardScript,
   buildVitessAuthFileScript,
   buildVitessBootstrapScript,
   buildVitessHealthCheck,
@@ -197,20 +199,49 @@ describe('cluster topology', () => {
   it('makes a restarted primary writable, and only a primary', () => {
     // Without VTOrc a restarted PRIMARY keeps super_read_only on while
     // reporting is_primary_serving: true; writes fail and no check notices.
-    const unit = buildVttabletUnit(CLUSTER, 'lookup', '0')
-    const guard = '/usr/local/lib/vitess/vttablet-lookup-0-primary-writable.sh'
-    expect(unit).toContain(`ExecStartPost=-/bin/sh -c '${guard} &'`)
-
-    const script = buildLaunchers().get('vttablet-lookup-0-primary-writable')
-    expect(script).toBe(buildPrimaryWritableScript('zone1', 'lookup', '0'))
+    const script = buildPrimaryWritableScript('zone1', 'lookup', '0')
     expect(script).toContain('SetWritable "$ALIAS" true')
     // Guarded on topology naming this tablet the shard primary, so a replica
     // is never made writable.
     expect(script).toContain('GetShard "$TARGET"')
     expect(script).toContain('"primary_alias":{"cell":"zone1","uid":100}')
-    expect(script!.indexOf('primary_alias')).toBeLessThan(script!.indexOf('SetWritable'))
+    expect(script.indexOf('primary_alias')).toBeLessThan(script.indexOf('SetWritable'))
     // It never fails the unit.
     expect(script).not.toMatch(/exit [1-9]/)
+  })
+
+  it('installs the guard on each tablet as a drop-in and runs it once', () => {
+    const script = buildVitessPrimaryGuardScript(CLUSTER).join('\n')
+    const guard = '/usr/local/lib/vitess/vttablet-lookup-0-primary-writable.sh'
+    expect(script).toContain(`cat > ${guard} <<`)
+    expect(script).toContain('/etc/systemd/system/vitess-vttablet-lookup-0.service.d/ts-cloud-primary-writable.conf')
+    expect(script).toContain(`ExecStartPost=-/bin/sh -c '${guard} &'`)
+    expect(script).toContain('vitess-vttablet-commerce-x80.service.d')
+    // Reloaded before the guard runs, and run only for a tablet that is up.
+    expect(script.indexOf('systemctl daemon-reload')).toBeLessThan(script.indexOf(`then ${guard}; fi`))
+    expect(script).toContain(`if systemctl is-active --quiet vitess-vttablet-lookup-0.service; then ${guard}; fi`)
+    // The units themselves stay untouched, so a reconcile cannot rewrite them.
+    expect(script).not.toContain('/etc/systemd/system/vitess-vttablet-lookup-0.service <<')
+  })
+
+  it('has nothing to guard in combo mode or when Vitess is off', () => {
+    expect(buildVitessPrimaryGuardScript({ mode: 'combo', keyspaces: [{ name: 'app' }] })).toEqual([])
+    expect(buildVitessPrimaryGuardScript(undefined)).toEqual([])
+  })
+
+  it('an owner deploy retrofits the guard onto a live box, a tenant never does', () => {
+    const config = { environments: {}, project: { name: 'owned', slug: 'owned', region: 'fsn1' }, cloud: { provider: 'hetzner' as const }, infrastructure: { compute: { managedServices: { vitess: { mode: 'cluster' as const, keyspaces: [{ name: 'app' }] } } } } }
+    expect(buildOwnedServicesReconcileScript(config as any, 'production').join('\n')).toContain('vitess-vttablet-app-0.service.d/ts-cloud-primary-writable.conf')
+    expect(buildOwnedServicesReconcileScript({ ...config, cloud: { ...config.cloud, attachTo: 'another-owner' } } as any, 'production')).toEqual([])
+  })
+
+  it('a fresh provision installs the guard with the units and runs it after election', () => {
+    const lines = buildVitessProvisionScript(CLUSTER)
+    const script = lines.join('\n')
+    // Drop-ins are written with the units, before the single reload...
+    expect(script.indexOf('ts-cloud-primary-writable.conf')).toBeLessThan(script.indexOf('systemctl daemon-reload'))
+    // ...and the guard runs once primaries are elected.
+    expect(script.indexOf('vttablet-lookup-0-primary-writable.sh; fi')).toBeGreaterThan(script.indexOf('RebuildKeyspaceGraph'))
   })
 
   it('heals a serving but read-only primary on every provision', () => {

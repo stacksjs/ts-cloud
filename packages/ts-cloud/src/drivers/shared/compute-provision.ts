@@ -27,6 +27,7 @@ import { buildProtectionScript } from './protection'
 import { assertSftpSupported, buildSftpProvisionScript } from './sftp-provision'
 import { buildUfwScript } from './ufw'
 import { buildTypesenseProvisionScript } from './typesense-provision'
+import { buildVitessPrimaryGuardScript } from './vitess-provision'
 
 export interface ComputeProvisionScripts {
   /** Effective runtime to install (bun/node/deno/php). */
@@ -170,6 +171,10 @@ export function buildOwnedServicesReconcileScript(config: CloudConfig, environme
   const mail = resolveMailService(config, { environment })
   return [
     ...buildTypesenseProvisionScript(compute?.managedServices?.typesense),
+    // Retrofits the restart guard onto tablets provisioned before it existed,
+    // and heals a primary already stuck read-only. Units themselves are only
+    // written at first boot, so without this a fix never reaches a live box.
+    ...buildVitessPrimaryGuardScript(compute?.managedServices?.vitess),
     ...(compute?.backups?.enabled ? buildBackupProvisionScript({ database: resolveAppDatabase(config), backups: compute.backups }) : []),
     ...(mail.enabled ? buildMailProvisionScript(mail) : []),
   ]
