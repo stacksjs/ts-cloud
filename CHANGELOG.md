@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.141...v0.16.142)
+
+## 🐛 Bug Fixes
+
+- **vitess**: keep a restarted primary writable without VTOrc ([4f605ad](https://github.com/stacksjs/ts-cloud/commit/4f605ad)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.142 ([f4e3b56](https://github.com/stacksjs/ts-cloud/commit/f4e3b56)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.140...v0.16.141)
 
 ## 🐛 Bug Fixes
