@@ -1,7 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { HetznerApiError, HetznerClient } from '../../src/drivers/hetzner/client'
 import { matchesTsCloudLabels, resolveHetznerServerType } from '../../src/drivers/hetzner/instance-sizes'
-import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from '../../src/drivers/hetzner/cloud-init'
+import { gunzipSync } from 'node:zlib'
+import { CLOUD_INIT_USER_DATA_LIMIT, generateUbuntuAppCloudInit, wrapCloudInitUserData } from '../../src/drivers/hetzner/cloud-init'
 
 describe('resolveHetznerServerType', () => {
   it('maps size shorthands to Hetzner server types', () => {
@@ -61,6 +62,28 @@ describe('generateUbuntuAppCloudInit', () => {
 })
 
 describe('wrapCloudInitUserData', () => {
+  it('packs a script that would not fit, and cloud-init gets the same script back', () => {
+    // Incompressible enough to matter, compressible enough to fit: a real
+    // bootstrap is shell, which packs to well under half.
+    const script = `#!/bin/bash\n${Array.from({ length: 900 }, (_, i) => `echo "step ${i}: install and start service ${i % 7}"`).join('\n')}`
+    expect(Buffer.byteLength(script)).toBeGreaterThan(CLOUD_INIT_USER_DATA_LIMIT)
+    const wrapped = wrapCloudInitUserData(script)
+    expect(Buffer.byteLength(wrapped)).toBeLessThanOrEqual(CLOUD_INIT_USER_DATA_LIMIT)
+    expect(wrapped).toContain('encoding: gz+b64')
+    expect(wrapped).toContain('  - [ bash, /var/lib/cloud/ts-cloud-bootstrap.sh ]')
+    const block = wrapped.slice(wrapped.indexOf('content: |\n') + 11, wrapped.indexOf('\nruncmd:'))
+    expect(gunzipSync(Buffer.from(block.replace(/\s+/g, ''), 'base64')).toString()).toBe(script)
+  })
+
+  it('leaves a script that fits as plain text', () => {
+    expect(wrapCloudInitUserData('#!/bin/bash\necho hello')).not.toContain('encoding:')
+  })
+
+  it('says how large the script is when even the packed form will not fit', () => {
+    const noise = Array.from({ length: 60000 }, (_, i) => ((i * 2654435761) % 4294967296).toString(36)).join('\n')
+    expect(() => wrapCloudInitUserData(noise)).toThrow(/can be created with at most 32768/)
+  })
+
   it('wraps bootstrap script as cloud-config runcmd', () => {
     const wrapped = wrapCloudInitUserData('#!/bin/bash\necho hello')
     expect(wrapped.startsWith('#cloud-config')).toBe(true)

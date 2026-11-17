@@ -6,6 +6,8 @@
  * the golden-image bake). `generateUbuntuAppCloudInit` is kept as a back-compat
  * alias for the shared builder.
  */
+import { gzipSync } from 'node:zlib'
+
 export {
   buildUbuntuBootstrapScript as generateUbuntuAppCloudInit,
   type UbuntuBootstrapOptions,
@@ -40,22 +42,43 @@ function yamlBlock(value: string | undefined): string {
   return value.endsWith('\n') ? value : `${value}\n`
 }
 
+/**
+ * The most user_data a server may be created with. Hetzner refuses more with
+ * `422 invalid input in field 'user_data'`, which names neither the limit nor
+ * the size, and EC2 has the same 32 KiB ceiling in its own words.
+ */
+export const CLOUD_INIT_USER_DATA_LIMIT = 32 * 1024
+
 export function wrapCloudInitUserData(bootstrapScript: string, extras: CloudInitUserDataExtras = {}): string {
   const scriptPath = extras.scriptPath ?? '/var/lib/cloud/ts-cloud-bootstrap.sh'
   const permissions = extras.permissions ?? '0755'
-  const indented = bootstrapScript
-    .split('\n')
-    .map((line) => `      ${line}`)
-    .join('\n')
-
-  return `#cloud-config
+  const wrap = (content: string, encoding?: string): string => `#cloud-config
 ${yamlBlock(extras.before)}write_files:
   - path: ${scriptPath}
     permissions: '${permissions}'
     owner: root:root
-    content: |
-${indented}
+${encoding ? `    encoding: ${encoding}\n` : ''}    content: |
+${content.split('\n').map(line => `      ${line}`).join('\n')}
 runcmd:
   - [ bash, ${scriptPath} ]
 ${yamlBlock(extras.after)}`
+
+  const plain = wrap(bootstrapScript)
+  if (Buffer.byteLength(plain) <= CLOUD_INIT_USER_DATA_LIMIT) return plain
+
+  // A box that gets its gateway, database and search at first boot carries a
+  // script past the limit: an app with rpx, Postgres and Typesense was 42 KB.
+  // cloud-init unpacks `gz+b64` content itself, and a shell script packs to
+  // well under half, so the same script is sent, only smaller. Lines of 76
+  // keep the YAML block scalar readable in the provider's console.
+  const packed = gzipSync(bootstrapScript).toString('base64').replace(/(.{76})/g, '$1\n').trimEnd()
+  const compressed = wrap(packed, 'gz+b64')
+  const size = Buffer.byteLength(compressed)
+  if (size > CLOUD_INIT_USER_DATA_LIMIT) {
+    throw new Error(
+      `The first-boot script is ${Buffer.byteLength(plain)} bytes, ${size} compressed, and a server can be created with at most ${CLOUD_INIT_USER_DATA_LIMIT}. `
+      + 'Provision fewer services at first boot, or bake them into an image (compute.bakedImage).',
+    )
+  }
+  return compressed
 }
