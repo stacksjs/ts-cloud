@@ -47,7 +47,7 @@ function yamlBlock(value: string | undefined): string {
  * `422 invalid input in field 'user_data'`, which names neither the limit nor
  * the size, and EC2 has the same 32 KiB ceiling in its own words.
  */
-export const CLOUD_INIT_USER_DATA_LIMIT = 32 * 1024
+export const CLOUD_INIT_USER_DATA_LIMIT: number = 32 * 1024
 
 export function wrapCloudInitUserData(bootstrapScript: string, extras: CloudInitUserDataExtras = {}): string {
   const scriptPath = extras.scriptPath ?? '/var/lib/cloud/ts-cloud-bootstrap.sh'
