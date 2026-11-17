@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.142...v0.16.143)
+
+## 🐛 Bug Fixes
+
+- **vitess**: retrofit the primary guard onto live boxes on owner deploys ([6adc2e1](https://github.com/stacksjs/ts-cloud/commit/6adc2e1)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.143 ([95fd6af](https://github.com/stacksjs/ts-cloud/commit/95fd6af)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.141...v0.16.142)
 
 ## 🐛 Bug Fixes
