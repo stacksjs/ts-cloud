@@ -239,6 +239,7 @@ interface UnitOptions {
   requires?: string[]
   environment?: Record<string, string>
   execStartPre?: string[]
+  execStartPost?: string[]
 }
 
 function systemdUnit(opts: UnitOptions): string {
@@ -266,6 +267,7 @@ function systemdUnit(opts: UnitOptions): string {
     ...Object.entries(opts.environment ?? {}).map(([k, v]) => `Environment="${k}=${v}"`),
     ...(opts.execStartPre ?? []).map(c => `ExecStartPre=${c}`),
     `ExecStart=${opts.execStart}`,
+    ...(opts.execStartPost ?? []).map(c => `ExecStartPost=${c}`),
     'Restart=always',
     'RestartSec=5',
     // Vitess daemons open many connections and files; the default 1024 is
@@ -372,9 +374,53 @@ export function buildVtctldUnit(config: VitessServiceConfig): string {
   })
 }
 
+/**
+ * Make a restarted primary writable again.
+ *
+ * mysqld starts with `super-read-only` from its my.cnf, and since Vitess 17 a
+ * vttablet that restarts as a shard's PRIMARY leaves it on and waits for
+ * VTOrc to clear it. These boxes run no VTOrc, so after any reboot the shard
+ * kept a primary in topology - `is_primary_serving: true`, healthy to every
+ * check here - while MySQL refused every write. One production box spent two
+ * months like that: every deploy failed at migrate and nothing could be
+ * written, and nothing reported it.
+ *
+ * Acts only when topology records this tablet as the shard's primary, so it
+ * can never make a replica writable. Waits for the tablet to register, since
+ * it runs as the unit starts, and never fails the unit: a missed lift is
+ * recovered by the next provision's bootstrap, which runs the same check.
+ */
+export function buildPrimaryWritableScript(cell: string, keyspace: string, shard: string): string {
+  const alias = `${cell}-${String(VITESS_TABLET_UID).padStart(10, '0')}`
+  const client = `${PANTRY_BIN}/vtctldclient --server 127.0.0.1:${VTCTLD_GRPC_PORT}`
+  return [
+    '#!/bin/sh',
+    `ALIAS=${sh(alias)}`,
+    `TARGET=${sh(`${keyspace}/${shard}`)}`,
+    'for i in $(seq 1 60); do',
+    `  if ${client} GetTablet "$ALIAS" >/dev/null 2>&1; then`,
+    // The alias is printed as an object; compare without whitespace.
+    `    if ${client} GetShard "$TARGET" 2>/dev/null | tr -d ' \n' | grep -q ${sh(`"primary_alias":{"cell":"${cell}","uid":${VITESS_TABLET_UID}}`)}; then`,
+    `      ${client} SetWritable "$ALIAS" true && echo "ts-cloud: $ALIAS is the primary of $TARGET and writable" && exit 0`,
+    '    fi',
+    '    exit 0',
+    '  fi',
+    '  sleep 5',
+    'done',
+    'echo "ts-cloud: $ALIAS did not register within five minutes; leaving read-only state to the next provision" >&2',
+    'exit 0',
+  ].join('\n')
+}
+
+function primaryGuardName(keyspace: string, shard: string): string {
+  return `vttablet-${keyspace}-${shard.replace(/-/g, 'x')}-primary-writable`
+}
+
 /** vttablet: manages one mysqld and serves its shard. */
 export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string, shard: string): string {
   const cell = config.cell ?? 'zone1'
+  const guard = primaryGuardName(keyspace, shard)
+  launchers.set(guard, buildPrimaryWritableScript(cell, keyspace, shard))
   return systemdUnit({
     description: `Vitess vttablet (${keyspace}/${shard})`,
     // Both dependencies are real: no topology means it cannot register, no
@@ -396,6 +442,9 @@ export function buildVttabletUnit(config: VitessServiceConfig, keyspace: string,
       `--db-port ${config.mysqlPort ?? 3306}`,
       `--mycnf-mysql-port ${config.mysqlPort ?? 3306}`,
     ]),
+    // Backgrounded and non-fatal (`-`): the guard waits for the tablet to
+    // register, which must not hold the unit in "activating".
+    execStartPost: [`-/bin/sh -c '${launcherPath(guard)} &'`],
   })
 }
 
@@ -559,6 +608,13 @@ export function buildVitessBootstrapScript(config: VitessServiceConfig): string[
         'done',
         `if ! ${client} GetShard ${sh(target)} 2>/dev/null | grep -q '"is_primary_serving": *true'; then`,
         `  echo "no primary could be elected for ${target}" >&2; exit 1`,
+        'fi',
+        // A serving primary can still be read-only: one restarted before
+        // VTOrc-less boxes had the start-time guard keeps super_read_only on
+        // while reporting healthy. SetWritable on the elected primary is
+        // idempotent, so every provision also heals a box already stuck.
+        `if ${client} GetShard ${sh(target)} 2>/dev/null | tr -d ' \n' | grep -q ${sh(`"primary_alias":{"cell":"${cell}","uid":${VITESS_TABLET_UID}}`)}; then`,
+        `  ${client} SetWritable ${sh(alias)} true`,
         'fi',
       )
     }

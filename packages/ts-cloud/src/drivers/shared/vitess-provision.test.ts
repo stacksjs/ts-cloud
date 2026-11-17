@@ -5,6 +5,7 @@ import {
   buildLaunchers,
   buildEtcdUnit,
   buildMysqlctldUnit,
+  buildPrimaryWritableScript,
   buildVitessAuthFileScript,
   buildVitessBootstrapScript,
   buildVitessHealthCheck,
@@ -193,6 +194,33 @@ describe('cluster topology', () => {
     expect(launcherBody(buildVttabletUnit(CLUSTER, 'commerce', '-80'), 'vttablet')).toContain('--init-tablet-type replica')
   })
 
+  it('makes a restarted primary writable, and only a primary', () => {
+    // Without VTOrc a restarted PRIMARY keeps super_read_only on while
+    // reporting is_primary_serving: true; writes fail and no check notices.
+    const unit = buildVttabletUnit(CLUSTER, 'lookup', '0')
+    const guard = '/usr/local/lib/vitess/vttablet-lookup-0-primary-writable.sh'
+    expect(unit).toContain(`ExecStartPost=-/bin/sh -c '${guard} &'`)
+
+    const script = buildLaunchers().get('vttablet-lookup-0-primary-writable')
+    expect(script).toBe(buildPrimaryWritableScript('zone1', 'lookup', '0'))
+    expect(script).toContain('SetWritable "$ALIAS" true')
+    // Guarded on topology naming this tablet the shard primary, so a replica
+    // is never made writable.
+    expect(script).toContain('GetShard "$TARGET"')
+    expect(script).toContain('"primary_alias":{"cell":"zone1","uid":100}')
+    expect(script!.indexOf('primary_alias')).toBeLessThan(script!.indexOf('SetWritable'))
+    // It never fails the unit.
+    expect(script).not.toMatch(/exit [1-9]/)
+  })
+
+  it('heals a serving but read-only primary on every provision', () => {
+    const script = buildVitessBootstrapScript({ cell: 'zone1', keyspaces: [{ name: 'app' }] }).join('\n')
+    const elected = script.indexOf('no primary could be elected')
+    const writable = script.indexOf("SetWritable 'zone1-0000000100' true")
+    expect(writable).toBeGreaterThan(elected)
+    expect(script.slice(elected, writable)).toContain('"primary_alias":{"cell":"zone1","uid":100}')
+  })
+
   it('points every daemon at the same topology root', () => {
     for (const unit of [launcherBody(buildVtctldUnit(CLUSTER), 'vtctld'), launcherBody(buildVtgateUnit(CLUSTER), 'vtgate')]) {
       expect(unit).toContain('--topo-implementation etcd2')
@@ -307,7 +335,10 @@ describe('primary election', () => {
   it('does not reparent a shard that already has a primary', () => {
     // A needless failover on every re-provision would be worse than useless.
     expect(script).toContain('is_primary_serving')
-    expect(script).not.toContain('primary_alias')
+    // The alias is read only after election, to lift read-only on the
+    // primary; it must never decide whether to reparent.
+    const firstReparent = script.indexOf('PlannedReparentShard')
+    expect(script.indexOf('primary_alias')).toBeGreaterThan(firstReparent)
   })
 
   it('publishes each keyspace to the serving graph', () => {
