@@ -3414,6 +3414,22 @@ export interface BoxConfig {
 }
 
 export interface ComputeConfig {
+  /**
+   * How many sites a deploy ships at once.
+   *
+   * Sites deploy one after another by default. A project of several
+   * long-lived roles on one box (web, API, scheduler, workers) spends most
+   * of its deploy waiting on each in turn, though only one of them usually
+   * does anything the others depend on.
+   *
+   * Above 1, the FIRST site in `sites` still deploys on its own, so the one
+   * that migrates the schema finishes before any other role starts on the
+   * new code. The rest then deploy up to this many at a time. A failure in
+   * any of them fails the deploy, after the others in flight have finished.
+   * @default 1
+   */
+  deployConcurrency?: number
+
   /** Desired PTR hostname on a single owned Hetzner server's public IPs. */
   reverseDns?: string
   /** Explicitly reconcile an existing Hetzner server's size. Never resize by default. */
