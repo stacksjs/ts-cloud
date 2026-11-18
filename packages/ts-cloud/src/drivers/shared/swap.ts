@@ -8,7 +8,7 @@ export function buildSwapScript(sizeGb: number): string[] {
     '(',
     'flock -x 9',
     `swap_target=${target}`,
-    'swap_total=$(swapon --show --bytes --noheadings --output SIZE | awk \'{ total += $1 } END { printf "%.0f", total }\')',
+    'swap_total=$(awk \'NR > 1 { total += $3 * 1024 } END { printf "%.0f", total }\' /proc/swaps)',
     'if [ "$swap_total" -lt "$swap_target" ]; then',
     '  swap_missing=$(( (swap_target - swap_total + 1048575) / 1048576 ))',
     '  swap_path=/swapfile',

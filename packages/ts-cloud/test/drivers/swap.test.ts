@@ -12,11 +12,11 @@ test('adds only the missing capacity, preserves active files and symlinks, and i
     await writeFile(join(root, 'swapfile'), 'active swap contents')
     await writeFile(join(root, 'unrelated'), 'preserve me')
     await symlink(join(root, 'unrelated'), join(root, 'swapfile-ts-cloud-1'))
-    await writeFile(join(root, 'active'), '8589934592\n')
+    await writeFile(join(root, 'active'), 'Filename Type Size Used Priority\n/existing file 8388608 8388608 -2\n')
     await writeFile(join(root, 'fstab'), '# existing entries\n')
     const commands: Record<string, string> = {
       flock: 'exit 0',
-      swapon: 'if [ "$1" = --show ]; then cat "$SWAP_TEST_ROOT/active"; else cat "$SWAP_TEST_ROOT/size" >> "$SWAP_TEST_ROOT/active"; fi',
+      swapon: 'size=$(cat "$SWAP_TEST_ROOT/size"); printf "%s file %s 0 -3\\n" "$1" "$((size / 1024))" >> "$SWAP_TEST_ROOT/active"',
       fallocate: 'size=${2%M}; echo $((size * 1048576)) > "$SWAP_TEST_ROOT/size"',
       mkswap: 'printf "%s\\n" "$1" >> "$SWAP_TEST_ROOT/formatted"',
     }
@@ -28,6 +28,7 @@ test('adds only the missing capacity, preserves active files and symlinks, and i
     const script = ['set -euo pipefail', ...buildSwapScript(12)].join('\n')
       .replaceAll('/swapfile', `${root}/swapfile`)
       .replaceAll('/etc/fstab', `${root}/fstab`)
+      .replaceAll('/proc/swaps', `${root}/active`)
       .replaceAll('/run/lock/ts-cloud-swap.lock', `${root}/swap.lock`)
     const run = async () => {
       const child = Bun.spawn(['/bin/bash', '-c', script], {
