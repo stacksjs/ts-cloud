@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.143...v0.16.144)
+
+## ✨ Features
+
+- **deploy**: ship a project's sites concurrently with compute.deployConcurrency (#223) ([846578d](https://github.com/stacksjs/ts-cloud/commit/846578d)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#223](https://github.com/stacksjs/ts-cloud/issues/223), [#223](https://github.com/stacksjs/ts-cloud/issues/223))
+
+## 🐛 Bug Fixes
+
+- **mail**: a managed credential asks the mail server to replace it with --force ([1dc3acd](https://github.com/stacksjs/ts-cloud/commit/1dc3acd)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.144 ([7467081](https://github.com/stacksjs/ts-cloud/commit/7467081)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.142...v0.16.143)
 
 ## 🐛 Bug Fixes
