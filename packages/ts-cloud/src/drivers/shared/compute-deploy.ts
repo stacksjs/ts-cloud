@@ -33,6 +33,70 @@ export interface ComputeDeployLogger {
   success(message: string): void
 }
 
+/**
+ * The concurrency a deploy ships sites at: `compute.deployConcurrency`,
+ * whole and at least 1.
+ */
+export function resolveDeployConcurrency(config: CloudConfig): number {
+  const declared = Number(config.infrastructure?.compute?.deployConcurrency ?? 1)
+  return Number.isFinite(declared) && declared >= 1 ? Math.floor(declared) : 1
+}
+
+/** A logger that tags every line with the site it came from. */
+export function prefixedLogger(logger: ComputeDeployLogger, prefix: string): ComputeDeployLogger {
+  const tag = (message: string) => `[${prefix}] ${message}`
+  return {
+    info: message => logger.info(tag(message)),
+    warn: message => logger.warn(tag(message)),
+    error: message => logger.error(tag(message)),
+    step: message => logger.step(tag(message)),
+    success: message => logger.success(tag(message)),
+  }
+}
+
+/**
+ * Deploy sites in waves: the first alone, the rest up to `concurrency` at a
+ * time. Returns false when any site failed, but only once every site already
+ * started has finished, so a failure never leaves another site mid-cutover
+ * with nobody watching it.
+ *
+ * At a concurrency of 1 this is the old one-after-another loop, stopping at
+ * the first failure, with unprefixed log lines.
+ */
+export async function deploySitesInWaves<T>(
+  sites: ReadonlyArray<readonly [string, T]>,
+  concurrency: number,
+  deploy: (name: string, site: T, logger: ComputeDeployLogger) => Promise<boolean>,
+  logger: ComputeDeployLogger,
+): Promise<boolean> {
+  if (concurrency <= 1) {
+    for (const [name, site] of sites) {
+      if (!(await deploy(name, site, logger)))
+        return false
+    }
+    return true
+  }
+
+  const [first, ...rest] = sites
+  if (first && !(await deploy(first[0], first[1], logger)))
+    return false
+  if (rest.length === 0)
+    return true
+
+  logger.info(`Deploying ${rest.length} site(s) ${Math.min(concurrency, rest.length)} at a time: ${rest.map(([name]) => name).join(', ')}`)
+  let next = 0
+  let failed = false
+  const lane = async (): Promise<void> => {
+    while (next < rest.length && !failed) {
+      const [name, site] = rest[next++]!
+      if (!(await deploy(name, site, prefixedLogger(logger, name))))
+        failed = true
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, rest.length) }, lane))
+  return !failed
+}
+
 const noopLogger: ComputeDeployLogger = {
   info: () => {},
   warn: () => {},
@@ -861,8 +925,8 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // consumer supplies every tarball (the CLI builds the dashboard in its own loop).
   const tarballFor = (siteName: string): string => dashboardTarballBySite.get(siteName) ?? tarballForSite(siteName)
 
-  for (const [siteName, site] of deployable) {
-    logger.step(`Deploying site: ${siteName}`)
+  const deployOne = async (siteName: string, site: (typeof deployable)[number][1], log: ComputeDeployLogger): Promise<boolean> => {
+    log.step(`Deploying site: ${siteName}`)
     // PHP/Laravel sites clone from git on the box — no local tarball to build.
     const localTarballPath = isPhpSite(site) ? undefined : tarballFor(siteName)
     const result = await deploySiteRelease(
@@ -877,26 +941,30 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
         runtime,
         localTarballPath,
       },
-      logger,
+      log,
     )
 
     if (!result.success) {
-      logger.error(`Deploy of '${siteName}' failed: ${result.error || 'unknown error'}`)
+      log.error(`Deploy of '${siteName}' failed: ${result.error || 'unknown error'}`)
       if (result.perInstance) {
         for (const inst of result.perInstance) {
-          logger.error(`  ${inst.instanceId}: ${inst.status}${inst.error ? ` — ${inst.error}` : ''}`)
+          log.error(`  ${inst.instanceId}: ${inst.status}${inst.error ? ` — ${inst.error}` : ''}`)
         }
       }
       return false
     }
 
-    logger.success(`Deployed ${slug}/${siteName}@${sha} to ${result.instanceCount} target(s)`)
+    log.success(`Deployed ${slug}/${siteName}@${sha} to ${result.instanceCount} target(s)`)
     if (result.perInstance) {
       for (const inst of result.perInstance) {
-        logger.info(`  ✓ ${inst.instanceId}: ${inst.status}`)
+        log.info(`  ✓ ${inst.instanceId}: ${inst.status}`)
       }
     }
+    return true
   }
+
+  if (!(await deploySitesInWaves(deployable, resolveDeployConcurrency(config), deployOne, logger)))
+    return false
 
   // After shipping every server site, regenerate the rpx gateway config from
   // the (now-current) sites model and reload it, so newly added
