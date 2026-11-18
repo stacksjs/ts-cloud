@@ -1121,6 +1121,24 @@ function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
 }
 
+/** Refuse an unmanaged systemd drop-in that silently overrides the owner's protocol policy. */
+export function buildRpxHttp2PolicyCheck(enabled: boolean, bunBin = '/usr/local/bin/bun'): string {
+  const check = `
+const { spawnSync } = require('node:child_process');
+const result = spawnSync('systemctl', ['show', '${RPX_SERVICE_NAME}', '--property=Environment', '--value'], { encoding: 'utf8' });
+if (result.status !== 0) {
+  console.error('ts-cloud: cannot inspect the effective rpx protocol policy; refusing to restart the gateway.');
+  process.exit(1);
+}
+const settings = [...result.stdout.matchAll(/(?:^|\\s)"?RPX_HTTP2=([^"\\s]*)"?(?=\\s|$)/g)];
+if (settings.at(-1)?.[1] !== '${enabled ? '1' : '0'}') {
+  console.error('ts-cloud: a systemd drop-in overrides the declared RPX_HTTP2 policy. Inspect rpx-gateway.service drop-ins and remove the conflicting override before retrying. The gateway has not been restarted.');
+  process.exit(1);
+}
+`
+  return `${shellSingleQuote(bunBin)} -e ${shellSingleQuote(check)}`
+}
+
 /**
  * Write one project's route fragment while optionally retaining the dashboard
  * routes already active on the box.
@@ -1690,6 +1708,10 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
       'TS_CLOUD_RPX_UNIT_EOF',
     ),
     'systemctl daemon-reload',
+    // Writing Environment=RPX_HTTP2=0 in the unit does not beat a later
+    // unmanaged drop-in. Check what systemd will actually start, before
+    // stopping a predecessor or restarting a healthy shared gateway.
+    buildRpxHttp2PolicyCheck(proxy.http2 === true, bunBin),
     // Older ts-cloud/stacks boxes used bun-gateway.service for the same
     // :80/:443 role. Retire managed predecessors so rpx can bind cleanly.
     'systemctl disable --now bun-gateway.service 2>/dev/null || true',

@@ -667,6 +667,9 @@ keeps TLS termination on the same host; it does not enable a CDN or change
 residency. It defaults to off while Bun marks HTTP/2 serving experimental.
 Setting `false` or removing the option disables it on the next normal owner
 deployment. An attached tenant cannot change this shared gateway policy.
+Owner provisioning checks systemd's effective setting before restarting the
+gateway. A conflicting unmanaged drop-in stops provisioning with an actionable
+error, so an old protocol override cannot silently defeat the source config.
 
 The example above produces three routes under `stacksjs.com`: `/api/*` proxied
 to the app on `:3000`, `/docs*` served from `/var/www/docs`, and `/` served
