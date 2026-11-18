@@ -375,14 +375,17 @@ describe('deploySiteRelease host cleanup', () => {
   }
   const calls = (driver: CloudDriver) => (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(call => call[0])
 
-  it('installs the cleanup timer and runs the cleanup at the end of every deploy', async () => {
+  it('installs the cleanup timer and starts the cleanup at the end of every deploy', async () => {
     const driver = createMockDriver()
     await deploy(driver)
     expect(calls(driver)).toHaveLength(1)
     const script = calls(driver)[0].commands.join('\n')
     expect(script).toContain('OnCalendar=daily')
     expect(script).toContain('systemctl enable --now ts-cloud-host-cleanup.timer')
-    expect(script.trimEnd().split('\n').at(-1)).toContain('/usr/local/bin/ts-cloud-host-cleanup.sh < /dev/null')
+    const tail = script.slice(script.lastIndexOf('if [ -x /usr/local/bin/ts-cloud-host-cleanup.sh ]; then'))
+    expect(tail).toContain('systemctl start --no-block ts-cloud-host-cleanup.service')
+    expect(tail).toContain('/usr/local/bin/ts-cloud-host-cleanup.sh < /dev/null')
+    expect(script.trimEnd().split('\n').at(-1)).toBe('fi')
   })
 
   it('passes compute.hostCleanup through', async () => {

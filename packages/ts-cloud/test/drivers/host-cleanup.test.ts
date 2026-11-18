@@ -171,7 +171,7 @@ describe('resolveHostCleanupConfig (#195)', () => {
       journalMaxSizeMb: 512,
       containerImageMaxAgeHours: 168,
     })
-    expect(resolved).toMatchObject({ enabled: true, timer: true, schedule: 'daily', paths: [] })
+    expect(resolved).toMatchObject({ enabled: true, timer: true, schedule: 'daily', paths: [], deploy: 'background', minIntervalMinutes: 30 })
     expect(resolved.pressure).toEqual({
       lowWaterPercent: 50,
       highWaterPercent: 85,
@@ -218,6 +218,9 @@ describe('resolveHostCleanupConfig (#195)', () => {
     [{ paths: [{ path: '/var/www/app', pattern: 'x-*', maxAgeDays: 1 }] }, 'keepReleases'],
     [{ paths: [{ path: '/root', pattern: '*', maxAgeDays: 1 }] }, 'bare wildcard'],
     [{ paths: [{ path: '/root', pattern: 'a/b', maxAgeDays: 1 }] }, 'glob'],
+    [{ deploy: 'later' }, 'hostCleanup.deploy'],
+    [{ minIntervalMinutes: -5 }, 'minIntervalMinutes'],
+    [{ minIntervalMinutes: 2.5 }, 'minIntervalMinutes'],
   ] as const)('rejects %j', (config, message) => {
     expect(() => resolveHostCleanupConfig(config as any)).toThrow(message)
   })
@@ -374,6 +377,8 @@ describe('the installed cleanup and its timer (#195)', () => {
     ['pressure off', { pressure: false }],
     ['disabled', false],
     ['with paths', { paths: [{ path: '/root', pattern: 'cert-backup-*', maxAgeDays: 14 }] }],
+    ['deploy waits', { deploy: 'wait' }],
+    ['no interval', { minIntervalMinutes: 0, pressure: false }],
   ] as const)('every generated script parses as bash (%s)', (_name, config) => {
     for (const lines of [
       buildHostCleanupScript(config as any),
@@ -443,14 +448,60 @@ describe('the installed cleanup and its timer (#195)', () => {
     expect(existsSync(executable)).toBe(false)
   })
 
-  it('a deploy installs, then runs the installed script once', () => {
+  it('a deploy installs, then starts the run in the background without waiting for it', () => {
+    const host = fakeHost()
+    const result = host.run(buildHostCleanupDeployScript())
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('host cleanup started in the background')
+    expect(result.stdout).not.toContain('[ts-cloud] host-cleanup {')
+    expect(host.calls()).toContain('systemctl start --no-block ts-cloud-host-cleanup.service')
+    expect(buildHostCleanupDeployScript(false).join('\n')).not.toContain(`if [ -x ${HOST_CLEANUP_SCRIPT_PATH} ]`)
+  })
+
+  it('without the systemd unit, detaches the run itself', async () => {
     const host = fakeHost()
     const orphan = host.file(`var/ts-cloud/artifacts/.${'c'.repeat(64)}-nonce.tmp`, 120)
-    const result = host.run(buildHostCleanupDeployScript())
+    const result = host.run(buildHostCleanupDeployScript({ timer: false }))
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('host cleanup started in the background')
+    expect(host.calls()).not.toContain('systemctl start')
+    const deadline = Date.now() + 10_000
+    while (existsSync(orphan) && Date.now() < deadline) await Bun.sleep(50)
+    expect(existsSync(orphan)).toBe(false)
+  })
+
+  it('`deploy: \'wait\'` runs the installed script inline and stamps it', () => {
+    const host = fakeHost()
+    const orphan = host.file(`var/ts-cloud/artifacts/.${'c'.repeat(64)}-nonce.tmp`, 120)
+    const result = host.run(buildHostCleanupDeployScript({ deploy: 'wait' }))
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('[ts-cloud] host-cleanup {')
     expect(existsSync(orphan)).toBe(false)
-    expect(buildHostCleanupDeployScript(false).join('\n')).not.toContain(`then ${HOST_CLEANUP_SCRIPT_PATH}`)
+    expect(existsSync(join(host.root, 'var/lib/ts-cloud/host-cleanup.last'))).toBe(true)
+  })
+
+  it('skips a run when one completed recently, unless the disk is at high water', () => {
+    const host = fakeHost()
+    mkdirSync(join(host.root, 'var/lib/ts-cloud'), { recursive: true })
+    const stamp = host.file('var/lib/ts-cloud/host-cleanup.last', 10)
+
+    let result = host.run(buildHostCleanupDeployScript({ deploy: 'wait' }))
+    expect(result.stdout).toContain('completed within the last 30 minutes; skipping')
+    expect(result.stdout).not.toContain('[ts-cloud] host-cleanup {')
+
+    host.setDisk(90)
+    result = host.run(buildHostCleanupDeployScript())
+    expect(result.stdout).toContain('[ts-cloud] host-cleanup {')
+    expect(result.stdout).not.toContain('in the background')
+
+    host.setDisk(60)
+    age(stamp, 45)
+    result = host.run(buildHostCleanupDeployScript({ deploy: 'wait' }))
+    expect(result.stdout).toContain('[ts-cloud] host-cleanup {')
+
+    age(stamp, 1)
+    result = host.run(buildHostCleanupDeployScript({ deploy: 'wait', minIntervalMinutes: 0 }))
+    expect(result.stdout).toContain('[ts-cloud] host-cleanup {')
   })
 
   it('the installed script skips rather than waits when another run holds the lock', () => {

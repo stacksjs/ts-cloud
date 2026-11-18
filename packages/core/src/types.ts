@@ -4064,6 +4064,19 @@ export interface ComputeHostCleanupConfig {
   pressure?: boolean | HostCleanupPressureConfig
   /** Extra directories to prune, e.g. a proxy's own backups. */
   paths?: HostCleanupPathRule[]
+  /**
+   * How a deploy runs the cleanup. `'background'` starts it at idle priority
+   * and moves on, so retention never lengthens a deploy; `'wait'` runs it
+   * inline. Either way a root filesystem at or above the high-water mark runs
+   * it inline, since the release may need the room. @default 'background'
+   */
+  deploy?: 'background' | 'wait'
+  /**
+   * A deploy skips the cleanup when a run completed within this many minutes,
+   * unless the disk is at or above the high-water mark. The timer always runs.
+   * `0` runs on every deploy. @default 30
+   */
+  minIntervalMinutes?: number
 }
 
 /** An operator SSH key authorized on the box. See {@link ComputeConfig.sshKeys}. */

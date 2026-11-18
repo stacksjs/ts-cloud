@@ -29,6 +29,8 @@ export const HOST_CLEANUP_SCRIPT_PATH = '/usr/local/bin/ts-cloud-host-cleanup.sh
 export const HOST_CLEANUP_UNIT = 'ts-cloud-host-cleanup'
 
 const ALERT_STATE_PATH = '/var/lib/ts-cloud/host-cleanup.alert'
+/** Touched at the end of every completed run, so a deploy can tell how recently one ran. */
+const LAST_RUN_PATH = '/var/lib/ts-cloud/host-cleanup.last'
 
 /** Fully resolved retention windows. */
 export type ResolvedHostCleanupRetention = Required<HostCleanupRetention>
@@ -62,6 +64,7 @@ export const DEFAULT_HOST_CLEANUP_ESCALATED: Readonly<HostCleanupRetention> = Ob
 export const DEFAULT_HOST_CLEANUP_LOW_WATER_PERCENT = 50
 export const DEFAULT_HOST_CLEANUP_HIGH_WATER_PERCENT = 85
 export const DEFAULT_HOST_CLEANUP_SCHEDULE = 'daily'
+export const DEFAULT_HOST_CLEANUP_MIN_INTERVAL_MINUTES = 30
 
 /** The smallest in-flight bound accepted, in minutes. See {@link DEFAULT_HOST_CLEANUP_ESCALATED}. */
 const MIN_IN_FLIGHT_MINUTES = 15
@@ -78,6 +81,10 @@ export interface ResolvedHostCleanupConfig {
     escalated: ResolvedHostCleanupRetention
   }
   paths: HostCleanupPathRule[]
+  /** How a deploy runs it: detached at idle priority, or inline. */
+  deploy: 'background' | 'wait'
+  /** A deploy skips the run when one completed this recently, unless the disk is at high water. `0` never skips. */
+  minIntervalMinutes: number
 }
 
 function shellQuote(value: string): string {
@@ -150,7 +157,13 @@ export function resolveHostCleanupConfig(config?: boolean | ComputeHostCleanupCo
   const paths = options.paths ?? []
   paths.forEach(validatePathRule)
 
-  return { enabled, timer: enabled && options.timer !== false, schedule, retention, pressure, paths }
+  const deploy = options.deploy ?? 'background'
+  if (deploy !== 'background' && deploy !== 'wait')
+    throw new Error(`hostCleanup.deploy must be 'background' or 'wait' (got ${JSON.stringify(deploy)})`)
+  const minIntervalMinutes = options.minIntervalMinutes ?? DEFAULT_HOST_CLEANUP_MIN_INTERVAL_MINUTES
+  assertWholeNumber('hostCleanup.minIntervalMinutes', minIntervalMinutes)
+
+  return { enabled, timer: enabled && options.timer !== false, schedule, retention, pressure, paths, deploy, minIntervalMinutes }
 }
 
 function stripUndefined<T extends object>(value: T | undefined): Partial<T> {
@@ -307,6 +320,7 @@ export function buildHostCleanupExecutable(config?: boolean | ComputeHostCleanup
     '  if ! flock -n 9; then echo "[ts-cloud] host cleanup already running; skipping"; exit 0; fi',
     'fi',
     ...buildHostCleanupScript(config),
+    `mkdir -p /var/lib/ts-cloud 2>/dev/null && touch ${LAST_RUN_PATH} 2>/dev/null || true`,
     'exit 0',
   ]
 }
@@ -386,15 +400,53 @@ export function buildHostCleanupInstallScript(config?: boolean | ComputeHostClea
 }
 
 /**
- * What a deploy runs: install or refresh the cleanup and its timer, then run it
- * once now. Empty when `hostCleanup: false`, except for removing a timer an
+ * What a deploy runs: install or refresh the cleanup and its timer, then kick
+ * off a run. Empty when `hostCleanup: false`, except for removing a timer an
  * earlier deploy installed.
+ *
+ * The run is retention, not part of the release, so by default the deploy does
+ * not wait for it: it starts the low-priority service (or a detached, niced
+ * process on a host without the unit) and moves on. A walk of a large package
+ * cache used to add ~20s to every site deploy, on the critical path of the
+ * first site. Two cases still run inline: `deploy: 'wait'`, and a root
+ * filesystem at or above the high-water mark, where the release may need the
+ * room. A run that completed within `minIntervalMinutes` is skipped, unless the
+ * disk is at high water: back-to-back deploys (or several sites of one) prune
+ * nothing the first run left.
  */
 export function buildHostCleanupDeployScript(config?: boolean | ComputeHostCleanupConfig): string[] {
   const install = buildHostCleanupInstallScript(config)
-  if (!resolveHostCleanupConfig(config).enabled) return install
+  const resolved = resolveHostCleanupConfig(config)
+  if (!resolved.enabled) return install
+
+  const script = HOST_CLEANUP_SCRIPT_PATH
+  const inline = `${script} < /dev/null || echo "[ts-cloud] warning: host cleanup exited $?" >&2`
+  const service = `/etc/systemd/system/${HOST_CLEANUP_UNIT}.service`
+  const high = resolved.pressure?.highWaterPercent
+  const pressured = high === undefined ? 'false' : `[ "$TS_CLOUD_HC_DEPLOY_DISK" -ge ${high} ]`
+  const recent = resolved.minIntervalMinutes > 0
+    ? `[ -n "$(find ${LAST_RUN_PATH} -mmin -${resolved.minIntervalMinutes} 2>/dev/null)" ]`
+    : 'false'
+
   return [
     ...install,
-    `if [ -x ${HOST_CLEANUP_SCRIPT_PATH} ]; then ${HOST_CLEANUP_SCRIPT_PATH} < /dev/null || echo "[ts-cloud] warning: host cleanup exited $?" >&2; fi`,
+    `if [ -x ${script} ]; then`,
+    ...(high === undefined ? [] : readDiskPercent('TS_CLOUD_HC_DEPLOY_DISK').map(line => `  ${line}`)),
+    `  if ${pressured}; then`,
+    `    ${inline}`,
+    `  elif ${recent}; then`,
+    `    echo "[ts-cloud] host cleanup completed within the last ${resolved.minIntervalMinutes} minutes; skipping"`,
+    ...(resolved.deploy === 'wait'
+      ? ['  else', `    ${inline}`]
+      : [
+          `  elif [ -f ${service} ] && systemctl start --no-block ${HOST_CLEANUP_UNIT}.service >/dev/null 2>&1; then`,
+          `    echo "[ts-cloud] host cleanup started in the background (journalctl -u ${HOST_CLEANUP_UNIT})"`,
+          '  else',
+          // setsid detaches it from the SSH session; hosts without it still get nohup.
+          `    if command -v setsid >/dev/null 2>&1; then ( setsid nohup nice -n 19 ${script} </dev/null >/dev/null 2>&1 & ); else ( nohup nice -n 19 ${script} </dev/null >/dev/null 2>&1 & ); fi`,
+          '    echo "[ts-cloud] host cleanup started in the background"',
+        ]),
+    '  fi',
+    'fi',
   ]
 }
