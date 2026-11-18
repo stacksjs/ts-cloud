@@ -1417,6 +1417,16 @@ export interface SiteConfig {
   memoryMax?: string
 
   /**
+   * systemd `MemorySwapMax` for this site's units. `MemoryHigh` and `MemoryMax`
+   * bound RAM only: with swap unbounded a unit that reaches `MemoryHigh` pages
+   * out instead of being held back, so neither ceiling ever binds and a leak
+   * fills the shared host's swap until the global OOM killer picks a
+   * co-tenant. A bounded allowance keeps the cgroup's own limits in charge.
+   * `'infinity'` opts out; `'0'` forbids swap. @default '512M'
+   */
+  memorySwapMax?: string
+
+  /**
    * systemd `CPUWeight` for this site's unit — its relative share of the CPU
    * when the box is contended. Default weight is 100; higher wins.
    *
@@ -1833,6 +1843,8 @@ export interface SchedulerConfig {
    * higher than {@link memoryHigh}; declaring it clears a hand-set override.
    */
   memoryMax?: string
+  /** systemd `MemorySwapMax` for the scheduler unit. See {@link SiteConfig.memorySwapMax}. @default '512M' */
+  memorySwapMax?: string
 }
 
 /**
@@ -4791,6 +4803,8 @@ export interface ComputeProxyConfig {
    * @default '768M'
    */
   memoryMax?: string
+  /** systemd `MemorySwapMax` for the `rpx-gateway.service` unit. See {@link SiteConfig.memorySwapMax}. @default '512M' */
+  memorySwapMax?: string
   /**
    * Enable rpx on-demand TLS: lazily issue a real (Let's Encrypt) cert for an
    * approved host the first time it's needed. The site domains are used as the

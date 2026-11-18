@@ -38,6 +38,17 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     expect(plain).not.toContain('system.control')
   })
 
+  it('bounds swap on every service unit so its memory limits bind', () => {
+    // Unbounded swap let a scheduler and a watcher daemon page out past their
+    // MemoryMax and fill a shared host's swap. Workers get the bound too.
+    const site: SiteConfig = { root: '.', scheduler: true, queues: [{ queue: 'default' }] }
+    const script = buildSiteServicesScript({ ...base, site })
+    expect(script.join('\n').match(/^MemorySwapMax=512M$/gm)?.length).toBe(2)
+
+    const declared: SiteConfig = { root: '.', scheduler: { memoryMax: '1536M', memorySwapMax: '256M' } }
+    expect(buildSiteServicesScript({ ...base, site: declared }).join('\n')).toContain('MemorySwapMax=256M')
+  })
+
   it('runs the queue worker from the installed package, with a bare ExecStart + Environment= (no shell wrapper)', () => {
     const site: SiteConfig = { root: '.', queues: [{ queue: 'default', tries: 5 }] }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')

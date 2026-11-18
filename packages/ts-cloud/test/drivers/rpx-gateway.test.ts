@@ -676,6 +676,10 @@ describe('buildRpxProvisionScript', () => {
     }).join('\n')
     expect(custom).toContain('MemoryHigh=640M')
     expect(custom).toContain('MemoryMax=896M')
+    // Swap is bounded too, or the gateway's ceilings would not bind.
+    expect(defaults).toContain('MemorySwapMax=512M')
+    const noSwap = buildRpxProvisionScript({ proxy: { engine: 'rpx', memorySwapMax: '0' }, config }).join('\n')
+    expect(noSwap).toContain('MemorySwapMax=0')
   })
 
   // A failed `bun add` must never gut the live gateway: the install is staged

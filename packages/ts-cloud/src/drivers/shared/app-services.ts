@@ -20,6 +20,7 @@
  */
 import type { SiteConfig } from '@ts-cloud/core'
 import { buildClearAutoMemoryHigh } from './deploy-script'
+import { memorySwapMaxDirective } from './memory-swap'
 import { runtimeIsolationDirectives, runtimeIsolationUser } from './runtime-isolation'
 import { getAppFrameworkDriver, resolveSiteFramework } from './app-frameworks'
 
@@ -102,6 +103,8 @@ function systemdUnit(opts: {
    */
   memoryHigh?: string
   memoryMax?: string
+  /** systemd `MemorySwapMax` (see memory-swap.ts). @default '512M' */
+  memorySwapMax?: string
 }): string {
   const lines = [
     '[Unit]',
@@ -119,6 +122,7 @@ function systemdUnit(opts: {
     'MemoryAccounting=true',
     `MemoryHigh=${opts.memoryHigh ?? '2G'}`,
     ...(opts.memoryMax ? [`MemoryMax=${opts.memoryMax}`] : []),
+    memorySwapMaxDirective(opts.memorySwapMax),
   ]
   if (opts.isolatedUser) {
     if (!opts.isolationRoot || !opts.isolationSlug) throw new Error('Runtime isolation requires its project directory')
@@ -248,6 +252,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
           isolationRoot: base, isolationSlug: slug,
           memoryHigh: limits.memoryHigh,
           memoryMax: limits.memoryMax,
+          memorySwapMax: limits.memorySwapMax,
         }),
       ),
       // A declared limit outranks a hand-set `systemctl set-property` one.

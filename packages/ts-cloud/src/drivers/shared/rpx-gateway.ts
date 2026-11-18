@@ -24,6 +24,7 @@ import { isIP } from 'node:net'
 import { isManagementDashboardSiteName, mailWebmailSites } from '@ts-cloud/core'
 import { resolveProxyUpstreams, resolveSiteKind } from '../../deploy/site-target'
 import { renderCertCoverageCheck, RPX_CERT_COVERAGE_WARN_DAYS } from './cert-coverage'
+import { memorySwapMaxDirective } from './memory-swap'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
 export const DEFAULT_RPX_CERTS_DIR = '/etc/rpx/certs'
@@ -1649,6 +1650,7 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
         'MemoryAccounting=true',
         `MemoryHigh=${memoryHigh}`,
         `MemoryMax=${memoryMax}`,
+        memorySwapMaxDirective(proxy.memorySwapMax),
         // Every tenant on the box is served THROUGH this process, so under
         // contention it has to outrank the work it is serving. The default
         // weight is 100: a batch scanner or a build saturating the cores would

@@ -110,6 +110,21 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(tuned).toContain('MemoryMax=768M')
   })
 
+  it('bounds swap so MemoryHigh/MemoryMax actually bind', () => {
+    /*
+     * With MemorySwapMax unset a unit at MemoryHigh pages into swap instead of
+     * being held back: two services with 768M/1.5G caps each put ~3.5G into a
+     * shared host's swap within 18 minutes, and the global OOM killer then took
+     * an unrelated co-tenant. Both unit shapes carry the bound.
+     */
+    for (const zeroDowntime of [true, false]) {
+      const unit = buildSiteDeployScript({ ...opts, zeroDowntime, memoryHigh: '512M', memoryMax: '768M' })
+      expect(unit.filter(l => l.startsWith('MemorySwapMax='))).toEqual(['MemorySwapMax=512M'])
+      const tuned = buildSiteDeployScript({ ...opts, zeroDowntime, memorySwapMax: '0' })
+      expect(tuned.filter(l => l.startsWith('MemorySwapMax='))).toEqual(['MemorySwapMax=0'])
+    }
+  })
+
   it('an explicit memoryHigh still wins over the box-resolved default', () => {
     // `auto` is a default, not a policy. A site that has measured itself must
     // be able to say so and have that be the end of it.

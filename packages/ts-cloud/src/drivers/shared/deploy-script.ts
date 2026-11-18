@@ -1,3 +1,4 @@
+import { memorySwapMaxDirective } from './memory-swap'
 import { runtimeIsolationDirectives, runtimeIsolationSetup, runtimeIsolationUser } from './runtime-isolation'
 /**
  * Shared deploy script helpers for Forge-style compute deploys.
@@ -744,6 +745,8 @@ export interface BuildSiteDeployScriptOptions {
   memoryHigh?: string
   /** systemd `MemoryMax` for the app unit. Unset by default. */
   memoryMax?: string
+  /** systemd `MemorySwapMax` for the app unit. See {@link SiteConfig.memorySwapMax}. @default '512M' */
+  memorySwapMax?: string
   /**
    * systemd `CPUWeight` for the unit — relative CPU share under contention.
    *
@@ -829,6 +832,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
      */
     memoryHigh = 'auto',
     memoryMax,
+    memorySwapMax,
     cpuWeight,
     ioWeight,
     tasksMax,
@@ -946,6 +950,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // unit file stays byte-identical across deploys and remains diffable.
       ...(memoryHigh && memoryHigh !== 'auto' ? [`MemoryHigh=${memoryHigh}`] : []),
       ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
+      memorySwapMaxDirective(memorySwapMax),
       ...qosDirectives,
       `EnvironmentFile=${paths.releases}/%i/.env`,
       `Environment=PORT=${port}`,
@@ -1004,6 +1009,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     'MemoryAccounting=true',
     ...(memoryHigh && memoryHigh !== 'auto' ? [`MemoryHigh=${memoryHigh}`] : []),
     ...(memoryMax ? [`MemoryMax=${memoryMax}`] : []),
+    memorySwapMaxDirective(memorySwapMax),
     ...qosDirectives,
     `EnvironmentFile=${paths.current}/.env`,
     ...(port ? [`Environment=PORT=${port}`] : []),

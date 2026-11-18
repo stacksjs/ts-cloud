@@ -365,6 +365,7 @@ export async function deploySiteRelease(
           liveness: site.liveness,
           memoryHigh: site.memoryHigh,
           memoryMax: site.memoryMax,
+          memorySwapMax: site.memorySwapMax,
           cpuWeight: site.cpuWeight,
           ioWeight: site.ioWeight,
           tasksMax: site.tasksMax,
