@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.146...v0.16.147)
+
+## ✨ Features
+
+- **waf**: carry exclusions and ship audit events to Guardian ([afe22ea](https://github.com/stacksjs/ts-cloud/commit/afe22ea)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_ ([#224](https://github.com/stacksjs/ts-cloud/issues/224))
+
+## 🐛 Bug Fixes
+
+- **email**: honour email.server.scan on the SES receipt rule ([466aede](https://github.com/stacksjs/ts-cloud/commit/466aede)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.147 ([52df4e0](https://github.com/stacksjs/ts-cloud/commit/52df4e0)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.145...v0.16.146)
 
 ## 🐛 Bug Fixes
