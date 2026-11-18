@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.147...v0.16.148)
+
+## 🐛 Bug Fixes
+
+- reject gateway protocol policy drift before restart ([67131b2](https://github.com/stacksjs/ts-cloud/commit/67131b2)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+- retain deployment start signals until workers read them ([6192cde](https://github.com/stacksjs/ts-cloud/commit/6192cde)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.148 ([76508eb](https://github.com/stacksjs/ts-cloud/commit/76508eb)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.146...v0.16.147)
 
 ## ✨ Features
