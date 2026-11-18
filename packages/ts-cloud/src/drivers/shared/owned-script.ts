@@ -125,7 +125,10 @@ export function ownedScriptRunner(options: OwnedScriptOptions = {}): string {
     // The anchor retains the group ID until cleanup finishes. Reaping the
     // payload first would let its PID/group ID be recycled before a later
     // descendant cleanup signal. Only the supervisor releases this anchor.
-    `bash -c ${quote(`trap ':' TERM HUP INT; IFS= read -r ts_cloud_start < "$1/start"; [ "$ts_cloud_start" = start ] || exit 125; bash "$1/script"; ts_cloud_status=$?; printf '%s\\n' "$ts_cloud_status" > "$1/result"; IFS= read -r ts_cloud_finish < "$1/finish"`)} -- "$ts_cloud_dir" 3<&- 4>&- 5>&- 6>&- 7>&- < /dev/null &`,
+    // Inherit the open start FIFO until its signal is consumed. Reopening the
+    // path races the supervisor closing its last descriptor, which discards
+    // the queued signal. Close the inherited gate before running user code.
+    `bash -c ${quote(`trap ':' TERM HUP INT; IFS= read -r ts_cloud_start <&4; exec 4>&-; [ "$ts_cloud_start" = start ] || exit 125; bash "$1/script"; ts_cloud_status=$?; printf '%s\\n' "$ts_cloud_status" > "$1/result"; IFS= read -r ts_cloud_finish < "$1/finish"`)} -- "$ts_cloud_dir" 3<&- 5>&- 6>&- 7>&- < /dev/null &`,
     'ts_cloud_worker=$!',
     'set +m',
     'ts_cloud_group=$(ps -o pgid= -p "$ts_cloud_worker" | tr -d " ")',

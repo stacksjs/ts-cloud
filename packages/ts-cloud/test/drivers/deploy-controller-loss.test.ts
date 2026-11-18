@@ -88,6 +88,19 @@ it('preserves success, failure and private staging without sharing the lease wit
   expect(existsSync(staged)).toBe(false)
 })
 
+it('retains the start signal until a delayed worker can read it', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ts-cloud-delayed-worker-'))
+  const bash = execFileSync('bash', ['-c', 'printf "%s" "$BASH"'], { encoding: 'utf8' })
+  const quotedBash = `'${bash.replaceAll("'", "'\\''")}'`
+  writeFileSync(join(root, 'bash'), `#!/bin/sh\ncase "$2" in *ts_cloud_start*) sleep 0.2;; esac\nexec ${quotedBash} "$@"\n`, { mode: 0o755 })
+  try {
+    const result = await runLeasedCommand(['env', `PATH=${root}:${process.env.PATH}`, bash, '-c', ownedScriptRunner()], 'if ( : <&4 ) 2>/dev/null; then exit 99; fi\nprintf worker-started\n')
+    expect(result.code).toBe(0)
+    expect(result.stdout).toBe('worker-started')
+    expect(result.stderr).toBe('')
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 it('reclaims descendants left behind by a successfully completed script', async () => {
   const result = await new LocalBoxDriver().runRemoteDeploy({
     targets: [{ id: 'synthetic', publicIp: '127.0.0.1', status: 'running' }],
