@@ -288,6 +288,29 @@ describe('Email Module', () => {
     })
   })
 
+  describe('createInboundEmailSetup', () => {
+    const base = {
+      slug: 'my-app',
+      environment: 'production' as const,
+      domain: 'example.com',
+      s3BucketName: 'my-app-production-email',
+      region: 'us-east-1',
+      hostedZoneId: 'Z123',
+    }
+    const rule = (resources: Record<string, any>) =>
+      Object.values(resources).find((r: any) => r.Type === 'AWS::SES::ReceiptRule') as any
+
+    it('scans inbound mail by default', () => {
+      const { resources } = Email.createInboundEmailSetup(base)
+      expect(rule(resources).Properties.Rule.ScanEnabled).toBe(true)
+    })
+
+    it('turns scanning off only when asked', () => {
+      const { resources } = Email.createInboundEmailSetup({ ...base, scanEnabled: false })
+      expect(rule(resources).Properties.Rule.ScanEnabled).toBe(false)
+    })
+  })
+
   describe('createMxRecord', () => {
     it('should create MX record for receiving emails', () => {
       const { record, logicalId } = Email.createMxRecord('example.com', 'Z1234567890ABC', 'us-east-1')

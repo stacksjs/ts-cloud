@@ -455,6 +455,8 @@ export class Email {
     hostedZoneId: string
     lambdaFunctionArn?: string
     snsTopicArn?: string
+    /** SES spam and virus scanning on the receipt rule. Defaults to on. */
+    scanEnabled?: boolean
   }): {
     resources: Record<string, any>
     outputs: {
@@ -473,6 +475,7 @@ export class Email {
       hostedZoneId,
       lambdaFunctionArn,
       snsTopicArn,
+      scanEnabled = true,
     } = options
 
     const resources: Record<string, any> = {}
@@ -490,6 +493,7 @@ export class Email {
       environment,
       ruleSetName: ruleSet.Properties!.RuleSetName || `${slug}-${environment}-receipt-rule-set`,
       recipients: [domain],
+      scanEnabled,
       s3Action: {
         bucketName: s3BucketName,
         prefix: s3KeyPrefix,

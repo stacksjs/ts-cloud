@@ -1018,6 +1018,12 @@ export interface EmailInfraConfig {
   /** Inbound email server configuration */
   server?: {
     enabled?: boolean
+    /**
+     * Run SES spam and virus scanning on inbound mail. On unless explicitly `false`.
+     * SES records its verdicts on each message (`receipt.spamVerdict`, `receipt.virusVerdict`);
+     * scanning does not drop infected mail by itself, the inbound pipeline acts on the verdict.
+     */
+    scan?: boolean
   }
 }
 

@@ -2723,6 +2723,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
             region,
             hostedZoneId,
             lambdaFunctionArn: { 'Fn::GetAtt': [inboundId, 'Arn'] } as unknown as string,
+            scanEnabled: emailServerConfig.scan !== false,
           })
           for (const [id, resource] of Object.entries(inboundSetup.resources)) {
             // SES receipt rule must wait for Lambda permission to exist
