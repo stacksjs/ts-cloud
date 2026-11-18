@@ -107,6 +107,28 @@ describe('the provision path applies protection', () => {
     expect(script).toContain('ts-cloud-waf.sh')
   })
 
+  it('carries reviewed exclusions and Guardian forwarding from the compute config to the box', () => {
+    const tuned = {
+      project: { slug: 'acme' },
+      infrastructure: {
+        compute: {
+          runtime: 'bun',
+          waf: {
+            mode: 'detection',
+            outboundThreshold: 6,
+            exclusions: [{ ruleId: 942100, pathPattern: '^/api/search', reason: 'search syntax looks like SQL' }],
+            forward: { url: 'https://guardian.example.test/api/waf/events', token: 'host-token-0123456789' },
+          },
+        },
+      },
+    } as never
+    const script = (buildComputeProvisionScripts(tuned).servicesProvision ?? []).join('\n')
+    expect(script).toContain('ctl:ruleRemoveById=942100')
+    expect(script).toContain('tx.outbound_anomaly_score_threshold=6')
+    expect(script).toContain('SecAuditLogFormat OCSF')
+    expect(script).toContain('ts-cloud-waf-forward.timer')
+  })
+
   it('honours an opt-out in the config', () => {
     const disabled = {
       project: { slug: 'acme' },

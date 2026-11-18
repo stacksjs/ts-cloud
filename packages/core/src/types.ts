@@ -4214,8 +4214,38 @@ export interface ComputeWafConfig {
   paranoiaLevel?: 1 | 2 | 3 | 4
   /** Inbound anomaly score at which a request is blocked in `blocking` mode. */
   inboundThreshold?: number
+  /** Outbound anomaly score threshold, guarding against data leaking back out. */
+  outboundThreshold?: number
+  /** Largest request body inspected, in bytes. */
+  maxBodyBytes?: number
+  /** Reject a body too large to inspect instead of passing it uninspected. @default true */
+  rejectOversizedBody?: boolean
   /** Paths never inspected. Each one is an unguarded route. */
   bypassPaths?: string[]
+  /**
+   * CRS rules switched off, globally or for a path pattern, each with the reason it was reviewed.
+   * Guardian's exclusion wizard writes these as config changes; ts-cloud only renders them.
+   */
+  exclusions?: ComputeWafRuleExclusion[]
+  /** Extra SecLang appended verbatim, for rules there is no model for. */
+  customRules?: string[]
+  /** Audit record format. Forwarding switches it to OCSF unless set. */
+  auditFormat?: 'Native' | 'JSON' | 'LegacyJSON' | 'OCSF'
+  /**
+   * Ship audit events to a Guardian ingest endpoint with a per-host token. The token is written to
+   * a root-only file on the box, never into the WAF config; the local audit log stays as fallback.
+   */
+  forward?: { url: string, token: string, intervalSeconds?: number }
+}
+
+/** One reviewed WAF rule exclusion. See {@link ComputeWafConfig.exclusions}. */
+export interface ComputeWafRuleExclusion {
+  /** CRS rule id to disable. */
+  ruleId: number
+  /** Only for request paths matching this regex. Omit to disable the rule everywhere. */
+  pathPattern?: string
+  /** Why, so the exclusion can be reviewed rather than inherited forever. */
+  reason: string
 }
 
 /** Scheduled database backup configuration. See {@link ComputeConfig.backups}. */

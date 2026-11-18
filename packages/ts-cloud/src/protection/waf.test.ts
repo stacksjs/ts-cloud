@@ -275,3 +275,115 @@ describe('event telemetry', () => {
     expect((record.attributes as any).messages).toHaveLength(5)
   })
 })
+
+describe('audit format and Guardian forwarding', () => {
+  const forward = { url: 'https://guardian.example.test/api/waf/events', token: 'host-token-0123456789' }
+
+  it('switches the audit log to OCSF only when forwarding', () => {
+    expect(renderWafConfig({}).config).not.toContain('SecAuditLogFormat')
+    expect(renderWafConfig({ forward }).config).toContain('SecAuditLogFormat OCSF')
+    expect(renderWafConfig({ forward, auditFormat: 'JSON' }).config).toContain('SecAuditLogFormat JSON')
+  })
+
+  it('never puts the token in the WAF config', () => {
+    expect(renderWafConfig({ forward }).config).not.toContain(forward.token)
+  })
+
+  it('emits the forwarder only when a valid URL and token are present', () => {
+    const on = renderWafInstallScript({ forward })
+    expect(on).toContain('ts-cloud-waf-forward.timer')
+    expect(on).toContain(`GUARDIAN_TOKEN='${forward.token}'`)
+    expect(on).toContain('chmod 0600 /etc/ts-cloud/waf-forward.env')
+
+    const off = renderWafInstallScript({})
+    expect(off).not.toContain('GUARDIAN_TOKEN=')
+    expect(off).toContain('systemctl disable --now ts-cloud-waf-forward.timer')
+  })
+
+  it.each([
+    ['plain http', { ...forward, url: 'http://guardian.example.test/x' }],
+    ['credentials in the URL', { ...forward, url: 'https://user:pw@guardian.example.test/x' }],
+    ['a quote in the URL', { ...forward, url: "https://guardian.example.test/x'$(id)" }],
+    ['a short token', { ...forward, token: 'short' }],
+    ['a token that escapes the env file', { ...forward, token: "abcdefghijklmnop'; rm -rf /; '" }],
+  ])('refuses %s, with a warning, and keeps the token off the box', (_label, bad) => {
+    const result = renderWafConfig({ forward: bad })
+    expect(result.warnings.some(w => w.startsWith('Audit forwarding was not configured'))).toBe(true)
+    expect(renderWafInstallScript({ forward: bad })).not.toContain('GUARDIAN_TOKEN=')
+  })
+
+  it('always rotates the local audit log', () => {
+    expect(renderWafInstallScript({})).toContain('/etc/logrotate.d/ts-cloud-waf')
+    expect(renderWafInstallScript({ forward })).toContain('copytruncate')
+  })
+})
+
+describe('audit forwarder script', () => {
+  const forward = { url: 'https://guardian.example.test/api/waf/events', token: 'host-token-0123456789' }
+
+  async function harness() {
+    const { mkdtemp, writeFile, chmod } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = await mkdtemp(join(tmpdir(), 'waf-forward-'))
+    const log = join(dir, 'audit.log')
+    const install = renderWafInstallScript({ auditLogPath: log, forward })
+    const body = install.split("<<'FORWARD_SH_EOF'\n")[1]!.split('\nFORWARD_SH_EOF')[0]!
+      .replace('. /etc/ts-cloud/waf-forward.env', `GUARDIAN_URL='${forward.url}'; GUARDIAN_TOKEN='${forward.token}'`)
+      .replace('state=/var/lib/ts-cloud/waf-forward.state', `state=${join(dir, 'state')}`)
+    const bin = join(dir, 'bin')
+    await Bun.write(join(bin, 'curl'), `#!/usr/bin/env bash
+[ -f "${join(dir, 'fail')}" ] && exit 22
+for a in "$@"; do case "$a" in @*) cat "\${a#@}" >> "${join(dir, 'sent')}";; esac; done
+for a in "$@"; do [ "$a" = "Authorization: Bearer ${forward.token}" ] && touch "${join(dir, 'authed')}"; done
+exit 0
+`)
+    await chmod(join(bin, 'curl'), 0o755)
+    // GNU stat is what runs on the box; give BSD systems a compatible shim for the test.
+    if (Bun.spawnSync(['stat', '-c', '%s', log]).exitCode !== 0 && process.platform === 'darwin') {
+      await Bun.write(join(bin, 'stat'), `#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then case "$2" in %i) exec /usr/bin/stat -f %i "$3";; %s) exec /usr/bin/stat -f %z "$3";; esac; fi
+exec /usr/bin/stat "$@"
+`)
+      await chmod(join(bin, 'stat'), 0o755)
+    }
+    const script = join(dir, 'forward.sh')
+    await writeFile(script, body)
+    const run = () => Bun.spawnSync(['bash', script], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+    const sent = async () => (await Bun.file(join(dir, 'sent')).exists() ? await Bun.file(join(dir, 'sent')).text() : '')
+    return { dir, log, run, sent, join }
+  }
+
+  it.skipIf(process.platform === 'win32')('ships whole lines once, holds back a partial line, and resumes', async () => {
+    const h = await harness()
+    await Bun.write(h.log, '{"a":1}\n{"b":2}\n{"partial"')
+    expect(h.run().exitCode).toBe(0)
+    expect(await h.sent()).toBe('{"a":1}\n{"b":2}\n')
+    expect(await Bun.file(h.join(h.dir, 'authed')).exists()).toBe(true)
+
+    // Nothing new: nothing sent again.
+    expect(h.run().exitCode).toBe(0)
+    expect(await h.sent()).toBe('{"a":1}\n{"b":2}\n')
+
+    // The partial line completes and is sent once.
+    await Bun.write(h.log, '{"a":1}\n{"b":2}\n{"partial":3}\n')
+    expect(h.run().exitCode).toBe(0)
+    expect(await h.sent()).toBe('{"a":1}\n{"b":2}\n{"partial":3}\n')
+  })
+
+  it.skipIf(process.platform === 'win32')('keeps its place when Guardian is down and restarts after truncation', async () => {
+    const h = await harness()
+    await Bun.write(h.log, '{"a":1}\n')
+    await Bun.write(h.join(h.dir, 'fail'), '')
+    expect(h.run().exitCode).not.toBe(0)
+    const { rm } = await import('node:fs/promises')
+    await rm(h.join(h.dir, 'fail'))
+    expect(h.run().exitCode).toBe(0)
+    expect(await h.sent()).toBe('{"a":1}\n')
+
+    // logrotate copytruncate: same inode, smaller file.
+    await Bun.write(h.log, '{"c":3}\n')
+    expect(h.run().exitCode).toBe(0)
+    expect(await h.sent()).toBe('{"a":1}\n{"c":3}\n')
+  })
+})

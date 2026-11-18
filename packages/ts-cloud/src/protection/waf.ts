@@ -69,8 +69,34 @@ export interface WafConfig {
   customRules?: string[]
   /** Where the engine writes its audit log. */
   auditLogPath?: string
+  /**
+   * Audit record format. Unset keeps the engine default (native serial). Forwarding to Guardian
+   * switches it to OCSF, one JSON event per line, unless set explicitly.
+   */
+  auditFormat?: WafAuditFormat
+  /** Ship audit events to a Guardian ingest endpoint. The local log stays as the fallback. */
+  forward?: WafAuditForwarding
   /** Status returned to a blocked request. */
   blockStatus?: number
+}
+
+export type WafAuditFormat = 'Native' | 'JSON' | 'LegacyJSON' | 'OCSF'
+
+/**
+ * Where audit events are shipped.
+ *
+ * zig-waf only accepts credential-free URLs for remote endpoints, so the engine never holds the
+ * token: it writes records to the local audit log, and a root-only systemd timer sends each new
+ * whole line to `url` with `Authorization: Bearer <token>`. If the endpoint is down the log keeps
+ * everything and the next run resumes from where the last accepted batch ended.
+ */
+export interface WafAuditForwarding {
+  /** Guardian ingest URL. Must be https and carry no credentials. */
+  url: string
+  /** Per-host ingest token. Written to a 0600 file on the box, never into the WAF config. */
+  token: string
+  /** Seconds between shipments. @default 30 */
+  intervalSeconds?: number
 }
 
 const DEFAULTS = {
@@ -191,6 +217,29 @@ export function globToRegex(glob: string): string {
  * compare it against what is already on the box and skip a reload when
  * nothing changed.
  */
+/** Why a forwarding target was refused, or null when it is usable. */
+export function wafForwardingProblem(forward: WafAuditForwarding): string | null {
+  let url: URL
+  try {
+    url = new URL(forward.url)
+  }
+  catch {
+    return 'its URL is not a valid URL'
+  }
+  if (url.protocol !== 'https:') return 'its URL is not https'
+  if (url.username || url.password) return 'its URL carries credentials'
+  if (/[\s'"`$\\]/.test(forward.url)) return 'its URL contains characters that are not safe in a shell file'
+  if (!/^[\w.~+/=-]{16,512}$/.test(forward.token)) return 'its token is not 16 to 512 URL-safe characters'
+  const interval = forward.intervalSeconds ?? 30
+  if (!Number.isInteger(interval) || interval < 5 || interval > 3600) return 'its interval is not 5 to 3600 seconds'
+  return null
+}
+
+function auditFormatLines(config: WafConfig): string[] {
+  const format = config.auditFormat ?? (config.forward ? 'OCSF' : undefined)
+  return format ? [`SecAuditLogFormat ${format}`] : []
+}
+
 export function renderWafConfig(config: WafConfig = {}, rateLimits: readonly RateLimitRule[] = []): WafGenerationResult {
   const mode = config.mode ?? DEFAULTS.mode
   const warnings: string[] = []
@@ -210,6 +259,10 @@ export function renderWafConfig(config: WafConfig = {}, rateLimits: readonly Rat
     warnings.push('Oversized bodies are passed through uninspected, so padding a request bypasses every rule.')
   if (config.bypassPaths?.length)
     warnings.push(`${config.bypassPaths.length} path(s) bypass inspection entirely.`)
+  if (config.forward) {
+    const problem = wafForwardingProblem(config.forward)
+    if (problem) warnings.push(`Audit forwarding was not configured: ${problem}.`)
+  }
 
   const lines: string[] = [
     '# Managed by ts-cloud. Edits are overwritten on the next deploy.',
@@ -236,6 +289,7 @@ export function renderWafConfig(config: WafConfig = {}, rateLimits: readonly Rat
     'SecAuditLogParts ABIJDEFHZ',
     `SecAuditLog ${escapeSecLang(config.auditLogPath ?? DEFAULTS.auditLogPath)}`,
     'SecAuditLogType Serial',
+    ...auditFormatLines(config),
     `SecDefaultAction "phase:1,log,auditlog,${mode === 'blocking' ? `deny,status:${config.blockStatus ?? DEFAULTS.blockStatus}` : 'pass'}"`,
     '',
     '# CRS anomaly scoring setup.',
@@ -324,7 +378,9 @@ export function renderWafInstallScript(
 ): string {
   const binary = options.binary ?? '/usr/local/bin/zig-waf'
   const configPath = options.configPath ?? '/etc/ts-cloud/waf.conf'
+  const auditLog = config.auditLogPath ?? DEFAULTS.auditLogPath
   const rendered = renderWafConfig(config, rateLimits)
+  const forward = config.forward && !wafForwardingProblem(config.forward) ? config.forward : undefined
   return `#!/usr/bin/env bash
 # Managed by ts-cloud. Installs the zig-waf ruleset.
 set -euo pipefail
@@ -335,7 +391,7 @@ if [ ! -x "${binary}" ]; then
 fi
 
 install -d -m 0755 "$(dirname "${configPath}")"
-install -d -m 0750 /var/log/ts-cloud
+install -d -m 0750 "$(dirname "${auditLog}")"
 
 cat > "${configPath}.new" <<'WAF_EOF'
 ${rendered.config}WAF_EOF
@@ -351,12 +407,132 @@ fi
 if [ -f "${configPath}" ] && cmp -s "${configPath}.new" "${configPath}"; then
   rm -f "${configPath}.new"
   echo "ts-cloud: WAF config unchanged"
-  exit 0
+else
+  mv "${configPath}.new" "${configPath}"
+  echo "ts-cloud: WAF config installed (mode: ${rendered.mode})"
 fi
 
-mv "${configPath}.new" "${configPath}"
-echo "ts-cloud: WAF config installed (mode: ${rendered.mode})"
+${renderAuditRotation(auditLog)}
+${forward ? renderAuditForwarder(auditLog, forward) : renderAuditForwarderRemoval()}
 `
+}
+
+/** The local audit log is the fallback when forwarding is off or down, so it is always rotated. */
+function renderAuditRotation(auditLog: string): string {
+  return `# Rotate the audit log. copytruncate keeps the engine's open file handle valid.
+cat > /etc/logrotate.d/ts-cloud-waf <<'ROTATE_EOF'
+${auditLog} {
+  daily
+  maxsize 100M
+  rotate 14
+  compress
+  delaycompress
+  missingok
+  notifempty
+  copytruncate
+}
+ROTATE_EOF`
+}
+
+const FORWARD_UNIT = 'ts-cloud-waf-forward'
+
+/**
+ * Ships new whole lines of the audit log to Guardian. State is "<inode> <offset>": a rotated or
+ * truncated log starts again from zero, a failed POST leaves the offset alone so the batch is
+ * retried, and a batch never ends mid-record.
+ */
+function renderAuditForwarder(auditLog: string, forward: WafAuditForwarding): string {
+  const interval = forward.intervalSeconds ?? 30
+  return `# Forward audit events to Guardian.
+install -d -m 0755 /usr/local/lib/ts-cloud /var/lib/ts-cloud
+umask 077
+cat > /etc/ts-cloud/waf-forward.env <<'FORWARD_ENV_EOF'
+GUARDIAN_URL='${forward.url}'
+GUARDIAN_TOKEN='${forward.token}'
+FORWARD_ENV_EOF
+chmod 0600 /etc/ts-cloud/waf-forward.env
+umask 022
+
+cat > /usr/local/lib/ts-cloud/waf-forward.sh <<'FORWARD_SH_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+. /etc/ts-cloud/waf-forward.env
+log='${auditLog}'
+state=/var/lib/ts-cloud/waf-forward.state
+max_batch=5242880
+[ -f "$log" ] || exit 0
+inode=$(stat -c %i "$log")
+size=$(stat -c %s "$log")
+last_inode=""
+last_offset=0
+last_head=0
+if [ -f "$state" ]; then read -r last_inode last_offset last_head < "$state" || true; fi
+# The first bytes fingerprint the file: copytruncate keeps the inode, so a log truncated and
+# refilled past the old offset is only recognisable by its content.
+head_len=$(( last_offset < 256 ? last_offset : 256 ))
+head_now=0
+if [ "$head_len" -gt 0 ]; then head_now=$(head -c "$head_len" "$log" | cksum | cut -d' ' -f1); fi
+if [ "$inode" != "$last_inode" ] || [ "$size" -lt "$last_offset" ] || [ "$head_now" != "$last_head" ]; then last_offset=0; fi
+[ "$size" -gt "$last_offset" ] || exit 0
+want=$(( size - last_offset ))
+[ "$want" -gt "$max_batch" ] && want=$max_batch
+batch=$(mktemp)
+trap 'rm -f "$batch"' EXIT
+tail -c +$(( last_offset + 1 )) "$log" | head -c "$want" > "$batch"
+keep=$(stat -c %s "$batch")
+if [ "$(tail -c 1 "$batch" | od -An -tx1 | tr -d ' \\n')" != "0a" ]; then
+  keep=$(( keep - $(tail -n 1 "$batch" | wc -c) ))
+fi
+[ "$keep" -gt 0 ] || exit 0
+truncate -s "$keep" "$batch"
+curl -fsS --max-time 20 --retry 2 \\
+  -H "Authorization: Bearer $GUARDIAN_TOKEN" \\
+  -H 'Content-Type: application/x-ndjson' \\
+  --data-binary @"$batch" "$GUARDIAN_URL" > /dev/null
+new_offset=$(( last_offset + keep ))
+new_head=$(head -c $(( new_offset < 256 ? new_offset : 256 )) "$log" | cksum | cut -d' ' -f1)
+echo "$inode $new_offset $new_head" > "$state"
+FORWARD_SH_EOF
+chmod 0700 /usr/local/lib/ts-cloud/waf-forward.sh
+
+cat > /etc/systemd/system/${FORWARD_UNIT}.service <<'FORWARD_SVC_EOF'
+[Unit]
+Description=Ship zig-waf audit events to Guardian
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/ts-cloud/waf-forward.sh
+Nice=10
+FORWARD_SVC_EOF
+
+cat > /etc/systemd/system/${FORWARD_UNIT}.timer <<'FORWARD_TIMER_EOF'
+[Unit]
+Description=Ship zig-waf audit events to Guardian every ${interval}s
+
+[Timer]
+OnBootSec=${interval}
+OnUnitActiveSec=${interval}
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target
+FORWARD_TIMER_EOF
+
+systemctl daemon-reload
+systemctl enable --now ${FORWARD_UNIT}.timer
+echo "ts-cloud: WAF audit forwarding to Guardian enabled"`
+}
+
+/** Forwarding switched off: stop shipping and remove the token from the box. */
+function renderAuditForwarderRemoval(): string {
+  return `# Audit forwarding is not configured: make sure nothing is left shipping.
+if [ -f /etc/systemd/system/${FORWARD_UNIT}.timer ]; then
+  systemctl disable --now ${FORWARD_UNIT}.timer || true
+  rm -f /etc/systemd/system/${FORWARD_UNIT}.timer /etc/systemd/system/${FORWARD_UNIT}.service
+  systemctl daemon-reload
+fi
+rm -f /etc/ts-cloud/waf-forward.env /usr/local/lib/ts-cloud/waf-forward.sh`
 }
 
 /**
