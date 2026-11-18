@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.145...v0.16.146)
+
+## 🐛 Bug Fixes
+
+- bound MemorySwapMax so unit memory limits bind ([9884f82](https://github.com/stacksjs/ts-cloud/commit/9884f82)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.146 ([fc5d41d](https://github.com/stacksjs/ts-cloud/commit/fc5d41d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.143...v0.16.144)
 
 ## ✨ Features
