@@ -1,3 +1,5 @@
+import { buildSwapScript } from './swap'
+
 /**
  * The canonical Ubuntu provisioning recipe for a ts-cloud compute box.
  *
@@ -54,8 +56,8 @@ export interface UbuntuBootstrapOptions {
    * install, on-box builds) leaves the kernel OOM killer picking victims
    * box-wide. Provisioned at the very top of the bootstrap — BEFORE the
    * memory-hungry installs — on cold and baked boots alike (a golden image
-   * deliberately bakes no swap; see the image recipe). Idempotent: skipped
-   * when `/swapfile` is already active. `0` disables. @default 2
+   * deliberately bakes no swap; see the image recipe). Idempotent: adds only missing capacity
+   * while preserving active swap files. `0` disables. @default 2
    */
   swapGb?: number
 }
@@ -90,21 +92,8 @@ set -euo pipefail
   // installs below: a small box with no swap lets the OOM killer pick victims
   // box-wide the moment apt/bun install/postgres spike memory. The guard makes
   // it idempotent (cloud-init may re-run; a baked image re-creates it per boot).
-  const swapSizeGb = Math.floor(swapGb)
-  if (swapSizeGb > 0) {
-    script += `
-# Swap: a swapless box under memory pressure lets the kernel OOM killer choose
-# victims box-wide (the gateway, a tenant app, postgres). A modest swapfile
-# with low swappiness gives the kernel headroom without hurting responsiveness.
-if ! swapon --show=NAME --noheadings 2>/dev/null | grep -qx '/swapfile'; then
-  if [ ! -f /swapfile ]; then
-    fallocate -l ${swapSizeGb}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=${swapSizeGb * 1024} status=none
-    chmod 600 /swapfile
-    mkswap /swapfile >/dev/null
-  fi
-  swapon /swapfile
-fi
-grep -qE '^/swapfile\\s' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  if (swapGb > 0) {
+    script += `\n${buildSwapScript(swapGb).join('\n')}
 echo 'vm.swappiness=10' > /etc/sysctl.d/99-ts-cloud-swap.conf
 sysctl -w vm.swappiness=10 >/dev/null
 `

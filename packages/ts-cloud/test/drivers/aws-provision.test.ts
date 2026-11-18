@@ -60,13 +60,13 @@ describe('buildAwsUserData', () => {
       ...phpConfig,
       infrastructure: { compute: { ...phpConfig.infrastructure!.compute, swapGb: 4 } },
     }
-    expect(buildAwsUserData(configured)).toContain('fallocate -l 4G /swapfile')
+    expect(buildAwsUserData(configured)).toContain('swap_target=4294967296')
 
     const disabled: CloudConfig = {
       ...phpConfig,
       infrastructure: { compute: { ...phpConfig.infrastructure!.compute, swapGb: 0 } },
     }
-    expect(buildAwsUserData(disabled)).not.toContain('swapon /swapfile')
+    expect(buildAwsUserData(disabled)).not.toContain('swap_target=')
   })
 
   it('carries declared app updaters into the boot script', () => {

@@ -6,6 +6,7 @@ import { buildMonitoringScript } from '../shared/monitoring'
 import { sshExecOrThrow } from '../shared/remote-exec'
 import { usesRpxProxy } from '../shared/rpx-gateway'
 import { buildUfwScript } from '../shared/ufw'
+import { buildSwapScript } from '../shared/swap'
 
 export interface HetznerHostOptimizationPlan {
   firewallPorts: number[]
@@ -169,19 +170,6 @@ function hardeningScript(plan: HetznerHostOptimizationPlan): string[] {
   ]
 }
 
-function swapScript(sizeGb: number): string[] {
-  if (sizeGb === 0) return []
-  return [
-    `if ! swapon --show=NAME --noheadings 2>/dev/null | grep -qx '/swapfile'; then`,
-    `  if [ ! -f /swapfile ]; then fallocate -l ${sizeGb}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=${sizeGb * 1024} status=none; fi`,
-    '  chmod 600 /swapfile',
-    '  mkswap /swapfile >/dev/null',
-    '  swapon /swapfile',
-    'fi',
-    `grep -qE '^/swapfile\\s' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab`,
-  ]
-}
-
 export function buildHetznerHostOptimizationScript(config: CloudConfig): string[] {
   const compute = computeConfig(config)
   const plan = resolveHetznerHostOptimizationPlan(config)
@@ -196,7 +184,7 @@ export function buildHetznerHostOptimizationScript(config: CloudConfig): string[
           'systemctl reset-failed nginx.service bun-gateway.service ts-cloud-nginx.service 2>/dev/null || true',
         ]
       : []),
-    ...swapScript(plan.swapGb),
+    ...buildSwapScript(plan.swapGb),
     ...buildAutoUpdatesScript(plan.autoUpdates),
     ...buildMonitoringScript(monitoring),
     ...hardeningScript(plan),

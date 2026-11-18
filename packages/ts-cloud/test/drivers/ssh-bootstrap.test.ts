@@ -76,7 +76,7 @@ describe('buildSshBootstrapScript', () => {
 
   it('raspberry-pi: 1 GB swap and a bounded journal', () => {
     const script = pi()
-    expect(script).toContain('fallocate -l 1G /swapfile')
+    expect(script).toContain('swap_target=1073741824')
     expect(script).toContain('/etc/systemd/journald.conf.d/99-ts-cloud-sd.conf')
     expect(script).toContain('SystemMaxUse=128M')
     expect(script).toContain('MaxRetentionSec=7day')
@@ -86,12 +86,12 @@ describe('buildSshBootstrapScript', () => {
 
   it('an explicit compute.swapGb wins over the profile', () => {
     const explicit: CloudConfig = { ...config, infrastructure: { compute: { ...config.infrastructure!.compute, swapGb: 4 } } }
-    expect(pi({ config: explicit })).toContain('fallocate -l 4G /swapfile')
+    expect(pi({ config: explicit })).toContain('swap_target=4294967296')
   })
 
   it('generic: the shared recipe unchanged (2 GB swap, no journal drop-in)', () => {
     const script = pi({ profile: 'generic' })
-    expect(script).toContain('fallocate -l 2G /swapfile')
+    expect(script).toContain('swap_target=2147483648')
     expect(script).not.toContain('99-ts-cloud-sd.conf')
   })
 

@@ -400,3 +400,12 @@ In CI, `cloud deploy` auto-confirms when `CI=true` is set, so `--yes` is optiona
 - [Getting Started](/guide/getting-started) — setup guide
 - [Configuration](/config) — the `project` / `environments` / `infrastructure` / `sites` schema
 - [Cloud Providers](/guide/providers) — resource types
+
+## Swap capacity on shared servers
+
+`infrastructure.compute.swapGb` declares a minimum total swap capacity. Bootstrap and
+`cloud server:optimize` use the same reconciliation. If active swap is smaller than
+the declared capacity, the tool adds only the missing capacity in a new file. It
+never disables, truncates, reformats, or shrinks existing swap. Existing files and
+symlinks are preserved; an exclusive host lock prevents parallel reconciliations
+from allocating the same capacity twice. Set `swapGb: 0` to leave swap unchanged.

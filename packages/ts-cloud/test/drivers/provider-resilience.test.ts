@@ -24,6 +24,6 @@ describe('compute resilience provider contract', () => {
       infrastructure: { compute: { runtime: 'bun', swapGb: 3 } },
     }
 
-    for (const render of Object.values(renderers)) expect(render(config)).toContain('fallocate -l 3G /swapfile')
+    for (const render of Object.values(renderers)) expect(render(config)).toContain('swap_target=3221225472')
   })
 })
