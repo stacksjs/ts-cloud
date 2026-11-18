@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.148...v0.16.149)
+
+## ⚡ Performance Improvements
+
+- **host-cleanup**: start the deploy-time run in the background and skip it when one ran recently ([f32b71f](https://github.com/stacksjs/ts-cloud/commit/f32b71f)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## 🔧 Chores
+
+- release v0.16.149 ([3d9dbd1](https://github.com/stacksjs/ts-cloud/commit/3d9dbd1)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.147...v0.16.148)
 
 ## 🐛 Bug Fixes
