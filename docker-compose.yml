@@ -23,7 +23,7 @@ services:
     networks:
       - ts-cloud-network
   postgres:
-    image: postgres:18-alpine
+    image: postgres:19-alpine
     container_name: ts-cloud-postgres
     ports:
       - 5432:5432
