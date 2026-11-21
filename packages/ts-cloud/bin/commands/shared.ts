@@ -1,4 +1,4 @@
-import type { CloudConfig } from '@ts-cloud/core'
+import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { DnsProvider, DnsProviderConfig } from '../../src/dns/types'
 import { loadCloudConfig } from '../../src/config'
 import { createDnsProvider, DnsProviderFactory } from '../../src/dns'
@@ -7,8 +7,8 @@ import { createDnsProvider, DnsProviderFactory } from '../../src/dns'
  * Load and validate the cloud config, ensuring project config exists.
  * Returns the config with project guaranteed to exist.
  */
-export async function loadValidatedConfig(): Promise<CloudConfig> {
-  const cloudConfig = await loadCloudConfig()
+export async function loadValidatedConfig(environment?: EnvironmentType): Promise<CloudConfig> {
+  const cloudConfig = await loadCloudConfig(environment)
   if (!cloudConfig.project) {
     throw new Error('Missing required project configuration in cloud.config.ts')
   }

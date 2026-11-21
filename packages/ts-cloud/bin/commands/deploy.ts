@@ -1165,8 +1165,8 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .action(async (site?: string, options?: { env?: string; to?: string; dryRun?: boolean; all?: boolean; onlyIfLive?: string }) => {
       cli.header('Rolling Back Release')
       try {
-        const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const config = await loadValidatedConfig(environment)
         const siteNames = options?.all ? Object.keys(config.sites || {}) : [site || Object.keys(config.sites || {})[0]].filter(Boolean) as string[]
         if (siteNames.length === 0) {
           cli.error('No site configured to roll back.')
@@ -1200,8 +1200,8 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .action(async (site?: string, options?: { env?: string; limit?: string }) => {
       cli.header('Deployment History')
       try {
-        const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const config = await loadValidatedConfig(environment)
         const siteName = site || Object.keys(config.sites || {})[0]
         if (!siteName) {
           cli.error('No site configured.')
