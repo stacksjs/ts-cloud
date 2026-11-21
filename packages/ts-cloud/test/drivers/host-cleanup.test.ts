@@ -45,7 +45,7 @@ function fakeHost() {
   const root = mkdtempSync(join(tmpdir(), 'ts-cloud-host-'))
   scratch.push(root)
   const bin = join(root, 'bin')
-  for (const dir of ['bin', 'var/ts-cloud/staging', 'var/ts-cloud/artifacts', 'root/.bun/install/cache/pkg', 'tmp', 'etc/systemd/system', 'usr/local/bin', 'var/lib'])
+  for (const dir of ['bin', 'var/ts-cloud/staging', 'var/ts-cloud/artifacts', 'root/.bun/install/cache/pkg', 'run/lock', 'tmp', 'etc/systemd/system', 'usr/local/bin', 'var/lib'])
     mkdirSync(join(root, dir), { recursive: true })
   const log = join(root, 'calls.log')
   const stub = (name: string, body = '') => {
@@ -61,6 +61,8 @@ function fakeHost() {
     .replaceAll('/var/lib/ts-cloud', `${root}/var/lib/ts-cloud`)
     .replaceAll('/var/ts-cloud', `${root}/var/ts-cloud`)
     .replaceAll('/root/.bun', `${root}/root/.bun`)
+    .replaceAll('/run/lock', `${root}/run/lock`)
+    .replaceAll('/tmp/ts-cloud-host-cleanup.lock', `${root}/tmp/ts-cloud-host-cleanup.lock`)
     .replaceAll('find /tmp ', `find ${root}/tmp `)
     .replaceAll('/usr/local/bin/ts-cloud-notify', `${bin}/ts-cloud-notify`)
     .replaceAll('/usr/local/bin/ts-cloud-host-cleanup.sh', `${root}/usr/local/bin/ts-cloud-host-cleanup.sh`)
@@ -465,8 +467,10 @@ describe('the installed cleanup and its timer (#195)', () => {
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('host cleanup started in the background')
     expect(host.calls()).not.toContain('systemctl start')
+    const stamp = join(host.root, 'var/lib/ts-cloud/host-cleanup.last')
     const deadline = Date.now() + 10_000
-    while (existsSync(orphan) && Date.now() < deadline) await Bun.sleep(50)
+    while (!existsSync(stamp) && Date.now() < deadline) await Bun.sleep(50)
+    expect(existsSync(stamp)).toBe(true)
     expect(existsSync(orphan)).toBe(false)
   })
 
@@ -508,7 +512,7 @@ describe('the installed cleanup and its timer (#195)', () => {
     if (spawnSync('bash', ['-c', 'command -v flock']).status !== 0) return
     const host = fakeHost()
     host.run(buildHostCleanupInstallScript())
-    const lock = existsSync('/run/lock') ? '/run/lock/ts-cloud-host-cleanup.lock' : '/tmp/ts-cloud-host-cleanup.lock'
+    const lock = join(host.root, 'run/lock/ts-cloud-host-cleanup.lock')
     const result = spawnSync('flock', [lock, join(host.root, 'usr/local/bin/ts-cloud-host-cleanup.sh')], { encoding: 'utf8' })
     expect(result.stdout).toContain('host cleanup already running; skipping')
   })
