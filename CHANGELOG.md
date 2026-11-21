@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.150...v0.16.151)
+
+## ✅ Tests
+
+- isolate host cleanup locks by fixture ([f0029e1](https://github.com/stacksjs/ts-cloud/commit/f0029e1)) _(by Chris Breuer <chris@stacksjs.com>)_ ([#232](https://github.com/stacksjs/ts-cloud/issues/232))
+
+## 🔧 Chores
+
+- release v0.16.151 ([0307932](https://github.com/stacksjs/ts-cloud/commit/0307932)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.149...v0.16.150)
 
 ## 🐛 Bug Fixes
