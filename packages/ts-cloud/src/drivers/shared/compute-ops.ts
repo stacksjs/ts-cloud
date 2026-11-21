@@ -9,9 +9,10 @@
  */
 import type { CloudDriver, DatabaseConfig, EnvironmentType, RemoteDeployInstanceResult, SiteConfig } from '@ts-cloud/core'
 import { resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
+import { backgroundRollbackOptions } from './app-services'
 import { buildBackupRestoreScript } from './backups'
 import { PANTRY_PROJECT_DIR } from './package-manager'
-import { buildRollbackPlanScript, buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
+import { buildDeployLock, buildRollbackPlanScript, buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
 import { buildServerRecipeScript } from './server-recipes'
 
 export interface ComputeOpsLogger {
@@ -93,12 +94,16 @@ export async function rollbackComputeSite(
 
   const commands = [
     'set -euo pipefail',
+    ...buildDeployLock(paths),
     ...guard,
     // unitBase lets the rollback swap the running templated release instance
     // (zero-downtime layout); legacy single-unit sites just get a restart.
     ...buildRollbackScript(paths, {
       ...(options.to ? { to: options.to } : {}),
       unitBase: `${ctx.slug}-${options.siteName}`,
+      ...(options.site && resolveSiteKind(options.site) === 'server-php' ? {} : {
+        background: backgroundRollbackOptions({ slug: ctx.slug, siteName: options.siteName, site: options.site }),
+      }),
     }),
   ]
   if (options.site && resolveSiteKind(options.site) === 'server-php') {

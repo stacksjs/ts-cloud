@@ -7,7 +7,7 @@ import { buildMailEnv, hasManagementDashboardSite, resolveAppDatabase, resolveMa
 import { describeCredentialReach, formatCredentialReach, unrelatedReachCount } from '../../deploy/attach-credentials'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
-import { buildSiteServicesScript, buildStopSiteServicesScript, siteHasServices } from './app-services'
+import { buildRecordBackgroundRecipe, buildSiteServicesScript, buildStopSiteServicesScript, siteHasServices } from './app-services'
 import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildComputeStorageSiteScript } from './compute-storage'
 import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
@@ -321,7 +321,7 @@ export async function deploySiteRelease(
   // Background services must stop/drain on their existing release before its
   // files can be pruned, including the selected private runtime and job assets.
   // An empty desired set must still stop and remove units from earlier releases.
-  const servicesScript = buildSiteServicesScript({ slug, siteName, site, appBase, releaseId: sha })
+  const servicesScript = buildRecordBackgroundRecipe({ slug, siteName, site, appBase, releaseId: sha })
   const baseScript =
     kind === 'server-static'
       ? buildStaticSiteDeployScript({

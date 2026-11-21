@@ -94,7 +94,8 @@ case "$cmd" in
   restart|start) start "$1" ;;
   stop) [ -e "$U/$1" ] && echo inactive > "$U/$1"; echo "$1" >> "$DIR/stopped" ;;
   show) unit="\${@: -1}"; if [ "$(cat "$U/$unit" 2>/dev/null)" = active ]; then case "$*" in *ControlGroup*) echo "/system.slice/$unit" ;; *) echo $(( $(printf '%s' "$unit" | cksum | cut -d' ' -f1) % 30000 + 1000 )) ;; esac; else echo 0; fi ;;
-  list-units) for f in "$U"/*; do [ -e "$f" ] || continue; [ "$(cat "$f")" = active ] && echo "$(basename "$f") loaded active running"; done; true ;;
+  list-units) pattern='*'; for arg in "$@"; do case "$arg" in --*) ;; *) pattern="$arg" ;; esac; done
+    for f in "$U"/*; do [ -e "$f" ] || continue; name=$(basename "$f"); [[ "$name" == $pattern ]] && [ "$(cat "$f")" = active ] && echo "$name loaded active running"; done; true ;;
   *) true ;;
 esac
 `)
@@ -292,6 +293,69 @@ describe('rollback, executed', () => {
     return b
   }
   const rollback = (b: Box) => buildRollbackScript(releasePaths(b.base, 'unused'), { unitBase: UNIT_BASE, systemdDir: join(b.dir, 'systemd') })
+
+  const workers = [`${UNIT_BASE}-queue-default.service`, `${UNIT_BASE}-scheduler.service`]
+
+  function deployedWithWorkers() {
+    const b = deployed()
+    const directory = join(b.dir, 'recipes')
+    const systemdDir = join(b.dir, 'systemd')
+    mkdirSync(directory, { mode: 0o700 })
+    for (const unit of workers) {
+      writeFileSync(join(systemdDir, unit), '')
+      writeFileSync(join(b.dir, 'units', unit), 'active')
+    }
+    const writeRecipe = (release: string, fail = false) => writeFileSync(join(directory, `${release}.sh`), [
+      '# background-services: yes',
+      'set -euo pipefail',
+      `test "$(basename "$(readlink "$DIR/www/current")")" = '${release}'`,
+      ...workers.map(unit => `systemctl start '${unit}'`),
+      ...(fail ? ['exit 1'] : [`echo '${release}' > "$DIR/background-release"`]),
+    ].join('\n'), { mode: 0o600 })
+    writeRecipe('new222')
+    const run = () => b.exec(['set -e', ...buildRollbackScript(releasePaths(b.base, 'unused'), {
+      unitBase: UNIT_BASE,
+      systemdDir,
+      background: { directory, required: false, unitPattern: `^${UNIT_BASE}-(queue-.*|scheduler)\\.service$` },
+    })])
+    return { b, run, writeRecipe }
+  }
+
+  it('drains the site workers and starts the retained release services with its web release', () => {
+    const { b, run, writeRecipe } = deployedWithWorkers()
+    writeRecipe('old111')
+    const result = run()
+    expect(result.code).toBe(0)
+    expect(b.current()).toBe('old111')
+    expect(b.stopped()).toEqual(expect.arrayContaining(workers))
+    expect(workers.map(b.state)).toEqual(['active', 'active'])
+    expect(readFileSync(join(b.dir, 'background-release'), 'utf8').trim()).toBe('old111')
+  })
+
+  it('leaves the current web and background services running if the retained recipe is missing', () => {
+    const { b, run } = deployedWithWorkers()
+    const stopped = b.stopped()
+    const result = run()
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('Missing trusted background recipe')
+    expect(b.current()).toBe('new222')
+    expect(b.stopped()).toEqual(stopped)
+    expect(b.state(NEW)).toBe('active')
+  })
+
+  it('restores the current web and background services if the retained recipe fails', () => {
+    const { b, run, writeRecipe } = deployedWithWorkers()
+    writeRecipe('old111', true)
+    const result = run()
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('restoring the previous release and its background services')
+    expect(b.current()).toBe('new222')
+    expect(b.state(NEW)).toBe('active')
+    expect(b.state(OLD)).toBe('inactive')
+    expect(workers.map(b.state)).toEqual(['active', 'active'])
+    expect(readFileSync(join(b.dir, 'background-release'), 'utf8').trim()).toBe('new222')
+    expect(readFileSync(previousReleasePath(b.base), 'utf8').trim()).toBe('old111')
+  })
 
   it('the deploy records exactly which release it replaced', () => {
     const b = deployed()

@@ -495,6 +495,7 @@ export function buildRecordPreviousRelease(paths: ReleasePaths, prevVar = 'TS_CL
  * recorded replacing; else the newest release dir that is not current.
  */
 function buildRollbackTarget(paths: ReleasePaths, to?: string): string[] {
+  if (to && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(to)) throw new Error('Invalid rollback release ID')
   const recorded = previousReleasePath(paths.base)
   return [
     `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
@@ -523,6 +524,39 @@ export function buildRollbackPlanScript(paths: ReleasePaths, options: { to?: str
   ]
 }
 
+export interface RollbackBackground {
+  directory: string
+  required: boolean
+  unitPattern: string
+}
+
+function buildRollbackBackground(background: RollbackBackground, systemd: string): string[] {
+  const { directory, required, unitPattern } = background
+  return [
+    `TS_CLOUD_BG_OLD=${directory}/$(basename "$TS_CLOUD_CURRENT").sh`,
+    `TS_CLOUD_BG_NEW=${directory}/$TS_CLOUD_RB_ID.sh`,
+    'TS_CLOUD_BG_MANAGED=0',
+    'ts_cloud_rb_units() {',
+    `  ls ${systemd} 2>/dev/null | grep -E '${unitPattern}' || true`,
+    '}',
+    `if ${required ? 'true' : '[ -n "$(ts_cloud_rb_units)" ] || grep -qsx "# background-services: yes" "$TS_CLOUD_BG_OLD" "$TS_CLOUD_BG_NEW"'}; then`,
+    `  if [ ! -d ${directory} ] || [ ! -O ${directory} ] || [ -L ${directory} ]; then echo 'Missing trusted background release directory; refusing to mix worker and application releases' >&2; exit 1; fi`,
+    '  for TS_CLOUD_BG_FILE in "$TS_CLOUD_BG_OLD" "$TS_CLOUD_BG_NEW"; do',
+    '    if [ ! -f "$TS_CLOUD_BG_FILE" ] || [ ! -O "$TS_CLOUD_BG_FILE" ] || [ -L "$TS_CLOUD_BG_FILE" ]; then echo "Missing trusted background recipe: $TS_CLOUD_BG_FILE" >&2; exit 1; fi',
+    '  done',
+    '  TS_CLOUD_BG_MANAGED=1',
+    'fi',
+    'ts_cloud_rb_drain() {',
+    '  [ "$TS_CLOUD_BG_MANAGED" = 1 ] || return 0',
+    '  for TS_CLOUD_BG_UNIT in $(ts_cloud_rb_units); do systemctl stop "$TS_CLOUD_BG_UNIT" || return 1; done',
+    '}',
+    'ts_cloud_rb_background() {',
+    '  [ "$TS_CLOUD_BG_MANAGED" = 1 ] || return 0',
+    '  bash "$1"',
+    '}',
+  ]
+}
+
 /**
  * Roll the active release back to a previous one (Forge-style rollback). With
  * `to` set, goes to `releases/<to>`; otherwise to the release the last deploy
@@ -545,40 +579,63 @@ export function buildRollbackPlanScript(paths: ReleasePaths, options: { to?: str
  * legacy single unit flip and restart. The caller appends any engine reload
  * (php-fpm/queues) — see {@link import('./laravel-deploy')}.
  */
-export function buildRollbackScript(paths: ReleasePaths, options: { to?: string; unitBase?: string; gateSeconds?: number; systemdDir?: string } = {}): string[] {
+export function buildRollbackScript(paths: ReleasePaths, options: { to?: string; unitBase?: string; gateSeconds?: number; systemdDir?: string; background?: RollbackBackground } = {}): string[] {
   const gate = Math.max(1, options.gateSeconds ?? 5)
   // Overridable so the rollback can be run against a sandbox in tests.
   const systemd = options.systemdDir ?? '/etc/systemd/system'
-  const flip = [
+  const linkTarget = [
     'ln -sfn "$TS_CLOUD_RB_TARGET" ' + `${paths.current}.tmp`,
     `mv -Tf ${paths.current}.tmp ${paths.current}`,
+  ]
+  const record = [
     // A second rollback should not ping-pong back to the release just left.
     `rm -f ${previousReleasePath(paths.base)}`,
     'echo "rolled back to $TS_CLOUD_RB_ID"',
   ]
   const prepare = [
     ...buildRollbackTarget(paths, options.to),
+    ...(options.background ? buildRollbackBackground(options.background, systemd) : []),
     ...buildRelinkSharedPaths(paths, '"$TS_CLOUD_RB_TARGET"'),
   ]
 
-  if (!options.unitBase) return [...prepare, ...flip]
+  if (!options.unitBase) return [...prepare, ...linkTarget, ...record]
 
   const unitBase = options.unitBase
   const target = `${unitBase}@\${TS_CLOUD_RB_ID}.service`
+  const switchRelease = (runtime: 'templated' | 'legacy' | 'static') => {
+    const restart = runtime === 'legacy' ? `systemctl restart ${unitBase}.service` : 'true'
+    if (!options.background) return [...linkTarget, ...record, ...(runtime === 'legacy' ? [restart] : [])]
+    return [
+      'if ! ts_cloud_rb_drain; then',
+      ...(runtime === 'templated' ? [`  systemctl stop "${target}" || true`] : []),
+      '  ts_cloud_rb_background "$TS_CLOUD_BG_OLD" || echo "Failed to restore the previous background services" >&2',
+      '  exit 1',
+      'fi',
+      `if ! { ${linkTarget.join(' && ')} && ${restart} && ts_cloud_rb_background "$TS_CLOUD_BG_NEW"; }; then`,
+      '  echo "Rollback failed; restoring the previous release and its background services" >&2',
+      ...(runtime === 'templated' ? [`  systemctl stop "${target}" || true`] : []),
+      '  ts_cloud_rb_drain || { echo "Failed to drain the rollback background services" >&2; exit 1; }',
+      `  ln -sfn "$TS_CLOUD_CURRENT" ${paths.current}.tmp && mv -Tf ${paths.current}.tmp ${paths.current} || exit 1`,
+      `  ${restart} || echo "Failed to restart the previous release" >&2`,
+      '  ts_cloud_rb_background "$TS_CLOUD_BG_OLD" || echo "Failed to restore the previous background services" >&2',
+      '  exit 1',
+      'fi',
+      ...record,
+    ]
+  }
   return [
     ...prepare,
     `if [ -f ${systemd}/${unitBase}@.service ]; then`,
     `  systemctl start "${target}"`,
     `  for TS_CLOUD_I in $(seq 1 ${gate}); do sleep 1; systemctl is-active --quiet "${target}" || { echo "the release rolled back to, $TS_CLOUD_RB_ID, did not stay up; the current release keeps serving" >&2; journalctl -u "${target}" -n 30 --no-pager >&2 || true; systemctl stop "${target}" 2>/dev/null || true; exit 1; }; done`,
-    ...flip.map(line => `  ${line}`),
+    ...switchRelease('templated').map(line => `  ${line}`),
     `  systemctl enable "${target}" 2>/dev/null || true`,
     `  systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl stop "$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "$TS_CLOUD_U" 2>/dev/null || true; done`,
     `  ${buildDisableStaleInstances(unitBase, target)}`,
     `elif [ -f ${systemd}/${unitBase}.service ]; then`,
-    ...flip.map(line => `  ${line}`),
-    `  systemctl restart ${unitBase}.service`,
+    ...switchRelease('legacy').map(line => `  ${line}`),
     'else',
-    ...flip.map(line => `  ${line}`),
+    ...switchRelease('static').map(line => `  ${line}`),
     'fi',
   ]
 }

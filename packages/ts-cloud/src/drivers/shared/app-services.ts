@@ -19,6 +19,7 @@
  * these units for each promoted release; arbitrary daemons retain their defaults.
  */
 import type { SiteConfig } from '@ts-cloud/core'
+import type { RollbackBackground } from './releases'
 import { buildClearAutoMemoryHigh } from './deploy-script'
 import { memorySwapMaxDirective } from './memory-swap'
 import { runtimeIsolationDirectives, runtimeIsolationUser } from './runtime-isolation'
@@ -63,6 +64,42 @@ function managedUnitsLoop(slug: string, siteName: string): string {
 /** Stop existing managed background work before its release directory can be replaced. */
 export function buildStopSiteServicesScript(options: Pick<SiteServicesOptions, 'slug' | 'siteName'>): string[] {
   return [managedUnitsLoop(options.slug, options.siteName), '  systemctl stop "$unit"', 'done']
+}
+
+export function backgroundRecipeDirectory(slug: string, siteName: string): string {
+  if (![slug, siteName].every(name => /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(name))) throw new Error('Invalid background site identity')
+  return `/etc/ts-cloud/background/${slug}/${siteName}`
+}
+
+/** Keep root-executed recipes outside the application-owned release tree. */
+export function buildRecordBackgroundRecipe(options: SiteServicesOptions & { appBase: string; releaseId: string }): string[] {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(options.releaseId)) throw new Error('Invalid background release ID')
+  const directory = backgroundRecipeDirectory(options.slug, options.siteName)
+  const file = `${directory}/${options.releaseId}.sh`
+  const body = ['#!/bin/bash', `# background-services: ${siteHasServices(options.site) ? 'yes' : 'no'}`, 'set -euo pipefail', ...buildSiteServicesScript(options, { verifyStartup: true })]
+  let delimiter = 'TS_CLOUD_BACKGROUND_RECIPE_EOF'
+  while (body.join('\n').split('\n').includes(delimiter)) delimiter += '_'
+  return [
+    `install -d -m 0700 ${directory}`,
+    `TS_CLOUD_BG_TMP=$(mktemp ${directory}/.recipe.XXXXXX)`,
+    `cat > "$TS_CLOUD_BG_TMP" <<'${delimiter}'`,
+    ...body,
+    delimiter,
+    `mv -Tf "$TS_CLOUD_BG_TMP" ${file}`,
+    `bash ${file}`,
+    `for TS_CLOUD_BG_OLD in ${directory}/*.sh; do`,
+    `  [ ! -f "$TS_CLOUD_BG_OLD" ] || [ -d ${options.appBase}/releases/"$(basename "$TS_CLOUD_BG_OLD" .sh)" ] || rm -f -- "$TS_CLOUD_BG_OLD"`,
+    'done',
+  ]
+}
+
+export function backgroundRollbackOptions(options: Pick<SiteServicesOptions, 'slug' | 'siteName'> & { site?: SiteConfig }): RollbackBackground {
+  const { slug, siteName, site } = options
+  return {
+    directory: backgroundRecipeDirectory(slug, siteName),
+    required: !!site && siteHasServices(site),
+    unitPattern: `^${reEscape(slug)}-${reEscape(siteName)}-((queue|daemon)-.*|scheduler)\\.service$`,
+  }
 }
 
 export function queueUnitName(slug: string, siteName: string, index: number): string {
@@ -152,7 +189,7 @@ export function schedulerCronPath(slug: string, siteName: string): string {
  * Build the full reconcile script: (re)write desired queue/daemon units +
  * scheduler cron, prune stale units for this site, and reload systemd.
  */
-export function buildSiteServicesScript(options: SiteServicesOptions): string[] {
+export function buildSiteServicesScript(options: SiteServicesOptions, { verifyStartup = false }: { verifyStartup?: boolean } = {}): string[] {
   const isolatedUser = options.site.isolation && !['laravel', 'php', 'statamic', 'wordpress'].includes(options.site.type || '')
     ? runtimeIsolationUser(options.slug) : undefined
   const { slug, siteName, site } = options
@@ -287,6 +324,13 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   )
   for (const name of desiredUnits) {
     out.push(`systemctl enable ${name}.service`, `systemctl restart ${name}.service`)
+  }
+  if (verifyStartup && desiredUnits.length) {
+    const units = desiredUnits.map(name => `${name}.service`).join(' ')
+    out.push('for TS_CLOUD_BG_PROBE in 1 2 3 4 5; do', '  sleep 1',
+      `  for TS_CLOUD_BG_UNIT in ${units}; do`,
+      '    systemctl is-active --quiet "$TS_CLOUD_BG_UNIT" || { echo "Background service $TS_CLOUD_BG_UNIT failed startup" >&2; exit 1; }',
+      '  done', 'done')
   }
 
   // Laravel-style scheduler: a cron.d entry running `schedule:run` every minute.
