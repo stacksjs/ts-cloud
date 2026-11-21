@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.149...v0.16.150)
+
+## 🐛 Bug Fixes
+
+- load the release environment for Stacks background units ([f78d95c](https://github.com/stacksjs/ts-cloud/commit/f78d95c)) _(by Chris Breuer <chris@stacksjs.com>)_ ([#231](https://github.com/stacksjs/ts-cloud/issues/231))
+- load the selected environment for compute rollback ([ba22f8a](https://github.com/stacksjs/ts-cloud/commit/ba22f8a)) _(by Chris Breuer <chris@stacksjs.com>)_ ([#230](https://github.com/stacksjs/ts-cloud/issues/230))
+
+## 🔧 Chores
+
+- release v0.16.150 ([f7b8ed9](https://github.com/stacksjs/ts-cloud/commit/f7b8ed9)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.148...v0.16.149)
 
 ## ⚡ Performance Improvements
