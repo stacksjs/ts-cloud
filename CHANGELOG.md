@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.151...v0.16.152)
+
+## 🐛 Bug Fixes
+
+- roll back site workers and scheduler with releases ([08ead12](https://github.com/stacksjs/ts-cloud/commit/08ead12)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.152 ([9fd9c4f](https://github.com/stacksjs/ts-cloud/commit/9fd9c4f)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.150...v0.16.151)
 
 ## ✅ Tests
