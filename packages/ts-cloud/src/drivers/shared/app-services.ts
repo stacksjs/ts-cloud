@@ -165,6 +165,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   const backgroundDirectory = selectedRuntime ? `${base}/releases/${options.releaseId}` : current
   const ctx = { current: backgroundDirectory, backgroundBun: site.backgroundBun }
   const executionEnvironment = driver.executionEnvironment?.(ctx) ?? driver.execEnv
+  const environmentFile = driver.id === 'stacks' ? `${backgroundDirectory}/.env` : undefined
 
   const out: string[] = []
   const desiredUnits: string[] = []
@@ -186,6 +187,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
             workingDir: backgroundDirectory,
             execStart,
             environment: executionEnvironment,
+            environmentFile,
             isolatedUser,
             isolationRoot: base, isolationSlug: slug,
             stopWaitSecs: worker.stopWaitSecs ?? 90,
@@ -248,6 +250,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
           workingDir: backgroundDirectory,
           execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
           environment: executionEnvironment,
+          environmentFile,
           isolatedUser,
           isolationRoot: base, isolationSlug: slug,
           memoryHigh: limits.memoryHigh,

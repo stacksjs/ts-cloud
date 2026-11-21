@@ -10,6 +10,12 @@ import {
 const base = { slug: 'acme', siteName: 'app' }
 
 describe('buildSiteServicesScript — Stacks (default framework)', () => {
+  it('loads the active release environment in every queue and scheduler unit', () => {
+    const site: SiteConfig = { root: '.', scheduler: true, queues: [{ queue: 'emails', processes: 2 }] }
+    const script = buildSiteServicesScript({ ...base, site }).join('\n')
+    expect(script.match(/^EnvironmentFile=-\/var\/www\/app\/current\/\.env$/gm)).toHaveLength(3)
+  })
+
   it('runs the Stacks scheduler as an always-on systemd unit, not cron', () => {
     const site: SiteConfig = { root: '.', scheduler: true }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
@@ -94,6 +100,7 @@ describe('buildSiteServicesScript — queue workers', () => {
     expect(script).toContain('pantry env')
     expect(script).toContain('--tries=5')
     expect(script).toContain('--timeout=90')
+    expect(script).not.toContain('EnvironmentFile=')
   })
 
   it('enables and restarts each unit', () => {
