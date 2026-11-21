@@ -9,10 +9,10 @@
     "dev": "stx dev --pages pages"
   },
   "dependencies": {
-    "@ts-charts/charts": "^0.2.7",
-    "@ts-charts/graph": "^0.2.7"
+    "@ts-charts/charts": "^0.2.8",
+    "@ts-charts/graph": "^0.2.8"
   },
   "devDependencies": {
-    "@stacksjs/stx": "^0.2.230"
+    "@stacksjs/stx": "^0.2.921"
   }
 }
