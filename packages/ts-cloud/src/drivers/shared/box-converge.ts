@@ -290,18 +290,28 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
     // differently (a build revision replacing a dependency's broken build), and
     // only an install applies it, so a changed pin installs again.
     const record = `${PANTRY_PROJECT_DIR}/pantry/.ts-cloud-packages`
-    const wanted = `${[...packages].sort().join('\n')}\n${pin ? `pantry ${pin}\n` : ''}`
+    const specs = `${[...packages].sort().join('\n')}\n`
+    const wanted = `${specs}${pin ? `pantry ${pin}\n` : ''}`
     lines.push(
       `WANTED_PACKAGES=${sh(b64(wanted))}`,
-      `if [ -f ${record} ] && [ "$(base64 -w0 < ${record})" = "$WANTED_PACKAGES" ]; then MISSING=0; else MISSING=1; fi`,
+      `WANTED_SPECS=${sh(b64(specs))}`,
+      `if [ -f ${record} ] && [ "$(base64 -w0 < ${record})" = "$WANTED_PACKAGES" ]; then MISSING=0; NEW_SPECS=0`,
+      // Only the pin moved: the same packages, re-resolved by the new pantry.
+      `elif [ -f ${record} ] && [ "$({ grep -v '^pantry ' ${record} || true; } | base64 -w0)" = "$WANTED_SPECS" ]; then MISSING=1; NEW_SPECS=0`,
+      'else MISSING=1; NEW_SPECS=1; fi',
     )
     lines.push(
       'if [ "$MISSING" = 1 ]; then',
-      // Only a missing tree costs space, and one can be gigabytes.
-      `  FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')`,
-      `  if [ "$FREE_KB" -lt ${floorKb} ]; then`,
-      `    say "not installing packages: $((FREE_KB / 1048576)) GB free, the box declares at least ${box.minFreeDiskGb ?? 10} GB"`,
-      `    exit 3`,
+      // Only new packages cost space, and a tree of them can be gigabytes. A
+      // pin change re-resolves what is already there - a rebuilt dependency is
+      // megabytes - so it is not held to the floor: that would keep a broken
+      // build installed on exactly the box too full to take a new tree.
+      '  if [ "$NEW_SPECS" = 1 ]; then',
+      `    FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')`,
+      `    if [ "$FREE_KB" -lt ${floorKb} ]; then`,
+      `      say "not installing packages: $((FREE_KB / 1048576)) GB free, the box declares at least ${box.minFreeDiskGb ?? 10} GB"`,
+      `      exit 3`,
+      '    fi',
       '  fi',
       `  PANTRY_SERVICE_SCOPE=system PATH="${BOX_PANTRY_CLI_DIR}:$PATH" sh -c ${sh(`cd ${PANTRY_PROJECT_DIR} && pantry install ${packages.map(sh).join(' ')}`)}`,
       // Readable by the service user: pantry installs as root.

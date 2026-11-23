@@ -99,7 +99,8 @@ describe('a declared box', () => {
     const script = buildBoxConvergeScript(runner)
     const wanted = Buffer.from(['git-scm.org@2.53.0', 'google.com/chrome@155.0.8059.84', 'pantry 0.11.99'].join('\n') + '\n').toString('base64')
     expect(script).toContain(`WANTED_PACKAGES='${wanted}'`)
-    expect(script.indexOf('MISSING=1')).toBeLessThan(script.indexOf('FREE_KB='))
+    expect(script.indexOf('NEW_SPECS=1')).toBeLessThan(script.indexOf('FREE_KB='))
+    expect(script).toContain('  if [ "$NEW_SPECS" = 1 ]; then\n    FREE_KB=')
     expect(script).toContain('if [ "$MISSING" = 1 ]; then')
     // The record is written only after pantry install succeeded (set -e).
     expect(script.indexOf('> /opt/pantry/pantry/.ts-cloud-packages')).toBeGreaterThan(script.indexOf('pantry install'))
@@ -115,6 +116,15 @@ describe('a declared box', () => {
     expect(after).not.toBe(before)
     expect(Buffer.from(after!, 'base64').toString('utf8')).toContain('pantry 0.11.218')
     expect(wanted(buildBoxConvergeScript(runner))).toBe(before)
+  })
+
+  test('holds a pin-only re-install to no disk floor, since it adds no packages', () => {
+    const script = buildBoxConvergeScript(runner)
+    const specs = Buffer.from(['git-scm.org@2.53.0', 'google.com/chrome@155.0.8059.84'].join('\n') + '\n').toString('base64')
+    expect(script).toContain(`WANTED_SPECS='${specs}'`)
+    // The same specs under another pin: install, but as a re-resolve, not new packages.
+    expect(script).toMatch(/elif \[ -f \/opt\/pantry\/pantry\/\.ts-cloud-packages \] && \[ "\$\(\{ grep -v '\^pantry ' [^)]*\} \| base64 -w0\)" = "\$WANTED_SPECS" \]; then MISSING=1; NEW_SPECS=0/)
+    expect(script).toContain('else MISSING=1; NEW_SPECS=1; fi')
   })
 
   test('gives pantry\'s Chrome its sandbox on Ubuntu, and nothing else', () => {
