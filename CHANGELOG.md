@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.152...v0.16.153)
+
+## 🐛 Bug Fixes
+
+- **boxes**: install packages again when the pinned pantry changes ([7e15d05](https://github.com/stacksjs/ts-cloud/commit/7e15d05)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.153 ([bcb4c20](https://github.com/stacksjs/ts-cloud/commit/bcb4c20)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.151...v0.16.152)
 
 ## 🐛 Bug Fixes
