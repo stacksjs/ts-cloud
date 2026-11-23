@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.153...v0.16.154)
+
+## 🐛 Bug Fixes
+
+- **boxes**: hold only new packages to the disk floor, not a pin change ([5658cc0](https://github.com/stacksjs/ts-cloud/commit/5658cc0)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## 🔧 Chores
+
+- release v0.16.154 ([4831b40](https://github.com/stacksjs/ts-cloud/commit/4831b40)) _(by Chris Breuer <chris@stacksjs.com>)_
+
+## Contributors
+
+- _Chris Breuer <chris@stacksjs.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.152...v0.16.153)
 
 ## 🐛 Bug Fixes
