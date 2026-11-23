@@ -97,12 +97,24 @@ describe('a declared box', () => {
 
   test('applies the disk floor only when the declared packages changed since the last install', () => {
     const script = buildBoxConvergeScript(runner)
-    const wanted = Buffer.from(['git-scm.org@2.53.0', 'google.com/chrome@155.0.8059.84'].join('\n') + '\n').toString('base64')
+    const wanted = Buffer.from(['git-scm.org@2.53.0', 'google.com/chrome@155.0.8059.84', 'pantry 0.11.99'].join('\n') + '\n').toString('base64')
     expect(script).toContain(`WANTED_PACKAGES='${wanted}'`)
     expect(script.indexOf('MISSING=1')).toBeLessThan(script.indexOf('FREE_KB='))
     expect(script).toContain('if [ "$MISSING" = 1 ]; then')
     // The record is written only after pantry install succeeded (set -e).
     expect(script.indexOf('> /opt/pantry/pantry/.ts-cloud-packages')).toBeGreaterThan(script.indexOf('pantry install'))
+  })
+
+  test('installs again when the pinned pantry changes, though the packages did not', () => {
+    // A newer pantry can resolve the same specs differently (a build revision
+    // replacing a broken build of a dependency), and only an install applies
+    // that. The record is the install's inputs, so the pin is one of them.
+    const wanted = (script: string) => script.match(/WANTED_PACKAGES='([^']*)'/)![1]
+    const before = wanted(buildBoxConvergeScript(runner))
+    const after = wanted(buildBoxConvergeScript({ ...runner, pantryVersion: '0.11.218' }))
+    expect(after).not.toBe(before)
+    expect(Buffer.from(after!, 'base64').toString('utf8')).toContain('pantry 0.11.218')
+    expect(wanted(buildBoxConvergeScript(runner))).toBe(before)
   })
 
   test('gives pantry\'s Chrome its sandbox on Ubuntu, and nothing else', () => {

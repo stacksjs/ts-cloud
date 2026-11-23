@@ -285,9 +285,12 @@ export function buildBoxConvergeScript(box: BoxConfig): string {
     const floorKb = Math.round((box.minFreeDiskGb ?? 10) * 1024 * 1024)
     // What the last successful install was given, kept inside the tree it
     // describes: comparing specs is alias-proof (`bun.sh` lands in `bun.com`),
-    // and removing the tree removes the record with it.
+    // and removing the tree removes the record with it. The pinned pantry is
+    // one of those inputs: a newer pantry can resolve the same specs
+    // differently (a build revision replacing a dependency's broken build), and
+    // only an install applies it, so a changed pin installs again.
     const record = `${PANTRY_PROJECT_DIR}/pantry/.ts-cloud-packages`
-    const wanted = `${[...packages].sort().join('\n')}\n`
+    const wanted = `${[...packages].sort().join('\n')}\n${pin ? `pantry ${pin}\n` : ''}`
     lines.push(
       `WANTED_PACKAGES=${sh(b64(wanted))}`,
       `if [ -f ${record} ] && [ "$(base64 -w0 < ${record})" = "$WANTED_PACKAGES" ]; then MISSING=0; else MISSING=1; fi`,
