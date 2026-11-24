@@ -1185,6 +1185,23 @@ writeFileSync(candidatePath, JSON.stringify(candidate, null, 2) + '\\n', { mode:
   ]
 }
 
+function refreshRpxRoutes(slug: string, fragment: string, options: Parameters<typeof writeRpxFragment>[3]): string[] {
+  const path = `${RPX_SITES_DIR}/${slug}.json`
+  const digest = `$(sha256sum ${path} 2>/dev/null | cut -d' ' -f1 || true)`
+  return [
+    `__tsc_rpx_before="${digest}"`,
+    ...writeRpxFragment(path, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', options),
+    `__tsc_rpx_after="${digest}"`,
+    // Restarting the assembler briefly interrupts every tenant on this host.
+    // Compare the written fragment so retained dashboard routes count too.
+    `if [ "$__tsc_rpx_before" != "$__tsc_rpx_after" ] || ! systemctl is-active --quiet ${RPX_SERVICE_NAME}; then`,
+    `  systemctl restart ${RPX_SERVICE_NAME}`,
+    'else',
+    `  echo "[ts-cloud] rpx routes for ${slug} unchanged - leaving the shared gateway alone"`,
+    'fi',
+  ]
+}
+
 /** Upgrade the published gateway runtime without regenerating any host configuration. */
 export interface BuildRpxUpgradeOptions {
   /** Exact published package version. Floating tags cannot produce a reproducible upgrade. */
@@ -1561,30 +1578,10 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
       '  exit 1',
       'fi',
       `mkdir -p ${RPX_SITES_DIR} ${certsDir}`,
-      // Hash the fragment before and after writing it: the restart below is
-      // conditional on this tenant having actually changed something.
-      `__tsc_rpx_before="$(sha256sum ${RPX_SITES_DIR}/${slug}.json 2>/dev/null | cut -d' ' -f1 || true)"`,
-      ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
+      ...refreshRpxRoutes(slug, fragment, {
         bunBin,
         preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
       }),
-      `__tsc_rpx_after="$(sha256sum ${RPX_SITES_DIR}/${slug}.json 2>/dev/null | cut -d' ' -f1 || true)"`,
-      // The assembler re-reads every fragment at start, so a restart is what
-      // makes the tenant's own routes live - and the only box-wide effect it
-      // has. Box-wide is the problem: this is the shared gateway, and the unit
-      // kills whatever holds :80/:443 before it starts, so every restart is a
-      // second of hard downtime for EVERY tenant on the machine, not just this
-      // one. A redeploy that ships the same routes - which is almost all of
-      // them - used to buy that for nothing.
-      //
-      // So restart only when this tenant's routes actually changed, or when
-      // the gateway is not currently serving (an unchanged fragment must never
-      // leave a dead gateway dead).
-      `if [ "$__tsc_rpx_before" != "$__tsc_rpx_after" ] || ! systemctl is-active --quiet ${RPX_SERVICE_NAME}; then`,
-      `  systemctl restart ${RPX_SERVICE_NAME}`,
-      'else',
-      `  echo "[ts-cloud] rpx routes for ${slug} unchanged - leaving the shared gateway alone"`,
-      'fi',
       ...buildCertManagementCommands(options),
     ]
   }
@@ -1745,8 +1742,8 @@ export interface BuildRpxFragmentRefreshOptions {
 
 /**
  * Build the shell commands that rewrite ONLY this app's rpx route fragment
- * (`<sites.d>/<slug>.json`) and restart the gateway, so the running assembler
- * re-merges every fragment and the new routes go live.
+ * (`<sites.d>/<slug>.json`). Restart the gateway if the fragment changed or
+ * the service is down, so the assembler re-merges every fragment.
  *
  * Unlike {@link buildRpxProvisionScript} this does NOT reinstall rpx/tlsx,
  * rewrite the assembler launcher, or touch the systemd unit — it is the cheap
@@ -1768,10 +1765,9 @@ export function buildRpxFragmentRefreshScript(options: BuildRpxFragmentRefreshOp
     `mkdir -p ${RPX_SITES_DIR}`,
     // Root-only (0600), atomic temp+rename — same as the provision-time write:
     // the fragment carries basic-auth passwords and the origin-guard secret.
-    ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
+    ...refreshRpxRoutes(slug, fragment, {
       bunBin: '/usr/local/bin/bun',
       preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
     }),
-    `systemctl restart ${RPX_SERVICE_NAME}`,
   ]
 }

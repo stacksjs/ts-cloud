@@ -1,5 +1,8 @@
 import type { ComputeProxyConfig, SiteConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   buildCertManagementCommands,
   buildRpxConfig,
@@ -813,6 +816,40 @@ describe('tlsx version is independent of the rpx version', () => {
 })
 
 describe('buildRpxFragmentRefreshScript', () => {
+  it('keeps a serving gateway up when the routes are identical', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rpx-refresh-'))
+    const gatewayCommand = `
+systemctl() {
+  case "$1" in
+    is-active) test "$GATEWAY_ACTIVE" = yes ;;
+    restart) printf 'restarted gateway\\n' ;;
+    *) return 2 ;;
+  esac
+}
+`
+    function refresh(port: number, active = true) {
+      const config = buildRpxConfig({ ...sites, main: { ...sites.main, port } }, { proxy: rpxProxy })
+      const commands = buildRpxFragmentRefreshScript({ config, slug: 'my-app' }).join('\n').replaceAll(RPX_SITES_DIR, directory)
+      const outcome = Bun.spawnSync(['bash', '-c', gatewayCommand + commands], {
+        env: { ...process.env, GATEWAY_ACTIVE: active ? 'yes' : 'no' },
+        stderr: 'pipe',
+        stdout: 'pipe',
+      })
+      expect(outcome.exitCode, outcome.stderr.toString()).toBe(0)
+      return outcome.stdout.toString()
+    }
+
+    try {
+      expect(refresh(3000)).toContain('restarted gateway')
+      expect(refresh(3000)).not.toContain('restarted gateway')
+      expect(refresh(3001)).toContain('restarted gateway')
+      expect(refresh(3001, false)).toContain('restarted gateway')
+    }
+    finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
   it('rewrites only this app fragment (atomically, root-only) and restarts the gateway', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     const lines = buildRpxFragmentRefreshScript({ config, slug: 'my-app' })
