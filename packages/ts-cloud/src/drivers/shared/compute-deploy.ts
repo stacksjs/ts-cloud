@@ -330,6 +330,7 @@ export async function deploySiteRelease(
           appDir: appBase,
           artifactFetch,
           releaseId: sha,
+          keepReleases: site.keepReleases,
           preStartCommands: site.preStart,
           postActivateCommands: servicesScript,
           beforeResetCommands: buildStopSiteServicesScript({ slug, siteName }),
@@ -340,6 +341,7 @@ export async function deploySiteRelease(
           appDir: appBase,
           artifactFetch,
           releaseId: sha,
+          keepReleases: site.keepReleases,
           // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
           // The release directory as systemd will see it. `%i` is the unit's
           // instance (the release id) and is expanded in ExecStart just as it

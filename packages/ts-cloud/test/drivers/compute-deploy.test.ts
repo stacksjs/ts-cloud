@@ -57,6 +57,29 @@ function createMockDriver(overrides: Partial<CloudDriver> = {}): CloudDriver {
 }
 
 describe('deploySiteRelease', () => {
+  it('passes the configured retention to app and static releases', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'site-retention-'))
+    const tarball = join(directory, 'release.tar.gz')
+    writeFileSync(tarball, 'fixture release')
+    try {
+      const sites: SiteConfig[] = [
+        { ...config.sites!.web, keepReleases: 7 },
+        { root: 'dist', deploy: 'server', keepReleases: 7 },
+      ]
+      for (const site of sites) {
+        const driver = createMockDriver()
+        const result = await deploySiteRelease(driver, {
+          config, environment: 'production', siteName: 'web', site,
+          slug: 'my-app', sha: 'abc123', runtime: 'bun', localTarballPath: tarball,
+        })
+        expect(result.success).toBe(true)
+        const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+        expect(commands).toContain('tail -n +8 | while read -r TS_CLOUD_OLD')
+      }
+    }
+    finally { rmSync(directory, { recursive: true, force: true }) }
+  })
+
   it('ships the managed Typesense connection to local and fleet application releases', async () => {
     const key = 'fixture-managed-typesense-administrator-key-012345'
     const directory = mkdtempSync(join(tmpdir(), 'typesense-release-'))
