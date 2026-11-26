@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.155...v0.16.156)
+
+## 🐛 Bug Fixes
+
+- **deploy**: honour configured compute release retention ([c570ff4](https://github.com/stacksjs/ts-cloud/commit/c570ff4)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_ ([#235](https://github.com/stacksjs/ts-cloud/issues/235))
+- **deploy**: resolve attached rollback targets through their owner ([f96d5a8](https://github.com/stacksjs/ts-cloud/commit/f96d5a8)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_ ([#234](https://github.com/stacksjs/ts-cloud/issues/234))
+
+## 🔧 Chores
+
+- release v0.16.156 ([01f54cc](https://github.com/stacksjs/ts-cloud/commit/01f54cc)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.154...v0.16.155)
 
 ## 🐛 Bug Fixes
