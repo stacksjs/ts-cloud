@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.156...v0.16.157)
+
+## 🐛 Bug Fixes
+
+- **deploy**: reserve host cleanup for the box owner ([dff3a8e](https://github.com/stacksjs/ts-cloud/commit/dff3a8e)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_ ([#236](https://github.com/stacksjs/ts-cloud/issues/236), [#206](https://github.com/stacksjs/ts-cloud/issues/206))
+
+## 🔧 Chores
+
+- release v0.16.157 ([2d1e898](https://github.com/stacksjs/ts-cloud/commit/2d1e898)) _(by Chris Breuer <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris Breuer <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.16.155...v0.16.156)
 
 ## 🐛 Bug Fixes
