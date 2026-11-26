@@ -3960,8 +3960,10 @@ export interface ComputeConfig {
    * `pressure.lowWaterPercent` it skips the expensive rules, and at or above
    * `pressure.highWaterPercent` it prunes on shorter windows and warns.
    *
-   * Omit for the defaults. `false` turns the whole mechanism off, including a
-   * timer an earlier deploy installed.
+   * The box owner configures this setting. Attached projects leave the
+   * owner's cleanup script and timer in place. On the owner, `false` turns
+   * the whole mechanism off, including a timer an earlier deploy installed.
+   * Omit for the defaults.
    */
   hostCleanup?: boolean | ComputeHostCleanupConfig
 }

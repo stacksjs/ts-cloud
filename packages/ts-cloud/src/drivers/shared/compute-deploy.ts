@@ -156,9 +156,9 @@ export async function deploySiteRelease(
   const mailEnv = buildMailEnv(resolveMailService(config, { environment }))
   const compute = config.infrastructure?.compute
   const typesenseEnv = buildTypesenseEnv(compute?.managedServices?.typesense, outputs.servicesPrivateIp)
-  // Resolved up front so an invalid `compute.hostCleanup` fails the deploy
-  // before anything is uploaded, rather than after.
-  const hostCleanup = buildHostCleanupDeployScript(compute?.hostCleanup)
+  // Cleanup changes shared host state, including the owner's script and timer.
+  // Only resolve and run it for the project that owns the box.
+  const hostCleanup = config.cloud?.attachTo ? [] : buildHostCleanupDeployScript(compute?.hostCleanup)
   // rpx reaches every server-app over loopback. Default the process bind to
   // loopback too, so an application cannot accidentally bypass TLS, route
   // authentication, or proxy policy by listening on the public interface.

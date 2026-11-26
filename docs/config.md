@@ -125,6 +125,8 @@ The deploy targets the owner's `<slug>-<environment>-app` server, ships only thi
 project's sites, and adds its own additive rpx `sites.d/<slug>.json` fragment plus
 DNS. It never touches the owner's box lifecycle, firewall, or other tenants: the
 owner provisions and manages the shared box, attachers only deploy onto it.
+The box owner also controls `compute.hostCleanup`, including its deploy-time
+run and timer.
 
 ### It widens what your CI credential can reach
 

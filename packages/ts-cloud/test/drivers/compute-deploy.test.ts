@@ -373,7 +373,7 @@ describe('deploySiteRelease', () => {
 
 /** stacksjs/ts-cloud#195: cleanup is a property of the host, not only of a successful deploy. */
 describe('deploySiteRelease host cleanup', () => {
-  const deploy = async (driver: CloudDriver, hostCleanup?: unknown) => {
+  const deploy = async (driver: CloudDriver, hostCleanup?: unknown, attachTo?: string) => {
     const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
     const tarball = join(tempDir, 'release.tar.gz')
     writeFileSync(tarball, 'fake tarball')
@@ -382,7 +382,7 @@ describe('deploySiteRelease host cleanup', () => {
       : { ...config, infrastructure: { compute: { hostCleanup } } } as CloudConfig
     try {
       return await deploySiteRelease(driver, {
-        config: withCleanup,
+        config: attachTo ? { ...withCleanup, cloud: { provider: 'hetzner', attachTo } } : withCleanup,
         environment: 'production',
         siteName: 'web',
         site: config.sites!.web,
@@ -462,6 +462,22 @@ describe('deploySiteRelease host cleanup', () => {
     const script = calls(driver)[0].commands.join('\n')
     expect(script).not.toContain('ts-cloud-host-cleanup.sh < /dev/null')
     expect(script).toContain('systemctl disable --now ts-cloud-host-cleanup.timer')
+  })
+
+  it('leaves the owner’s cleanup script and timer alone on attached deployments', async () => {
+    const driver = createMockDriver()
+    await deploy(driver, undefined, 'owner')
+    expect(calls(driver)).toHaveLength(1)
+    expect(calls(driver)[0].commands.join('\n')).not.toContain('ts-cloud-host-cleanup')
+  })
+
+  it('leaves host cleanup alone when an attached deployment fails with cleanup disabled', async () => {
+    const driver = createMockDriver({
+      runRemoteDeploy: mock(async () => ({ success: false, error: 'health gate failed', instanceCount: 1, perInstance: [] })),
+    })
+    await expect(deploy(driver, false, 'owner')).resolves.toMatchObject({ success: false, error: 'health gate failed' })
+    expect(calls(driver)).toHaveLength(1)
+    expect(calls(driver)[0].commands.join('\n')).not.toContain('ts-cloud-host-cleanup')
   })
 })
 
