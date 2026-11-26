@@ -1179,6 +1179,14 @@ export class HetznerDriver implements CloudDriver {
       }
     }
 
+    // A clean rollback runner has no local deploy pin. An explicit attachment
+    // names the owning fleet and must never fall through to adopt-on-rename.
+    const owner = options.attachTo
+    if (owner && !this.stateOnly) {
+      const servers = await this.client.listServers()
+      return servers.filter(server => server.status !== 'off' && matchesTsCloudLabels(server.labels, owner, options.environment, role)).map(toTarget)
+    }
+
     // 1) State pinning: a project that rides a shared box records its server
     //    in `storage/cloud/state/<stack>.json`, but the box's labels belong to the
     //    project that provisioned it (`ts-cloud/project` holds one value), so

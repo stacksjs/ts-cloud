@@ -8,7 +8,7 @@
  * active driver (SSH/SSM), reusing the shared compute-ops builders.
  */
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
-import { resolveAppDatabase } from '@ts-cloud/core'
+import { resolveAppDatabase, resolveProjectStackName } from '@ts-cloud/core'
 import { createCloudDriver } from '../drivers'
 import { resolveSiteFramework } from '../drivers/shared/app-frameworks'
 import { BACKUP_RUNNER_PATH } from '../drivers/shared/backups'
@@ -277,7 +277,7 @@ export async function runDashboardOperation(
 
   if (operation.group === 'deploy') {
     const to = options.to && /^[A-Za-z0-9._-]+$/.test(options.to) ? options.to : undefined
-    const r = await rollbackComputeSite(ctx, { siteName: operation.target, to, site: config.sites?.[operation.target] })
+    const r = await rollbackComputeSite({ ...ctx, attachTo: config.cloud?.attachTo, stackName: resolveProjectStackName(config, environment) }, { siteName: operation.target, to, site: config.sites?.[operation.target] })
     return fromComputeOps(operation.id, `rollback ${operation.target}${to ? ` → ${to}` : ''}`, r)
   }
   if (operation.id === 'backup:restore') {

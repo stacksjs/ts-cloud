@@ -20,6 +20,16 @@ function mockDriver(targets = [{ id: 'srv-1', publicIp: '203.0.113.1', status: '
 const ctx = (driver: CloudDriver) => ({ driver, slug: 'acme', environment: 'production' as const })
 
 describe('rollbackComputeSite', () => {
+  it('discovers the owner fleet and keeps the tenant release during an attached rollback', async () => {
+    const driver = mockDriver()
+    const res = await rollbackComputeSite({ ...ctx(driver), attachTo: 'shared', stackName: 'acme-prod-v2' }, { siteName: 'main', dryRun: true })
+    expect(res.success).toBe(true)
+    expect(driver.findComputeTargets).toHaveBeenCalledWith({ slug: 'acme', environment: 'production', role: 'app', attachTo: 'shared', stackName: 'acme-prod-v2' })
+    const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
+    expect(cmd).toContain('/var/www/acme-main/releases')
+    expect(cmd).not.toContain('/var/www/shared-main/')
+  })
+
   it('rolls back a declared PHP site and propagates runtime restart failures', async () => {
     const driver = mockDriver()
     const res = await rollbackComputeSite(ctx(driver), { siteName: 'main', site: { type: 'laravel', domain: 'example.com' } })

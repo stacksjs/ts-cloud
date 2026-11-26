@@ -35,6 +35,8 @@ export interface ComputeOpsContext {
   driver: CloudDriver
   slug: string
   environment: EnvironmentType
+  attachTo?: string
+  stackName?: string
   /** Target role label. @default 'app' */
   role?: string
   logger?: ComputeOpsLogger
@@ -52,6 +54,8 @@ async function findTargets(ctx: ComputeOpsContext) {
     slug: ctx.slug,
     environment: ctx.environment,
     role: ctx.role || 'app',
+    attachTo: ctx.attachTo,
+    stackName: ctx.stackName,
   })
   return targets
 }
@@ -71,7 +75,7 @@ export async function rollbackComputeSite(
   const logger = ctx.logger || noopLogger
   const targets = await findTargets(ctx)
   if (targets.length === 0)
-    return { success: false, error: `No '${ctx.role || 'app'}' servers found for ${ctx.slug}/${ctx.environment}.` }
+    return { success: false, error: `No '${ctx.role || 'app'}' servers found for ${ctx.attachTo || ctx.slug}/${ctx.environment}.` }
 
   const appBase = siteInstallBase(ctx.slug, options.siteName)
   const paths = releasePaths(appBase, options.to || 'unused')

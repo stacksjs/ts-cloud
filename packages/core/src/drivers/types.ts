@@ -91,6 +91,8 @@ export interface FindComputeTargetsOptions {
   slug: string
   environment: EnvironmentType
   role?: string
+  /** Discover the labeled owner fleet for an attached project. */
+  attachTo?: string
   /**
    * Region to search, for drivers that have one. Defaults to the driver's own.
    * A driver method that resolved a region from config passes it here, so the

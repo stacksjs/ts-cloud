@@ -1160,25 +1160,26 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--to <release>', 'Release id to roll back to (default: the previous release)')
     .option('--dry-run', 'Say which release it would roll back to, and change nothing')
-    .option('--all', 'Every configured site, instead of one')
+    .option('--all', 'Every compute site with a release, instead of one')
     .option('--only-if-live <release>', 'Only roll back a site whose live release is this commit (what a failed deploy switched)')
     .action(async (site?: string, options?: { env?: string; to?: string; dryRun?: boolean; all?: boolean; onlyIfLive?: string }) => {
       cli.header('Rolling Back Release')
       try {
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
         const config = await loadValidatedConfig(environment)
-        const siteNames = options?.all ? Object.keys(config.sites || {}) : [site || Object.keys(config.sites || {})[0]].filter(Boolean) as string[]
-        if (siteNames.length === 0) {
-          cli.error('No site configured to roll back.')
+        const sites = Object.entries(config.sites || {}).filter(([, declared]) => declared && shipsARelease(declared))
+        const selected = options?.all ? sites : sites.filter(([name]) => name === (site || sites[0]?.[0]))
+        if (selected.length === 0) {
+          cli.error(site ? `Site '${site}' does not have a compute release to roll back.` : 'No compute sites configured to roll back.')
           process.exitCode = 1
           return
         }
         const { rollbackComputeSite } = await import('../../src/drivers/shared/compute-ops')
         const driver = createCloudDriver({ config })
-        for (const siteName of siteNames) {
+        for (const [siteName, declared] of selected) {
           const result = await rollbackComputeSite(
-            { driver, slug: config.project.slug, environment, logger: cli },
-            { siteName, to: options?.to, dryRun: options?.dryRun, onlyIfLive: options?.onlyIfLive, site: config.sites?.[siteName] },
+            { driver, slug: config.project.slug, environment, attachTo: config.cloud?.attachTo, stackName: resolveProjectStackName(config, environment), logger: cli },
+            { siteName, to: options?.to, dryRun: options?.dryRun, onlyIfLive: options?.onlyIfLive, site: declared },
           )
           for (const inst of result.perInstance || [])
             cli.info(`  ${siteName} ${inst.instanceId}: ${inst.output?.trim() || inst.status}`)

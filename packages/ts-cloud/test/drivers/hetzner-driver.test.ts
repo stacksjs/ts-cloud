@@ -684,6 +684,38 @@ describe('HetznerDriver', () => {
     expect(targets.map(target => target.id)).toEqual(['501'])
   })
 
+  it('discovers the current owner fleet without a state pin and refuses other fleets', async () => {
+    const server = (id: number, project: string, status = 'running', role = 'app', environment = 'production') => ({
+      id,
+      name: `${project}-${environment}-${role}-${id}`,
+      status,
+      public_net: { ipv4: { ip: `203.0.113.${id}` } },
+      labels: {
+        'ts-cloud/managed-by': 'ts-cloud',
+        'ts-cloud/project': project,
+        'ts-cloud/environment': environment,
+        'ts-cloud/role': role,
+      },
+      server_type: { name: 'cx22' },
+      datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+    })
+    const client = mockHetznerClient({
+      listServers: mock(async () => [
+        server(1, 'shared'),
+        server(2, 'shared'),
+        server(3, 'shared', 'off'),
+        server(4, 'shared', 'running', 'lb'),
+        server(5, 'shared', 'running', 'app', 'staging'),
+        server(6, 'tenant'),
+      ]),
+    })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token' })
+    const target = { slug: 'tenant', environment: 'production' as const, attachTo: 'shared' }
+    expect((await driver.findComputeTargets(target)).map(instance => instance.id)).toEqual(['1', '2'])
+    expect(await driver.findComputeTargets({ ...target, attachTo: 'absent-owner' })).toEqual([])
+    expect(client.getServer).not.toHaveBeenCalled()
+  })
+
   it('resolves an attached target from local state without a provider token', async () => {
     await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
     await writeFile(
