@@ -72,6 +72,8 @@ export interface RemoteDeployResult {
 export interface ProvisionComputeOptions {
   config: CloudConfig
   environment: EnvironmentType
+  /** On SSH and Hetzner, keep public certificate issuance held while provisioning routes. */
+  holdPublicTls?: boolean
 }
 
 export interface ComputeChangePlan {

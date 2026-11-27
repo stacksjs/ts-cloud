@@ -319,7 +319,7 @@ export class HetznerDriver implements CloudDriver {
       mailProxy?.engine === 'rpx'
         ? buildRpxProvisionScript({
             proxy: mailProxy,
-            config: buildRpxConfig(sites, { proxy: mailProxy, slug: config.project.slug, mail: resolveMailService(config, { environment }) }),
+            config: buildRpxConfig(sites, { proxy: mailProxy, slug: config.project.slug, holdPublicTls: options.holdPublicTls, mail: resolveMailService(config, { environment }) }),
             slug: config.project.slug,
             bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
           })
@@ -660,6 +660,7 @@ export class HetznerDriver implements CloudDriver {
           appTargets.map((t) => ({ privateIp: t.privateIp, publicIp: t.publicIp })),
           rpxProxy,
           slug,
+          options.holdPublicTls,
         )
         return {
           appPublicIp: lb.public_net.ipv4?.ip ?? existingState.publicIp,
@@ -859,7 +860,7 @@ export class HetznerDriver implements CloudDriver {
       if (!lbServer) {
         const lbRpxProvision = buildRpxProvisionScript({
           proxy: rpxProxy,
-          config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy, slug }),
+          config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy, slug, holdPublicTls: options.holdPublicTls }),
           slug,
           bunBin:
             appProvisionScripts.runtime === 'node' || appProvisionScripts.runtime === 'deno'
@@ -899,7 +900,7 @@ export class HetznerDriver implements CloudDriver {
         // fragment still holds whatever sites/upstreams were current back then.
         // Rewrite it from the just-reconciled fleet so added/removed sites and
         // app-fleet scale changes actually reach the gateway.
-        this.refreshLbRoutes(lbServer, sites, appBoxes, rpxProxy, slug)
+        this.refreshLbRoutes(lbServer, sites, appBoxes, rpxProxy, slug, options.holdPublicTls)
       }
       lbId = lbServer.id
       lbIp = lbServer.public_net.ipv4?.ip
@@ -1443,6 +1444,7 @@ export class HetznerDriver implements CloudDriver {
     appBoxes: RpxLbAppBox[],
     proxy: ComputeProxyConfig,
     slug: string,
+    holdPublicTls?: boolean,
   ): void {
     const ip = lb.public_net.ipv4?.ip
     if (!ip) {
@@ -1460,7 +1462,7 @@ export class HetznerDriver implements CloudDriver {
       )
       return
     }
-    const config = buildRpxLbConfig(sites, routable, { proxy, slug })
+    const config = buildRpxLbConfig(sites, routable, { proxy, slug, holdPublicTls })
     this.sshExec(ip, buildRpxFragmentRefreshScript({ config, slug }).join('\n'))
   }
 

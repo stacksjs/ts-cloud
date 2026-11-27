@@ -214,6 +214,35 @@ describe('HetznerDriver bun+rpx fleet', () => {
     expect(lbServer).toBeTruthy()
   })
 
+  it.each([false, true])('holds public TLS on new single and fleet gateways (fleet=%s)', async (fleet) => {
+    const { client } = fakeHetznerClient()
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
+    const config: CloudConfig = {
+      ...baseConfig,
+      infrastructure: {
+        compute: {
+          size: 'small',
+          runtime: 'bun',
+          ...(fleet ? baseConfig.infrastructure?.compute : {}),
+          proxy: { engine: 'rpx', onDemandTls: true },
+        },
+      },
+    }
+    await driver.provisionComputeInfrastructure!({ config, environment: 'production', holdPublicTls: true })
+
+    const calls = (client.createServer as any).mock.calls as Array<[any]>
+    const gateway = calls.find(([opts]) => fleet ? opts.labels?.['ts-cloud/role'] === 'lb' : true)?.[0].userData
+    expect(gateway).toContain('rpx-gateway.service')
+    expect(gateway).toContain('"acmeChallengeWebroot"')
+    expect(gateway).not.toContain('"onDemandTls"')
+    expect(gateway).not.toContain('rpx-cert-renew-my-app.timer')
+  })
+
   it('app boxes do NOT run their own rpx gateway (LB-only gateway)', async () => {
     const { client, servers } = fakeHetznerClient()
     const driver = new HetznerDriver({

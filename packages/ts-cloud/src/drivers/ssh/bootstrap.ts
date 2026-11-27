@@ -47,6 +47,7 @@ export function sshBootstrapMarkerPath(version: number = SSH_BOOTSTRAP_VERSION):
 export const RASPBERRY_PI_DEFAULT_SWAP_GB = 1
 
 export interface SshBootstrapOptions {
+  holdPublicTls?: boolean
   config: CloudConfig
   environment: EnvironmentType
   profile: SshProfile
@@ -191,7 +192,7 @@ export function buildSshBootstrapScript(options: SshBootstrapOptions): string {
       }
     : undefined
   const rpxConfig =
-    compute.proxy?.engine === 'rpx' ? buildRpxConfig(sites, { proxy: compute.proxy, slug, lan, mail: resolveMailService(config, { environment: options.environment, environmentType: options.environment }) }) : undefined
+    compute.proxy?.engine === 'rpx' ? buildRpxConfig(sites, { proxy: compute.proxy, slug, lan, holdPublicTls: options.holdPublicTls, mail: resolveMailService(config, { environment: options.environment, environmentType: options.environment }) }) : undefined
   const rpxProvision =
     compute.proxy?.engine === 'rpx' && rpxConfig
       ? buildRpxProvisionScript({

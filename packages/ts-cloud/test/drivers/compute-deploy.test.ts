@@ -525,6 +525,34 @@ describe('reloadRpxGateway', () => {
     expect(call.commands.join('\n')).toContain('localhost:3000')
   })
 
+  it('reloads attached routes without on-demand publication or renewal during a public TLS hold', async () => {
+    const attached: CloudConfig = {
+      ...rpxConfig,
+      cloud: { attachTo: 'gateway-owner' },
+      infrastructure: { compute: { runtime: 'bun', proxy: { engine: 'rpx', onDemandTls: true } } },
+    }
+    for (const holdPublicTls of [true, false]) {
+      const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+      const ok = await reloadRpxGateway({
+        config: attached,
+        environment: 'production',
+        driver,
+        sha: 'abc',
+        runtime: 'bun',
+        holdPublicTls,
+        tarballForSite: () => '/tmp/x.tar.gz',
+      })
+      expect(ok).toBe(true)
+      const script = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+      expect(script).toContain('my-app.example.com')
+      expect(script).toContain('localhost:3000')
+      expect(script).toContain('"acmeChallengeWebroot"')
+      expect(script.includes('"onDemandTls"')).toBe(!holdPublicTls)
+      expect(script.includes('systemctl enable --now rpx-cert-renew-my-app.timer')).toBe(!holdPublicTls)
+      expect(script.includes('renew-certs-my-app.sh || true')).toBe(!holdPublicTls)
+    }
+  })
+
   // Production-incident regression: a single-site deploy passes a `config`
   // narrowed to that one site, but the rpx gateway MUST be regenerated from the
   // FULL site model (`rpxConfig`) or it drops every other site's route.
@@ -703,11 +731,19 @@ describe('renewRpxCertificates', () => {
     expect(ok).toBe(true)
     const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
     expect(call.targets[0].id).toBe('i-abc123')
-    expect(call.commands).toEqual([
-      'systemctl start rpx-cert-renew-my-app.service',
-      "test -s '/etc/rpx/certs/my-app.example.com.crt'",
-    ])
+    expect(call.commands[0]).toContain('if [ -f /etc/systemd/system/rpx-cert-renew-my-app.service ]; then')
+    expect(call.commands[0]).toContain('systemctl start rpx-cert-renew-my-app.service')
+    expect(call.commands[0]).toContain('systemctl enable --now rpx-cert-renew-my-app.timer')
+    expect(call.commands[1]).toBe("test -s '/etc/rpx/certs/my-app.example.com.crt'")
+    expect(Bun.spawnSync(['bash', '-n'], { stdin: Buffer.from(call.commands.join('\n')) }).exitCode).toBe(0)
     expect(call.tags.Role).toBe('app')
+  })
+
+  it('makes no remote calls when public TLS is held', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    expect(await renewRpxCertificates({ config: tlsConfig, environment: 'production', driver, holdPublicTls: true })).toBe(true)
+    expect(driver.findComputeTargets).not.toHaveBeenCalled()
+    expect(driver.runRemoteDeploy).not.toHaveBeenCalled()
   })
 
   it('uses the dedicated load balancer when one fronts the app fleet', async () => {

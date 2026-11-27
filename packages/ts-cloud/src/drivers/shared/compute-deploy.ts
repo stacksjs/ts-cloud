@@ -21,7 +21,7 @@ import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { resolveNotifications, sendNotifications } from './notifications'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
-import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, resolveGatewayLan, resolveGatewayProfile, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
+import { buildCertManagementCommands, buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, certDomainsForConfig, resolveGatewayLan, resolveGatewayProfile, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
 import { inferSqliteSharedPath } from './sqlite-shared-path'
 import { buildTypesenseEnv } from './typesense-provision'
 
@@ -469,6 +469,8 @@ async function cleanUpAfterFailedDeploy(
 }
 
 export interface DeployAllSitesOptions {
+  /** Reload gateway routes while holding new public certificate issuance. */
+  holdPublicTls?: boolean
   config: CloudConfig
   environment: EnvironmentType
   driver: CloudDriver
@@ -1042,7 +1044,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
       stackName,
     })
     const appBoxes: RpxLbAppBox[] = appTargets.map((t) => ({ privateIp: t.privateIp, publicIp: t.publicIp }))
-    const lbConfig = buildRpxLbConfig(sites, appBoxes, { proxy, slug })
+    const lbConfig = buildRpxLbConfig(sites, appBoxes, { proxy, slug, holdPublicTls: options.holdPublicTls })
     if (lbConfig.proxies.length === 0) {
       logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
       return true
@@ -1077,7 +1079,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   // them here would silently strip the local CA from a working box on its
   // next deploy and leave it serving a certificate nothing trusts.
   const lan = await resolveDeployLan(config, stackName, options.cwd)
-  const rpxConfig = buildRpxConfig(sites, { proxy, slug, lan, mail: resolveMailService(config, { environment }) })
+  const rpxConfig = buildRpxConfig(sites, { proxy, slug, lan, holdPublicTls: options.holdPublicTls, mail: resolveMailService(config, { environment }) })
   if (rpxConfig.proxies.length === 0) {
     logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
     return true
@@ -1144,8 +1146,9 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
  * DNS and targets the same gateway box selected by reloadRpxGateway.
  */
 export async function renewRpxCertificates(
-  options: Pick<DeployAllSitesOptions, 'config' | 'environment' | 'driver' | 'logger' | 'rpxConfig'>,
+  options: Pick<DeployAllSitesOptions, 'config' | 'environment' | 'driver' | 'logger' | 'rpxConfig' | 'holdPublicTls'>,
 ): Promise<boolean> {
+  if (options.holdPublicTls) return true
   const { config, environment, driver, logger = noopLogger } = options
   const routeSource = options.rpxConfig ?? config
   const proxy = resolveMailProxy(routeSource, { environment }) ?? resolveMailProxy(config, { environment })
@@ -1173,10 +1176,19 @@ export async function renewRpxCertificates(
   const certChecks = certDomains
     .map(domain => `test -s ${shellQuote(`${rpxConfig.productionCerts.certsDir}/${domain}.crt`)}`)
     .join(' && ')
+  const service = rpxCertRenewServiceName(slug)
+  // A gateway first booted under a TLS hold has no public renewal service yet.
+  const installRenewal = buildCertManagementCommands({ proxy, config: rpxConfig, slug, tenant: Boolean(config.cloud?.attachTo) })
   const result = await driver.runRemoteDeploy({
     targets,
     commands: [
-      `systemctl start ${rpxCertRenewServiceName(slug)}`,
+      [
+        `if [ -f /etc/systemd/system/${service} ]; then`,
+        `systemctl start ${service}`,
+        'else',
+        ...installRenewal,
+        'fi',
+      ].join('\n'),
       certChecks,
     ],
     comment: `ts-cloud rpx TLS issuance ${slug}`,

@@ -440,6 +440,8 @@ export interface RpxGatewayConfig {
    * removed before anything is written for rpx ({@link rpxGatewayJson}).
    */
   wildcardCerts?: WildcardCert[]
+  /** Deployment-only policy. Existing certificates remain available to rpx. */
+  holdPublicTls?: true
 }
 
 /** A wildcard certificate the renewal unit keeps, and where its DNS credentials live. */
@@ -461,11 +463,13 @@ export function isWildcardHost(host: string): boolean {
  * own bookkeeping, which rpx would at best ignore and at worst reject.
  */
 export function rpxGatewayJson(config: RpxGatewayConfig, extra: Record<string, unknown> = {}): string {
-  const { wildcardCerts: _wildcardCerts, ...rest } = config
+  const { wildcardCerts: _wildcardCerts, holdPublicTls: _holdPublicTls, ...rest } = config
   return JSON.stringify({ ...extra, ...rest }, null, 2)
 }
 
 export interface BuildRpxConfigOptions {
+  /** Keep serving existing TLS and ACME challenges without starting new public issuance. */
+  holdPublicTls?: boolean
   /** Managed mail adds its webmail hosts to this same route/certificate set. */
   mail?: ResolvedMailService
   /** Proxy config from `infrastructure.compute.proxy`. */
@@ -683,9 +687,10 @@ function buildRpxConfigInternal(
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
     ...(wildcards.size > 0 ? { wildcardCerts: [...wildcards.values()] } : {}),
+    ...(options.holdPublicTls ? { holdPublicTls: true } : {}),
   }
 
-  if (options.proxy.onDemandTls && domains.size > 0) {
+  if (!options.holdPublicTls && options.proxy.onDemandTls && domains.size > 0) {
     config.onDemandTls = {
       enabled: true,
       allowedSuffixes: [...domains],
@@ -1400,7 +1405,7 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
   const { config, proxy } = options
   const webroot = config.acmeChallengeWebroot
   const domains = certDomainsForConfig(config)
-  if (!proxy.onDemandTls || !webroot || domains.length === 0) return []
+  if (config.holdPublicTls || !proxy.onDemandTls || !webroot || domains.length === 0) return []
 
   const bunBin = options.bunBin ?? '/usr/local/bin/bun'
   // tlsx is its own package on its own release line. This used to install

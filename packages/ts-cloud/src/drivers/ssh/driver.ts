@@ -371,6 +371,7 @@ export class SshDriver implements CloudDriver {
         config,
         environment,
         profile: this.settings.profile,
+        holdPublicTls: options.holdPublicTls,
         facts,
         sudoUser: target.user !== 'root' ? target.user : undefined,
         lan: this.settings.lan,

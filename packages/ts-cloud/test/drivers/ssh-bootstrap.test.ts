@@ -31,6 +31,22 @@ const pi = (overrides: Partial<Parameters<typeof buildSshBootstrapScript>[0]> = 
   buildSshBootstrapScript({ config, environment: 'production', profile: 'raspberry-pi', ...overrides })
 
 describe('buildSshBootstrapScript', () => {
+  it('provisions routes and retains certificate paths without enabling public TLS during a hold', () => {
+    const publicConfig: CloudConfig = {
+      ...config,
+      infrastructure: { compute: { runtime: 'bun', proxy: { engine: 'rpx', onDemandTls: true } } },
+    }
+    const held = pi({ config: publicConfig, holdPublicTls: true })
+    const published = pi({ config: publicConfig })
+    expect(held).toContain('pi-app.example.com')
+    expect(held).toContain('"productionCerts"')
+    expect(held).toContain('"acmeChallengeWebroot"')
+    expect(held).not.toContain('"onDemandTls"')
+    expect(held).not.toContain('rpx-cert-renew-pi-app.timer')
+    expect(published).toContain('"onDemandTls"')
+    expect(published).toContain('systemctl enable --now rpx-cert-renew-pi-app.timer')
+  })
+
   it('never probes cloud-init: the driver decides that before the script runs', () => {
     const script = pi()
     expect(script).not.toContain('cloud-init status')
