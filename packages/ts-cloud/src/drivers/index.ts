@@ -237,6 +237,7 @@ export {
   DEFAULT_RPX_CERTS_DIR,
   RPX_DIR,
   RPX_LAUNCHER_PATH,
+  RPX_PUBLIC_TLS_HOLD_VERSION,
   RPX_SERVICE_NAME,
 } from './shared/rpx-gateway'
 export {

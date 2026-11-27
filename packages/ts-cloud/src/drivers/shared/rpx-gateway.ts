@@ -857,7 +857,9 @@ export const RPX_INSTALL_DIR = '/opt/rpx-gateway'
 export const RPX_LAUNCHER_PATH = '/etc/rpx/gateway.ts'
 export const RPX_BINARY_PATH = '/etc/rpx/gateway'
 const RPX_PUBLIC_TLS_HOLD_PROOF = '/etc/rpx/public-tls-hold.sha256'
-const RPX_PUBLIC_TLS_HOLD_MARKER = '// ts-cloud public TLS hold policy v1'
+/** Both the compute driver and managed gateway understand public TLS holds. */
+export const RPX_PUBLIC_TLS_HOLD_VERSION = 1
+const RPX_PUBLIC_TLS_HOLD_MARKER = `// ts-cloud public TLS hold policy v${RPX_PUBLIC_TLS_HOLD_VERSION}`
 export const RPX_SERVICE_NAME = 'rpx-gateway.service'
 /**
  * Per-app gateway registry. Each project's deploy writes ONLY its own fragment

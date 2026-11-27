@@ -428,6 +428,7 @@ export {
   reloadRpxGateway,
   buildRpxUpgradeScript,
   renewRpxCertificates,
+  RPX_PUBLIC_TLS_HOLD_VERSION,
   // The hostnames the gateway will answer. A DNS reconciler has to publish
   // exactly this set — anything it misses resolves without a certificate of
   // its own and gets served the fallback cert, which on a shared box belongs
