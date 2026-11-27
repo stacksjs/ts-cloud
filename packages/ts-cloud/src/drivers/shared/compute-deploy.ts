@@ -611,6 +611,7 @@ async function reconcileManagementDashboardServices(
 ): Promise<boolean> {
   const { config, environment } = options
   const slug = config.project.slug
+  const dashboardSites = options.rpxConfig?.sites ?? config.sites
   const stackName = resolveProjectStackName(config, environment)
   const targets = await driver.findComputeTargets({ slug, environment, role: 'app', stackName })
   if (targets.length === 0) return true
@@ -622,7 +623,7 @@ async function reconcileManagementDashboardServices(
       desiredSiteNames,
       !config.cloud?.attachTo,
       desiredSiteNames
-        .map(siteName => config.sites?.[siteName]?.domain)
+        .map(siteName => dashboardSites?.[siteName]?.domain)
         .filter((domain): domain is string => typeof domain === 'string'),
     ),
     comment: `ts-cloud reconcile management dashboard ${slug}`,
@@ -831,17 +832,17 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   const autoDashboard = options.managementDashboard !== false
   const hadDashboard = hasManagementDashboardSite(config)
   if (autoDashboard)
-    ensureManagementDashboard(config, { cwd, logger: { info: logger.info, warn: logger.warn } })
+    ensureManagementDashboard(config, { cwd, environment, routeSites: options.rpxConfig?.sites, logger: { info: logger.info, warn: logger.warn } })
   // The dashboard sites WE injected this deploy — one per apex domain (all share
   // the same UI artifact). Empty when the user configured one by hand.
   const injectedDashboardSites = !autoDashboard || hadDashboard ? [] : managementDashboardSiteNames(config)
   // Keep the rpx route source in sync so the gateway routes every dashboard too
   // (it may be a different object than `config` on a single-site deploy).
   if (autoDashboard && options.rpxConfig && options.rpxConfig !== config && !hasManagementDashboardSite(options.rpxConfig))
-    ensureManagementDashboard(options.rpxConfig, { cwd, logger: { info: () => {}, warn: () => {} } })
+    ensureManagementDashboard(options.rpxConfig, { cwd, environment, logger: { info: () => {}, warn: () => {} } })
   if (
     autoDashboard &&
-    !(await reconcileManagementDashboardServices(driver, options, managementDashboardSiteNames(config), logger))
+    !(await reconcileManagementDashboardServices(driver, options, managementDashboardSiteNames(options.rpxConfig ?? config), logger))
   )
     return false
 

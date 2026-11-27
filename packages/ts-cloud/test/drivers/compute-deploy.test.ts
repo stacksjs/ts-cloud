@@ -894,6 +894,49 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     )
   }, 60_000)
 
+  it('uses one staging dashboard for the release and the full gateway during a site deploy', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ts-cloud-staging-dashboard-'))
+    try {
+      const apiTarball = join(dir, 'api.tar.gz')
+      writeFileSync(apiTarball, 'fake tarball')
+      const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+      const base = baseConfig()
+      const gateway: CloudConfig = {
+        ...base,
+        environments: { ...base.environments, staging: { type: 'staging' } },
+        infrastructure: { ...base.infrastructure, dns: { domain: 'example.com' } },
+        sites: {
+          web: { ...base.sites!.web!, domain: 'staging.example.com' },
+          api: { ...base.sites!.web!, domain: 'api.staging.example.com', port: 3008 },
+        },
+      }
+      const config: CloudConfig = { ...gateway, sites: { api: gateway.sites!.api! } }
+      const ok = await deployAllComputeSites({
+        config,
+        rpxConfig: gateway,
+        environment: 'staging',
+        driver,
+        sha: 'abc',
+        runtime: 'bun',
+        cwd: dir,
+        tarballForSite: () => apiTarball,
+      })
+
+      expect(ok).toBe(true)
+      const dashboards = (sites: CloudConfig['sites']) => Object.keys(sites ?? {}).filter(name => name.startsWith('dashboard-'))
+      expect(dashboards(config.sites)).toEqual(['dashboard-staging-example-com'])
+      expect(dashboards(gateway.sites)).toEqual(dashboards(config.sites))
+      const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+        .map(call => call[0].commands.join('\n'))
+        .join('\n')
+      expect(commands).toContain('dashboard.staging.example.com')
+      expect(commands).not.toContain('dashboard.example.com')
+      expect(commands).not.toContain('dashboard.api.staging.example.com')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 60_000)
+
   it('reconciles an attached project to the server owner dashboard', async () => {
     const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
     const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))

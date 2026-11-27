@@ -250,7 +250,7 @@ export function resolveUiSource(cwd: string): { uiRoot: string; build: string | 
  */
 export function ensureManagementDashboard(
   config: CloudConfig,
-  options: { cwd?: string; logger?: EnsureDashboardLogger } = {},
+  options: { cwd?: string; logger?: EnsureDashboardLogger; environment?: EnvironmentType; routeSites?: CloudConfig['sites'] } = {},
 ): CloudConfig {
   const logger = options.logger ?? noopLogger
   const cwd = options.cwd ?? process.cwd()
@@ -265,9 +265,10 @@ export function ensureManagementDashboard(
     )
     return config
   }
-  if (hasManagementDashboardSite(config)) return config
+  const routeConfig = options.routeSites ? { ...config, sites: options.routeSites } : config
+  if (hasManagementDashboardSite(config) || (routeConfig !== config && hasManagementDashboardSite(routeConfig))) return config
 
-  const environment = (config.environments && Object.keys(config.environments)[0]) as EnvironmentType | undefined
+  const environment = options.environment ?? (Object.keys(config.environments ?? {})[0] as EnvironmentType | undefined) ?? 'production'
   const domain = process.env.TS_CLOUD_UI_DOMAIN?.trim() || undefined
   const port = Number(process.env.TS_CLOUD_UI_PORT) || undefined
   const sites = { ...(config.sites ?? {}) }
@@ -277,10 +278,10 @@ export function ensureManagementDashboard(
   if (!truthy(process.env.TS_CLOUD_UI_STATIC)) {
     // Staged before the dashboard site is injected, so the box's config
     // describes the project's sites and not the dashboard itself.
-    const uiRoot = stageLiveDashboardRoot(config, cwd, logger)
+    const uiRoot = stageLiveDashboardRoot(routeConfig, cwd, logger)
     if (!uiRoot) return config
 
-    const resolved = resolveManagementDashboardSites(config, environment ?? 'production', {
+    const resolved = resolveManagementDashboardSites(routeConfig, environment, {
       uiRoot,
       build: false,
       domain,
@@ -313,7 +314,7 @@ export function ensureManagementDashboard(
 
   const username = process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin'
   const auth = resolveDashboardAuth(cwd, username, logger)
-  const resolved = resolveManagementDashboardSites(config, environment ?? 'production', {
+  const resolved = resolveManagementDashboardSites(routeConfig, environment, {
     uiRoot: ui.uiRoot,
     build: ui.build,
     domain,

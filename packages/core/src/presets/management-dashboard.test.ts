@@ -50,6 +50,28 @@ describe('resolveDashboardDomain', () => {
     expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.example.org')
   })
 
+  it('derives nonproduction dashboards from served hostnames within the DNS zone', () => {
+    const c = cfg({
+      infrastructure: { dns: { domain: 'acme.com' } } as any,
+      environments: { production: { type: 'production', domain: 'acme.com' } },
+      sites: {
+        main: { root: 'dist', domain: 'staging.acme.com' } as any,
+        api: { root: 'dist', domain: 'api.staging.acme.com' } as any,
+      },
+    })
+    expect(resolveDashboardDomain(c, 'staging')).toBe('dashboard.staging.acme.com')
+    expect(resolveDashboardDomains(c, 'staging')).not.toContain('dashboard.acme.com')
+    const development = { ...c, sites: { main: { root: 'dist', domain: 'dev.acme.com' } } }
+    expect(resolveDashboardDomain(development, 'development')).toBe('dashboard.dev.acme.com')
+    expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.acme.com')
+  })
+
+  it('does not infer a nonproduction dashboard when only the zone is configured', () => {
+    const c = cfg({ infrastructure: { dns: { domain: 'acme.com' } } as any })
+    expect(resolveDashboardDomain(c, 'staging')).toBeNull()
+    expect(resolveDashboardDomain(c, 'development', 'admin.dev.acme.com')).toBe('admin.dev.acme.com')
+  })
+
   it('does not claim an owner hosted zone from an attached project', () => {
     const c = cfg({
       cloud: { provider: 'hetzner', attachTo: 'stacks' },
