@@ -34,12 +34,16 @@ afterEach(() => {
   Object.assign(process.env, savedEnv)
 })
 
-interface Captured { url: string, headers: Record<string, string> }
+interface Captured { url: string, headers: Record<string, string>, body?: string }
 
 function respondWith(body: ConstructorParameters<typeof Response>[0], init: ResponseInit = {}): Captured[] {
   const seen: Captured[] = []
   globalThis.fetch = (async (input: string | URL | Request, request?: RequestInit) => {
-    seen.push({ url: String(input), headers: request?.headers as Record<string, string> })
+    seen.push({
+      url: String(input),
+      headers: request?.headers as Record<string, string>,
+      body: typeof request?.body === 'string' ? request.body : undefined,
+    })
     return new Response(body, init)
   }) as typeof fetch
   return seen
@@ -113,6 +117,37 @@ describe('SigV4 for the Bedrock runtime', () => {
 
     expect(seen[0]!.url).toBe('https://bedrock-runtime.us-east-1.amazonaws.com/model/amazon.nova-lite-v1%3A0/converse')
     expect(seen[0]!.headers.Authorization).toContain('/us-east-1/bedrock/aws4_request')
+    expect(JSON.parse(seen[0]!.body!)).not.toHaveProperty('outputConfig')
+  })
+
+  it.each(['converse', 'converseStream'] as const)('sends the native schema on %s', async (method) => {
+    const seen = respondWith(JSON.stringify({ output: { message: { content: [{ text: '{"topic":"billing"}' }] } } }))
+    const outputConfig = {
+      textFormat: {
+        type: 'json_schema' as const,
+        structure: {
+          jsonSchema: {
+            name: 'mail_topic',
+            description: 'The topic selected for a synthetic request.',
+            schema: JSON.stringify({
+              type: 'object',
+              properties: { topic: { type: 'string', enum: ['billing', 'account'] } },
+              required: ['topic'],
+              additionalProperties: false,
+            }),
+          },
+        },
+      },
+    }
+    await new BedrockRuntimeClient('us-east-1')[method]({
+      modelId: 'global.anthropic.claude-haiku-5-5',
+      messages: [{ role: 'user', content: [{ text: 'Classify this synthetic billing question.' }] }],
+      outputConfig,
+    })
+
+    const request = JSON.parse(seen[0]!.body!)
+    expect(request.outputConfig).toEqual(outputConfig)
+    expect(request).not.toHaveProperty('toolConfig')
   })
 })
 

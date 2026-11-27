@@ -157,6 +157,20 @@ export interface ConverseCommandInput {
     topP?: number
     stopSequences?: string[]
   }
+  /** Constrain the response text on models that support structured outputs. */
+  outputConfig?: {
+    textFormat: {
+      type: 'json_schema'
+      structure: {
+        jsonSchema: {
+          /** The serialized JSON Schema document. */
+          schema: string
+          name?: string
+          description?: string
+        }
+      }
+    }
+  }
   toolConfig?: {
     tools: Array<{ toolSpec: ConverseToolSpec }>
     toolChoice?: { auto: Record<string, never> } | { any: Record<string, never> } | { tool: { name: string } }
@@ -1052,6 +1066,7 @@ function converseRequestBody(params: ConverseCommandInput): string {
 
   if (params.system) requestBody.system = params.system
   if (params.inferenceConfig) requestBody.inferenceConfig = params.inferenceConfig
+  if (params.outputConfig) requestBody.outputConfig = params.outputConfig
   if (params.toolConfig) requestBody.toolConfig = params.toolConfig
   if (params.guardrailConfig) requestBody.guardrailConfig = params.guardrailConfig
 
