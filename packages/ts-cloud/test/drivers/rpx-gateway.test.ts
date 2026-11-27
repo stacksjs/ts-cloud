@@ -1,6 +1,6 @@
 import type { ComputeProxyConfig, SiteConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -1001,6 +1001,102 @@ describe('per-app gateway registry (independent deploys)', () => {
     expect(script).not.toContain('"to": "b.com"')
     // Per-app cert renewal unit named for this slug only.
     expect(script).toContain('rpx-cert-renew-app-a.timer')
+  })
+
+  it('keeps a held tenant out of an owner suffix while allowing live siblings', () => {
+    const proxy = { engine: 'rpx', onDemandTls: true } as const
+    const site = (domain: string) => ({ web: { domain, port: 3000, root: '.output', start: 'bun api.ts' } })
+    const owner = buildRpxConfig(site('example.com'), { proxy })
+    const tenant = buildRpxConfig(site('held.example.com'), { proxy, holdPublicTls: true })
+    const live = buildRpxConfig(site('live.example.com'), { proxy })
+    const merged = mergeRpxFragments([owner, tenant, live])
+    expect(merged.productionCerts.certsDirServerNames).toContain('held.example.com')
+    const policy = merged.onDemandTls
+    expect(policy?.allowedSuffixes).toEqual([])
+    expect(policy?.ask?.('held.example.com')).toBe(false)
+    expect(policy?.ask?.('example.com')).toBe(true)
+    expect(policy?.ask?.('live.example.com')).toBe(true)
+    const released = mergeRpxFragments([owner, buildRpxConfig(site('held.example.com'), { proxy }), live])
+    expect(released.onDemandTls?.allowedSuffixes).toContain('held.example.com')
+  })
+
+  it('assembles real held fragments into the native rpx ask policy and restores approval on release', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rpx-held-assembler-'))
+    try {
+      const proxy = { engine: 'rpx', onDemandTls: true } as const
+      const site = (domain: string) => ({ web: { domain, port: 3000, root: '.output', start: 'bun api.ts' } })
+      const script = renderRpxAssembler(dir).replace("import { startProxies } from '@stacksjs/rpx'", `
+const startProxies = config => {
+  const tls = config.onDemandTls
+  const hosts = ['example.com', 'held.example.com', 'live.example.com']
+  const allowed = hosts.map(host => tls.ask
+    ? tls.ask(host)
+    : tls.allowedSuffixes.some(suffix => host === suffix || host.endsWith('.' + suffix)))
+  console.log(JSON.stringify({ allowed, certHosts: config.productionCerts.certsDirServerNames }))
+}
+`)
+      const assembler = join(dir, 'assembler.ts')
+      await Bun.write(assembler, script)
+      for (const [slug, domain, held] of [['owner', 'example.com', false], ['tenant', 'held.example.com', true], ['live', 'live.example.com', false]] as const) {
+        const config = buildRpxConfig(site(domain), { proxy, holdPublicTls: held })
+        const json = buildRpxFragmentRefreshScript({ config, slug }).find(line => line.startsWith('{\n'))!
+        await Bun.write(join(dir, `${slug}.json`), json)
+      }
+      const run = () => {
+        const result = Bun.spawnSync([process.execPath, assembler])
+        expect(result.stderr.toString()).toBe('')
+        expect(result.exitCode).toBe(0)
+        return JSON.parse(result.stdout.toString())
+      }
+      const held = run()
+      expect(held.allowed).toEqual([true, false, true])
+      expect(held.certHosts).toContain('held.example.com')
+      const released = buildRpxConfig(site('held.example.com'), { proxy })
+      const json = buildRpxFragmentRefreshScript({ config: released, slug: 'tenant' }).find(line => line.startsWith('{\n'))!
+      await Bun.write(join(dir, 'tenant.json'), json)
+      expect(run().allowed).toEqual([true, true, true])
+    }
+    finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses an overlapping owner on legacy gateways until the compiled binary has a valid capability proof', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rpx-held-legacy-'))
+    try {
+      const sitesDir = join(dir, 'sites.d')
+      mkdirSync(sitesDir)
+      const proxy = { engine: 'rpx', onDemandTls: true } as const
+      const held = buildRpxConfig({ web: { domain: 'held.example.com', port: 3000, root: '.output', start: 'bun api.ts' } }, { proxy, holdPublicTls: true })
+      const lines = buildRpxFragmentRefreshScript({ config: held, slug: 'tenant' })
+      const guardIndex = lines.findIndex(line => line.startsWith('if ! sha256sum'))
+      const writeIndex = lines.findIndex(line => line.includes('tenant.json.XXXXXX'))
+      expect(guardIndex).toBeGreaterThan(0)
+      expect(guardIndex).toBeLessThan(writeIndex)
+      const guard = lines.slice(guardIndex, guardIndex + 3).join('\n')
+        .replaceAll('/etc/rpx', dir)
+        .replace("'/usr/local/bin/bun'", JSON.stringify(process.execPath))
+      const run = () => Bun.spawnSync(['bash', '-c', guard], { stdout: 'pipe', stderr: 'pipe' })
+      const owner = join(sitesDir, 'owner.json')
+      await Bun.write(owner, JSON.stringify({ onDemandTls: { allowedSuffixes: ['outside.example.net'] } }))
+      expect(run().exitCode).toBe(0)
+      await Bun.write(owner, JSON.stringify({ onDemandTls: { allowedSuffixes: ['example.com'] } }))
+      const legacy = run()
+      expect(legacy.exitCode).toBe(1)
+      expect(legacy.stderr.toString()).toContain('Upgrade the owning gateway first')
+      const binary = join(dir, 'gateway')
+      const proof = join(dir, 'public-tls-hold.sha256')
+      const bytes = 'compiled policy fixture'
+      const digest = new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
+      await Bun.write(binary, bytes)
+      await Bun.write(proof, `${digest}  ${binary}\n`)
+      expect(run().exitCode).toBe(0)
+      await Bun.write(binary, 'legacy binary')
+      expect(run().exitCode).toBe(1)
+    }
+    finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('mergeRpxFragments composes two apps without dropping either app routes', () => {
