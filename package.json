@@ -65,8 +65,8 @@
     "test:package": "bun test ./packages/core/test/package.acceptance.ts"
   },
   "devDependencies": {
-    "@stacksjs/bumpx": "0.2.25",
-    "better-dx": "^0.2.25"
+    "@stacksjs/bumpx": "0.2.35",
+    "better-dx": "^0.2.40"
   },
   "overrides": {
     "typescript": "^7.0.2"
