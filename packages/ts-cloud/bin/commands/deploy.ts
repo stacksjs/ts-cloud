@@ -95,7 +95,7 @@ async function deployAppToCompute(
   // Auto-deploy the management dashboard (the stx cockpit) alongside the app on
   // every server box.
   const { ensureManagementDashboard } = await import('../../src/deploy/management-dashboard')
-  ensureManagementDashboard(config, { logger: { info: cli.info, warn: cli.warn } })
+  ensureManagementDashboard(config, { environment, logger: { info: cli.info, warn: cli.warn } })
 
   const sites = config.sites || {}
   const allSites = Object.entries<any>(sites)

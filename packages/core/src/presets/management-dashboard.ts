@@ -149,8 +149,8 @@ function dashboardHostFor(domain: string, ownedDomains: Iterable<string>): strin
 
 /**
  * Collect the project's configured domains, in priority order: the project's
- * canonical domain first (`infrastructure.dns.domain`, then the environment
- * domain), then every site domain. Canonical-first is deliberate — it fixes the
+ * canonical production domain first, then the selected environment domain and
+ * every site domain. Canonical-first fixes the production primary to the
  * PRIMARY dashboard (and its site key, e.g. `dashboard-stacksjs-com`) to the
  * project domain, so it stays stable no matter which `--site` a partial deploy
  * narrows to. `dashboard.*` hosts are skipped (a dashboard never gets its own
@@ -167,7 +167,9 @@ function collectDomains(
   // zone as project ownership makes every tenant claim dashboard.stacksjs.com,
   // derive the same port, and crash-loop behind the first dashboard that bound
   // it. Attached projects derive ownership from their environment/sites only.
-  if (dnsDomain && !config.cloud?.attachTo) candidates.push(dnsDomain)
+  // Staging and development often keep the production zone for DNS writes
+  // while serving only their own subdomains on separate hosts.
+  if (dnsDomain && !config.cloud?.attachTo && (!environment || environment === 'production')) candidates.push(dnsDomain)
   if (environment && config.environments?.[environment]?.domain)
     candidates.push(config.environments[environment].domain!)
   for (const site of Object.values(config.sites ?? {})) {
@@ -185,8 +187,8 @@ function collectDomains(
 
 /**
  * Derive the PRIMARY dashboard hostname (`dashboard.<apex>`) for the project.
- * Prefers `explicit`, else the project's canonical domain (`infrastructure.dns.domain`,
- * then the environment domain), else the first site domain. Returns null when
+ * Prefers `explicit`, then the canonical production domain, the selected
+ * environment domain, and the first site domain. Returns null when
  * nothing is available.
  */
 export function resolveDashboardDomain(

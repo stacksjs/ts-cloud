@@ -274,6 +274,33 @@ describe('ensureManagementDashboard (live, the default)', () => {
     }
   })
 
+  it('uses the selected environment and the same route domain for full and single-site deploys', () => {
+    const dir = repoCwd()
+    try {
+      const full: CloudConfig = {
+        ...cfg(),
+        environments: { production: { type: 'production', domain: 'acme.com' }, staging: { type: 'staging' } },
+        infrastructure: { dns: { domain: 'acme.com' } },
+        sites: {
+          main: { root: 'dist', domain: 'staging.acme.com' },
+          api: { root: 'api', domain: 'api.staging.acme.com' },
+        },
+      }
+      const partial: CloudConfig = { ...full, sites: { api: full.sites!.api! } }
+      const options = { cwd: dir, environment: 'staging' as const }
+      ensureManagementDashboard(partial, { ...options, routeSites: full.sites })
+      ensureManagementDashboard(full, options)
+      expect(partial.sites?.['dashboard-staging-acme-com']?.domain).toBe('dashboard.staging.acme.com')
+      expect(partial.sites?.['dashboard-staging-acme-com']).toEqual(full.sites?.['dashboard-staging-acme-com'])
+      expect(partial.sites?.['dashboard-acme-com']).toBeUndefined()
+      const otherPartial: CloudConfig = { ...full, sites: { api: full.sites!.api! } }
+      ensureManagementDashboard(otherPartial, { ...options, routeSites: full.sites })
+      expect(Object.keys(otherPartial.sites ?? {})).toEqual(['api'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('needs no UI on the deploy host: the box installs it from npm', () => {
     const dir = mkdtempSync(join(tmpdir(), 'tscloud-noui3-'))
     try {
