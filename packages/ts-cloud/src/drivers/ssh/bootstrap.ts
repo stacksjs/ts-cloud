@@ -48,6 +48,7 @@ export const RASPBERRY_PI_DEFAULT_SWAP_GB = 1
 
 export interface SshBootstrapOptions {
   holdPublicTls?: boolean
+  deferInitialCertificateIssuance?: boolean
   config: CloudConfig
   environment: EnvironmentType
   profile: SshProfile
@@ -199,6 +200,7 @@ export function buildSshBootstrapScript(options: SshBootstrapOptions): string {
           proxy: compute.proxy,
           config: rpxConfig,
           slug,
+          initialCertificateDomains: options.deferInitialCertificateIssuance ? [] : undefined,
           profile,
           bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
         })

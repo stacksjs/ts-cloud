@@ -74,6 +74,8 @@ export interface ProvisionComputeOptions {
   environment: EnvironmentType
   /** On SSH and Hetzner, keep public certificate issuance held while provisioning routes. */
   holdPublicTls?: boolean
+  /** Install public renewal automation while leaving the first issuance to the deployer. */
+  deferInitialCertificateIssuance?: boolean
 }
 
 export interface ComputeChangePlan {

@@ -38,6 +38,7 @@ describe('buildSshBootstrapScript', () => {
     }
     const held = pi({ config: publicConfig, holdPublicTls: true })
     const published = pi({ config: publicConfig })
+    const deferred = pi({ config: publicConfig, deferInitialCertificateIssuance: true })
     expect(held).toContain('pi-app.example.com')
     expect(held).toContain('"productionCerts"')
     expect(held).toContain('"acmeChallengeWebroot"')
@@ -45,6 +46,8 @@ describe('buildSshBootstrapScript', () => {
     expect(held).not.toContain('rpx-cert-renew-pi-app.timer')
     expect(published).toContain('"onDemandTls"')
     expect(published).toContain('systemctl enable --now rpx-cert-renew-pi-app.timer')
+    expect(deferred).toContain('systemctl enable --now rpx-cert-renew-pi-app.timer')
+    expect(deferred).not.toContain('/etc/rpx/renew-certs-pi-app.sh || true')
   })
 
   it('never probes cloud-init: the driver decides that before the script runs', () => {

@@ -217,6 +217,7 @@ export {
   deploySiteRelease,
   reloadRpxGateway,
   renewRpxCertificates,
+  RPX_SCOPED_CERTIFICATE_ISSUANCE_VERSION,
 } from './shared/compute-deploy'
 // `site:move` refuses to be built for a project whose database lives on the box
 // and has no way to be carried, and this is how a caller tells the two apart -

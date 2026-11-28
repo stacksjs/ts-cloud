@@ -321,6 +321,7 @@ export class HetznerDriver implements CloudDriver {
             proxy: mailProxy,
             config: buildRpxConfig(sites, { proxy: mailProxy, slug: config.project.slug, holdPublicTls: options.holdPublicTls, mail: resolveMailService(config, { environment }) }),
             slug: config.project.slug,
+            initialCertificateDomains: options.deferInitialCertificateIssuance ? [] : undefined,
             bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
           })
         : undefined
@@ -862,6 +863,7 @@ export class HetznerDriver implements CloudDriver {
           proxy: rpxProxy,
           config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy, slug, holdPublicTls: options.holdPublicTls }),
           slug,
+          initialCertificateDomains: options.deferInitialCertificateIssuance ? [] : undefined,
           bunBin:
             appProvisionScripts.runtime === 'node' || appProvisionScripts.runtime === 'deno'
               ? undefined

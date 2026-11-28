@@ -471,6 +471,8 @@ async function cleanUpAfterFailedDeploy(
 export interface DeployAllSitesOptions {
   /** Reload gateway routes while holding new public certificate issuance. */
   holdPublicTls?: boolean
+  /** Install renewal automation now and let the caller issue after reconciling DNS. */
+  deferInitialCertificateIssuance?: boolean
   config: CloudConfig
   environment: EnvironmentType
   driver: CloudDriver
@@ -1120,6 +1122,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     // resets a Pi to the cloud-box defaults.
     profile: resolveGatewayProfile(config),
     preserveManagementDashboardRoutes: options.managementDashboard === false,
+    initialCertificateDomains: options.deferInitialCertificateIssuance ? [] : undefined,
   })
   const result = await driver.runRemoteDeploy({
     targets,
@@ -1140,14 +1143,19 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   return true
 }
 
+/** Capability for callers deploying with either an older or newer ts-cloud release. */
+export const RPX_SCOPED_CERTIFICATE_ISSUANCE_VERSION = 1
+
 /**
  * Request the first production certificates after DNS has been reconciled.
  * Provisioning installs the per-project renewal unit, but ACME HTTP-01 cannot
  * succeed until the domain points at the new box. This deliberately runs after
  * DNS and targets the same gateway box selected by reloadRpxGateway.
+ * When domains are supplied, issuance and verification are limited to those
+ * routed names while the daily timer continues to cover the full project.
  */
 export async function renewRpxCertificates(
-  options: Pick<DeployAllSitesOptions, 'config' | 'environment' | 'driver' | 'logger' | 'rpxConfig' | 'holdPublicTls'>,
+  options: Pick<DeployAllSitesOptions, 'config' | 'environment' | 'driver' | 'logger' | 'rpxConfig' | 'holdPublicTls'> & { domains?: readonly string[] },
 ): Promise<boolean> {
   if (options.holdPublicTls) return true
   const { config, environment, driver, logger = noopLogger } = options
@@ -1157,7 +1165,12 @@ export async function renewRpxCertificates(
 
   const rpxConfig = buildRpxConfig(routeSource.sites || {}, { proxy, slug: config.project.slug, mail: resolveMailService(config, { environment }) })
   if (rpxConfig.proxies.length === 0) return true
-  const certDomains = certDomainsForConfig(rpxConfig)
+  const requested = options.domains
+  const allCertDomains = certDomainsForConfig(rpxConfig)
+  const certDomains = requested === undefined ? allCertDomains : [
+    ...allCertDomains.filter(domain => requested.includes(domain)),
+    ...(rpxConfig.wildcardCerts ?? []).filter(cert => requested.includes(cert.domain)).map(cert => `_wildcard.${cert.domain.slice(2)}`),
+  ]
   if (certDomains.length === 0) return true
 
   const slug = config.project.slug
@@ -1179,19 +1192,19 @@ export async function renewRpxCertificates(
     .join(' && ')
   const service = rpxCertRenewServiceName(slug)
   // A gateway first booted under a TLS hold has no public renewal service yet.
-  const installRenewal = buildCertManagementCommands({ proxy, config: rpxConfig, slug, tenant: Boolean(config.cloud?.attachTo) })
+  const installRenewal = buildCertManagementCommands({
+    proxy, config: rpxConfig, slug, tenant: Boolean(config.cloud?.attachTo), initialCertificateDomains: requested,
+  })
+  const renewal = requested === undefined ? [
+    `if [ -f /etc/systemd/system/${service} ]; then`,
+    `systemctl start ${service}`,
+    'else',
+    ...installRenewal,
+    'fi',
+  ].join('\n') : installRenewal.join('\n')
   const result = await driver.runRemoteDeploy({
     targets,
-    commands: [
-      [
-        `if [ -f /etc/systemd/system/${service} ]; then`,
-        `systemctl start ${service}`,
-        'else',
-        ...installRenewal,
-        'fi',
-      ].join('\n'),
-      certChecks,
-    ],
+    commands: [renewal, certChecks],
     comment: `ts-cloud rpx TLS issuance ${slug}`,
     tags: {
       Project: slug,

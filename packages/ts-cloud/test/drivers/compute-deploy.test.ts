@@ -720,6 +720,77 @@ describe('renewRpxCertificates', () => {
     },
   }
 
+  it.each([false, true])('defers issuance until DNS and keeps the full project timer (attached: %s)', async (tenant) => {
+    const fullConfig = {
+      ...tlsConfig,
+      ...(tenant ? { cloud: { attachTo: 'owner' } } : {}),
+      sites: {
+        ...tlsConfig.sites,
+        other: { domain: 'missing.example.com', redirect: 'https://my-app.example.com' },
+      },
+    }
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const logger = { info: mock(), warn: mock(), error: mock(), step: mock(), success: mock() }
+    expect(await reloadRpxGateway({
+      config: { ...fullConfig, sites: tlsConfig.sites }, rpxConfig: fullConfig, environment: 'production', driver, logger,
+      sha: 'abc', runtime: 'bun', tarballForSite: () => '/tmp/x.tar.gz', deferInitialCertificateIssuance: true,
+    })).toBe(true)
+
+    const deployCall = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
+    const reloadScript = deployCall.commands.join('\n')
+    expect(reloadScript).toContain('"to": "missing.example.com"')
+    expect(reloadScript).toContain("DOMAINS='missing.example.com,my-app.example.com'")
+    expect(reloadScript).toContain('systemctl enable --now rpx-cert-renew-my-app.timer')
+    expect(reloadScript).not.toContain('/etc/rpx/renew-certs-my-app.sh || true')
+    expect(reloadScript.includes('add @stacksjs/tlsx')).toBe(!tenant)
+
+    expect(await renewRpxCertificates({
+      config: fullConfig, environment: 'production', driver, logger, domains: ['my-app.example.com'],
+    })).toBe(true)
+    const issuer = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[1][0].commands
+    const renewal = issuer.join('\n')
+    expect(renewal).toContain("DOMAINS='missing.example.com,my-app.example.com'")
+    expect(renewal).toContain("DOMAINS='my-app.example.com'")
+    expect(renewal).not.toContain('systemctl start rpx-cert-renew-my-app.service')
+    expect(issuer.at(-1)).toBe("test -s '/etc/rpx/certs/my-app.example.com.crt'")
+    expect(Bun.spawnSync(['bash', '-n'], { stdin: Buffer.from(renewal) }).exitCode).toBe(0)
+  })
+
+  it('issues a selected hostname without resolving an unrelated DNS name', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const config = { ...tlsConfig, sites: {
+      ...tlsConfig.sites,
+      other: { domain: 'unresolved.example.com', redirect: 'https://my-app.example.com' },
+    } }
+    expect(await renewRpxCertificates({ config, environment: 'production', driver, domains: ['my-app.example.com'] })).toBe(true)
+    const [renewal] = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands
+    const script = renewal.split("sh <<'TS_CLOUD_ISSUE_CERTS_EOF'\n")[1].split('\nTS_CLOUD_ISSUE_CERTS_EOF')[0]
+
+    const root = mkdtempSync(join(tmpdir(), 'scoped-rpx-cert-'))
+    try {
+      writeFileSync(join(root, 'bun'), '#!/bin/sh\nprintf "%s\\n" "$4" >> "$FIXTURE_ROOT/dns.log"\n[ "$4" = my-app.example.com ]\n', { mode: 0o700 })
+      writeFileSync(join(root, 'tlsx'), '#!/bin/sh\nprintf "acme %s %s\\n" "$1" "$3"\nif [ "$1" = acme:issue ]; then printf "certificate\\n" > "$FIXTURE_ROOT/$3.crt"; fi\n', { mode: 0o700 })
+      writeFileSync(join(root, 'systemctl'), '#!/bin/sh\nexit 0\n', { mode: 0o700 })
+      writeFileSync(join(root, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o700 })
+      writeFileSync(join(root, 'getent'), '#!/bin/sh\nexit 1\n', { mode: 0o700 })
+      const result = Bun.spawnSync(['sh'], {
+        stdin: Buffer.from(script
+          .replace(/^CERTS=.*/m, 'CERTS="$FIXTURE_ROOT"')
+          .replace(/^TLSX=.*/m, 'TLSX=tlsx')
+          .replace(/^BUN=.*/m, 'BUN=bun')),
+        env: { FIXTURE_ROOT: root, PATH: `${root}:${process.env.PATH}` },
+      })
+      expect(result.exitCode).toBe(0)
+      expect(await Bun.file(join(root, 'dns.log')).text()).toBe('my-app.example.com\n')
+      expect(result.stdout.toString().trim().split('\n')).toEqual([
+        'acme acme:issue my-app.example.com', 'acme acme:renew my-app.example.com',
+      ])
+    }
+    finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('starts the project renewal unit on the single-box gateway', async () => {
     const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
     const ok = await renewRpxCertificates({
